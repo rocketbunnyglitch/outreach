@@ -8,13 +8,20 @@
  *   - slot start/end times, agreed hours text, drink specials
  *   - night-of contact info
  *
+ * Phase 7b adds the confirmation cascade: when status transitions to
+ * `confirmed`, generateConfirmationCascade auto-creates the follow-up
+ * tasks (deliver poster, 2-week confirm, 1-week confirm, floor staff
+ * brief). Cascade is idempotent — re-firing replaces existing auto tasks
+ * for the same venue_event.
+ *
  * Phase 6 automation will populate the cadence timestamps
  * (two_week_email_sent_at, one_week_email_sent_at, etc.) — those stay
- * read-only in this Phase 4c form.
+ * read-only in this form.
  */
 
 import { venueEvents } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
+import { generateConfirmationCascade, isConfirmationTransition } from "@/lib/confirmation-cascade";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
@@ -123,14 +130,44 @@ export async function updateVenueEvent(
   if (input.ourContactStaffId !== undefined) patch.ourContactStaffId = input.ourContactStaffId;
 
   try {
-    const [row] = await withAuditContext(staff.id, async (tx) =>
-      tx
+    // Fetch previous status BEFORE update so we can detect a transition
+    // to confirmed (vs. saving while already confirmed).
+    const previousStatusRow = await db
+      .select({ status: venueEvents.status })
+      .from(venueEvents)
+      .where(eq(venueEvents.id, id))
+      .limit(1);
+    const previousStatus = previousStatusRow[0]?.status ?? null;
+
+    const [row] = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx
         .update(venueEvents)
         .set(patch)
         .where(eq(venueEvents.id, id))
-        .returning({ eventId: venueEvents.eventId }),
-    );
+        .returning({ eventId: venueEvents.eventId });
+
+      // Confirmation cascade — generate auto-tasks atomically with the
+      // status flip. Only fires on transition (not on repeated saves
+      // while already confirmed).
+      if (input.status !== undefined && isConfirmationTransition(previousStatus, input.status)) {
+        try {
+          const cascade = await generateConfirmationCascade(tx, id);
+          logger.info({ venueEventId: id, ...cascade }, "confirmation cascade fired");
+        } catch (cascadeErr) {
+          // Log but don't block the venue_event update. Operators can
+          // manually create tasks if cascade fails.
+          logger.error(
+            { err: cascadeErr, venueEventId: id },
+            "confirmation cascade failed (venue_event update committed anyway)",
+          );
+        }
+      }
+
+      return result;
+    });
     if (row?.eventId) revalidatePath(`/events/${row.eventId}`);
+    revalidatePath("/tasks");
+    revalidatePath("/");
     return { ok: true, data: { id } };
   } catch (err) {
     return wrapDbError(err, "update venue event");
