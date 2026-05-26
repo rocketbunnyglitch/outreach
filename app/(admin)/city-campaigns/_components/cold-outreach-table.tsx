@@ -6,6 +6,7 @@ import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { useDraft } from "@/lib/use-draft";
 import {
   Check,
   ExternalLink,
@@ -543,6 +544,7 @@ function ColdRow({
             initial={entry.remarks ?? ""}
             pending={pending}
             onCommit={(v) => commitField("remarks", v)}
+            draftKey={`remarks:${entry.entryId}`}
           />
         </div>
 
@@ -727,6 +729,7 @@ function ColdRow({
           initial={entry.remarks ?? ""}
           pending={pending}
           onCommit={(v) => commitField("remarks", v)}
+          draftKey={`remarks:${entry.entryId}`}
         />
       </td>
 
@@ -903,24 +906,37 @@ function RemarksInput({
   initial,
   pending,
   onCommit,
+  draftKey,
 }: {
   initial: string;
   pending: boolean;
   onCommit: (v: string) => void;
+  /** Stable key for localStorage persistence. Pass to enable
+      'never lose what I typed' behavior. */
+  draftKey?: string;
 }) {
   const [committed, setCommitted] = useState(initial);
-  const [draft, setDraft] = useState(initial);
   const [saved, setSaved] = useState(false);
+  const {
+    value: draft,
+    setValue: setDraft,
+    clearDraft,
+    recovered,
+  } = useDraft({
+    key: draftKey ?? "",
+    initial,
+    enabled: !!draftKey,
+  });
 
   useEffect(() => {
     setCommitted(initial);
-    setDraft(initial);
   }, [initial]);
 
   function commit() {
     if (draft === committed) return;
     onCommit(draft);
     setCommitted(draft);
+    clearDraft(); // Server now has it — drop the local copy
     setSaved(true);
     setTimeout(() => setSaved(false), 1200);
   }
@@ -935,16 +951,19 @@ function RemarksInput({
           if (e.key === "Enter") e.currentTarget.blur();
           if (e.key === "Escape") {
             setDraft(committed);
+            clearDraft();
             e.currentTarget.blur();
           }
         }}
         disabled={pending}
-        placeholder="Add remarks…"
+        placeholder={recovered ? "Restored draft — Enter to save" : "Add remarks…"}
         className={cn(
           "h-7 border-transparent bg-transparent pr-6 text-xs transition-colors",
           "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
           "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
           "placeholder:text-zinc-400/60",
+          recovered &&
+            "border-amber-400/40 bg-amber-50/30 dark:border-amber-700/40 dark:bg-amber-950/20",
         )}
       />
       {(pending || saved) && (
