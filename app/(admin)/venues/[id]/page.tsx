@@ -2,9 +2,11 @@ import { Button } from "@/components/ui/button";
 import { cities, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
+import { loadComposerData } from "@/lib/composer-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
+import { sendOutreachEmail } from "@/lib/send-outreach";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import { asc, eq, isNull } from "drizzle-orm";
@@ -15,6 +17,7 @@ import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { archiveVenue, getVenueOutreachLog, logOutreach, updateVenue } from "../_actions";
 import { OutreachLogSection } from "../_components/outreach-log-section";
+import { SendComposer } from "../_components/send-composer";
 import { VenueForm } from "../_components/venue-form";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +46,12 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       listNotes("venue", id, staff.id),
     ]);
   if (!venue) notFound();
+
+  // Composer data — templates + inbox throttle status per brand for THIS staffer
+  const composerBrandConfig = await loadComposerData({
+    staffMemberId: staff.id,
+    outreachBrandIds: outreachBrandsList.map((b) => b.id),
+  });
 
   // Smart-note suggestions for these notes
   const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
@@ -97,6 +106,27 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
           action={boundUpdate}
         />
       </div>
+
+      <SendComposer
+        venueId={id}
+        venueEmail={venue.email}
+        brands={outreachBrandsList.map((b) => ({
+          id: b.id,
+          displayName: b.displayName,
+          outreachPhase: (b.outreachPhase as 1 | 2 | 3 | 4) ?? 1,
+        }))}
+        defaultBrandId={outreachBrandsList[0]?.id ?? null}
+        initialPreviewVars={{
+          venueName: venue.name,
+          cityName: citiesList.find((c) => c.id === venue.cityId)?.name ?? "",
+          venueAddress: venue.address,
+          venueWebsite: venue.websiteUrl,
+          staffFirstName: (staff.displayName ?? "").split(" ")[0] ?? "",
+          staffFullName: staff.displayName ?? "",
+        }}
+        brandConfig={composerBrandConfig}
+        sendAction={sendOutreachEmail}
+      />
 
       <OutreachLogSection
         venueId={id}

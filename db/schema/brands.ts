@@ -18,7 +18,16 @@
  * read. The schema does not enforce encryption — the codebase does.
  */
 
-import { boolean, index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { crawlBrandGeography, crawlBrandStatus, holidayType, outreachBrandStatus } from "./enums";
 
@@ -48,6 +57,22 @@ export const outreachBrands = pgTable(
 
     // Reputation isolation lifecycle
     status: outreachBrandStatus("status").notNull().default("active"),
+
+    /**
+     * Outreach phase (1-4) — the staged-rollout lifecycle:
+     *   1 = Draft-assist (staff manually sends each email)
+     *   2 = Controlled send (engine spaces sends across the day)
+     *   3 = Auto follow-ups (stops on reply/bounce/decline/unsubscribe)
+     *   4 = Transactional auto (confirmations + posters + info sheets)
+     * Per-brand so a mature brand can be at Phase 4 while a new one
+     * stays at Phase 1. The send composer and bulk-send UI check this
+     * before enabling automated behaviors.
+     */
+    outreachPhase: smallint("outreach_phase").notNull().default(1),
+    outreachPhaseSetAt: timestamp("outreach_phase_set_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    outreachPhaseSetBy: uuid("outreach_phase_set_by"),
 
     ...archivedAt,
     ...auditColumns,

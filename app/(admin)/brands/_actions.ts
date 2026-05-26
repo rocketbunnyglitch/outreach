@@ -226,6 +226,42 @@ export async function updateOutreachBrand(
   }
 }
 
+export async function setOutreachPhase(
+  brandId: string,
+  newPhase: 1 | 2 | 3 | 4,
+): Promise<ActionResult<{ id: string; phase: 1 | 2 | 3 | 4 }>> {
+  const { staff } = await requireStaff();
+
+  if (![1, 2, 3, 4].includes(newPhase)) {
+    return { ok: false, error: "Invalid phase. Must be 1, 2, 3, or 4." };
+  }
+
+  try {
+    const result = await withAuditContext(staff.id, async (tx) => {
+      const updated = await tx
+        .update(outreachBrands)
+        .set({
+          outreachPhase: newPhase,
+          outreachPhaseSetAt: new Date(),
+          outreachPhaseSetBy: staff.id,
+          updatedBy: staff.id,
+        })
+        .where(eq(outreachBrands.id, brandId))
+        .returning({ id: outreachBrands.id });
+      return updated[0]?.id;
+    });
+
+    if (!result) return { ok: false, error: "Brand not found." };
+
+    logger.info({ brandId, newPhase, staffId: staff.id }, "outreach_brand phase changed");
+    revalidatePath("/brands");
+    revalidatePath(`/brands/outreach/${brandId}`);
+    return { ok: true, data: { id: result, phase: newPhase } };
+  } catch (err) {
+    return wrapDbError(err, "set outreach phase");
+  }
+}
+
 export async function archiveOutreachBrand(id: string): Promise<void> {
   const { staff } = await requireStaff();
   await withAuditContext(staff.id, async (tx) =>

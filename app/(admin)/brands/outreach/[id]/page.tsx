@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { getOutreachBrand } from "@/lib/brand-context";
+import type { OutreachPhase } from "@/lib/outreach-phase";
 import { Archive } from "lucide-react";
 import { notFound } from "next/navigation";
 import { archiveOutreachBrand, updateOutreachBrand } from "../../_actions";
 import { OutreachBrandForm } from "../../_components/outreach-brand-form";
+import { PhaseSwitcher } from "../../_components/phase-switcher";
 
 export const metadata = {
   title: "Edit outreach brand · Crawl Engine",
@@ -43,6 +45,12 @@ export default async function EditOutreachBrandPage({
           </Button>
         </form>
       </header>
+
+      <PhaseSwitcher
+        brandId={brandId}
+        currentPhase={(brand.outreachPhase as OutreachPhase) ?? 1}
+        setAt={brand.outreachPhaseSetAt}
+      />
 
       <OutreachBrandForm initial={brand} action={boundUpdate} />
     </div>
