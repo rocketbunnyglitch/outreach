@@ -179,11 +179,12 @@ export async function archiveColdOutreachEntry(
  *
  * When GOOGLE_MAPS_API_KEY is set, runs the Places API nearby-search
  * around the city's coordinates to find bars/clubs/restaurants and
- * inserts them as cold_outreach_entries.
+ * returns the candidates for operator review. Insertion happens via
+ * a follow-up acceptLeadSuggestions action so the operator gets to
+ * filter before anything hits the DB.
  *
- * Without the key: returns a graceful "not configured" response so the
- * UI can render the right state. The action is shaped so the wiring
- * is ready — just drop the key into env and lead generation comes online.
+ * Dedupe: candidates already in venues (by google_place_id) are
+ * stripped out before returning.
  */
 const generateSchema = z.object({
   cityCampaignId: uuid,
@@ -195,11 +196,14 @@ export async function generateVenueLeads(
 ): Promise<
   ActionResult<{
     suggestions: Array<{
+      placeId: string;
       name: string;
       address: string | null;
       phone: string | null;
       website: string | null;
-      placeId: string | null;
+      rating: number | null;
+      userRatingCount: number | null;
+      types: string[];
     }>;
     notConfigured?: boolean;
   }>
@@ -210,29 +214,160 @@ export async function generateVenueLeads(
   });
   if (!parsed.success) return { ok: false, error: "Invalid input." };
 
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) {
+  const { isGoogleMapsConfigured, nearbyVenueSearch } = await import("@/lib/google-places");
+  if (!isGoogleMapsConfigured()) {
+    return { ok: true, data: { suggestions: [], notConfigured: true } };
+  }
+
+  // Resolve the city's coordinates
+  const cityRow = await db.execute<{ lat: number | null; lng: number | null }>(sql`
+    SELECT
+      ST_Y(c.location::geometry) AS lat,
+      ST_X(c.location::geometry) AS lng
+    FROM city_campaigns cc
+    JOIN cities c ON c.id = cc.city_id
+    WHERE cc.id = ${parsed.data.cityCampaignId}
+    LIMIT 1
+  `);
+  const rows: Array<{ lat: number | null; lng: number | null }> = Array.isArray(cityRow)
+    ? (cityRow as unknown as Array<{ lat: number | null; lng: number | null }>)
+    : ((cityRow as unknown as { rows: Array<{ lat: number | null; lng: number | null }> }).rows ??
+      []);
+  const coords = rows[0];
+  if (!coords?.lat || !coords?.lng) {
     return {
-      ok: true,
-      data: {
-        suggestions: [],
-        notConfigured: true,
-      },
+      ok: false,
+      error:
+        "Can't generate leads — city has no coordinates. Edit the master city record and add lat/lng first.",
     };
   }
 
-  // Stub for when the key arrives — actual implementation calls
-  // Places API nearby-search with the city's coordinates + filters
-  // (type: bar | nightclub | restaurant) and dedupes against existing
-  // venues.id by place_id.
-  logger.info({ cityCampaignId: parsed.data.cityCampaignId }, "lead generation skeleton");
-  return {
-    ok: true,
-    data: {
-      suggestions: [],
-      notConfigured: false,
-    },
+  const candidates = await nearbyVenueSearch({
+    lat: coords.lat,
+    lng: coords.lng,
+    radiusM: 1500,
+    maxResults: 20,
+  });
+
+  if (candidates.length === 0) {
+    return { ok: true, data: { suggestions: [] } };
+  }
+
+  // Dedupe against existing venues with the same place_id
+  const placeIds = candidates.map((c) => c.placeId);
+  const existing = await db.execute<{ google_place_id: string }>(sql`
+    SELECT google_place_id FROM venues
+    WHERE google_place_id = ANY(${placeIds}::text[])
+  `);
+  const existingList: Array<{ google_place_id: string }> = Array.isArray(existing)
+    ? (existing as unknown as Array<{ google_place_id: string }>)
+    : ((existing as unknown as { rows: Array<{ google_place_id: string }> }).rows ?? []);
+  const knownPlaceIds = new Set(existingList.map((r) => r.google_place_id));
+
+  const suggestions = candidates
+    .filter((c) => !knownPlaceIds.has(c.placeId))
+    .map((c) => ({
+      placeId: c.placeId,
+      name: c.name,
+      address: c.address,
+      phone: c.phone,
+      website: c.website,
+      rating: c.rating,
+      userRatingCount: c.userRatingCount,
+      types: c.types,
+    }));
+
+  return { ok: true, data: { suggestions } };
+}
+
+/**
+ * Accept a batch of lead suggestions: creates venues + cold outreach
+ * entries in one transaction. Used by the generate-leads review modal.
+ */
+const acceptSchema = z.object({
+  cityCampaignId: uuid,
+  cityId: uuid,
+  // Comma-separated JSON-encoded suggestion objects pushed as a single
+  // form field by the client (avoids multi-form-field nesting)
+  suggestionsJson: z.string().min(2).max(50_000),
+});
+
+export async function acceptLeadSuggestions(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ inserted: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = acceptSchema.safeParse({
+    cityCampaignId: formData.get("cityCampaignId"),
+    cityId: formData.get("cityId"),
+    suggestionsJson: formData.get("suggestionsJson"),
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid suggestion payload." };
+
+  type Suggestion = {
+    placeId: string;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    website: string | null;
   };
+  let parsedSuggestions: Suggestion[];
+  try {
+    parsedSuggestions = JSON.parse(parsed.data.suggestionsJson) as Suggestion[];
+    if (!Array.isArray(parsedSuggestions)) throw new Error("not an array");
+  } catch {
+    return { ok: false, error: "Couldn't parse the suggestion list." };
+  }
+
+  let inserted = 0;
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      for (const s of parsedSuggestions) {
+        // Insert venue (skip if place_id already known)
+        const existing = await tx
+          .select({ id: venues.id })
+          .from(venues)
+          .where(eq(venues.googlePlaceId, s.placeId))
+          .limit(1)
+          .then((r) => r[0]);
+        let venueId = existing?.id;
+        if (!venueId) {
+          const [row] = await tx
+            .insert(venues)
+            .values({
+              cityId: parsed.data.cityId,
+              name: s.name,
+              address: s.address,
+              phoneE164: s.phone,
+              websiteUrl: s.website,
+              googlePlaceId: s.placeId,
+              createdBy: staff.id,
+              updatedBy: staff.id,
+            })
+            .returning({ id: venues.id });
+          venueId = row?.id;
+        }
+        if (!venueId) continue;
+
+        // Upsert cold outreach entry
+        await tx.execute(sql`
+          INSERT INTO cold_outreach_entries (
+            id, city_campaign_id, venue_id, status, created_by, updated_by, version
+          ) VALUES (
+            gen_random_uuid(), ${parsed.data.cityCampaignId}, ${venueId},
+            'not_contacted', ${staff.id}, ${staff.id}, 1
+          )
+          ON CONFLICT DO NOTHING
+        `);
+        inserted++;
+      }
+    });
+    revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    return { ok: true, data: { inserted } };
+  } catch (err) {
+    logger.error({ err }, "acceptLeadSuggestions failed");
+    return { ok: false, error: "Couldn't insert leads." };
+  }
 }
 
 /**

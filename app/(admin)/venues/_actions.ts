@@ -102,6 +102,15 @@ export async function createVenue(
         .returning({ id: venues.id }),
     );
     if (!row) throw new Error("Insert returned no row");
+
+    // Phase 6 — fire-and-forget ZeroBounce validation if email present.
+    // Result lands in the email_validations cache; ColdOutreachTable's
+    // ZeroBounce pill reads from there on next render.
+    if (input.email) {
+      const { validateEmailInBackground } = await import("@/lib/zerobounce");
+      validateEmailInBackground(input.email, staff.id);
+    }
+
     revalidatePath("/venues");
     redirect(`/venues/${row.id}`);
   } catch (err) {
@@ -148,6 +157,13 @@ export async function updateVenue(
     await withAuditContext(staff.id, async (tx) =>
       tx.update(venues).set(patch).where(eq(venues.id, id)),
     );
+
+    // Phase 6 — re-validate email when it changes.
+    if (input.email !== undefined && input.email) {
+      const { validateEmailInBackground } = await import("@/lib/zerobounce");
+      validateEmailInBackground(input.email, staff.id);
+    }
+
     revalidatePath(`/venues/${id}`);
     revalidatePath("/venues");
     return { ok: true, data: { id } };

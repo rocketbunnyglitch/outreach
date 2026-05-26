@@ -2,9 +2,9 @@
 
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { Loader2, Plus, Search } from "lucide-react";
+import { Loader2, MapPin, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { quickCreateVenue, searchVenues } from "../_slot-actions";
+import { createVenueFromMapsUrl, quickCreateVenue, searchVenues } from "../_slot-actions";
 
 interface VenueHit {
   id: string;
@@ -16,25 +16,30 @@ interface VenueHit {
 
 interface Props {
   cityId: string;
-  /** Currently selected venue (parent controls). */
   selectedName: string | null;
   onSelect: (venue: { id: string; name: string }) => void;
   placeholder?: string;
-  /** Compact mode for inline table cells. */
   compact?: boolean;
 }
 
 /**
  * Venue autocomplete for the slot picker.
  *
- * Search is debounced 200ms server-side. Hits are city-scoped so a
- * Toronto venue can't be assigned to a Buffalo crawl by mistake.
+ * Three input paths in one input:
+ *   1. Type a name → searches existing venues (debounced 200ms,
+ *      city-scoped)
+ *   2. Paste a Google Maps URL → detected automatically, single CTA
+ *      pulls name/address/phone/website/coords from Places API and
+ *      creates the venue
+ *   3. Type a fully new name → "Create '{name}' as new venue" creates
+ *      a barebones row
  *
- * Below the hits, a "Create '{query}' as a new venue" affordance fires
- * quickCreateVenue and immediately calls onSelect with the new id.
+ * URL detection: query.startsWith('http') AND host matches google.com/
+ * maps OR goo.gl OR maps.app.goo.gl. When detected, the search dropdown
+ * collapses and a blue Maps-tinted CTA appears.
  *
- * Designed for inline use in slot tables — the input style is invisible
- * until hover/focus, matching the rest of the spreadsheet-feel UX.
+ * Without GOOGLE_MAPS_API_KEY: Maps URL path shows the "not configured"
+ * hint; quick-create still works as fallback.
  */
 export function VenueAutocomplete({
   cityId,
@@ -48,13 +53,17 @@ export function VenueAutocomplete({
   const [open, setOpen] = useState(false);
   const [searching, startSearch] = useTransition();
   const [creating, startCreate] = useTransition();
+  const [mapsPending, startMaps] = useTransition();
+  const [mapsError, setMapsError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Debounced search
+  const isMapsUrl =
+    /^https?:\/\//i.test(query) && /google\.com\/maps|goo\.gl|maps\.app\.goo\.gl/i.test(query);
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim() || !open) {
+    if (!query.trim() || !open || isMapsUrl) {
       setHits([]);
       return;
     }
@@ -67,9 +76,8 @@ export function VenueAutocomplete({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, cityId, open]);
+  }, [query, cityId, open, isMapsUrl]);
 
-  // Outside click
   useEffect(() => {
     if (!open) return;
     function onPointer(e: PointerEvent) {
@@ -85,10 +93,11 @@ export function VenueAutocomplete({
     onSelect({ id: v.id, name: v.name });
     setOpen(false);
     setQuery("");
+    setMapsError(null);
   }
 
   function handleCreate() {
-    if (!query.trim()) return;
+    if (!query.trim() || isMapsUrl) return;
     const fd = new FormData();
     fd.set("name", query.trim());
     fd.set("cityId", cityId);
@@ -102,7 +111,32 @@ export function VenueAutocomplete({
     });
   }
 
+  function handleMapsUrl() {
+    if (!isMapsUrl) return;
+    setMapsError(null);
+    const fd = new FormData();
+    fd.set("url", query.trim());
+    fd.set("cityId", cityId);
+    startMaps(async () => {
+      const result = await createVenueFromMapsUrl(null, fd);
+      if (result.ok && result.data) {
+        if (result.data.notConfigured) {
+          setMapsError(
+            "Maps autopopulate not configured — set GOOGLE_MAPS_API_KEY on the server, or paste the venue name instead to quick-create.",
+          );
+          return;
+        }
+        onSelect({ id: result.data.venueId, name: result.data.venueName });
+        setOpen(false);
+        setQuery("");
+      } else if (!result.ok) {
+        setMapsError(result.error ?? "Couldn't resolve Maps URL.");
+      }
+    });
+  }
+
   const showCreate =
+    !isMapsUrl &&
     query.trim().length > 1 &&
     !hits.some((h) => h.name.toLowerCase() === query.trim().toLowerCase());
 
@@ -123,27 +157,69 @@ export function VenueAutocomplete({
         </button>
       ) : (
         <div className="relative">
-          <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3 w-3 text-zinc-400" />
+          {isMapsUrl ? (
+            <MapPin className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3 w-3 text-blue-500" />
+          ) : (
+            <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3 w-3 text-zinc-400" />
+          )}
           <Input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setMapsError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Escape") setOpen(false);
-              if (e.key === "Enter" && hits[0]) {
+              if (e.key === "Enter") {
                 e.preventDefault();
-                handleSelect(hits[0]);
+                if (isMapsUrl) handleMapsUrl();
+                else if (hits[0]) handleSelect(hits[0]);
+                else if (showCreate) handleCreate();
               }
             }}
-            placeholder="Search venues…"
+            placeholder="Search or paste Maps URL…"
             autoFocus
             className={cn("pl-7 text-xs", compact && "h-7")}
           />
           <div className="-translate-y-1/2 absolute top-1/2 right-2">
-            {(searching || creating) && <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />}
+            {(searching || creating || mapsPending) && (
+              <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+            )}
           </div>
 
-          {/* Results dropdown */}
-          {(hits.length > 0 || showCreate) && (
+          {isMapsUrl && (
+            <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-lg dark:border-blue-900/50 dark:bg-zinc-900">
+              <button
+                type="button"
+                onClick={handleMapsUrl}
+                disabled={mapsPending}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors hover:bg-blue-500/[0.08] dark:hover:bg-blue-500/[0.12]"
+              >
+                <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                <span className="flex-1">
+                  <strong className="font-medium text-zinc-900 dark:text-zinc-100">
+                    Autopopulate from Maps link
+                  </strong>
+                  <br />
+                  <span className="text-[10px] text-zinc-500">
+                    Pulls name, address, phone, website, coords
+                  </span>
+                </span>
+                {mapsPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                ) : (
+                  <Plus className="h-3 w-3 text-blue-500" />
+                )}
+              </button>
+              {mapsError && (
+                <div className="border-zinc-200 border-t bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800 dark:border-zinc-800 dark:bg-amber-950/30 dark:text-amber-300">
+                  {mapsError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isMapsUrl && (hits.length > 0 || showCreate) && (
             <div className="absolute top-full right-0 left-0 z-50 mt-1 max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
               {hits.map((v) => (
                 <button

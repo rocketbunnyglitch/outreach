@@ -7,6 +7,7 @@ import { Check, Loader2, Mail, PhoneCall, Plus, Sparkles, Trash2, X } from "luci
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
+  acceptLeadSuggestions,
   archiveColdOutreachEntry,
   generateVenueLeads,
   updateColdOutreachField,
@@ -157,7 +158,7 @@ export function ColdOutreachTable({ cityCampaignId, cityId, entries, staff }: Pr
             Add venue
           </button>
         )}
-        <GenerateLeadsButton cityCampaignId={cityCampaignId} compact />
+        <GenerateLeadsButton cityCampaignId={cityCampaignId} cityId={cityId} compact />
       </footer>
     </section>
   );
@@ -490,7 +491,7 @@ function EmptyState({
         add venues one at a time.
       </p>
       <div className="mt-5 flex items-center justify-center gap-2">
-        <GenerateLeadsButton cityCampaignId={cityCampaignId} />
+        <GenerateLeadsButton cityCampaignId={cityCampaignId} cityId={cityId} />
         <Button type="button" variant="outline" onClick={onManualAdd}>
           <Plus className="h-3.5 w-3.5" />
           Add venue manually
@@ -505,41 +506,90 @@ function EmptyState({
 
 function GenerateLeadsButton({
   cityCampaignId,
+  cityId,
   compact = false,
 }: {
   cityCampaignId: string;
+  cityId?: string;
   compact?: boolean;
 }) {
   const [pending, startTx] = useTransition();
-  const [result, setResult] = useState<{
-    suggestions: number;
-    notConfigured?: boolean;
-  } | null>(null);
+  const [importing, startImport] = useTransition();
+  const [suggestions, setSuggestions] = useState<Array<{
+    placeId: string;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    website: string | null;
+    rating: number | null;
+    userRatingCount: number | null;
+  }> | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [notConfigured, setNotConfigured] = useState(false);
+  const [zeroSuggestions, setZeroSuggestions] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  function close() {
+    setSuggestions(null);
+    setSelected(new Set());
+    setNotConfigured(false);
+    setZeroSuggestions(false);
+  }
+
   useEffect(() => {
-    if (!result) return;
+    const hasPopover = !!suggestions || notConfigured || zeroSuggestions;
+    if (!hasPopover) return;
     function onPointer(e: PointerEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setResult(null);
+        close();
       }
     }
     document.addEventListener("pointerdown", onPointer);
     return () => document.removeEventListener("pointerdown", onPointer);
-  }, [result]);
+  }, [suggestions, notConfigured, zeroSuggestions]);
 
   function run() {
-    setResult(null);
+    close();
     const fd = new FormData();
     fd.set("cityCampaignId", cityCampaignId);
     startTx(async () => {
       const result = await generateVenueLeads(null, fd);
-      if (result.ok && result.data) {
-        setResult({
-          suggestions: result.data.suggestions.length,
-          notConfigured: result.data.notConfigured,
-        });
+      if (!result.ok || !result.data) return;
+      if (result.data.notConfigured) {
+        setNotConfigured(true);
+        return;
       }
+      if (result.data.suggestions.length === 0) {
+        setZeroSuggestions(true);
+        return;
+      }
+      setSuggestions(result.data.suggestions);
+      // Pre-select all by default — operator unchecks any rejects
+      setSelected(new Set(result.data.suggestions.map((s) => s.placeId)));
+    });
+  }
+
+  async function importSelected() {
+    if (!suggestions || !cityId || selected.size === 0) return;
+    const chosen = suggestions.filter((s) => selected.has(s.placeId));
+    const fd = new FormData();
+    fd.set("cityCampaignId", cityCampaignId);
+    fd.set("cityId", cityId);
+    fd.set("suggestionsJson", JSON.stringify(chosen));
+    startImport(async () => {
+      const result = await acceptLeadSuggestions(null, fd);
+      if (result.ok) {
+        close();
+      }
+    });
+  }
+
+  function toggle(placeId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(placeId)) next.delete(placeId);
+      else next.add(placeId);
+      return next;
     });
   }
 
@@ -570,7 +620,8 @@ function GenerateLeadsButton({
   return (
     <div ref={containerRef} className="relative inline-block">
       {Trigger}
-      {result?.notConfigured && (
+
+      {notConfigured && (
         <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-amber-200/80 bg-amber-50/95 p-3 text-xs shadow-lg dark:border-amber-900/40 dark:bg-amber-950/80">
           <p className="font-medium text-amber-900 dark:text-amber-200">
             Lead generation isn't configured yet
@@ -584,11 +635,89 @@ function GenerateLeadsButton({
           </p>
         </div>
       )}
-      {result && !result.notConfigured && result.suggestions === 0 && (
+
+      {zeroSuggestions && (
         <div className="absolute top-full right-0 z-50 mt-1 w-64 rounded-lg border border-zinc-200 bg-white p-3 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
           <p className="text-zinc-700 dark:text-zinc-300">
             No new suggestions — likely all nearby venues are already in your directory.
           </p>
+        </div>
+      )}
+
+      {suggestions && (
+        <div className="absolute top-full right-0 z-50 mt-1 w-[28rem] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+          <header className="flex items-baseline justify-between border-zinc-200/60 border-b px-4 py-2.5 dark:border-zinc-800/40">
+            <h3 className="font-semibold text-sm tracking-tight">
+              {suggestions.length} candidate{suggestions.length === 1 ? "" : "s"}
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                if (selected.size === suggestions.length) setSelected(new Set());
+                else setSelected(new Set(suggestions.map((s) => s.placeId)));
+              }}
+              className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] underline-offset-4 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+            >
+              {selected.size === suggestions.length ? "Deselect all" : "Select all"}
+            </button>
+          </header>
+          <ul className="max-h-80 divide-y divide-zinc-200/40 overflow-auto dark:divide-zinc-800/30">
+            {suggestions.map((s) => (
+              <li key={s.placeId}>
+                <label className="flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(s.placeId)}
+                    onChange={() => toggle(s.placeId)}
+                    className="mt-1 h-3.5 w-3.5"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-sm text-zinc-900 dark:text-zinc-100">
+                      {s.name}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+                      {s.address ?? "no address"}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+                      {s.rating != null && (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          ★ {s.rating.toFixed(1)}
+                          {s.userRatingCount != null && ` · ${s.userRatingCount}`}
+                        </span>
+                      )}
+                      {s.phone && <span>{s.phone}</span>}
+                    </div>
+                  </div>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <footer className="flex items-center justify-between border-zinc-200/60 border-t px-4 py-2.5 dark:border-zinc-800/40">
+            <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em]">
+              {selected.size} of {suggestions.length} selected
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={close}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={importSelected}
+                disabled={selected.size === 0 || importing || !cityId}
+              >
+                {importing ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" /> Importing…
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-3 w-3" /> Import {selected.size}
+                  </>
+                )}
+              </Button>
+            </div>
+          </footer>
         </div>
       )}
     </div>
