@@ -1,10 +1,12 @@
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
+import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
+import { TrackerDashboardTable } from "./_components/dashboard/tracker-dashboard-table";
 
 // Always render at request time — dashboard shows live counts from DB.
 export const dynamic = "force-dynamic";
@@ -36,6 +38,13 @@ export default async function DashboardHome({
   const campaignId = !allCampaigns && currentCampaign ? currentCampaign.campaign.id : null;
 
   const data = await loadDashboardData({ campaignId });
+
+  // Premium per-campaign tracker: loads in parallel-ish when a campaign is selected.
+  // The shape is decoupled from loadDashboardData so the legacy "all campaigns"
+  // table still works without the slot-need joins.
+  const { rows: trackerRows, staff: trackerStaff } = campaignId
+    ? await loadTrackerData({ campaignId })
+    : { rows: [], staff: [] };
 
   const venueProgress =
     data.kpis.venuesTargeted > 0
@@ -184,11 +193,16 @@ export default async function DashboardHome({
         <header className="flex items-baseline justify-between">
           <h2 className="font-semibold text-2xl tracking-tight ">Cities</h2>
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-            {data.cityRows.length} {data.cityRows.length === 1 ? "city" : "cities"} · click to
-            expand
+            {trackerRows.length || data.cityRows.length}{" "}
+            {(trackerRows.length || data.cityRows.length) === 1 ? "city" : "cities"} ·{" "}
+            {campaignId ? "inline-edit Assign + Notes" : "click to expand"}
           </p>
         </header>
-        <CitiesTable cities={data.cityRows} />
+        {campaignId && trackerRows.length > 0 ? (
+          <TrackerDashboardTable rows={trackerRows} staff={trackerStaff} />
+        ) : (
+          <CitiesTable cities={data.cityRows} />
+        )}
       </section>
 
       <section className="flex flex-col gap-3">

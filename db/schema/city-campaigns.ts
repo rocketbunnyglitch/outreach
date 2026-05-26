@@ -7,7 +7,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { bigint, index, pgTable, smallint, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, smallint, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, idColumn, versionColumn } from "../types";
 import { campaigns } from "./campaigns";
 import { cityCampaignStatus } from "./enums";
@@ -45,6 +45,14 @@ export const cityCampaigns = pgTable(
 
     // Who owns this city for this campaign. Used by the workload balancer.
     leadStaffId: uuid("lead_staff_id").references(() => staffMembers.id),
+
+    /**
+     * Short free-text note shown inline on the tracker dashboard.
+     * One-liner like "JC chasing 2-week confirm" — separate from the
+     * polymorphic notes table (which is author-attributed + longer).
+     * Any operator can edit; no history.
+     */
+    dashboardNote: text("dashboard_note"),
 
     status: cityCampaignStatus("status").notNull().default("planning"),
 
