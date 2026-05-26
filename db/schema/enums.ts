@@ -127,7 +127,7 @@ export const wristbandStatus = pgEnum("wristband_status", [
 // Tasks
 // =========================================================================
 
-export const taskSource = pgEnum("task_source", ["auto", "manual"]);
+export const taskSource = pgEnum("task_source", ["auto", "manual", "smart_note"]);
 
 export const taskStatus = pgEnum("task_status", [
   "pending",

@@ -5,6 +5,8 @@ import { listOutreachBrands } from "@/lib/brand-context";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
+import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
+import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import { asc, eq, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +43,14 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       listNotes("venue", id, staff.id),
     ]);
   if (!venue) notFound();
+
+  // Smart-note suggestions for these notes
+  const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
+  const suggestionsByNote: Record<
+    string,
+    typeof suggestionsMap extends Map<string, infer V> ? V : never
+  > = {};
+  for (const [k, v] of suggestionsMap.entries()) suggestionsByNote[k] = v;
 
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
@@ -103,6 +113,9 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         targetType="venue"
         targetId={id}
         notes={notesList}
+        suggestionsByNote={suggestionsByNote}
+        acceptSuggestionAction={acceptSuggestion}
+        dismissSuggestionAction={dismissSuggestion}
         createAction={createNote}
         deleteAction={deleteNote}
       />

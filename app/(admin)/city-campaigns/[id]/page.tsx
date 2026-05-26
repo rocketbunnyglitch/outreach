@@ -4,6 +4,8 @@ import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } f
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
+import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
+import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import { findWarmLeads } from "@/lib/warm-leads";
 import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -54,6 +56,14 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     listNotes("city_campaign", id, currentStaff.id),
   ]);
   if (!cc) notFound();
+
+  // Smart-note suggestions
+  const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
+  const suggestionsByNote: Record<
+    string,
+    typeof suggestionsMap extends Map<string, infer V> ? V : never
+  > = {};
+  for (const [k, v] of suggestionsMap.entries()) suggestionsByNote[k] = v;
 
   // Warm leads — venues confirmed or with positive outreach in past
   // campaigns in this city, excluding the current one.
@@ -126,6 +136,9 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         targetType="city_campaign"
         targetId={id}
         notes={notesList}
+        suggestionsByNote={suggestionsByNote}
+        acceptSuggestionAction={acceptSuggestion}
+        dismissSuggestionAction={dismissSuggestion}
         createAction={createNote}
         deleteAction={deleteNote}
       />

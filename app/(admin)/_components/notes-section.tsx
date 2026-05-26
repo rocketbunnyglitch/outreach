@@ -5,13 +5,28 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/cn";
 import type { NoteRow } from "@/lib/notes";
+import type { PendingSuggestion } from "@/lib/smart-notes-queries";
 import { Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { useActionState, useRef, useState } from "react";
+import { NoteSuggestions } from "./note-suggestions";
 
 interface NotesSectionProps {
   targetType: "venue" | "city_campaign" | "campaign";
   targetId: string;
   notes: NoteRow[];
+  /**
+   * Map of note_id → pending smart-note suggestions. When set, each
+   * note card renders the Accept/Edit/Dismiss panel beneath the body.
+   */
+  suggestionsByNote?: Record<string, PendingSuggestion[]>;
+  acceptSuggestionAction?: (
+    prev: unknown,
+    formData: FormData,
+  ) => Promise<{ ok: boolean; error?: string; data?: { taskId: string } }>;
+  dismissSuggestionAction?: (
+    prev: unknown,
+    formData: FormData,
+  ) => Promise<{ ok: boolean; error?: string; data?: { id: string } }>;
   createAction: (
     prev: unknown,
     formData: FormData,
@@ -35,6 +50,9 @@ export function NotesSection({
   targetType,
   targetId,
   notes,
+  suggestionsByNote,
+  acceptSuggestionAction,
+  dismissSuggestionAction,
   createAction,
   deleteAction,
 }: NotesSectionProps) {
@@ -89,7 +107,14 @@ export function NotesSection({
       ) : (
         <ul className="flex flex-col gap-3">
           {notes.map((note) => (
-            <NoteCard key={note.id} note={note} deleteAction={deleteAction} />
+            <NoteCard
+              key={note.id}
+              note={note}
+              deleteAction={deleteAction}
+              suggestions={suggestionsByNote?.[note.id] ?? []}
+              acceptSuggestionAction={acceptSuggestionAction}
+              dismissSuggestionAction={dismissSuggestionAction}
+            />
           ))}
         </ul>
       )}
@@ -100,9 +125,15 @@ export function NotesSection({
 function NoteCard({
   note,
   deleteAction,
+  suggestions,
+  acceptSuggestionAction,
+  dismissSuggestionAction,
 }: {
   note: NoteRow;
   deleteAction: NotesSectionProps["deleteAction"];
+  suggestions: PendingSuggestion[];
+  acceptSuggestionAction?: NotesSectionProps["acceptSuggestionAction"];
+  dismissSuggestionAction?: NotesSectionProps["dismissSuggestionAction"];
 }) {
   const [delState, doDelete, deleting] = useActionState(deleteAction, null);
   const [confirming, setConfirming] = useState(false);
@@ -174,6 +205,14 @@ function NoteCard({
           mentioned: {note.mentions.length}{" "}
           {note.mentions.length === 1 ? "staff member" : "staff members"}
         </p>
+      )}
+
+      {acceptSuggestionAction && dismissSuggestionAction && suggestions.length > 0 && (
+        <NoteSuggestions
+          suggestions={suggestions}
+          acceptAction={acceptSuggestionAction}
+          dismissAction={dismissSuggestionAction}
+        />
       )}
 
       {delState && !delState.ok && delState.error && (

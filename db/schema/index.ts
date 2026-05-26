@@ -40,6 +40,7 @@ export * from "./outreach";
 export * from "./wristbands";
 export * from "./tasks";
 export * from "./notes";
+export * from "./note-action-suggestions";
 export * from "./info-sheets";
 export * from "./templates";
 export * from "./email-validations";

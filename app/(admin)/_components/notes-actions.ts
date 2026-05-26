@@ -17,6 +17,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
+import { scanNoteAndPersistSuggestions } from "@/lib/smart-notes-actions";
 import {
   type NoteCreateInput,
   type NoteDeleteInput,
@@ -121,6 +122,28 @@ export async function createNote(
         .returning({ id: notes.id });
       return row?.id ?? "";
     });
+
+    // Smart Notes: scan the body for actionable language + dates and
+    // persist suggestions. Failure here doesn't break note creation —
+    // it logs and returns 0.
+    try {
+      // Only scan for target types the timezone resolver supports
+      if (
+        input.targetType === "venue" ||
+        input.targetType === "city_campaign" ||
+        input.targetType === "campaign"
+      ) {
+        await scanNoteAndPersistSuggestions({
+          noteId: id,
+          noteBody: input.body,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          authorStaffId: staff.id,
+        });
+      }
+    } catch (scanErr) {
+      logger.error({ err: scanErr, noteId: id }, "smart-notes scan failed");
+    }
 
     if (input.targetType === "venue") revalidatePath(`/venues/${input.targetId}`);
     if (input.targetType === "city_campaign") revalidatePath(`/city-campaigns/${input.targetId}`);
