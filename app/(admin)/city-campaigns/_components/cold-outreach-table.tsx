@@ -191,7 +191,11 @@ export function ColdOutreachTable({
         />
       )}
 
-      <div className="overflow-x-auto">
+      {/* Desktop table — hidden below md so the mobile card stack
+          takes over. Cold outreach has 9 columns and that's never
+          going to fit on a phone; the card layout below shows the
+          same data + same actions vertically. */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
@@ -223,10 +227,52 @@ export function ColdOutreachTable({
                 selected={selected.has(e.entryId)}
                 onToggleSelect={() => toggleOne(e.entryId)}
                 zebra={i % 2 === 1}
+                layout="table"
               />
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile card stack. Vertical layout, one card per venue,
+          same actions + inline edits available. The sticky-ish
+          select-all bar at top doubles as the bulk-target hint. */}
+      <div className="md:hidden">
+        {entries.length > 0 && (
+          <div className="flex items-center justify-between gap-2 border-zinc-200/60 border-b bg-zinc-50/40 px-4 py-2 dark:border-zinc-800/40 dark:bg-zinc-900/30">
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="inline-flex cursor-pointer items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]"
+            >
+              <SelectAllCheckbox
+                checked={allSelected}
+                indeterminate={someSelected}
+                onChange={toggleAll}
+              />
+              {selected.size > 0 ? `${selected.size} selected` : "Select all"}
+            </button>
+            <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
+              {entries.length} venue{entries.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
+        <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/40">
+          {entries.map((e) => (
+            <li key={e.entryId}>
+              <ColdRow
+                entry={e}
+                staff={staff}
+                cityCampaignId={cityCampaignId}
+                outreachBrandId={outreachBrandId}
+                selected={selected.has(e.entryId)}
+                onToggleSelect={() => toggleOne(e.entryId)}
+                zebra={false}
+                layout="card"
+              />
+            </li>
+          ))}
+        </ul>
       </div>
 
       <footer className="flex items-center justify-between gap-3 border-zinc-200/60 border-t px-5 py-3 dark:border-zinc-800/40">
@@ -267,6 +313,7 @@ function ColdRow({
   selected,
   onToggleSelect,
   zebra,
+  layout,
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
@@ -275,6 +322,7 @@ function ColdRow({
   selected: boolean;
   onToggleSelect: () => void;
   zebra: boolean;
+  layout: "table" | "card";
 }) {
   const [pending, startTx] = useTransition();
   const toast = useToast();
@@ -352,6 +400,171 @@ function ColdRow({
     });
   }
 
+  // ---------------------------------------------------------------
+  // Card layout (mobile). Same fields, same handlers, vertical.
+  // ---------------------------------------------------------------
+  if (layout === "card") {
+    return (
+      <article
+        className={cn(
+          "flex flex-col gap-2.5 px-4 py-3 transition-colors",
+          pending && "opacity-60",
+          selected && "bg-blue-500/[0.06] dark:bg-blue-400/[0.06]",
+        )}
+      >
+        {/* Header row: checkbox + name + status pill + open link */}
+        <div className="flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+            aria-label={`Select ${entry.venueName}`}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <InlineCell
+                  label="Venue name"
+                  value={entry.venueName}
+                  onCommit={async (next) => {
+                    const fd = new FormData();
+                    fd.set("venueId", entry.venueId);
+                    fd.set("field", "name");
+                    fd.set("value", next);
+                    fd.set("cityCampaignId", cityCampaignId);
+                    const result = await commitVenueField(null, fd);
+                    return { ok: result.ok, error: result.ok ? undefined : result.error };
+                  }}
+                />
+              </div>
+              <Link
+                href={`/venues/${entry.venueId}`}
+                className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                title="Open venue detail"
+                aria-label="Open venue detail"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <StatusSelect
+                current={entry.status}
+                pending={pending}
+                onChange={(v) => commitField("status", v)}
+              />
+              <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
+                ·
+              </span>
+              <AssignedSelect
+                current={entry.assignedStaffId ?? ""}
+                staff={staff}
+                pending={pending}
+                onChange={(v) => commitField("assignedStaffId", v)}
+              />
+              {entry.zeroBounceStatus && (
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ring-1 ring-inset",
+                    ZB_TONE[entry.zeroBounceStatus] ??
+                      "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20",
+                  )}
+                >
+                  {entry.zeroBounceStatus.replace("_", " ")}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Email + AI draft */}
+        <div className="flex items-center gap-1.5 pl-6">
+          <Mail className="h-3 w-3 shrink-0 text-zinc-400" />
+          <div className="min-w-0 flex-1">
+            <InlineCell
+              label="Venue email"
+              value={entry.venueEmail ?? ""}
+              placeholder="add email"
+              variant="mono"
+              inputType="email"
+              onCommit={async (next) => {
+                const fd = new FormData();
+                fd.set("venueId", entry.venueId);
+                fd.set("field", "email");
+                fd.set("value", next);
+                fd.set("cityCampaignId", cityCampaignId);
+                const result = await commitVenueField(null, fd);
+                return { ok: result.ok, error: result.ok ? undefined : result.error };
+              }}
+            />
+          </div>
+          {entry.venueEmail && (
+            <>
+              <a
+                href={`mailto:${entry.venueEmail}`}
+                className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                aria-label="Open in email client"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </a>
+              <AiDraftButton
+                venueId={entry.venueId}
+                venueName={entry.venueName}
+                cityCampaignId={cityCampaignId}
+                onUseDraft={(draft) => {
+                  const subject = encodeURIComponent(draft.subject);
+                  const body = encodeURIComponent(draft.body);
+                  window.open(
+                    `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
+                    "_self",
+                  );
+                }}
+              />
+            </>
+          )}
+        </div>
+
+        {/* Phone with Quo controls */}
+        <div className="pl-6">
+          <PhoneCell
+            entry={entry}
+            cityCampaignId={cityCampaignId}
+            outreachBrandId={outreachBrandId}
+          />
+        </div>
+
+        {/* Remarks — full width inline edit */}
+        <div className="rounded-md bg-zinc-50/60 px-2 py-1.5 dark:bg-zinc-900/40">
+          <p className="mb-0.5 font-mono text-[9px] text-zinc-500 uppercase tracking-[0.08em]">
+            Remarks
+          </p>
+          <RemarksInput
+            initial={entry.remarks ?? ""}
+            pending={pending}
+            onCommit={(v) => commitField("remarks", v)}
+          />
+        </div>
+
+        {/* Archive */}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={archive}
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+            aria-label="Archive"
+          >
+            <Trash2 className="h-3 w-3" />
+            Archive
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // Table layout (desktop) — original render below
+  // ---------------------------------------------------------------
   return (
     <tr
       className={cn(
