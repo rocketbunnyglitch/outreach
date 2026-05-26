@@ -29,7 +29,7 @@ import {
   venueEvents,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, desc, eq, gte, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 
 const THIRTY_DAYS_AGO = sql`now() - interval '30 days'`;
 const SEVEN_DAYS_AGO = sql`now() - interval '7 days'`;
@@ -63,6 +63,8 @@ export interface DashboardData {
     venuesTargeted: number;
     salesCents: number;
     goalCents: number;
+    /** Total tickets sold across all events in scope. Operational primary. */
+    ticketsSold: number;
     outreachThisWeek: number;
     outreachPrevWeek: number;
     eventsConfirmed: number;
@@ -71,10 +73,33 @@ export interface DashboardData {
     openTaskCount: number;
     overdueTaskCount: number;
   };
+  /** The campaign currently scoping the dashboard, or null if 'all campaigns'. */
+  scopedCampaign: {
+    id: string;
+    name: string;
+  } | null;
 }
 
-export async function loadDashboardData(): Promise<DashboardData> {
-  // ---- 1. Fetch all active city_campaigns with city + campaign info ----
+export interface LoadDashboardOptions {
+  /**
+   * If provided, restrict the dashboard to this campaign's city_campaigns
+   * only. The dashboard page resolves this from the current-campaign cookie
+   * and passes it through. When null, shows every active city_campaign
+   * across every active campaign (the "All campaigns" toggle).
+   */
+  campaignId: string | null;
+}
+
+export async function loadDashboardData(
+  options: LoadDashboardOptions = { campaignId: null },
+): Promise<DashboardData> {
+  // ---- 1. Fetch active city_campaigns with city + campaign info ----
+  // Scope to a single campaign by default (operator selected it in the
+  // switcher); fall back to all-active if explicitly broadened.
+  const campaignFilter = options.campaignId
+    ? eq(cityCampaigns.campaignId, options.campaignId)
+    : undefined;
+
   const cityCampaignRows = await db
     .select({
       cityCampaignId: cityCampaigns.id,
@@ -94,7 +119,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
     .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
     .innerJoin(countries, eq(countries.code, cities.countryCode))
     .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
-    .where(and(isNull(cities.archivedAt), isNull(campaigns.archivedAt)))
+    .where(and(isNull(cities.archivedAt), isNull(campaigns.archivedAt), campaignFilter))
     .orderBy(asc(cities.name), asc(campaigns.name));
 
   // ---- 2. Fetch all events for these city-campaigns ----
@@ -108,6 +133,10 @@ export async function loadDashboardData(): Promise<DashboardData> {
             cityCampaignId: events.cityCampaignId,
             eventDate: events.eventDate,
             slotNumber: events.slotNumber,
+            dayPart: events.dayPart,
+            crawlNumber: events.crawlNumber,
+            ticketSalesCount: events.ticketSalesCount,
+            routeLabel: events.routeLabel,
             status: events.status,
             requiredVenueCountTotal: events.requiredVenueCountTotal,
             requiredWristbandCount: events.requiredWristbandCount,
@@ -115,7 +144,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
             requiredFinalCount: events.requiredFinalCount,
           })
           .from(events)
-          .where(isNull(events.archivedAt))
+          .where(and(isNull(events.archivedAt), inArray(events.cityCampaignId, cityCampaignIds)))
           .orderBy(asc(events.eventDate), asc(events.slotNumber));
 
   // ---- 3. Venue counts per event (with role breakdown) ----
@@ -270,6 +299,10 @@ export async function loadDashboardData(): Promise<DashboardData> {
       eventId: er.eventId,
       eventDate: er.eventDate,
       slotNumber: er.slotNumber,
+      dayPart: er.dayPart as EventRow["dayPart"],
+      crawlNumber: er.crawlNumber,
+      ticketSalesCount: er.ticketSalesCount ?? 0,
+      routeLabel: er.routeLabel,
       status: er.status as EventRow["status"],
       venuesLinked: bucket.total,
       venuesRequired: er.requiredVenueCountTotal ?? 0,
@@ -291,6 +324,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
       (sum, e) => sum + e.wristbandFilled + e.middleFilled + e.finalFilled,
       0,
     );
+    const ticketsSold = ccEvents.reduce((sum, e) => sum + e.ticketSalesCount, 0);
     const campaignRow: CampaignRow = {
       cityCampaignId: cc.cityCampaignId,
       campaignName: cc.campaignName,
@@ -298,6 +332,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
       status: cc.status as CampaignRow["status"],
       salesCents: Number(cc.salesCents ?? 0),
       goalCents: Number(cc.goalCents ?? 0),
+      ticketsSold,
       venuesConfirmed,
       venuesTargeted: cc.targetVenueCount,
       events: ccEvents,
@@ -313,6 +348,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
         campaigns: [],
         totalSalesCents: 0,
         totalGoalCents: 0,
+        totalTicketsSold: 0,
         venuesConfirmed: 0,
         venuesTargeted: 0,
         outreach30d: build30DaySeries(outreachByDay, cc.cityId),
@@ -323,6 +359,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
     city.campaigns.push(campaignRow);
     city.totalSalesCents += campaignRow.salesCents;
     city.totalGoalCents += campaignRow.goalCents;
+    city.totalTicketsSold += campaignRow.ticketsSold;
     city.venuesConfirmed += venuesConfirmed;
     city.venuesTargeted += campaignRow.venuesTargeted;
   }
@@ -342,6 +379,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
   // ---- 7. Targeted venue total for KPI ----
   const venuesTargeted = cityRows.reduce((sum, c) => sum + c.venuesTargeted, 0);
   const totalSalesCents = cityRows.reduce((sum, c) => sum + c.totalSalesCents, 0);
+  const totalTicketsSold = cityRows.reduce((sum, c) => sum + c.totalTicketsSold, 0);
   const totalGoalCents = cityRows.reduce((sum, c) => sum + c.totalGoalCents, 0);
   const replyRate =
     totalOutreachCount > 0 ? Math.round((replyCount / totalOutreachCount) * 100) : 0;
@@ -449,6 +487,18 @@ export async function loadDashboardData(): Promise<DashboardData> {
     createdAt: new Date(n.created_at),
   }));
 
+  // Resolve the scoped campaign's name for the UI banner (avoids a second
+  // round-trip from the page). Single SELECT by PK if we have an id.
+  let scopedCampaign: DashboardData["scopedCampaign"] = null;
+  if (options.campaignId) {
+    const row = await db
+      .select({ id: campaigns.id, name: campaigns.name })
+      .from(campaigns)
+      .where(eq(campaigns.id, options.campaignId))
+      .limit(1);
+    if (row[0]) scopedCampaign = { id: row[0].id, name: row[0].name };
+  }
+
   return {
     cityRows,
     upcomingTasks,
@@ -458,6 +508,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
       venuesTargeted,
       salesCents: totalSalesCents,
       goalCents: totalGoalCents,
+      ticketsSold: totalTicketsSold,
       outreachThisWeek,
       outreachPrevWeek,
       eventsConfirmed: confirmedEvents,
@@ -466,6 +517,7 @@ export async function loadDashboardData(): Promise<DashboardData> {
       openTaskCount,
       overdueTaskCount,
     },
+    scopedCampaign,
   };
 }
 

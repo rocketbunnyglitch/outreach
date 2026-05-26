@@ -1,4 +1,6 @@
+import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
+import Link from "next/link";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
@@ -11,13 +13,29 @@ export const dynamic = "force-dynamic";
  * Operations dashboard. Click any city row to drill into its campaigns
  * and events.
  *
- * Visual model: dark-mode-emphasized financial trading dashboard.
- * Compact KPI strip across the top, then an alternating-rows cities table
- * as the main content. Numbers are tabular-nums + Geist Mono for clean
- * column alignment.
+ * Default scope: the operator's currently-selected campaign. The query
+ * filters city_campaigns to just that campaign's. The "All campaigns"
+ * link in the scope banner broadens the view by passing ?scope=all in
+ * the URL.
+ *
+ * Visual model: Apple-system-grey aesthetic with financial-trading
+ * compact KPI strip across the top, then an alternating-rows cities
+ * table as the main content. Numbers are tabular-nums + Geist Mono.
  */
-export default async function DashboardHome() {
-  const data = await loadDashboardData();
+export default async function DashboardHome({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}) {
+  const params = await searchParams;
+  const allCampaigns = params.scope === "all";
+
+  const currentCampaign = await getCurrentCampaign();
+  // If the operator picked a campaign in the switcher AND hasn't opted into
+  // "all campaigns" via the URL, scope the dashboard to that campaign.
+  const campaignId = !allCampaigns && currentCampaign ? currentCampaign.campaign.id : null;
+
+  const data = await loadDashboardData({ campaignId });
 
   const venueProgress =
     data.kpis.venuesTargeted > 0
@@ -39,6 +57,13 @@ export default async function DashboardHome() {
   const salesSeries = new Array(14).fill(data.kpis.salesCents);
 
   const kpis = [
+    {
+      label: "Tickets sold",
+      value: data.kpis.ticketsSold.toLocaleString(),
+      meta: data.kpis.ticketsSold === 0 ? "no sales yet" : "across all events in scope",
+      trend: "flat" as const,
+      series: new Array(14).fill(data.kpis.ticketsSold),
+    },
     {
       label: "Venues confirmed",
       value: data.kpis.venuesConfirmed.toString(),
@@ -114,6 +139,44 @@ export default async function DashboardHome() {
           live · {new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
         </p>
       </header>
+
+      {/* Scope banner — communicates exactly what the dashboard is showing */}
+      <div className="flex items-baseline justify-between gap-3 rounded-md border border-zinc-200 bg-zinc-100/60 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/40">
+        <p className="font-mono text-[11px] text-zinc-500 uppercase tracking-widest">
+          {data.scopedCampaign ? (
+            <>
+              Scope:{" "}
+              <span className="text-zinc-900 dark:text-zinc-100">{data.scopedCampaign.name}</span>
+            </>
+          ) : currentCampaign ? (
+            <>
+              Scope: <span className="text-zinc-900 dark:text-zinc-100">all campaigns</span>
+            </>
+          ) : (
+            <>
+              Scope: <span className="text-zinc-900 dark:text-zinc-100">all campaigns</span>{" "}
+              <span className="ml-2 text-zinc-500 normal-case tracking-normal">
+                (no campaign selected — pick one in the switcher to scope)
+              </span>
+            </>
+          )}
+        </p>
+        {data.scopedCampaign ? (
+          <Link
+            href="/?scope=all"
+            className="font-mono text-[11px] text-zinc-500 uppercase tracking-widest hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            view all →
+          </Link>
+        ) : currentCampaign ? (
+          <Link
+            href="/"
+            className="font-mono text-[11px] text-zinc-500 uppercase tracking-widest hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            ← scope to {currentCampaign.campaign.name}
+          </Link>
+        ) : null}
+      </div>
 
       <KpiStrip kpis={kpis} />
 

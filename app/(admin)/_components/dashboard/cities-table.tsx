@@ -17,6 +17,8 @@ export interface CityRow {
   /** Total sales summed across all city-campaigns in this city. */
   totalSalesCents: number;
   totalGoalCents: number;
+  /** Total tickets sold across all events in this city. Operational primary. */
+  totalTicketsSold: number;
   /** Total venues confirmed across all events. */
   venuesConfirmed: number;
   /** Sum of target_venue_count across this city's city_campaigns. */
@@ -36,6 +38,8 @@ export interface CampaignRow {
   status: "planning" | "active" | "confirmed" | "cancelled";
   salesCents: number;
   goalCents: number;
+  /** Sum of ticket_sales_count across this city-campaign's events. */
+  ticketsSold: number;
   venuesConfirmed: number;
   venuesTargeted: number;
   events: EventRow[];
@@ -46,6 +50,19 @@ export interface EventRow {
   eventId: string;
   eventDate: string;
   slotNumber: number;
+  /** Halloween-aware: 'Friday Night #2' label fragment. Null for legacy events. */
+  dayPart:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other"
+    | null;
+  crawlNumber: number | null;
+  ticketSalesCount: number;
+  routeLabel: string | null;
   status: "planned" | "confirmed" | "completed" | "cancelled";
   venuesLinked: number;
   venuesRequired: number;
@@ -337,6 +354,11 @@ function EventRowLine({ event }: { event: EventRow }) {
   const isUnderstaffed = event.venuesLinked < event.venuesRequired;
   const roleBreakdown = `${event.wristbandFilled}/${event.wristbandRequired} W · ${event.middleFilled}/${event.middleRequired} M · ${event.finalFilled}/${event.finalRequired} F`;
 
+  // Friendly daypart label, e.g. "Friday Night #2"
+  const crawlLabel = event.dayPart
+    ? `${dayPartShort(event.dayPart)}${event.crawlNumber ? ` #${event.crawlNumber}` : ""}`
+    : null;
+
   return (
     <li>
       <Link
@@ -346,19 +368,33 @@ function EventRowLine({ event }: { event: EventRow }) {
         <div className="col-span-3 flex items-center gap-2">
           <Calendar className="h-3 w-3 text-zinc-500" />
           <span className="font-mono tabular-nums">{formatDate(event.eventDate)}</span>
-          {event.slotNumber > 1 && (
+          {crawlLabel ? (
+            <span className="font-mono text-[10px] text-zinc-700 dark:text-zinc-300">
+              {crawlLabel}
+            </span>
+          ) : event.slotNumber > 1 ? (
             <span className="font-mono text-[10px] text-zinc-500">slot {event.slotNumber}</span>
-          )}
+          ) : null}
         </div>
         <div className="col-span-2">
           <StatusBadge status={event.status} compact />
         </div>
-        <div className="col-span-3 font-mono text-zinc-500 tabular-nums">
+        <div className="col-span-2 font-mono text-zinc-500 tabular-nums">
           {event.venuesLinked}/{event.venuesRequired} venues
           {isUnderstaffed && <span className="ml-2 text-amber-500">⚠</span>}
         </div>
-        <div className="col-span-3 font-mono text-[10px] text-zinc-500 tabular-nums">
+        <div className="col-span-2 font-mono text-[10px] text-zinc-500 tabular-nums">
           {roleBreakdown}
+        </div>
+        <div className="col-span-2 text-right font-mono tabular-nums">
+          {event.ticketSalesCount > 0 ? (
+            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+              {event.ticketSalesCount.toLocaleString()}
+              <span className="ml-1 font-normal text-[10px] text-zinc-500">tix</span>
+            </span>
+          ) : (
+            <span className="text-[10px] text-zinc-500">— tix</span>
+          )}
         </div>
         <div className="col-span-1 text-right">
           <ExternalLink className="inline h-3 w-3 text-zinc-500" />
@@ -366,6 +402,29 @@ function EventRowLine({ event }: { event: EventRow }) {
       </Link>
     </li>
   );
+}
+
+/**
+ * Compact daypart label for dashboard rows.
+ * 'friday_night' → 'Fri Night'
+ */
+function dayPartShort(dp: NonNullable<EventRow["dayPart"]>): string {
+  switch (dp) {
+    case "thursday_night":
+      return "Thu Night";
+    case "friday_night":
+      return "Fri Night";
+    case "saturday_day":
+      return "Sat Day";
+    case "saturday_night":
+      return "Sat Night";
+    case "sunday_day":
+      return "Sun Day";
+    case "sunday_night":
+      return "Sun Night";
+    case "other":
+      return "Other";
+  }
 }
 
 function StatusBadge({

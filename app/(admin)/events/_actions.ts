@@ -59,6 +59,14 @@ export async function createEvent(
           eventDate: input.eventDate,
           slotNumber: input.slotNumber,
           eventbriteEventId: input.eventbriteEventId,
+          eventbriteUrl: input.eventbriteUrl,
+          dayPart: input.dayPart,
+          crawlNumber: input.crawlNumber,
+          ticketSalesCount: input.ticketSalesCount ?? 0,
+          startsAt: input.startsAt ? new Date(input.startsAt) : null,
+          endsAt: input.endsAt ? new Date(input.endsAt) : null,
+          routeLabel: input.routeLabel,
+          middleVenueGroupId: input.middleVenueGroupId ?? null,
           requiredVenueCountTotal: input.requiredVenueCountTotal,
           requiredWristbandCount: input.requiredWristbandCount,
           requiredMiddleCount: input.requiredMiddleCount,
@@ -95,6 +103,18 @@ export async function updateEvent(
 
   const patch: Partial<typeof events.$inferInsert> = { updatedBy: staff.id };
   if (input.eventbriteEventId !== undefined) patch.eventbriteEventId = input.eventbriteEventId;
+  if (input.eventbriteUrl !== undefined) patch.eventbriteUrl = input.eventbriteUrl;
+  if (input.dayPart !== undefined) patch.dayPart = input.dayPart;
+  if (input.crawlNumber !== undefined) patch.crawlNumber = input.crawlNumber;
+  if (input.ticketSalesCount !== undefined) patch.ticketSalesCount = input.ticketSalesCount;
+  // The datetime-local input gives 'YYYY-MM-DDTHH:MM' (no tz). Treat as
+  // server-local; the DB column is timestamptz so it'll be coerced.
+  if (input.startsAt !== undefined)
+    patch.startsAt = input.startsAt ? new Date(input.startsAt) : null;
+  if (input.endsAt !== undefined) patch.endsAt = input.endsAt ? new Date(input.endsAt) : null;
+  if (input.routeLabel !== undefined) patch.routeLabel = input.routeLabel;
+  if (input.middleVenueGroupId !== undefined)
+    patch.middleVenueGroupId = input.middleVenueGroupId ?? null;
   if (input.requiredVenueCountTotal !== undefined)
     patch.requiredVenueCountTotal = input.requiredVenueCountTotal;
   if (input.requiredWristbandCount !== undefined)
