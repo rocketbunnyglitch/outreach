@@ -132,6 +132,10 @@ export async function GET(req: NextRequest) {
           gmailOauthScopes: scopesGranted,
           status: "connected",
           lastSyncedAt: new Date(),
+          // Start warm-up ramp NOW for newly-connected inboxes. Existing
+          // inboxes (already-warmed) keep whatever warmup_started_at they
+          // had — reconnecting after a token expiry doesn't reset.
+          warmupStartedAt: new Date(),
           createdBy: staff.id,
           updatedBy: staff.id,
         });

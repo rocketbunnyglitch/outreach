@@ -14,7 +14,16 @@
  * email infrastructure; CrawlBrands do not.
  */
 
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { outreachBrands } from "./brands";
 import { staffOutreachEmailStatus, staffRole, staffStatus } from "./enums";
@@ -82,6 +91,40 @@ export const staffOutreachEmails = pgTable(
 
     // Per-staff phone line if it overrides the brand default
     quoLineE164Override: text("quo_line_e164_override"),
+
+    // --- Send throttling (0006_send_throttle.sql) ---
+    /**
+     * Hard cap on cold sends per rolling 24-hour window. Default 30 —
+     * the upper bound of the spam-safe range. Operator can lower to be
+     * cautious or raise toward 50 once the inbox has proven reputation
+     * (60+ days, bounce rate <2%, reply rate >5%).
+     */
+    dailySendLimit: integer("daily_send_limit").notNull().default(30),
+    /** Cap per rolling 60min. Prevents bursting; default 10 (about 30/day ÷ 8 business hours). */
+    hourlySendLimit: integer("hourly_send_limit").notNull().default(10),
+    /** Spacing floor between consecutive sends, in seconds. */
+    minSecondsBetweenSends: integer("min_seconds_between_sends").notNull().default(90),
+
+    /**
+     * Warm-up phase: when true, the effective daily cap is min(
+     * dailySendLimit, 10 + daysSinceWarmupStarted * 2 ). At day 14
+     * the ramp reaches 38, so the daily cap (30) takes over — at which
+     * point warmupPhase flips to false on the next send.
+     */
+    warmupPhase: boolean("warmup_phase").notNull().default(true),
+    warmupStartedAt: timestamp("warmup_started_at", { withTimezone: true }),
+
+    /** Restrict sends to 9am-5pm in the staff member's local TZ. */
+    businessHoursOnly: boolean("business_hours_only").notNull().default(true),
+    weekdaysOnly: boolean("weekdays_only").notNull().default(true),
+
+    /**
+     * Auto-pause: set by the deliverability monitor when bounce rate
+     * crosses 2% over a 30-day window. Operator must manually clear
+     * (and presumably investigate) before sends resume.
+     */
+    autoPausedAt: timestamp("auto_paused_at", { withTimezone: true }),
+    autoPausedReason: text("auto_paused_reason"),
 
     status: staffOutreachEmailStatus("status").notNull().default("disconnected"),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),

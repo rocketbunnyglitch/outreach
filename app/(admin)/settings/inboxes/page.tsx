@@ -2,6 +2,7 @@ import { outreachBrands, staffMembers, staffOutreachEmails } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
+import { canSendNow } from "@/lib/send-throttle";
 import { asc, eq, isNull } from "drizzle-orm";
 import { AlertCircle, CheckCircle2, Mail, Unplug } from "lucide-react";
 import Link from "next/link";
@@ -52,11 +53,33 @@ export default async function InboxesPage({ searchParams }: Props) {
       emailAddress: staffOutreachEmails.emailAddress,
       status: staffOutreachEmails.status,
       lastSyncedAt: staffOutreachEmails.lastSyncedAt,
+      dailySendLimit: staffOutreachEmails.dailySendLimit,
+      hourlySendLimit: staffOutreachEmails.hourlySendLimit,
+      warmupPhase: staffOutreachEmails.warmupPhase,
+      warmupStartedAt: staffOutreachEmails.warmupStartedAt,
+      businessHoursOnly: staffOutreachEmails.businessHoursOnly,
+      autoPausedAt: staffOutreachEmails.autoPausedAt,
+      autoPausedReason: staffOutreachEmails.autoPausedReason,
     })
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.staffMemberId, staff.id));
 
   const inboxByBrand = new Map(myInboxes.map((i) => [i.outreachBrandId, i]));
+
+  // For each connected inbox, query the rolling 24h send count + cap
+  const throttleStatusByInbox = new Map<string, Awaited<ReturnType<typeof canSendNow>>>();
+  await Promise.all(
+    myInboxes
+      .filter((i) => i.status === "connected")
+      .map(async (i) => {
+        try {
+          const status = await canSendNow({ staffOutreachEmailId: i.id });
+          throttleStatusByInbox.set(i.id, status);
+        } catch {
+          /* ignore */
+        }
+      }),
+  );
 
   // Other staff members for the per-brand summary at the bottom
   const allConnections = await db
@@ -158,17 +181,26 @@ export default async function InboxesPage({ searchParams }: Props) {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{brand.displayName}</p>
                     {connected ? (
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs">
-                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                        <span className="text-zinc-600 dark:text-zinc-400">
-                          {inbox.emailAddress}
-                        </span>
-                        {inbox.lastSyncedAt && (
-                          <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-                            · synced {inbox.lastSyncedAt.toLocaleString()}
+                      <>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                          <span className="text-zinc-600 dark:text-zinc-400">
+                            {inbox.emailAddress}
                           </span>
-                        )}
-                      </p>
+                          {inbox.lastSyncedAt && (
+                            <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                              · synced {inbox.lastSyncedAt.toLocaleString()}
+                            </span>
+                          )}
+                        </p>
+                        <ThrottleBadge
+                          status={throttleStatusByInbox.get(inbox.id)}
+                          warmupPhase={inbox.warmupPhase}
+                          autoPausedAt={inbox.autoPausedAt}
+                          autoPausedReason={inbox.autoPausedReason}
+                          dailySendLimit={inbox.dailySendLimit}
+                        />
+                      </>
                     ) : (
                       <p className="mt-0.5 text-xs text-zinc-500">No inbox connected</p>
                     )}
@@ -269,5 +301,76 @@ export default async function InboxesPage({ searchParams }: Props) {
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * Per-inbox deliverability status indicator. Shows:
+ *   - Warm-up day badge (when warmupPhase is true)
+ *   - "23/30 sent today" counter
+ *   - Auto-paused warning (red) when set
+ *   - Outside-business-hours / cap-reached hints when relevant
+ *
+ * Pulls from the throttle status fetched on the server.
+ */
+function ThrottleBadge({
+  status,
+  warmupPhase,
+  autoPausedAt,
+  autoPausedReason,
+  dailySendLimit,
+}: {
+  status: Awaited<ReturnType<typeof canSendNow>> | undefined;
+  warmupPhase: boolean;
+  autoPausedAt: Date | null;
+  autoPausedReason: string | null;
+  dailySendLimit: number;
+}) {
+  if (autoPausedAt) {
+    return (
+      <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 font-mono text-[10px] text-rose-700 uppercase tracking-widest dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-400">
+        <AlertCircle className="h-3 w-3" />
+        Auto-paused: {autoPausedReason ?? "unknown"}
+      </p>
+    );
+  }
+  if (!status) return null;
+  if (status.ok) {
+    const remaining = status.effectiveDailyCap - status.sent24h;
+    return (
+      <p className="mt-1.5 inline-flex flex-wrap items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+        {warmupPhase && status.warmupDay !== null && (
+          <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-amber-600 ring-1 ring-amber-500/20 ring-inset dark:text-amber-400">
+            Warm-up day {status.warmupDay}/14
+          </span>
+        )}
+        <span className="tabular-nums">
+          {status.sent24h}/{status.effectiveDailyCap} sent · {remaining} left today
+        </span>
+        {status.sent1h > 0 && (
+          <span className="text-zinc-400 tabular-nums">({status.sent1h} this hour)</span>
+        )}
+      </p>
+    );
+  }
+  // Denied state
+  const toneByCode: Record<typeof status.code, string> = {
+    inbox_not_connected: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20",
+    auto_paused: "bg-rose-500/10 text-rose-700 ring-rose-500/20",
+    outside_business_hours: "bg-blue-500/10 text-blue-700 ring-blue-500/20",
+    weekend: "bg-blue-500/10 text-blue-700 ring-blue-500/20",
+    daily_cap_reached: "bg-amber-500/10 text-amber-700 ring-amber-500/20",
+    hourly_cap_reached: "bg-amber-500/10 text-amber-700 ring-amber-500/20",
+    spacing_floor: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20",
+    inbox_not_found: "bg-rose-500/10 text-rose-700 ring-rose-500/20",
+  };
+  return (
+    <p
+      className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ring-1 ring-inset ${toneByCode[status.code]}`}
+      title={status.reason}
+    >
+      <AlertCircle className="h-3 w-3" />
+      {status.code.replace(/_/g, " ")}
+    </p>
   );
 }

@@ -30,6 +30,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { isGmailOAuthConfigured, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
+import { canSendNow, maybeGraduateWarmup } from "@/lib/send-throttle";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -46,6 +47,14 @@ const sendEmailSchema = z.object({
   subject: z.string().min(1, "Subject required").max(500),
   bodyHtml: z.string().min(1, "Body required"),
   bodyText: z.string().min(1).optional(),
+  /**
+   * Transactional sends bypass cold-send throttling. Used for the
+   * confirmation cascade (poster delivery, 2/1-week confirms, floor
+   * brief) — these go to existing relationships, not cold prospects.
+   * Defaults to "cold". Operator UI never sets this; only internal
+   * cascade callers do.
+   */
+  sendKind: z.union([z.literal("cold"), z.literal("transactional")]).default("cold"),
 });
 
 export async function sendOutreachEmail(
@@ -82,6 +91,23 @@ export async function sendOutreachEmail(
     let externalId: string | null = null;
     let gmailThreadId: string | null = null;
     let notes: string | null = null;
+
+    // Throttle check — runs in BOTH live and dev modes so operators
+    // building the workflow in dev get the same caps they'll experience
+    // live tomorrow. Transactional sends bypass (confirmation cascade
+    // sends to existing relationships, not cold prospects).
+    if (inbox) {
+      const throttle = await canSendNow({
+        staffOutreachEmailId: inbox.id,
+        bypass: input.sendKind === "transactional",
+      });
+      if (!throttle.ok) {
+        return {
+          ok: false,
+          error: throttle.reason,
+        };
+      }
+    }
 
     if (inbox?.gmailOauthRefreshToken && isGmailOAuthConfigured()) {
       // LIVE MODE
@@ -168,6 +194,16 @@ export async function sendOutreachEmail(
 
       return logRow?.id ?? "";
     });
+
+    // Auto-graduate warm-up if the inbox just hit day 14 or its ramp
+    // value caught up to the daily cap. Idempotent.
+    if (inbox && input.sendKind === "cold") {
+      try {
+        await maybeGraduateWarmup(inbox.id);
+      } catch (gErr) {
+        logger.error({ err: gErr, inboxId: inbox.id }, "warmup graduation failed");
+      }
+    }
 
     revalidatePath(`/venues/${input.venueId}`);
     return { ok: true, data: { outreachLogId: result, mode } };
