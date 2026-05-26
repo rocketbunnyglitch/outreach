@@ -1,14 +1,17 @@
 "use client";
 
+import type { queueBulkSend } from "@/app/(admin)/send-queue/_actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { AlertTriangle, Archive, Shield, ShieldOff } from "lucide-react";
+import type { OutreachPhase } from "@/lib/outreach-phase";
+import { AlertTriangle, Archive, Send, Shield, ShieldOff } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import type { bulkUpdateVenues } from "../_actions";
+import { BulkSendDialog } from "./bulk-send-dialog";
 
 interface VenueRow {
   id: string;
@@ -26,6 +29,24 @@ interface CityGroup {
 interface Props {
   groups: CityGroup[];
   bulkAction: typeof bulkUpdateVenues;
+  /** Bulk-send dialog data — when provided, the Queue bulk send button shows */
+  bulkSend?: {
+    brands: Array<{ id: string; displayName: string; outreachPhase: OutreachPhase }>;
+    brandConfig: Record<
+      string,
+      {
+        templates: Array<{ id: string; name: string; stage: string }>;
+        inbox: {
+          inboxId: string | null;
+          minSecondsBetweenSends: number;
+          effectiveDailyCap: number;
+          sent24h: number;
+          warmupDay: number | null;
+        } | null;
+      }
+    >;
+    queueAction: typeof queueBulkSend;
+  };
 }
 
 /**
@@ -33,12 +54,13 @@ interface Props {
  * own "select all" checkbox; the bar appears at the top once anything is
  * selected and offers Mark DNC / Unmark DNC / Archive.
  */
-export function VenuesListClient({ groups, bulkAction }: Props) {
+export function VenuesListClient({ groups, bulkAction, bulkSend }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reasonOpen, setReasonOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [bulkSendOpen, setBulkSendOpen] = useState(false);
 
   const total = groups.reduce((sum, g) => sum + g.venues.length, 0);
   const allIds = groups.flatMap((g) => g.venues.map((v) => v.id));
@@ -130,6 +152,16 @@ export function VenuesListClient({ groups, bulkAction }: Props) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {bulkSend && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isPending}
+                    onClick={() => setBulkSendOpen(true)}
+                  >
+                    <Send className="h-3 w-3" /> Queue bulk send
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -252,6 +284,16 @@ export function VenuesListClient({ groups, bulkAction }: Props) {
           );
         })}
       </div>
+
+      {bulkSend && bulkSendOpen && (
+        <BulkSendDialog
+          selectedVenueIds={Array.from(selected)}
+          brands={bulkSend.brands}
+          brandConfig={bulkSend.brandConfig}
+          queueAction={bulkSend.queueAction}
+          onClose={() => setBulkSendOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,16 +1,21 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cities, venues } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
+import { listOutreachBrands } from "@/lib/brand-context";
+import { loadComposerData } from "@/lib/composer-data";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { queueBulkSend } from "./../send-queue/_actions";
 import { bulkUpdateVenues } from "./_actions";
 import { VenuesListClient } from "./_components/venues-list-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function VenuesListPage() {
+  const { staff } = await requireStaff();
   const rows = await db
     .select({
       venue: venues,
@@ -40,14 +45,47 @@ export default async function VenuesListPage() {
     })),
   }));
 
+  // Bulk-send dialog data — brands + templates + inbox throttle status per
+  // brand for the logged-in staffer. Shape is what BulkSendDialog needs.
+  const outreachBrandsList = await listOutreachBrands();
+  const composerData = await loadComposerData({
+    staffMemberId: staff.id,
+    outreachBrandIds: outreachBrandsList.map((b) => b.id),
+  });
+
+  // Reshape: composer returns full inbox status; bulk dialog only needs
+  // a subset (min spacing + cap + counters). Null out brands without a
+  // connected inbox.
+  const bulkBrandConfig = Object.fromEntries(
+    outreachBrandsList.map((b) => {
+      const c = composerData[b.id];
+      const inbox = c?.inbox;
+      return [
+        b.id,
+        {
+          templates: c?.templates ?? [],
+          inbox: inbox?.inboxId
+            ? {
+                inboxId: inbox.inboxId,
+                minSecondsBetweenSends: 90, // default; composer doesn't surface it
+                effectiveDailyCap: inbox.effectiveDailyCap ?? 30,
+                sent24h: inbox.sent24h ?? 0,
+                warmupDay: inbox.warmupDay ?? null,
+              }
+            : null,
+        },
+      ];
+    }),
+  );
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Venues</h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Bars, restaurants, and event spaces — grouped by city. Select rows to bulk-update DNC or
-            archive.
+            Bars, restaurants, and event spaces — grouped by city. Select rows to bulk-update DNC,
+            archive, or queue cold sends.
           </p>
         </div>
         <Button asChild>
@@ -66,7 +104,19 @@ export default async function VenuesListPage() {
           </p>
         </Card>
       ) : (
-        <VenuesListClient groups={groups} bulkAction={bulkUpdateVenues} />
+        <VenuesListClient
+          groups={groups}
+          bulkAction={bulkUpdateVenues}
+          bulkSend={{
+            brands: outreachBrandsList.map((b) => ({
+              id: b.id,
+              displayName: b.displayName,
+              outreachPhase: (b.outreachPhase as 1 | 2 | 3 | 4) ?? 1,
+            })),
+            brandConfig: bulkBrandConfig,
+            queueAction: queueBulkSend,
+          }}
+        />
       )}
     </div>
   );
