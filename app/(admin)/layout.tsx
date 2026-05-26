@@ -1,4 +1,5 @@
 import { ShortcutProvider } from "@/components/ui/shortcut-provider";
+import { StaleDataIndicator } from "@/components/ui/stale-data-indicator";
 import { ToastProvider } from "@/components/ui/toast";
 import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
@@ -46,6 +47,7 @@ export default async function AdminLayout({
           </main>
           <GlobalShortcuts />
           <MountCommandPalette />
+          <StaleDataIndicator />
         </div>
       </ShortcutProvider>
     </ToastProvider>
