@@ -78,6 +78,7 @@ function TopNav({
           <nav className="hidden items-center gap-1 text-sm md:flex">
             <NavLink href="/brands">Brands</NavLink>
             <NavLink href="/campaigns">Campaigns</NavLink>
+            <NavLink href="/crawl-matrix">Crawl Matrix</NavLink>
             <NavLink href="/cities">Cities</NavLink>
             <NavLink href="/venues">Venues</NavLink>
             <NavLink href="/cluster-builder">Clusters</NavLink>

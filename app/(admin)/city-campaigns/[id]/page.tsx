@@ -4,12 +4,14 @@ import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } f
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
+import { findWarmLeads } from "@/lib/warm-leads";
 import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
+import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { EventsList } from "../_components/events-list";
@@ -52,6 +54,14 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     listNotes("city_campaign", id, currentStaff.id),
   ]);
   if (!cc) notFound();
+
+  // Warm leads — venues confirmed or with positive outreach in past
+  // campaigns in this city, excluding the current one.
+  const warmLeads = await findWarmLeads({
+    cityId: cc.city.id,
+    excludeCampaignId: cc.campaign.id,
+    limit: 30,
+  });
 
   // Per-event venue counts as a separate query (kept simple, joins get
   // hairy with group-bys in Drizzle's typed builder).
@@ -109,6 +119,8 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           venueCount: countByEvent.get(r.event.id) ?? 0,
         }))}
       />
+
+      <WarmLeadsPanel cityName={cc.city.name} campaignName={cc.campaign.name} leads={warmLeads} />
 
       <NotesSection
         targetType="city_campaign"

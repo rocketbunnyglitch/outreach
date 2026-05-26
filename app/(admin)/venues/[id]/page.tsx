@@ -67,6 +67,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         <VenueForm
           mode="edit"
           initial={{
+            id: venue.id,
             cityId: venue.cityId,
             name: venue.name,
             googlePlaceId: venue.googlePlaceId,

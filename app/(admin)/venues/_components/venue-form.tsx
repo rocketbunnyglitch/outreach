@@ -15,10 +15,12 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { DuplicateWarning } from "./duplicate-warning";
 
 interface VenueFormProps {
   mode: "create" | "edit";
   initial?: {
+    id?: string;
     cityId: string;
     name: string;
     googlePlaceId: string | null;
@@ -79,6 +81,16 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
             />
           </FieldShell>
         </FieldRow>
+
+        {/* Live duplicate-detection panel. Only renders when ≥3 chars typed
+            AND at least one match. Doesn't block submit — operator can
+            still create a "duplicate" if they know it's actually different. */}
+        <DuplicateWarning
+          nameInputId="name"
+          cityInputId="cityId"
+          addressInputId="address"
+          ignoreVenueId={initial?.id}
+        />
         <FieldRow>
           <FieldShell label="Google Place ID" name="googlePlaceId">
             <Input
