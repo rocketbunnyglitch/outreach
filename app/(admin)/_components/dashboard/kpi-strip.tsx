@@ -25,7 +25,7 @@ interface Props {
  */
 export function KpiStrip({ kpis }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 sm:grid-cols-4 lg:grid-cols-5 dark:border-zinc-800 dark:bg-zinc-800">
+    <div className="card-surface grid grid-cols-2 gap-px overflow-hidden bg-zinc-200 sm:grid-cols-4 lg:grid-cols-5 dark:bg-zinc-800/40">
       {kpis.map((kpi) => (
         <KpiCard key={kpi.label} kpi={kpi} />
       ))}
@@ -37,7 +37,7 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
   const sparkColor = kpi.trend === "down" ? "text-rose-500" : "text-emerald-500";
 
   return (
-    <div className="flex flex-col gap-3 bg-white p-4 dark:bg-zinc-950">
+    <div className="flex flex-col gap-3 bg-zinc-50 p-4 dark:bg-transparent">
       <div className="flex items-start justify-between gap-2">
         <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">{kpi.label}</p>
         {kpi.trend && kpi.trend !== "flat" && <TrendBadge trend={kpi.trend} meta={kpi.meta} />}

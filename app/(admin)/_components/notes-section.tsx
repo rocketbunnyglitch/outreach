@@ -49,7 +49,7 @@ export function NotesSection({
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <section className="card-surface flex flex-col gap-4 p-5">
       <header className="flex items-baseline justify-between">
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg tracking-tight">
           <MessageSquare className="h-4 w-4 text-zinc-500" />

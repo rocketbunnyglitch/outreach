@@ -69,7 +69,7 @@ export default async function GoalsListPage() {
       </header>
 
       {withProgress.length === 0 ? (
-        <div className="rounded-lg border border-zinc-200 border-dashed bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="card-surface border-dashed p-12 text-center">
           <Target className="mx-auto h-8 w-8 text-zinc-400" />
           <h3 className="mt-4 font-semibold text-2xl tracking-tight">No goals set yet</h3>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -135,7 +135,7 @@ function GoalCard({ goal }: { goal: GoalCardData }) {
     <Link
       href={`/goals/${goal.id}`}
       className={cn(
-        "block rounded-lg border border-zinc-200 bg-white p-5 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+        "card-surface block p-5 transition-colors hover:brightness-110 dark:hover:brightness-125",
         isExpired && "opacity-60",
       )}
     >

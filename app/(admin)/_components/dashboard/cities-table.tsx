@@ -103,7 +103,7 @@ export function CitiesTable({ cities }: Props) {
 
   if (cities.length === 0) {
     return (
-      <div className="rounded-lg border border-zinc-200 border-dashed bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="card-surface border-dashed p-12 text-center">
         <Target className="mx-auto h-8 w-8 text-zinc-400" />
         <h3 className="mt-4 font-semibold text-2xl tracking-tight ">No active campaigns yet</h3>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -121,7 +121,7 @@ export function CitiesTable({ cities }: Props) {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+    <div className="card-surface overflow-hidden">
       {/* Column header */}
       <div className="grid grid-cols-12 gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800 dark:bg-zinc-900">
         <div className="col-span-3">City</div>
@@ -175,7 +175,7 @@ function CityHeaderRow({
       onClick={onClick}
       className={cn(
         "grid w-full grid-cols-12 items-center gap-3 px-4 py-3.5 text-left transition-colors",
-        striped ? "bg-zinc-50/50 dark:bg-zinc-950" : "bg-white dark:bg-zinc-950/40",
+        striped ? "bg-zinc-50/50 dark:bg-white/[0.02]" : "bg-white dark:bg-transparent",
         "hover:bg-zinc-100 dark:hover:bg-zinc-900",
       )}
       aria-expanded={isExpanded}
@@ -278,7 +278,7 @@ function CityExpandedContent({
     <div
       className={cn(
         "border-zinc-200 border-t border-dashed px-4 py-4 dark:border-zinc-800/50",
-        striped ? "bg-zinc-50/30 dark:bg-zinc-950" : "bg-zinc-50/50 dark:bg-zinc-950/60",
+        striped ? "bg-zinc-50/30 dark:bg-white/[0.01]" : "bg-zinc-50/50 dark:bg-white/[0.025]",
       )}
     >
       <div className="space-y-5 border-zinc-200 border-l pl-6 dark:border-zinc-800">

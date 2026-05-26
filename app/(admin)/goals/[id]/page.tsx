@@ -78,7 +78,7 @@ export default async function GoalDetailPage({ params }: Props) {
       </header>
 
       {/* Progress summary */}
-      <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
+      <section className="card-surface p-6">
         <div className="flex items-baseline justify-between">
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Progress</p>
           {progress.applicable && (

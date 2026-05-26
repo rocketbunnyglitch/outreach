@@ -15,8 +15,8 @@ interface Props {
  */
 export function TasksWidget({ tasks, totalOpen, overdueCount }: Props) {
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="card-surface overflow-hidden">
+      <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100/60 px-4 py-2.5 dark:border-zinc-800/60 dark:bg-zinc-900/30">
         <div className="flex items-baseline gap-2">
           <h2 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             Upcoming tasks

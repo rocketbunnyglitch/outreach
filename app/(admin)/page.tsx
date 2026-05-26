@@ -141,7 +141,7 @@ export default async function DashboardHome({
       </header>
 
       {/* Scope banner — communicates exactly what the dashboard is showing */}
-      <div className="flex items-baseline justify-between gap-3 rounded-md border border-zinc-200 bg-zinc-100/60 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="card-surface-quiet flex items-baseline justify-between gap-3 px-4 py-2.5">
         <p className="font-mono text-[11px] text-zinc-500 uppercase tracking-widest">
           {data.scopedCampaign ? (
             <>

@@ -118,10 +118,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       </header>
 
       {/* Filter bar */}
-      <form
-        method="get"
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
-      >
+      <form method="get" className="card-surface-quiet flex flex-wrap items-end gap-3 p-4">
         <div className="flex flex-col gap-1.5">
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             Status
@@ -187,7 +184,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
       {/* Tasks table */}
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-zinc-200 border-dashed bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="card-surface border-dashed p-12 text-center">
           <CheckCircle2 className="mx-auto h-8 w-8 text-zinc-400" />
           <h3 className="mt-4 font-semibold text-2xl tracking-tight">All clear</h3>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">

@@ -17,8 +17,8 @@ interface Props {
  */
 export function NotesWidget({ notes }: Props) {
   return (
-    <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="card-surface overflow-hidden">
+      <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100/60 px-4 py-2.5 dark:border-zinc-800/60 dark:bg-zinc-900/30">
         <h2 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
           Recent notes
         </h2>
@@ -28,7 +28,7 @@ export function NotesWidget({ notes }: Props) {
       </header>
 
       {notes.length === 0 ? (
-        <div className="bg-white px-4 py-10 text-center dark:bg-zinc-950">
+        <div className="px-4 py-10 text-center">
           <MessageSquare className="mx-auto h-5 w-5 text-zinc-400" />
           <p className="mt-3 font-mono text-[11px] text-zinc-500 uppercase tracking-widest">
             No notes yet
@@ -38,12 +38,12 @@ export function NotesWidget({ notes }: Props) {
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-950">
+        <ul className="divide-y divide-zinc-200 dark:divide-zinc-800/60">
           {notes.map((note) => (
             <li key={note.id}>
               <Link
                 href={targetHref(note.targetType, note.targetId)}
-                className="block px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                className="block px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="truncate font-semibold text-xs tracking-tight">
