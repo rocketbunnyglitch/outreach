@@ -622,6 +622,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueName: string;
     venueEmail: string | null;
     venuePhone: string | null;
+    venueUpdatedAt: string;
     zeroBounceStatus: string | null;
     status: string;
     assignedStaffId: string | null;
@@ -638,6 +639,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueName: venues.name,
       venueEmail: venues.email,
       venuePhone: venues.phoneE164,
+      venueUpdatedAt: venues.updatedAt,
       status: coldOutreachEntries.status,
       assignedStaffId: coldOutreachEntries.assignedStaffId,
       assignedStaffName: staffMembers.displayName,
@@ -678,6 +680,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueName: r.venueName,
     venueEmail: r.venueEmail,
     venuePhone: r.venuePhone,
+    venueUpdatedAt: r.venueUpdatedAt.toISOString(),
     zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
     status: r.status as string,
     assignedStaffId: r.assignedStaffId,
@@ -707,12 +710,27 @@ const commitVenueFieldSchema = z.object({
   cityCampaignId: z
     .string()
     .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  // Optimistic-lock token. Client captures venues.updated_at when the
+  // inline cell opens; on commit, if the server's current updated_at is
+  // newer, we refuse to write and return a conflict so the UI can warn
+  // the operator instead of silently overwriting fresher data.
+  expectedUpdatedAt: z.string().optional(),
 });
 
 export async function commitVenueField(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ venueId: string; field: string }>> {
+): Promise<
+  ActionResult<
+    | { venueId: string; field: string }
+    | {
+        conflict: true;
+        currentValue: string | null;
+        changedByDisplayName: string | null;
+        changedAt: string;
+      }
+  >
+> {
   const { staff } = await requireStaff();
 
   const parsed = commitVenueFieldSchema.safeParse(formToObject(formData));
@@ -720,7 +738,7 @@ export async function commitVenueField(
     return { ok: false, error: "Invalid edit payload." };
   }
 
-  const { venueId, field, value, cityCampaignId } = parsed.data;
+  const { venueId, field, value, cityCampaignId, expectedUpdatedAt } = parsed.data;
   const trimmed = value.trim();
 
   // Per-field validation. Empty is allowed for email + phone (clearing
@@ -734,11 +752,66 @@ export async function commitVenueField(
     }
   }
   if (field === "phoneE164" && trimmed.length > 0) {
-    // Lenient E.164: + followed by 7-15 digits, allowing common
-    // separators we strip server-side.
     const stripped = trimmed.replace(/[\s\-().]/g, "");
     if (!/^\+?[1-9]\d{6,14}$/.test(stripped)) {
       return { ok: false, error: "Invalid phone. Use E.164 (e.g. +14165551234)." };
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Optimistic conflict check — refuse to overwrite fresher data
+  // -------------------------------------------------------------
+  if (expectedUpdatedAt) {
+    const fresh = await db.execute<{
+      updated_at: string;
+      name: string;
+      email: string | null;
+      phone_e164: string | null;
+      updated_by_name: string | null;
+    }>(sql`
+      SELECT
+        v.updated_at::text AS updated_at,
+        v.name,
+        v.email,
+        v.phone_e164,
+        sm.display_name AS updated_by_name
+      FROM venues v
+      LEFT JOIN staff_members sm ON sm.id = v.updated_by
+      WHERE v.id = ${venueId}
+      LIMIT 1
+    `);
+    type FreshRow = {
+      updated_at: string;
+      name: string;
+      email: string | null;
+      phone_e164: string | null;
+      updated_by_name: string | null;
+    };
+    const freshList: FreshRow[] = Array.isArray(fresh)
+      ? (fresh as unknown as FreshRow[])
+      : ((fresh as unknown as { rows: FreshRow[] }).rows ?? []);
+    const current = freshList[0];
+
+    if (current) {
+      const serverMs = new Date(current.updated_at).getTime();
+      const clientMs = new Date(expectedUpdatedAt).getTime();
+      // 100ms slack absorbs DB-vs-JS clock skew on the same request
+      if (Number.isFinite(serverMs) && Number.isFinite(clientMs) && serverMs > clientMs + 100) {
+        // Only flag a conflict if the field the operator is editing is
+        // the one that changed. If JC updated email and the current
+        // operator is editing name, there's no actual conflict.
+        const currentValue =
+          field === "name" ? current.name : field === "email" ? current.email : current.phone_e164;
+        return {
+          ok: true,
+          data: {
+            conflict: true,
+            currentValue,
+            changedByDisplayName: current.updated_by_name,
+            changedAt: current.updated_at,
+          },
+        };
+      }
     }
   }
 

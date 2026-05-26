@@ -46,6 +46,7 @@ interface ColdEntry {
   venueName: string;
   venueEmail: string | null;
   venuePhone: string | null;
+  venueUpdatedAt: string;
   zeroBounceStatus: string | null;
   status: string;
   assignedStaffId: string | null;
@@ -328,6 +329,7 @@ function ColdRow({
 }) {
   const [pending, startTx] = useTransition();
   const toast = useToast();
+  const router = useRouter();
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
 
   function commitField(field: "status" | "assignedStaffId" | "remarks", value: string) {
@@ -403,6 +405,43 @@ function ColdRow({
   }
 
   // ---------------------------------------------------------------
+  // editVenueField — single helper for the 3 inline-editable venue
+  // fields (name, email, phone). Sends expectedUpdatedAt for
+  // optimistic-lock conflict detection. On conflict, shows a toast,
+  // refreshes the page to surface the new value, and returns an
+  // error to InlineCell so it reverts the optimistic state.
+  // ---------------------------------------------------------------
+  function editVenueField(
+    field: "name" | "email" | "phoneE164",
+  ): (next: string) => Promise<{ ok: boolean; error?: string }> {
+    return async (next) => {
+      const fd = new FormData();
+      fd.set("venueId", entry.venueId);
+      fd.set("field", field);
+      fd.set("value", next);
+      fd.set("cityCampaignId", cityCampaignId);
+      fd.set("expectedUpdatedAt", entry.venueUpdatedAt);
+      const result = await commitVenueField(null, fd);
+      if (result.ok && result.data && "conflict" in result.data) {
+        const conflict = result.data;
+        const who = conflict.changedByDisplayName ?? "Someone";
+        const fieldLabel = field === "phoneE164" ? "phone" : field;
+        const currentDisplay =
+          conflict.currentValue == null || conflict.currentValue === ""
+            ? "(empty)"
+            : `"${conflict.currentValue}"`;
+        toast.show({
+          kind: "error",
+          message: `${who} just changed ${entry.venueName}'s ${fieldLabel} to ${currentDisplay}. Refresh and try again.`,
+        });
+        router.refresh();
+        return { ok: false, error: "Conflict — refresh and retry." };
+      }
+      return { ok: result.ok, error: result.ok ? undefined : result.error };
+    };
+  }
+
+  // ---------------------------------------------------------------
   // Card layout (mobile). Same fields, same handlers, vertical.
   // ---------------------------------------------------------------
   if (layout === "card") {
@@ -429,15 +468,7 @@ function ColdRow({
                 <InlineCell
                   label="Venue name"
                   value={entry.venueName}
-                  onCommit={async (next) => {
-                    const fd = new FormData();
-                    fd.set("venueId", entry.venueId);
-                    fd.set("field", "name");
-                    fd.set("value", next);
-                    fd.set("cityCampaignId", cityCampaignId);
-                    const result = await commitVenueField(null, fd);
-                    return { ok: result.ok, error: result.ok ? undefined : result.error };
-                  }}
+                  onCommit={editVenueField("name")}
                 />
               </div>
               <Link
@@ -489,15 +520,7 @@ function ColdRow({
               placeholder="add email"
               variant="mono"
               inputType="email"
-              onCommit={async (next) => {
-                const fd = new FormData();
-                fd.set("venueId", entry.venueId);
-                fd.set("field", "email");
-                fd.set("value", next);
-                fd.set("cityCampaignId", cityCampaignId);
-                const result = await commitVenueField(null, fd);
-                return { ok: result.ok, error: result.ok ? undefined : result.error };
-              }}
+              onCommit={editVenueField("email")}
             />
           </div>
           {entry.venueEmail && (
@@ -532,6 +555,7 @@ function ColdRow({
             entry={entry}
             cityCampaignId={cityCampaignId}
             outreachBrandId={outreachBrandId}
+            editVenueField={editVenueField}
           />
         </div>
 
@@ -606,15 +630,7 @@ function ColdRow({
             value={entry.venueName}
             variant="default"
             maxWidth={220}
-            onCommit={async (next) => {
-              const fd = new FormData();
-              fd.set("venueId", entry.venueId);
-              fd.set("field", "name");
-              fd.set("value", next);
-              fd.set("cityCampaignId", cityCampaignId);
-              const result = await commitVenueField(null, fd);
-              return { ok: result.ok, error: result.ok ? undefined : result.error };
-            }}
+            onCommit={editVenueField("name")}
           />
           <Link
             href={`/venues/${entry.venueId}`}
@@ -638,15 +654,7 @@ function ColdRow({
             variant="mono"
             inputType="email"
             maxWidth={150}
-            onCommit={async (next) => {
-              const fd = new FormData();
-              fd.set("venueId", entry.venueId);
-              fd.set("field", "email");
-              fd.set("value", next);
-              fd.set("cityCampaignId", cityCampaignId);
-              const result = await commitVenueField(null, fd);
-              return { ok: result.ok, error: result.ok ? undefined : result.error };
-            }}
+            onCommit={editVenueField("email")}
           />
           {entry.venueEmail && (
             <>
@@ -701,6 +709,7 @@ function ColdRow({
           entry={entry}
           cityCampaignId={cityCampaignId}
           outreachBrandId={outreachBrandId}
+          editVenueField={editVenueField}
         />
       </td>
 
@@ -769,12 +778,17 @@ function PhoneCell({
   entry,
   cityCampaignId,
   outreachBrandId,
+  editVenueField,
 }: {
   entry: ColdEntry;
   cityCampaignId: string;
   outreachBrandId: string | null;
+  editVenueField: (
+    field: "name" | "email" | "phoneE164",
+  ) => (next: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [editing, setEditing] = useState(false);
+  const phoneCommit = editVenueField("phoneE164");
 
   // No number yet → straight to inline-edit mode so adding a phone is
   // a single interaction
@@ -789,14 +803,9 @@ function PhoneCell({
           inputType="tel"
           maxWidth={140}
           onCommit={async (next) => {
-            const fd = new FormData();
-            fd.set("venueId", entry.venueId);
-            fd.set("field", "phoneE164");
-            fd.set("value", next);
-            fd.set("cityCampaignId", cityCampaignId);
-            const result = await commitVenueField(null, fd);
+            const result = await phoneCommit(next);
             if (result.ok) setEditing(false);
-            return { ok: result.ok, error: result.ok ? undefined : result.error };
+            return result;
           }}
         />
         {entry.venuePhone && (
