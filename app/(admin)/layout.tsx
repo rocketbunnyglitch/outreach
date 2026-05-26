@@ -7,6 +7,7 @@ import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
 import { MobileNav } from "./_components/mobile-nav";
+import { MountCommandPalette } from "./_components/mount-command-palette";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { UserMenu } from "./_components/user-menu";
 
@@ -43,6 +44,7 @@ export default async function AdminLayout({
             {children}
           </main>
           <GlobalShortcuts />
+          <MountCommandPalette />
         </div>
       </ShortcutProvider>
     </ToastProvider>
