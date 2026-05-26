@@ -208,6 +208,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       <ColdOutreachTable
         cityCampaignId={id}
         cityId={cc.city.id}
+        outreachBrandId={cc.campaign.outreachBrandId ?? null}
         entries={coldOutreach}
         staff={sheetData?.staff ?? []}
       />

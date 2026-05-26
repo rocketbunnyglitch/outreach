@@ -53,6 +53,8 @@ const envSchema = z.object({
   POSTMARK_FALLBACK_SENDER: stringOptional,
   QUO_API_KEY: stringOptional,
   QUO_API_BASE_URL: urlString.optional(),
+  // For verifying inbound POSTs to /api/webhooks/quo
+  QUO_WEBHOOK_SIGNING_SECRET: stringOptional,
 
   // --- Phase 7: confirmation automations ---
   PUPPETEER_EXECUTABLE_PATH: stringOptional,

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { Check, Loader2, Mail, PhoneCall, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { Check, Loader2, Mail, Plus, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -13,6 +13,7 @@ import {
   updateColdOutreachField,
   upsertColdOutreachEntry,
 } from "../_cold-outreach-actions";
+import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
 interface ColdEntry {
@@ -32,6 +33,9 @@ interface ColdEntry {
 interface Props {
   cityCampaignId: string;
   cityId: string;
+  /** Outreach brand id from the parent campaign — needed for Quo
+   * calls + SMS to associate the activity with the right brand line. */
+  outreachBrandId: string | null;
   entries: ColdEntry[];
   staff: Array<{ id: string; displayName: string }>;
 }
@@ -83,7 +87,13 @@ const ZB_TONE: Record<string, string> = {
  * triggers the venue autocomplete (re-used from slot picker) → adds an
  * entry with status='not_contacted'.
  */
-export function ColdOutreachTable({ cityCampaignId, cityId, entries, staff }: Props) {
+export function ColdOutreachTable({
+  cityCampaignId,
+  cityId,
+  outreachBrandId,
+  entries,
+  staff,
+}: Props) {
   const [adding, setAdding] = useState(false);
 
   if (entries.length === 0 && !adding) {
@@ -134,6 +144,7 @@ export function ColdOutreachTable({ cityCampaignId, cityId, entries, staff }: Pr
                 entry={e}
                 staff={staff}
                 cityCampaignId={cityCampaignId}
+                outreachBrandId={outreachBrandId}
                 zebra={i % 2 === 1}
               />
             ))}
@@ -168,11 +179,13 @@ function ColdRow({
   entry,
   staff,
   cityCampaignId,
+  outreachBrandId,
   zebra,
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
   cityCampaignId: string;
+  outreachBrandId: string | null;
   zebra: boolean;
 }) {
   const [pending, startTx] = useTransition();
@@ -247,19 +260,16 @@ function ColdRow({
         )}
       </td>
 
-      {/* Phone */}
-      <td className="px-2 py-2 align-middle">
-        {entry.venuePhone ? (
-          <a
-            href={`tel:${entry.venuePhone}`}
-            className="inline-flex items-center gap-1 font-mono text-[11px] text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            <PhoneCall className="h-2.5 w-2.5" />
-            {entry.venuePhone}
-          </a>
-        ) : (
-          <span className="font-mono text-[10px] text-zinc-400">—</span>
-        )}
+      {/* Phone — Quo click-to-call + SMS composer */}
+      <td className="relative px-2 py-2 align-middle">
+        <QuoDialControls
+          venueId={entry.venueId}
+          venueName={entry.venueName}
+          venuePhone={entry.venuePhone}
+          outreachBrandId={outreachBrandId}
+          cityCampaignId={cityCampaignId}
+          coldEntryId={entry.entryId}
+        />
       </td>
 
       {/* Status */}
