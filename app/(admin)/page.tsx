@@ -1,6 +1,7 @@
 import { loadDashboardData } from "@/lib/dashboard-queries";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
+import { TasksWidget } from "./_components/dashboard/tasks-widget";
 
 // Always render at request time — dashboard shows live counts from DB.
 export const dynamic = "force-dynamic";
@@ -124,6 +125,14 @@ export default async function DashboardHome() {
           </p>
         </header>
         <CitiesTable cities={data.cityRows} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <TasksWidget
+          tasks={data.upcomingTasks}
+          totalOpen={data.kpis.openTaskCount}
+          overdueCount={data.kpis.overdueTaskCount}
+        />
       </section>
     </div>
   );

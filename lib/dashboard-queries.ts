@@ -24,16 +24,28 @@ import {
   cityCampaigns,
   countries,
   outreachLog,
+  staffMembers,
+  tasks,
   venueEvents,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, or, sql } from "drizzle-orm";
 
 const THIRTY_DAYS_AGO = sql`now() - interval '30 days'`;
 const SEVEN_DAYS_AGO = sql`now() - interval '7 days'`;
 
+export interface UpcomingTaskRow {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  dueAt: Date | null;
+  assigneeName: string | null;
+  overdue: boolean;
+}
+
 export interface DashboardData {
   cityRows: CityRow[];
+  upcomingTasks: UpcomingTaskRow[];
   kpis: {
     venuesConfirmed: number;
     venuesTargeted: number;
@@ -44,6 +56,8 @@ export interface DashboardData {
     eventsConfirmed: number;
     eventsPlanned: number;
     replyRate: number; // 0-100 percentage
+    openTaskCount: number;
+    overdueTaskCount: number;
   };
 }
 
@@ -315,8 +329,50 @@ export async function loadDashboardData(): Promise<DashboardData> {
   const replyRate =
     totalOutreachCount > 0 ? Math.round((replyCount / totalOutreachCount) * 100) : 0;
 
+  // ---- 8. Tasks: upcoming (next 7d) + counts for KPIs ----
+  const [upcomingTaskRowsRaw, taskCountsResult] = await Promise.all([
+    db
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        dueAt: tasks.dueAt,
+        assigneeName: staffMembers.displayName,
+      })
+      .from(tasks)
+      .leftJoin(staffMembers, eq(staffMembers.id, tasks.assignedStaffId))
+      .where(
+        and(
+          or(eq(tasks.status, "pending"), eq(tasks.status, "in_progress")),
+          // Either has a due date in the next 7 days OR is overdue
+          or(sql`${tasks.dueAt} < now() + interval '7 days'`, isNull(tasks.dueAt)),
+        ),
+      )
+      .orderBy(sql`${tasks.dueAt} ASC NULLS LAST`, desc(tasks.createdAt))
+      .limit(8),
+    db
+      .select({
+        openTaskCount: sql<number>`count(*) filter (where status in ('pending','in_progress'))::int`,
+        overdueTaskCount: sql<number>`count(*) filter (where status = 'pending' and due_at < now())::int`,
+      })
+      .from(tasks),
+  ]);
+  const openTaskCount = Number(taskCountsResult[0]?.openTaskCount ?? 0);
+  const overdueTaskCount = Number(taskCountsResult[0]?.overdueTaskCount ?? 0);
+
+  const now = new Date();
+  const upcomingTasks: UpcomingTaskRow[] = upcomingTaskRowsRaw.map((t) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    dueAt: t.dueAt,
+    assigneeName: t.assigneeName,
+    overdue: !!(t.dueAt && t.dueAt < now && t.status === "pending"),
+  }));
+
   return {
     cityRows,
+    upcomingTasks,
     kpis: {
       venuesConfirmed: confirmedVenues,
       venuesTargeted,
@@ -327,6 +383,8 @@ export async function loadDashboardData(): Promise<DashboardData> {
       eventsConfirmed: confirmedEvents,
       eventsPlanned: plannedEvents,
       replyRate,
+      openTaskCount,
+      overdueTaskCount,
     },
   };
 }
