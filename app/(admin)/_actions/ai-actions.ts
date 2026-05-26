@@ -1,0 +1,182 @@
+"use server";
+
+/**
+ * AI-assisted outreach actions.
+ *
+ * draftOutreachEmail — given a cold-outreach row, gather everything
+ * needed for personalization (venue facts, campaign + brand, prior
+ * touches, upcoming crawl date) and ask Claude for a draft. Returns
+ * { subject, body } the UI pre-fills into the existing email
+ * composer.
+ *
+ * No DB writes — pure read + LLM call + return. The operator
+ * decides whether to send.
+ */
+
+import { requireStaff } from "@/lib/auth";
+import { db } from "@/lib/db";
+import type { ActionResult } from "@/lib/form-utils";
+import { logger } from "@/lib/logger";
+import { sql } from "drizzle-orm";
+import { z } from "zod";
+
+const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+const schema = z.object({
+  venueId: uuid,
+  cityCampaignId: uuid,
+  /** Optional — when present, narrows the draft to a specific slot. */
+  intendedRole: z
+    .enum(["wristband", "middle", "final", "alt_final", "unspecified"])
+    .default("unspecified"),
+});
+
+interface DraftResult {
+  subject: string;
+  body: string;
+}
+
+export async function draftOutreachEmail(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<DraftResult | { notConfigured: true }>> {
+  const { staff } = await requireStaff();
+  const parsed = schema.safeParse({
+    venueId: formData.get("venueId"),
+    cityCampaignId: formData.get("cityCampaignId"),
+    intendedRole: formData.get("intendedRole") ?? "unspecified",
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid draft payload." };
+
+  const { isAiConfigured, draftOutreachEmail: aiDraft } = await import("@/lib/ai");
+  if (!isAiConfigured()) {
+    return { ok: true, data: { notConfigured: true } };
+  }
+
+  // Single query joining everything the draft needs. The outreach_log
+  // sub-aggregate gives us the prior touches without a 1+N hit.
+  const result = await db.execute<{
+    venue_name: string;
+    venue_address: string | null;
+    venue_capacity: number | null;
+    city_name: string;
+    city_region: string | null;
+    campaign_name: string;
+    brand_name: string;
+    sender_name: string;
+    upcoming_crawl_date: string | null;
+    history: string | null;
+  }>(sql`
+    WITH history AS (
+      SELECT json_agg(
+        json_build_object(
+          'channel', ol.channel::text,
+          'outcome', ol.outcome::text,
+          'notes', ol.notes,
+          'days_ago', EXTRACT(EPOCH FROM (NOW() - ol.created_at))::int / 86400
+        )
+        ORDER BY ol.created_at DESC
+      ) AS history
+      FROM outreach_log ol
+      WHERE ol.venue_id = ${parsed.data.venueId}
+        AND ol.created_at > NOW() - INTERVAL '180 days'
+    ),
+    upcoming AS (
+      SELECT MIN(e.event_date)::text AS event_date
+      FROM events e
+      WHERE e.city_campaign_id = ${parsed.data.cityCampaignId}
+        AND e.event_date >= CURRENT_DATE
+    )
+    SELECT
+      v.name AS venue_name,
+      v.address AS venue_address,
+      v.capacity AS venue_capacity,
+      c.name AS city_name,
+      c.region AS city_region,
+      cm.name AS campaign_name,
+      ob.brand_name AS brand_name,
+      ${staff.displayName.split(/\s+/)[0]} AS sender_name,
+      (SELECT event_date FROM upcoming) AS upcoming_crawl_date,
+      (SELECT history::text FROM history) AS history
+    FROM venues v
+    JOIN city_campaigns cc ON cc.id = ${parsed.data.cityCampaignId}
+    JOIN cities c ON c.id = cc.city_id
+    JOIN campaigns cm ON cm.id = cc.campaign_id
+    JOIN outreach_brands ob ON ob.id = cm.outreach_brand_id
+    WHERE v.id = ${parsed.data.venueId}
+    LIMIT 1
+  `);
+
+  type Row = {
+    venue_name: string;
+    venue_address: string | null;
+    venue_capacity: number | null;
+    city_name: string;
+    city_region: string | null;
+    campaign_name: string;
+    brand_name: string;
+    sender_name: string;
+    upcoming_crawl_date: string | null;
+    history: string | null;
+  };
+  const rows: Row[] = Array.isArray(result)
+    ? (result as unknown as Row[])
+    : ((result as unknown as { rows: Row[] }).rows ?? []);
+  const ctx = rows[0];
+  if (!ctx) return { ok: false, error: "Venue or campaign not found." };
+
+  let history: Array<{
+    channel: string;
+    outcome: string;
+    notes: string | null;
+    daysAgo: number;
+  }> = [];
+  if (ctx.history) {
+    try {
+      const parsedHistory = JSON.parse(ctx.history) as Array<{
+        channel: string;
+        outcome: string;
+        notes: string | null;
+        days_ago: number;
+      }> | null;
+      history = (parsedHistory ?? []).map((h) => ({
+        channel: h.channel,
+        outcome: h.outcome,
+        notes: h.notes,
+        daysAgo: h.days_ago,
+      }));
+    } catch (err) {
+      logger.warn({ err }, "draftOutreachEmail: history parse failed (non-fatal)");
+    }
+  }
+
+  const draft = await aiDraft({
+    venue: {
+      name: ctx.venue_name,
+      address: ctx.venue_address,
+      capacity: ctx.venue_capacity,
+    },
+    city: {
+      name: ctx.city_name,
+      region: ctx.city_region,
+    },
+    campaign: {
+      name: ctx.campaign_name,
+      brandName: ctx.brand_name,
+      senderName: ctx.sender_name,
+    },
+    intendedRole: parsed.data.intendedRole,
+    upcomingCrawlDate: ctx.upcoming_crawl_date,
+    history,
+  });
+
+  if (!draft) {
+    return {
+      ok: false,
+      error:
+        "Claude couldn't generate a draft right now. Try again, or check the Sentry logs if this persists.",
+    };
+  }
+
+  return { ok: true, data: draft };
+}

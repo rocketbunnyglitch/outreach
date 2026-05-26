@@ -16,6 +16,7 @@ import {
   updateColdOutreachField,
   upsertColdOutreachEntry,
 } from "../_cold-outreach-actions";
+import { AiDraftButton } from "./ai-draft-button";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
@@ -290,18 +291,39 @@ function ColdRow({
         </Link>
       </td>
 
-      {/* Email */}
-      <td className="px-2 py-2 align-middle">
-        {entry.venueEmail ? (
-          <a
-            href={`mailto:${entry.venueEmail}`}
-            className="block max-w-[170px] truncate font-mono text-[11px] text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            {entry.venueEmail}
-          </a>
-        ) : (
-          <span className="font-mono text-[10px] text-zinc-400">—</span>
-        )}
+      {/* Email — address link + AI draft button */}
+      <td className="relative px-2 py-2 align-middle">
+        <div className="flex items-center gap-1">
+          {entry.venueEmail ? (
+            <a
+              href={`mailto:${entry.venueEmail}`}
+              className="block max-w-[150px] truncate font-mono text-[11px] text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+              {entry.venueEmail}
+            </a>
+          ) : (
+            <span className="font-mono text-[10px] text-zinc-400">—</span>
+          )}
+          {entry.venueEmail && (
+            <AiDraftButton
+              venueId={entry.venueId}
+              venueName={entry.venueName}
+              cityCampaignId={cityCampaignId}
+              onUseDraft={(draft) => {
+                // Drop the draft into a temporary mailto link so the
+                // operator's email client opens with the AI text
+                // pre-populated. Future pass: wire into the in-app
+                // SendComposer for full template + variable substitution.
+                const subject = encodeURIComponent(draft.subject);
+                const body = encodeURIComponent(draft.body);
+                window.open(
+                  `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
+                  "_self",
+                );
+              }}
+            />
+          )}
+        </div>
       </td>
 
       {/* ZeroBounce */}

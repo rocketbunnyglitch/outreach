@@ -68,6 +68,11 @@ const envSchema = z.object({
   SENTRY_PROJECT: stringOptional,
   SENTRY_TRACES_SAMPLE_RATE: stringOptional,
 
+  // Anthropic / Claude — AI-assisted outreach drafting.
+  // Without a key, the AI button surfaces a 'not configured' state.
+  ANTHROPIC_API_KEY: stringOptional,
+  ANTHROPIC_MODEL: stringOptional,
+
   // --- Phase 7: confirmation automations ---
   PUPPETEER_EXECUTABLE_PATH: stringOptional,
 
