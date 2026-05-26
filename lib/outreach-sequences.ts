@@ -250,6 +250,7 @@ export async function stopSequencesForVenue(opts: {
   venueId: string;
   outreachBrandId?: string;
   reason: "replied" | "bounced" | "unsubscribed" | "declined" | "manual";
+  staffMemberId?: string;
 }): Promise<number> {
   const rows = await db
     .select({ id: outreachSequenceState.id })
@@ -264,7 +265,11 @@ export async function stopSequencesForVenue(opts: {
       ),
     );
   for (const r of rows) {
-    await stopSequence({ sequenceStateId: r.id, reason: opts.reason });
+    await stopSequence({
+      sequenceStateId: r.id,
+      reason: opts.reason,
+      staffMemberId: opts.staffMemberId,
+    });
   }
   return rows.length;
 }

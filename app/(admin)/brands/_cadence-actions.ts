@@ -144,7 +144,11 @@ export async function markDeclined(
   if (!venueId) return { ok: false, error: "Missing venueId." };
 
   try {
-    const stopped = await stopSequencesForVenue({ venueId, reason: "declined" });
+    const stopped = await stopSequencesForVenue({
+      venueId,
+      reason: "declined",
+      staffMemberId: staff.id,
+    });
     revalidatePath(`/venues/${venueId}`);
     return { ok: true, data: { stopped } };
   } catch (err) {
