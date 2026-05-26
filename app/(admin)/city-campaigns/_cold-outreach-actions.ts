@@ -17,7 +17,7 @@
 import { coldOutreachEntries, staffMembers, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
-import type { ActionResult } from "@/lib/form-utils";
+import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -611,4 +611,98 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     remarks: r.remarks,
     lastTouchAt: r.lastTouchAt,
   }));
+}
+
+// =========================================================================
+// commitVenueField — inline-edit name / email / phone on the venue record
+// =========================================================================
+//
+// Distinct from updateColdOutreachField (which edits the outreach_entries
+// row). This action mutates the underlying venues record so the change
+// shows up everywhere — city sheet, audit log, all crawls — not just on
+// the cold outreach table.
+//
+// Kept thin on purpose: the full updateVenue action validates the entire
+// venue payload, which is overkill for a single-field inline edit. This
+// version validates only the field being edited.
+
+const commitVenueFieldSchema = z.object({
+  venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  field: z.enum(["name", "email", "phoneE164"]),
+  value: z.string().max(500),
+  cityCampaignId: z
+    .string()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+});
+
+export async function commitVenueField(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ venueId: string; field: string }>> {
+  const { staff } = await requireStaff();
+
+  const parsed = commitVenueFieldSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid edit payload." };
+  }
+
+  const { venueId, field, value, cityCampaignId } = parsed.data;
+  const trimmed = value.trim();
+
+  // Per-field validation. Empty is allowed for email + phone (clearing
+  // the field) but not for name (would orphan the record visually).
+  if (field === "name" && trimmed.length === 0) {
+    return { ok: false, error: "Venue name can't be empty." };
+  }
+  if (field === "email" && trimmed.length > 0) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { ok: false, error: "Invalid email format." };
+    }
+  }
+  if (field === "phoneE164" && trimmed.length > 0) {
+    // Lenient E.164: + followed by 7-15 digits, allowing common
+    // separators we strip server-side.
+    const stripped = trimmed.replace(/[\s\-().]/g, "");
+    if (!/^\+?[1-9]\d{6,14}$/.test(stripped)) {
+      return { ok: false, error: "Invalid phone. Use E.164 (e.g. +14165551234)." };
+    }
+  }
+
+  // Map external 'email' / 'phoneE164' to the DB column names. Drizzle
+  // schema uses 'email' + 'phoneE164' already, so this is a 1:1 map.
+  const patch: Partial<typeof venues.$inferInsert> = {
+    updatedBy: staff.id,
+  };
+  if (field === "name") patch.name = trimmed;
+  else if (field === "email") patch.email = trimmed || null;
+  else if (field === "phoneE164") {
+    const stripped = trimmed.replace(/[\s\-().]/g, "");
+    patch.phoneE164 = stripped || null;
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx.update(venues).set(patch).where(eq(venues.id, venueId)),
+    );
+
+    // When email changes, kick off ZeroBounce in the background just
+    // like the full updateVenue path does.
+    if (field === "email" && trimmed.length > 0) {
+      const { validateEmailInBackground } = await import("@/lib/zerobounce");
+      validateEmailInBackground(trimmed, staff.id);
+    }
+
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { venueId, field } };
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === "23505") {
+      return {
+        ok: false,
+        error: "Another venue already has that value. Pick something unique.",
+      };
+    }
+    logger.error({ err, venueId, field }, "commitVenueField failed");
+    return { ok: false, error: "Couldn't save. Try again." };
+  }
 }

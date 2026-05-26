@@ -1,9 +1,20 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { Check, Loader2, Mail, Plus, Sparkles, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  Loader2,
+  Mail,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -13,6 +24,7 @@ import {
   bulkArchiveColdOutreach,
   bulkAssignColdOutreach,
   bulkUpdateColdOutreachStatus,
+  commitVenueField,
   generateVenueLeads,
   updateColdOutreachField,
   upsertColdOutreachEntry,
@@ -305,47 +317,83 @@ function ColdRow({
         />
       </td>
 
-      {/* Venue */}
+      {/* Venue — inline-editable name. Operators can rename right from
+          the table; the static link to /venues/[id] moves to a small
+          arrow that appears on hover so quick edits don't require
+          navigating away. */}
       <td className="px-3 py-2 align-middle">
-        <Link
-          href={`/venues/${entry.venueId}`}
-          className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
-        >
-          {entry.venueName}
-        </Link>
+        <div className="flex items-center gap-1">
+          <InlineCell
+            label="Venue name"
+            value={entry.venueName}
+            variant="default"
+            maxWidth={220}
+            onCommit={async (next) => {
+              const fd = new FormData();
+              fd.set("venueId", entry.venueId);
+              fd.set("field", "name");
+              fd.set("value", next);
+              fd.set("cityCampaignId", cityCampaignId);
+              const result = await commitVenueField(null, fd);
+              return { ok: result.ok, error: result.ok ? undefined : result.error };
+            }}
+          />
+          <Link
+            href={`/venues/${entry.venueId}`}
+            className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
+            title="Open venue detail"
+            aria-label="Open venue detail"
+          >
+            <ExternalLink className="h-2.5 w-2.5" />
+          </Link>
+        </div>
       </td>
 
-      {/* Email — address link + AI draft button */}
+      {/* Email — inline-editable address + AI draft button + mailto link.
+          The mailto link only shows when there's a value to send to. */}
       <td className="relative px-2 py-2 align-middle">
         <div className="flex items-center gap-1">
-          {entry.venueEmail ? (
-            <a
-              href={`mailto:${entry.venueEmail}`}
-              className="block max-w-[150px] truncate font-mono text-[11px] text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              {entry.venueEmail}
-            </a>
-          ) : (
-            <span className="font-mono text-[10px] text-zinc-400">—</span>
-          )}
+          <InlineCell
+            label="Venue email"
+            value={entry.venueEmail ?? ""}
+            placeholder="add email"
+            variant="mono"
+            inputType="email"
+            maxWidth={150}
+            onCommit={async (next) => {
+              const fd = new FormData();
+              fd.set("venueId", entry.venueId);
+              fd.set("field", "email");
+              fd.set("value", next);
+              fd.set("cityCampaignId", cityCampaignId);
+              const result = await commitVenueField(null, fd);
+              return { ok: result.ok, error: result.ok ? undefined : result.error };
+            }}
+          />
           {entry.venueEmail && (
-            <AiDraftButton
-              venueId={entry.venueId}
-              venueName={entry.venueName}
-              cityCampaignId={cityCampaignId}
-              onUseDraft={(draft) => {
-                // Drop the draft into a temporary mailto link so the
-                // operator's email client opens with the AI text
-                // pre-populated. Future pass: wire into the in-app
-                // SendComposer for full template + variable substitution.
-                const subject = encodeURIComponent(draft.subject);
-                const body = encodeURIComponent(draft.body);
-                window.open(
-                  `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
-                  "_self",
-                );
-              }}
-            />
+            <>
+              <a
+                href={`mailto:${entry.venueEmail}`}
+                className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
+                title="Open in email client"
+                aria-label="Open in email client"
+              >
+                <Mail className="h-2.5 w-2.5" />
+              </a>
+              <AiDraftButton
+                venueId={entry.venueId}
+                venueName={entry.venueName}
+                cityCampaignId={cityCampaignId}
+                onUseDraft={(draft) => {
+                  const subject = encodeURIComponent(draft.subject);
+                  const body = encodeURIComponent(draft.body);
+                  window.open(
+                    `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
+                    "_self",
+                  );
+                }}
+              />
+            </>
           )}
         </div>
       </td>
@@ -366,15 +414,15 @@ function ColdRow({
         )}
       </td>
 
-      {/* Phone — Quo click-to-call + SMS composer */}
+      {/* Phone — when present, QuoDialControls handles click-to-call /
+          SMS / Viber. When absent or being edited, an inline cell lets
+          the operator add or change the number. The pencil affordance
+          on hover lets them switch from dial-mode to edit-mode anytime. */}
       <td className="relative px-2 py-2 align-middle">
-        <QuoDialControls
-          venueId={entry.venueId}
-          venueName={entry.venueName}
-          venuePhone={entry.venuePhone}
-          outreachBrandId={outreachBrandId}
+        <PhoneCell
+          entry={entry}
           cityCampaignId={cityCampaignId}
-          coldEntryId={entry.entryId}
+          outreachBrandId={outreachBrandId}
         />
       </td>
 
@@ -419,6 +467,84 @@ function ColdRow({
         </button>
       </td>
     </tr>
+  );
+}
+
+// =========================================================================
+// PhoneCell — dial mode when number present, inline-edit when absent
+// =========================================================================
+
+function PhoneCell({
+  entry,
+  cityCampaignId,
+  outreachBrandId,
+}: {
+  entry: ColdEntry;
+  cityCampaignId: string;
+  outreachBrandId: string | null;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  // No number yet → straight to inline-edit mode so adding a phone is
+  // a single interaction
+  if (!entry.venuePhone || editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <InlineCell
+          label="Venue phone"
+          value={entry.venuePhone ?? ""}
+          placeholder="add phone"
+          variant="mono"
+          inputType="tel"
+          maxWidth={140}
+          onCommit={async (next) => {
+            const fd = new FormData();
+            fd.set("venueId", entry.venueId);
+            fd.set("field", "phoneE164");
+            fd.set("value", next);
+            fd.set("cityCampaignId", cityCampaignId);
+            const result = await commitVenueField(null, fd);
+            if (result.ok) setEditing(false);
+            return { ok: result.ok, error: result.ok ? undefined : result.error };
+          }}
+        />
+        {entry.venuePhone && (
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded p-0.5 text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            aria-label="Cancel edit"
+            title="Cancel"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Number present → show dial controls + a small pencil to switch
+  // into edit mode
+  return (
+    <div className="flex items-center gap-1">
+      <QuoDialControls
+        venueId={entry.venueId}
+        venueName={entry.venueName}
+        venuePhone={entry.venuePhone}
+        outreachBrandId={outreachBrandId}
+        cityCampaignId={cityCampaignId}
+        coldEntryId={entry.entryId}
+      />
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
+        aria-label="Edit phone"
+        title="Edit phone"
+      >
+        <Pencil className="h-2.5 w-2.5" />
+      </button>
+    </div>
   );
 }
 
