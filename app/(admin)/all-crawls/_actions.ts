@@ -336,3 +336,89 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+/**
+ * Bulk-sync sales from Eventbrite for every linked crawl in a campaign.
+ *
+ * Iterates through each linked event sequentially (not in parallel) to
+ * respect Eventbrite's ~1000 req/hour rate limit. Each event needs two
+ * API calls (event + orders), so a 50-crawl campaign uses ~100 calls.
+ *
+ * Returns aggregate results so the UI can show a meaningful summary:
+ *   { synced, failed, totalLinked }
+ *
+ * If the EB token isn't configured, returns notConfigured immediately
+ * without iterating.
+ */
+const bulkSyncSchema = z.object({
+  campaignId: uuid,
+});
+
+export async function bulkSyncEventbriteSales(
+  _prev: unknown,
+  formData: FormData,
+): Promise<
+  ActionResult<
+    | { synced: number; failed: number; totalLinked: number; ticketsTotal: number }
+    | { notConfigured: true }
+  >
+> {
+  const { staff } = await requireStaff();
+  const parsed = bulkSyncSchema.safeParse({ campaignId: formData.get("campaignId") });
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  const { isEventbriteConfigured, fetchEventbriteSales } = await import("@/lib/eventbrite");
+  if (!isEventbriteConfigured()) {
+    return { ok: true, data: { notConfigured: true } };
+  }
+
+  // Pull every linked event in this campaign
+  const linkedRows = await db.execute<{ id: string; eventbrite_event_id: string }>(sql`
+    SELECT e.id, e.eventbrite_event_id
+    FROM events e
+    JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+    WHERE cc.campaign_id = ${parsed.data.campaignId}
+      AND e.eventbrite_event_id IS NOT NULL
+  `);
+  const linked: Array<{ id: string; eventbrite_event_id: string }> = Array.isArray(linkedRows)
+    ? (linkedRows as unknown as Array<{ id: string; eventbrite_event_id: string }>)
+    : ((linkedRows as unknown as { rows: Array<{ id: string; eventbrite_event_id: string }> })
+        .rows ?? []);
+
+  if (linked.length === 0) {
+    return { ok: true, data: { synced: 0, failed: 0, totalLinked: 0, ticketsTotal: 0 } };
+  }
+
+  let synced = 0;
+  let failed = 0;
+  let ticketsTotal = 0;
+
+  // Sequential — protects rate limits + makes failures isolated. For a
+  // 50-crawl campaign this finishes in 8-15s depending on EB latency.
+  for (const row of linked) {
+    try {
+      const summary = await fetchEventbriteSales(row.eventbrite_event_id);
+      if (!summary) {
+        failed++;
+        continue;
+      }
+      await withAuditContext(staff.id, async (tx) => {
+        await tx
+          .update(events)
+          .set({ ticketSalesCount: summary.sold, updatedBy: staff.id })
+          .where(eq(events.id, row.id));
+      });
+      synced++;
+      ticketsTotal += summary.sold;
+    } catch (err) {
+      logger.warn({ err, eventId: row.id }, "bulk sync row failed");
+      failed++;
+    }
+  }
+
+  revalidatePath("/all-crawls");
+  return {
+    ok: true,
+    data: { synced, failed, totalLinked: linked.length, ticketsTotal },
+  };
+}

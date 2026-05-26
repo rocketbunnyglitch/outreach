@@ -24,6 +24,30 @@ const DAY_LABEL: Record<string, string> = {
 
 type SortKey = "city" | "day" | "tickets" | "open";
 type SortDir = "asc" | "desc";
+type FilterKey = "all" | "needs_venues" | "ready" | "linked" | "unlinked";
+
+const FILTER_LABELS: Record<FilterKey, string> = {
+  all: "All",
+  needs_venues: "Needs venues",
+  ready: "Ready",
+  linked: "Linked to EB",
+  unlinked: "Not linked",
+};
+
+function matchesFilter(row: AllCrawlsRow, filter: FilterKey): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "needs_venues":
+      return row.openSlots > 0 && row.cityCampaignStatus !== "cancelled";
+    case "ready":
+      return row.openSlots === 0 && row.totalSlots > 0;
+    case "linked":
+      return !!row.eventbriteEventId;
+    case "unlinked":
+      return !row.eventbriteEventId;
+  }
+}
 
 /**
  * All Crawls flat view — one row per event across every city in the
@@ -43,11 +67,30 @@ type SortDir = "asc" | "desc";
  */
 export function AllCrawlsTable({ campaignId, rows }: Props) {
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [sortKey, setSortKey] = useState<SortKey>("city");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  // Precompute counts for filter chips so they show live totals
+  const filterCounts = useMemo(() => {
+    const counts: Record<FilterKey, number> = {
+      all: rows.length,
+      needs_venues: 0,
+      ready: 0,
+      linked: 0,
+      unlinked: 0,
+    };
+    for (const r of rows) {
+      if (matchesFilter(r, "needs_venues")) counts.needs_venues++;
+      if (matchesFilter(r, "ready")) counts.ready++;
+      if (matchesFilter(r, "linked")) counts.linked++;
+      if (matchesFilter(r, "unlinked")) counts.unlinked++;
+    }
+    return counts;
+  }, [rows]);
+
   const filtered = useMemo(() => {
-    let result = rows;
+    let result = rows.filter((r) => matchesFilter(r, filter));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter(
@@ -67,7 +110,7 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [rows, search, sortKey, sortDir]);
+  }, [rows, search, filter, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -98,6 +141,38 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
           />
         </div>
       </header>
+
+      {/* Filter chips — visible only when there's enough data to filter */}
+      {rows.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-zinc-200/40 border-b px-5 py-2.5 dark:border-zinc-800/30">
+          {(Object.keys(FILTER_LABELS) as FilterKey[]).map((key) => {
+            const count = filterCounts[key];
+            const active = filter === key;
+            const disabled = key !== "all" && count === 0;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => !disabled && setFilter(key)}
+                disabled={disabled}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-all duration-150",
+                  active
+                    ? "bg-zinc-900 text-zinc-50 shadow-sm dark:bg-zinc-100 dark:text-zinc-900"
+                    : disabled
+                      ? "cursor-not-allowed text-zinc-400 dark:text-zinc-600"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-100",
+                )}
+              >
+                {FILTER_LABELS[key]}
+                <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-60")}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="px-5 py-16 text-center">

@@ -2,6 +2,7 @@ import { loadAllCrawlsForCampaign } from "@/lib/all-crawls-data";
 import { requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import Link from "next/link";
+import { AllCrawlsSummary } from "./_components/all-crawls-summary";
 import { AllCrawlsTable } from "./_components/all-crawls-table";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,15 @@ export default async function AllCrawlsPage() {
 
   const rows = await loadAllCrawlsForCampaign(currentCampaign.campaign.id);
 
+  // Campaign-level metrics for the summary strip
+  const totalCrawls = rows.length;
+  const linkedCount = rows.filter((r) => !!r.eventbriteEventId).length;
+  const readyCount = rows.filter((r) => r.openSlots === 0 && r.totalSlots > 0).length;
+  const needsVenuesCount = rows.filter(
+    (r) => r.openSlots > 0 && r.cityCampaignStatus !== "cancelled",
+  ).length;
+  const totalTickets = rows.reduce((sum, r) => sum + r.ticketsSold, 0);
+
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10 sm:px-10">
       <header className="mb-8 flex items-baseline justify-between gap-4">
@@ -63,6 +73,17 @@ export default async function AllCrawlsPage() {
           campaign overview →
         </Link>
       </header>
+
+      {totalCrawls > 0 && (
+        <AllCrawlsSummary
+          campaignId={currentCampaign.campaign.id}
+          totalCrawls={totalCrawls}
+          linkedCount={linkedCount}
+          readyCount={readyCount}
+          needsVenuesCount={needsVenuesCount}
+          totalTickets={totalTickets}
+        />
+      )}
 
       <AllCrawlsTable campaignId={currentCampaign.campaign.id} rows={rows} />
     </main>
