@@ -1,11 +1,13 @@
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
+import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
+import { TodayWidget } from "./_components/dashboard/today-widget";
 import { TrackerDashboardTable } from "./_components/dashboard/tracker-dashboard-table";
 
 // Always render at request time — dashboard shows live counts from DB.
@@ -39,12 +41,13 @@ export default async function DashboardHome({
 
   const data = await loadDashboardData({ campaignId });
 
-  // Premium per-campaign tracker: loads in parallel-ish when a campaign is selected.
-  // The shape is decoupled from loadDashboardData so the legacy "all campaigns"
-  // table still works without the slot-need joins.
-  const { rows: trackerRows, staff: trackerStaff } = campaignId
-    ? await loadTrackerData({ campaignId })
-    : { rows: [], staff: [] };
+  // Premium per-campaign tracker + Today digest — both campaign-scoped,
+  // loaded in parallel so the dashboard stays under one DB roundtrip
+  // budget perceived from the operator's POV.
+  const [{ rows: trackerRows, staff: trackerStaff }, todayDigest] = await Promise.all([
+    campaignId ? loadTrackerData({ campaignId }) : Promise.resolve({ rows: [], staff: [] }),
+    loadTodayDigest(campaignId),
+  ]);
 
   const venueProgress =
     data.kpis.venuesTargeted > 0
@@ -188,6 +191,15 @@ export default async function DashboardHome({
       </div>
 
       <KpiStrip kpis={kpis} />
+
+      <TodayWidget
+        digest={todayDigest}
+        currentCampaign={
+          currentCampaign
+            ? { id: currentCampaign.campaign.id, name: currentCampaign.campaign.name }
+            : null
+        }
+      />
 
       <section className="flex flex-col gap-3">
         <header className="flex items-baseline justify-between">
