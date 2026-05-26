@@ -8,6 +8,7 @@ import { CampaignSwitcher } from "./_components/campaign-switcher";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
 import { MobileNav } from "./_components/mobile-nav";
 import { MountCommandPalette } from "./_components/mount-command-palette";
+import { NotificationsBell } from "./_components/notifications-bell";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { UserMenu } from "./_components/user-menu";
 
@@ -118,6 +119,7 @@ function TopNav({
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationsBell />
           <ShortcutsHintButton />
           <UserMenu staff={staff} provider={provider} />
           <MobileNav isAdmin={staff.role === "admin"} />

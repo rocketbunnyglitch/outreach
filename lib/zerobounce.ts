@@ -25,7 +25,7 @@ import "server-only";
 import { emailValidations } from "@/db/schema";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const REVALIDATE_AFTER_DAYS = 90;
 const ZB_ENDPOINT = "https://api.zerobounce.net/v2/validate";
@@ -162,6 +162,58 @@ export async function validateEmail(
     }
   } catch (err) {
     logger.error({ err, email: maskEmail(email) }, "zerobounce cache write failed");
+  }
+
+  // When the validation comes back 'invalid' (the email bounces, the
+  // domain doesn't accept mail, etc.) and we know who set it, notify
+  // them. Operators want to find out about dead emails before sending
+  // — the bell badge is the right surface for that vs spawning a toast
+  // they may miss.
+  if (zbResult.status === "invalid" && staffMemberId) {
+    try {
+      const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+      // Look up the venue(s) using this email so the notification has
+      // a deep link the operator can act on
+      const ownerRows = await db.execute<{
+        venue_id: string;
+        venue_name: string;
+        city_campaign_id: string | null;
+      }>(sql`
+        SELECT
+          v.id::text AS venue_id,
+          v.name AS venue_name,
+          (
+            SELECT cc.id::text
+            FROM cold_outreach_entries coe
+            JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
+            WHERE coe.venue_id = v.id AND coe.archived_at IS NULL
+            ORDER BY coe.updated_at DESC
+            LIMIT 1
+          ) AS city_campaign_id
+        FROM venues v
+        WHERE v.email = ${email}
+        LIMIT 5
+      `);
+      type OwnerRow = { venue_id: string; venue_name: string; city_campaign_id: string | null };
+      const owners: OwnerRow[] = Array.isArray(ownerRows)
+        ? (ownerRows as unknown as OwnerRow[])
+        : ((ownerRows as unknown as { rows: OwnerRow[] }).rows ?? []);
+      for (const o of owners) {
+        await emitNotification({
+          staffId: staffMemberId,
+          kind: "email_invalid",
+          title: `Email bounced: ${o.venue_name}`,
+          body: `${email} returned invalid from ZeroBounce. You'll want a different address before sending.`,
+          linkPath: o.city_campaign_id
+            ? `/city-campaigns/${o.city_campaign_id}`
+            : `/venues/${o.venue_id}`,
+          metadata: { email: maskEmail(email), venueId: o.venue_id },
+          dedupeMinutes: 60 * 12,
+        });
+      }
+    } catch (err) {
+      logger.error({ err }, "zerobounce notification emit failed");
+    }
   }
 
   return { status: zbResult.status, cached: false };

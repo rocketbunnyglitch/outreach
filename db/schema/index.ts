@@ -49,6 +49,7 @@ export * from "./templates";
 export * from "./email-validations";
 export * from "./goals";
 export * from "./staff-views";
+export * from "./notifications";
 export * from "./financial";
 export * from "./saved-filters";
 export * from "./audit";
