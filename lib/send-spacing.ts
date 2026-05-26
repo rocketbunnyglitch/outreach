@@ -94,10 +94,14 @@ export function computeSendSchedule(opts: SpacingOpts): SpacingResult {
     result.push(new Date(cursor));
   }
 
-  const avgGap =
-    result.length < 2
-      ? 0
-      : (result[result.length - 1]?.getTime() - result[0]?.getTime()) / 1000 / (result.length - 1);
+  let avgGap = 0;
+  if (result.length >= 2) {
+    const first = result[0];
+    const last = result[result.length - 1];
+    if (first && last) {
+      avgGap = (last.getTime() - first.getTime()) / 1000 / (result.length - 1);
+    }
+  }
 
   return { scheduledTimestamps: result, avgGapSeconds: Math.round(avgGap) };
 }
