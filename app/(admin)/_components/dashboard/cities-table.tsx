@@ -76,6 +76,14 @@ export interface EventRow {
 
 interface Props {
   cities: CityRow[];
+  /**
+   * When the operator has scoped the dashboard to one campaign, we pass
+   * it here so the empty state can read "no cities in {Campaign} yet"
+   * instead of the misleading "no active campaigns yet" — which fires
+   * the moment they create a brand-new campaign that hasn't had cities
+   * added to it.
+   */
+  currentCampaign?: { id: string; name: string } | null;
 }
 
 /**
@@ -85,7 +93,7 @@ interface Props {
  * Visual model: alternating dark/darker rows à la financial trading tables.
  * Numerical columns use tabular-nums + Geist Mono for clean alignment.
  */
-export function CitiesTable({ cities }: Props) {
+export function CitiesTable({ cities, currentCampaign }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     // Auto-expand the first city if there's only a few, so the dashboard
     // doesn't look empty on first load.
@@ -102,6 +110,29 @@ export function CitiesTable({ cities }: Props) {
   }
 
   if (cities.length === 0) {
+    // Distinguish "no campaigns at all" from "this campaign has no
+    // cities yet" — the second case is what you see right after
+    // creating a campaign and lands the operator on a misleading
+    // "no campaigns yet" message.
+    if (currentCampaign) {
+      return (
+        <div className="card-surface border-dashed p-12 text-center">
+          <Target className="mx-auto h-8 w-8 text-zinc-400" />
+          <h3 className="mt-4 font-semibold text-2xl tracking-tight ">
+            No cities in {currentCampaign.name} yet
+          </h3>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            Add cities to this campaign and they'll appear here with live sales + venue progress.
+          </p>
+          <Link
+            href={`/campaigns/${currentCampaign.id}`}
+            className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            Open {currentCampaign.name} →
+          </Link>
+        </div>
+      );
+    }
     return (
       <div className="card-surface border-dashed p-12 text-center">
         <Target className="mx-auto h-8 w-8 text-zinc-400" />

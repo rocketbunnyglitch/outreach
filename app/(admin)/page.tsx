@@ -201,7 +201,14 @@ export default async function DashboardHome({
         {campaignId && trackerRows.length > 0 ? (
           <TrackerDashboardTable rows={trackerRows} staff={trackerStaff} />
         ) : (
-          <CitiesTable cities={data.cityRows} />
+          <CitiesTable
+            cities={data.cityRows}
+            currentCampaign={
+              currentCampaign
+                ? { id: currentCampaign.campaign.id, name: currentCampaign.campaign.name }
+                : null
+            }
+          />
         )}
       </section>
 

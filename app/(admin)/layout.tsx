@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import { ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
+import { MobileNav } from "./_components/mobile-nav";
 import { UserMenu } from "./_components/user-menu";
 
 /**
@@ -78,6 +79,7 @@ function TopNav({
           <nav className="hidden items-center gap-1 text-sm md:flex">
             <NavLink href="/brands">Brands</NavLink>
             <NavLink href="/campaigns">Campaigns</NavLink>
+            <NavLink href="/all-crawls">All Crawls</NavLink>
             <NavLink href="/crawl-matrix">Crawl Matrix</NavLink>
             <NavLink href="/calendar">Calendar</NavLink>
             <NavLink href="/inbox">Inbox</NavLink>
@@ -97,7 +99,10 @@ function TopNav({
           </nav>
         </div>
 
-        <UserMenu staff={staff} provider={provider} />
+        <div className="flex items-center gap-2">
+          <UserMenu staff={staff} provider={provider} />
+          <MobileNav />
+        </div>
       </div>
     </header>
   );

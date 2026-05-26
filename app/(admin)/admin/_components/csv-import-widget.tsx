@@ -23,13 +23,13 @@ interface Props {
   campaigns: CampaignOption[];
 }
 
-const EXAMPLE = `priority_number,city_name,day,crawl_number
-1,New York City,Thursday,1
-1,New York City,Friday,1
-1,New York City,Friday,2
-1,New York City,Saturday,1
-2,Chicago,Friday,1
-2,Chicago,Saturday,1`;
+const EXAMPLE = `priority_number,city_name,day,crawl_number,eventbrite_id
+1,New York City,Thursday,1,
+1,New York City,Friday,1,1234567890
+1,New York City,Friday,2,
+1,New York City,Saturday,1,1234567891
+2,Chicago,Friday,1,
+2,Chicago,Saturday,1,`;
 
 /**
  * CSV bulk-importer for campaign cities + crawl instances.

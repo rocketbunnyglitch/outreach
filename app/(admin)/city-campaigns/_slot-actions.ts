@@ -149,7 +149,8 @@ export async function assignSlotVenue(
       ).rows ?? []);
 
   if (conflictRows.length > 0) {
-    const c = conflictRows[0]!;
+    const c = conflictRows[0];
+    if (!c) return { ok: false, error: "Internal conflict-check error." };
     const label = `${capitalize(c.other_day_part ?? "")} crawl ${c.other_crawl_number ?? "?"} (${c.other_role})`;
     return {
       ok: false,

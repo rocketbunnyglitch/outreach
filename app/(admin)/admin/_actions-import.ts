@@ -56,6 +56,8 @@ export interface ParsedRow {
   cityName: string;
   day: "thursday_night" | "friday_night" | "saturday_night";
   crawlNumber: number;
+  /** Optional — when present, links the created event to an EB event. */
+  eventbriteEventId: string | null;
   resolvedCityId: string | null;
   resolvedCityLabel: string | null;
   /** Fuzzy match suggestion when exact match failed. */
@@ -214,11 +216,23 @@ export async function commitCsvImport(
               AND crawl_number = ${cr.crawlNumber}
             LIMIT 1
           `);
-          const has = Array.isArray(existingEvent)
-            ? (existingEvent as unknown as Array<{ id: string }>).length > 0
-            : ((existingEvent as unknown as { rows: Array<{ id: string }> }).rows?.length ?? 0) > 0;
+          const existingRows: Array<{ id: string }> = Array.isArray(existingEvent)
+            ? (existingEvent as unknown as Array<{ id: string }>)
+            : ((existingEvent as unknown as { rows: Array<{ id: string }> }).rows ?? []);
 
-          if (has) {
+          if (existingRows.length > 0) {
+            // If CSV supplies an EB id and the event doesn't have one
+            // yet, patch it in. Don't overwrite a manually-set EB id.
+            if (cr.eventbriteEventId) {
+              await tx.execute(sql`
+                UPDATE events
+                SET eventbrite_event_id = ${cr.eventbriteEventId},
+                    updated_at = NOW(),
+                    updated_by = ${staff.id}
+                WHERE id = ${existingRows[0]?.id}
+                  AND eventbrite_event_id IS NULL
+              `);
+            }
             skipped++;
             continue;
           }
@@ -229,7 +243,7 @@ export async function commitCsvImport(
           await tx.execute(sql`
             INSERT INTO events (
               id, city_campaign_id, day_part, crawl_number,
-              event_date, name, status,
+              event_date, name, status, eventbrite_event_id,
               created_at, updated_at, created_by, updated_by, version
             ) VALUES (
               gen_random_uuid(),
@@ -239,6 +253,7 @@ export async function commitCsvImport(
               CURRENT_DATE,
               ${`${capitalize(cr.day)} crawl ${cr.crawlNumber}`},
               'planning',
+              ${cr.eventbriteEventId},
               NOW(), NOW(), ${staff.id}, ${staff.id}, 1
             )
           `);
@@ -304,6 +319,8 @@ function parseCsv(csv: string): {
     city: headerCols.indexOf("city_name"),
     day: headerCols.indexOf("day"),
     crawl: headerCols.indexOf("crawl_number"),
+    // Optional — when present, links the created event to an EB event
+    eventbriteId: headerCols.indexOf("eventbrite_id"),
   };
 
   const rows: Omit<ParsedRow, "resolvedCityId" | "resolvedCityLabel" | "suggestion">[] = [];
@@ -312,8 +329,9 @@ function parseCsv(csv: string): {
   for (let i = 1; i < lines.length; i++) {
     const raw = lines[i] ?? "";
     const cols = splitCsvLine(raw);
+    // 4 required columns (priority, city, day, crawl) — eventbrite_id is optional
     if (cols.length < 4) {
-      errors.push({ rowNumber: i, raw, reason: "Expected 4 columns." });
+      errors.push({ rowNumber: i, raw, reason: "Expected at least 4 columns." });
       continue;
     }
 
@@ -354,7 +372,25 @@ function parseCsv(csv: string): {
       continue;
     }
 
-    rows.push({ rowNumber: i, priority, cityName, day, crawlNumber });
+    // Optional EB id — if column exists and value present, must be
+    // numeric (EB event IDs are large integers).
+    let eventbriteEventId: string | null = null;
+    if (idx.eventbriteId !== -1) {
+      const ebRaw = cols[idx.eventbriteId]?.trim() ?? "";
+      if (ebRaw) {
+        if (!/^\d{6,20}$/.test(ebRaw)) {
+          errors.push({
+            rowNumber: i,
+            raw,
+            reason: `eventbrite_id must be a 6-20 digit number (got "${ebRaw}").`,
+          });
+          continue;
+        }
+        eventbriteEventId = ebRaw;
+      }
+    }
+
+    rows.push({ rowNumber: i, priority, cityName, day, crawlNumber, eventbriteEventId });
   }
 
   return { rows, errors };

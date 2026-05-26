@@ -124,6 +124,7 @@ export async function createCampaign(
     };
   }
 
+  let createdId: string;
   try {
     const [row] = await withAuditContext(staff.id, async (tx) =>
       tx
@@ -147,13 +148,28 @@ export async function createCampaign(
         .returning({ id: campaigns.id, slug: campaigns.slug }),
     );
     if (!row) throw new Error("Insert returned no row");
-
-    revalidatePath("/campaigns");
-    revalidatePath("/");
-    redirect(`/campaigns/${row.id}`);
+    createdId = row.id;
   } catch (err) {
     return wrapDbError(err, "create campaign");
   }
+
+  // Auto-select the new campaign as the operator's current scope.
+  // Without this, the dashboard's empty state is misleading ("no
+  // campaigns" when one was just created).
+  try {
+    const { setCurrentCampaignCookie } = await import("@/lib/current-campaign");
+    await setCurrentCampaignCookie(createdId);
+  } catch {
+    // best-effort — non-fatal if cookie write fails
+  }
+
+  revalidatePath("/campaigns");
+  revalidatePath("/");
+  // redirect MUST be outside the try/catch — Next.js redirect throws
+  // a special NEXT_REDIRECT error that the framework relies on. If
+  // wrapDbError catches it, the user sees a generic "unexpected
+  // error" even though the campaign was created successfully.
+  redirect(`/campaigns/${createdId}`);
 }
 
 export async function updateCampaign(

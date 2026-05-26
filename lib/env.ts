@@ -59,6 +59,8 @@ const envSchema = z.object({
 
   // --- Phase 8: external sync + backups ---
   EVENTBRITE_FALLBACK_TOKEN: stringOptional,
+  // Org-wide EB OAuth token — all linked events live on this account
+  EVENTBRITE_PRIVATE_TOKEN: stringOptional,
   B2_BUCKET: stringOptional,
 
   // --- Build-time (set by scripts/build-with-version.sh) ---

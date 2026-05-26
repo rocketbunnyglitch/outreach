@@ -536,6 +536,7 @@ function GenerateLeadsButton({
     setZeroSuggestions(false);
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close is stable
   useEffect(() => {
     const hasPopover = !!suggestions || notConfigured || zeroSuggestions;
     if (!hasPopover) return;
