@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import {
   Check,
@@ -23,9 +24,11 @@ import {
   archiveColdOutreachEntry,
   bulkArchiveColdOutreach,
   bulkAssignColdOutreach,
+  bulkUnarchiveColdOutreach,
   bulkUpdateColdOutreachStatus,
   commitVenueField,
   generateVenueLeads,
+  unarchiveColdOutreachEntry,
   updateColdOutreachField,
   upsertColdOutreachEntry,
 } from "../_cold-outreach-actions";
@@ -274,26 +277,78 @@ function ColdRow({
   zebra: boolean;
 }) {
   const [pending, startTx] = useTransition();
+  const toast = useToast();
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
 
   function commitField(field: "status" | "assignedStaffId" | "remarks", value: string) {
+    // Capture prior value so the undo handler can restore it
+    const prior =
+      field === "status"
+        ? entry.status
+        : field === "assignedStaffId"
+          ? (entry.assignedStaffId ?? "")
+          : (entry.remarks ?? "");
+
     const fd = new FormData();
     fd.set("entryId", entry.entryId);
     fd.set("field", field);
     fd.set("value", value);
     fd.set("cityCampaignId", cityCampaignId);
     startTx(async () => {
-      await updateColdOutreachField(null, fd);
+      const result = await updateColdOutreachField(null, fd);
+      if (!result.ok) {
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't save.",
+        });
+        return;
+      }
+
+      // Friendly message per field
+      const verb =
+        field === "status"
+          ? `Status → ${STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value}`
+          : field === "assignedStaffId"
+            ? value
+              ? `Assigned to ${staff.find((s) => s.id === value)?.displayName ?? "someone"}`
+              : "Unassigned"
+            : "Remarks updated";
+
+      toast.show({
+        kind: "success",
+        message: `${entry.venueName} · ${verb}`,
+        undo: async () => {
+          const undoFd = new FormData();
+          undoFd.set("entryId", entry.entryId);
+          undoFd.set("field", field);
+          undoFd.set("value", prior);
+          undoFd.set("cityCampaignId", cityCampaignId);
+          await updateColdOutreachField(null, undoFd);
+        },
+      });
     });
   }
 
   function archive() {
-    if (!confirm(`Archive ${entry.venueName} from cold outreach?`)) return;
     const fd = new FormData();
     fd.set("entryId", entry.entryId);
     fd.set("cityCampaignId", cityCampaignId);
     startTx(async () => {
-      await archiveColdOutreachEntry(null, fd);
+      const result = await archiveColdOutreachEntry(null, fd);
+      if (!result.ok) {
+        toast.show({ kind: "error", message: result.error ?? "Couldn't archive." });
+        return;
+      }
+      toast.show({
+        kind: "success",
+        message: `Archived ${entry.venueName}`,
+        undo: async () => {
+          const undoFd = new FormData();
+          undoFd.set("entryId", entry.entryId);
+          undoFd.set("cityCampaignId", cityCampaignId);
+          await unarchiveColdOutreachEntry(null, undoFd);
+        },
+      });
     });
   }
 
@@ -993,22 +1048,14 @@ function BulkActionBar({
   const [pendingStatus, startStatus] = useTransition();
   const [pendingAssign, startAssign] = useTransition();
   const [pendingArchive, startArchive] = useTransition();
-  const [toast, setToast] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [bulkAiOpen, setBulkAiOpen] = useState(false);
+  const toast = useToast();
 
   // How many of the selection actually have an email — drives the
   // Draft button label and enabled state.
   const eligibleForAi = selectedEntries.filter((e) => !!e.venueEmail).length;
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2200);
-    return () => clearTimeout(t);
-  }, [toast]);
-
   function setStatus(status: string) {
-    setError(null);
     const fd = new FormData();
     fd.set("entryIds", selectedIds.join(","));
     fd.set("status", status);
@@ -1016,18 +1063,22 @@ function BulkActionBar({
     startStatus(async () => {
       const result = await bulkUpdateColdOutreachStatus(null, fd);
       if (!result.ok) {
-        setError(result.error ?? "Status update failed.");
+        toast.show({ kind: "error", message: result.error ?? "Status update failed." });
         return;
       }
-      setToast(
-        `Set ${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} to "${STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status}"`,
-      );
+      const label = STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
+      toast.show({
+        kind: "success",
+        message: `${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} → ${label}`,
+        // Bulk status undo is best-effort — we don't preserve per-row
+        // prior statuses (cheap to add later if there's demand). For
+        // now the undo button isn't offered on bulk status changes.
+      });
       onComplete();
     });
   }
 
   function assign(staffMemberId: string) {
-    setError(null);
     const fd = new FormData();
     fd.set("entryIds", selectedIds.join(","));
     fd.set("staffMemberId", staffMemberId);
@@ -1035,35 +1086,42 @@ function BulkActionBar({
     startAssign(async () => {
       const result = await bulkAssignColdOutreach(null, fd);
       if (!result.ok) {
-        setError(result.error ?? "Assignment failed.");
+        toast.show({ kind: "error", message: result.error ?? "Assignment failed." });
         return;
       }
       const assignee = staff.find((s) => s.id === staffMemberId)?.displayName ?? "unassigned";
-      setToast(
-        `Assigned ${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} to ${assignee}`,
-      );
+      toast.show({
+        kind: "success",
+        message: `Assigned ${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} to ${assignee}`,
+      });
       onComplete();
     });
   }
 
   function archive() {
-    if (
-      !confirm(
-        `Archive ${selectedIds.length} venue${selectedIds.length === 1 ? "" : "s"} from cold outreach? They'll disappear from the table but can be re-added.`,
-      )
-    )
-      return;
-    setError(null);
+    // No confirm() — the toast's Undo button is the safety net,
+    // matching how Sheets handles delete (you can always Cmd+Z).
+    const entryIds = [...selectedIds];
     const fd = new FormData();
-    fd.set("entryIds", selectedIds.join(","));
+    fd.set("entryIds", entryIds.join(","));
     fd.set("cityCampaignId", cityCampaignId);
     startArchive(async () => {
       const result = await bulkArchiveColdOutreach(null, fd);
       if (!result.ok) {
-        setError(result.error ?? "Archive failed.");
+        toast.show({ kind: "error", message: result.error ?? "Archive failed." });
         return;
       }
-      setToast(`Archived ${result.data?.archived ?? 0} venues`);
+      const count = result.data?.archived ?? 0;
+      toast.show({
+        kind: "success",
+        message: `Archived ${count} venue${count === 1 ? "" : "s"}`,
+        undo: async () => {
+          const undoFd = new FormData();
+          undoFd.set("entryIds", entryIds.join(","));
+          undoFd.set("cityCampaignId", cityCampaignId);
+          await bulkUnarchiveColdOutreach(null, undoFd);
+        },
+      });
       onComplete();
     });
   }
@@ -1177,15 +1235,6 @@ function BulkActionBar({
           )}
         </Button>
       </div>
-
-      {error && (
-        <p className="w-full font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
-      )}
-      {toast && !error && (
-        <p className="w-full font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
-          {toast}
-        </p>
-      )}
 
       <BulkAiDraftModal
         open={bulkAiOpen}

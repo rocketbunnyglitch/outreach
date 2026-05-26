@@ -1,3 +1,4 @@
+import { ToastProvider } from "@/components/ui/toast";
 import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { ShieldAlert } from "lucide-react";
@@ -30,13 +31,15 @@ export default async function AdminLayout({
   const isDevImpersonation = provider === "dev-staff-impersonate";
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {isDevImpersonation && <DevModeBanner />}
-      <TopNav staff={staff} provider={provider} />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 sm:px-10 sm:py-14">
-        {children}
-      </main>
-    </div>
+    <ToastProvider>
+      <div className="flex min-h-screen flex-col">
+        {isDevImpersonation && <DevModeBanner />}
+        <TopNav staff={staff} provider={provider} />
+        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 sm:px-10 sm:py-14">
+          {children}
+        </main>
+      </div>
+    </ToastProvider>
   );
 }
 

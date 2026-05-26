@@ -174,6 +174,38 @@ export async function archiveColdOutreachEntry(
   }
 }
 
+/**
+ * unarchiveColdOutreachEntry — reverse of archive. Used by the
+ * undo toast on the cold-outreach table. Idempotent: a non-archived
+ * row stays non-archived. We don't expose this through the UI as a
+ * standalone action — it's specifically the undo partner.
+ */
+export async function unarchiveColdOutreachEntry(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = archiveSchema.safeParse({
+    entryId: formData.get("entryId"),
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(coldOutreachEntries)
+        .set({ archivedAt: null, updatedBy: staff.id })
+        .where(eq(coldOutreachEntries.id, parsed.data.entryId));
+    });
+    if (parsed.data.cityCampaignId) revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    return { ok: true, data: { id: parsed.data.entryId } };
+  } catch (err) {
+    logger.error({ err }, "unarchiveColdOutreachEntry failed");
+    return { ok: false, error: "Restore failed." };
+  }
+}
+
 // =========================================================================
 // Bulk operations
 //
@@ -338,6 +370,48 @@ export async function bulkArchiveColdOutreach(
   } catch (err) {
     logger.error({ err }, "bulkArchiveColdOutreach failed");
     return { ok: false, error: "Bulk archive failed." };
+  }
+}
+
+/**
+ * bulkUnarchiveColdOutreach — reverse of bulkArchive, used by the
+ * undo toast on the bulk action bar. Restores entries even if some
+ * are already non-archived (idempotent).
+ */
+export async function bulkUnarchiveColdOutreach(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ restored: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkArchiveSchema.safeParse({
+    entryIds: formData.get("entryIds"),
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid bulk payload." };
+
+  try {
+    const restored = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE cold_outreach_entries
+        SET archived_at = NULL,
+            updated_by = ${staff.id},
+            updated_at = NOW()
+        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+          AND archived_at IS NOT NULL
+        RETURNING id
+      `);
+      const rows: Array<{ id: string }> = Array.isArray(result)
+        ? (result as unknown as Array<{ id: string }>)
+        : ((result as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+      return rows.length;
+    });
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    }
+    return { ok: true, data: { restored } };
+  } catch (err) {
+    logger.error({ err }, "bulkUnarchiveColdOutreach failed");
+    return { ok: false, error: "Bulk restore failed." };
   }
 }
 
