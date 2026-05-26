@@ -81,6 +81,7 @@ function TopNav({
             <NavLink href="/crawl-matrix">Crawl Matrix</NavLink>
             <NavLink href="/calendar">Calendar</NavLink>
             <NavLink href="/inbox">Inbox</NavLink>
+            <NavLink href="/send-queue">Send Queue</NavLink>
             <NavLink href="/wristbands">Wristbands</NavLink>
             <NavLink href="/cities">Cities</NavLink>
             <NavLink href="/venues">Venues</NavLink>

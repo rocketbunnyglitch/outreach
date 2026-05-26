@@ -77,6 +77,15 @@ interface Props {
     prev: unknown,
     formData: FormData,
   ) => Promise<ActionResult<{ outreachLogId: string; mode: string }>>;
+  /**
+   * Called after the operator clicks "Open in Mail" and confirms with
+   * "I just sent this". Writes an outreach_log row attributing the send
+   * to mailto: (no Gmail API call, no live-mode token).
+   */
+  manualLogAction: (
+    prev: unknown,
+    formData: FormData,
+  ) => Promise<ActionResult<{ outreachLogId: string }>>;
 }
 
 /**
@@ -108,13 +117,16 @@ export function SendComposer({
   initialPreviewVars,
   brandConfig,
   sendAction,
+  manualLogAction,
 }: Props) {
   const [brandId, setBrandId] = useState<string>(defaultBrandId ?? brands[0]?.id ?? "");
   const [templateId, setTemplateId] = useState<string>("");
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [to, setTo] = useState(venueEmail ?? "");
+  const [mailtoOpened, setMailtoOpened] = useState(false);
   const [state, doSend, sending] = useActionState(sendAction, null);
+  const [manualState, doManualLog, logging] = useActionState(manualLogAction, null);
 
   const currentBrand = brands.find((b) => b.id === brandId);
   const config = brandConfig[brandId];
@@ -171,8 +183,9 @@ export function SendComposer({
 
   function handleManualOpen() {
     // Open the user's default mail client. We don't log here — they
-    // need to click "Mark as sent" after sending manually.
+    // need to click "I just sent this" after the manual send.
     window.open(buildMailtoUrl(), "_blank");
+    setMailtoOpened(true);
   }
 
   return (
@@ -317,6 +330,54 @@ export function SendComposer({
               ? "Logged in dev mode (no Gmail OAuth configured yet). Will go live once credentials land."
               : "Sent."}
           </Alert>
+        )}
+        {manualState && !manualState.ok && manualState.error && (
+          <Alert tone="error">{manualState.error}</Alert>
+        )}
+        {manualState?.ok && (
+          <Alert tone="success">Logged as manually sent. Throttle counters updated.</Alert>
+        )}
+
+        {/* Post-mailto confirmation — appears after Open in Mail is clicked */}
+        {mailtoOpened && !manualState?.ok && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-950/20">
+            <p className="font-medium text-blue-900 text-sm dark:text-blue-200">
+              Just sent this from your mail client?
+            </p>
+            <p className="mt-1 text-blue-800 text-xs dark:text-blue-300">
+              Confirm so the engine logs it to the outreach history + updates your daily counter.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <form action={doManualLog} className="contents">
+                <input type="hidden" name="venueId" value={venueId} />
+                <input type="hidden" name="outreachBrandId" value={brandId} />
+                <input type="hidden" name="to" value={to} />
+                <input type="hidden" name="subject" value={subject} />
+                <input type="hidden" name="bodyText" value={bodyText} />
+                <Button type="submit" disabled={logging || !to || !subject || !bodyText}>
+                  {logging ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Logging…
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Yes, I just sent this
+                    </>
+                  )}
+                </Button>
+              </form>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setMailtoOpened(false)}
+                disabled={logging}
+              >
+                Didn't send
+              </Button>
+            </div>
+          </div>
         )}
 
         {/* Action row */}

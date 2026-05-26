@@ -223,3 +223,90 @@ function stripHtml(html: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+// =========================================================================
+// logManualSend
+// =========================================================================
+//
+// Companion to sendOutreachEmail for the Phase 1 "Open in Mail" flow.
+// The operator opened a mailto: link, sent the email from their own
+// mail client, then clicks "I just sent this" in the composer. That
+// creates an outreach_log row identical to a live-mode send but without
+// touching Gmail API.
+//
+// Why not just reuse sendOutreachEmail?
+//   - Different outcome semantics: this is "confirmed manually sent",
+//     not "engine attempted send". The notes column records that.
+//   - No throttle check — the operator already sent it. We're catching
+//     up the log, not gating a future send.
+//   - No Gmail thread linkage — there's no message ID to attach.
+//
+// Throttle counts these as sends going forward, so the operator can't
+// game caps by routing everything through mailto:.
+
+const logManualSendSchema = z.object({
+  venueId: uuidSchema,
+  outreachBrandId: uuidSchema,
+  venueEventId: z.union([z.literal("").transform(() => undefined), uuidSchema]).optional(),
+  to: z.string().email("Invalid email address"),
+  subject: z.string().min(1, "Subject required").max(500),
+  bodyText: z.string().min(1, "Body required"),
+});
+
+export async function logManualSend(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ outreachLogId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = logManualSendSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Validation failed.",
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const input = parsed.data;
+
+  try {
+    // Resolve the inbox (so the log row attributes to the right
+    // staff_outreach_email row — important for per-inbox throttle math).
+    const inbox = await db
+      .select({ id: staffOutreachEmails.id })
+      .from(staffOutreachEmails)
+      .where(
+        and(
+          eq(staffOutreachEmails.staffMemberId, staff.id),
+          eq(staffOutreachEmails.outreachBrandId, input.outreachBrandId),
+        ),
+      )
+      .limit(1)
+      .then((r) => r[0]);
+
+    const id = await withAuditContext(staff.id, async (tx) => {
+      const [row] = await tx
+        .insert(outreachLog)
+        .values({
+          venueId: input.venueId,
+          venueEventId: input.venueEventId,
+          outreachBrandId: input.outreachBrandId,
+          staffMemberId: staff.id,
+          staffOutreachEmailId: inbox?.id ?? null,
+          channel: "email",
+          outcome: "sent",
+          subject: input.subject,
+          bodySnippet: input.bodyText.slice(0, 500),
+          externalId: null,
+          notes: "(sent manually via mailto: — operator confirmed delivery)",
+        })
+        .returning({ id: outreachLog.id });
+      return row?.id ?? "";
+    });
+
+    revalidatePath(`/venues/${input.venueId}`);
+    return { ok: true, data: { outreachLogId: id } };
+  } catch (err) {
+    logger.error({ err }, "logManualSend failed");
+    return { ok: false, error: "Logging failed. See server logs." };
+  }
+}

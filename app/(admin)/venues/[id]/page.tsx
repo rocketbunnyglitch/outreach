@@ -6,7 +6,7 @@ import { loadComposerData } from "@/lib/composer-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
-import { sendOutreachEmail } from "@/lib/send-outreach";
+import { logManualSend, sendOutreachEmail } from "@/lib/send-outreach";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import { asc, eq, isNull } from "drizzle-orm";
@@ -126,6 +126,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         }}
         brandConfig={composerBrandConfig}
         sendAction={sendOutreachEmail}
+        manualLogAction={logManualSend}
       />
 
       <OutreachLogSection
