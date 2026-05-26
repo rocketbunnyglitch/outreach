@@ -101,7 +101,7 @@ function ProfileHeader({
         <WindowSelector currentWindow={profile.windowDays} staffId={profile.staff.staffId} />
       </header>
 
-      <div className="grid grid-cols-2 gap-px bg-zinc-200/60 sm:grid-cols-5 dark:bg-zinc-800/40">
+      <div className="grid grid-cols-2 gap-px bg-zinc-200/60 sm:grid-cols-3 lg:grid-cols-6 dark:bg-zinc-800/40">
         <StatCell
           label="Calls"
           value={profile.totals.calls}
@@ -116,6 +116,11 @@ function ProfileHeader({
           label="SMS sent"
           value={profile.totals.smsSent}
           tone="text-orange-600 dark:text-orange-400"
+        />
+        <StatCell
+          label="Viber"
+          value={profile.totals.viberTouches}
+          tone="text-purple-600 dark:text-purple-400"
         />
         <StatCell
           label="Total touches"

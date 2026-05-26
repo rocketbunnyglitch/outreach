@@ -238,3 +238,92 @@ export async function getVenuePhone(venueId: string): Promise<string | null> {
     .then((r) => r[0]);
   return row?.phone ?? null;
 }
+
+// =========================================================================
+// Viber attempt logging
+//
+// Viber is deep-link-driven: the UI opens viber://chat or viber://contact
+// on the operator's device, and this action runs in parallel to write the
+// attempt to outreach_log. Outcome=sent is the initial placeholder; unlike
+// Quo, there's no webhook to deliver the real outcome, so the operator
+// updates the entry manually from the city sheet if they want to mark
+// it voicemail / interested / declined.
+//
+// Subtype is captured in notes ('Viber call' vs 'Viber message') so the
+// activity feed and audit log show the operator's intent.
+// =========================================================================
+
+const viberSubtype = z.enum(["call", "chat"]);
+
+const viberSchema = z.object({
+  venueId: uuid,
+  outreachBrandId: uuid,
+  subtype: viberSubtype,
+  cityCampaignId: uuid.optional(),
+  coldEntryId: uuid.optional(),
+});
+
+export async function logViberAttempt(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ logId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = viberSchema.safeParse({
+    venueId: formData.get("venueId"),
+    outreachBrandId: formData.get("outreachBrandId"),
+    subtype: formData.get("subtype"),
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+    coldEntryId: formData.get("coldEntryId") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid Viber payload." };
+
+  try {
+    const logId = await withAuditContext(staff.id, async (tx) => {
+      const [row] = await tx
+        .insert(outreachLog)
+        .values({
+          venueId: parsed.data.venueId,
+          outreachBrandId: parsed.data.outreachBrandId,
+          channel: "viber",
+          outcome: "sent",
+          notes:
+            parsed.data.subtype === "call"
+              ? "Viber call from cold outreach table"
+              : "Viber chat from cold outreach table",
+          staffMemberId: staff.id,
+          createdBy: staff.id,
+        })
+        .returning({ id: outreachLog.id });
+
+      // Bump cold outreach entry like the Quo path does — keeps the
+      // 'last touched' column accurate regardless of channel
+      if (parsed.data.coldEntryId) {
+        const current = await tx
+          .select({ status: coldOutreachEntries.status })
+          .from(coldOutreachEntries)
+          .where(eq(coldOutreachEntries.id, parsed.data.coldEntryId))
+          .limit(1)
+          .then((r) => r[0]);
+        const patch: Record<string, unknown> = {
+          lastTouchAt: new Date(),
+          updatedBy: staff.id,
+        };
+        if (current?.status === "not_contacted") patch.status = "called";
+        await tx
+          .update(coldOutreachEntries)
+          .set(patch)
+          .where(eq(coldOutreachEntries.id, parsed.data.coldEntryId));
+      }
+
+      return row?.id ?? "";
+    });
+
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    }
+    return { ok: true, data: { logId } };
+  } catch (err) {
+    logger.error({ err }, "logViberAttempt failed");
+    return { ok: false, error: "Couldn't log the Viber attempt." };
+  }
+}

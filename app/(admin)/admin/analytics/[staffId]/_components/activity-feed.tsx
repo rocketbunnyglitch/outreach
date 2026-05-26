@@ -1,6 +1,14 @@
 import { cn } from "@/lib/cn";
 import type { ActivityFeedRow } from "@/lib/team-analytics";
-import { CheckCircle2, Clock, Mail, MessageSquare, PhoneCall, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  Mail,
+  MessageCircle,
+  MessageSquare,
+  PhoneCall,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
 
 interface Props {
@@ -14,6 +22,7 @@ const CHANNEL_ICON: Record<
   call: { icon: PhoneCall, tone: "text-blue-500" },
   email: { icon: Mail, tone: "text-emerald-500" },
   sms: { icon: MessageSquare, tone: "text-orange-500" },
+  viber: { icon: MessageCircle, tone: "text-purple-500" },
 };
 
 const OUTCOME_TONE: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 import type { TopVenueRow } from "@/lib/team-analytics";
-import { Building2, Mail, MessageSquare, PhoneCall } from "lucide-react";
+import { Building2, Mail, MessageCircle, MessageSquare, PhoneCall } from "lucide-react";
 import Link from "next/link";
 
 interface Props {
@@ -72,6 +72,13 @@ export function TopVenuesTable({ rows }: Props) {
                       icon={MessageSquare}
                       value={r.sms}
                       tone="bg-orange-500/10 text-orange-700 ring-orange-500/20 dark:text-orange-300"
+                    />
+                  )}
+                  {r.viber > 0 && (
+                    <Chip
+                      icon={MessageCircle}
+                      value={r.viber}
+                      tone="bg-purple-500/10 text-purple-700 ring-purple-500/20 dark:text-purple-300"
                     />
                   )}
                   <span className="ml-1 w-8 text-right font-mono font-semibold text-[11px] text-zinc-900 tabular-nums dark:text-zinc-100">

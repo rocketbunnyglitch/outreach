@@ -80,6 +80,11 @@ function TotalsStrip({
       tone: "text-orange-600 dark:text-orange-400",
     },
     {
+      label: "Viber",
+      value: totals.viberTouches,
+      tone: "text-purple-600 dark:text-purple-400",
+    },
+    {
       label: "Total touches",
       value: totals.totalTouches,
       tone: "text-zinc-900 dark:text-zinc-100",
@@ -91,7 +96,7 @@ function TotalsStrip({
     },
   ];
   return (
-    <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-zinc-200/80 bg-zinc-200/60 shadow-sm shadow-zinc-200/40 sm:grid-cols-5 dark:border-zinc-800/60 dark:bg-zinc-800/40 dark:shadow-none">
+    <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-zinc-200/80 bg-zinc-200/60 shadow-sm shadow-zinc-200/40 sm:grid-cols-3 lg:grid-cols-6 dark:border-zinc-800/60 dark:bg-zinc-800/40 dark:shadow-none">
       {items.map((it) => (
         <div key={it.label} className="bg-white px-5 py-4 dark:bg-zinc-950/60">
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">

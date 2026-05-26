@@ -85,6 +85,7 @@ export const outreachChannel = pgEnum("outreach_channel", [
   "email",
   "call",
   "sms",
+  "viber",
   "instagram",
   "form",
   "in_person",

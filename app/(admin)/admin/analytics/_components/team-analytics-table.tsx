@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/cn";
 import type { StaffActivityRow } from "@/lib/team-analytics";
-import { Mail, MessageSquare, PhoneCall, ShieldCheck } from "lucide-react";
+import { Mail, MessageCircle, MessageSquare, PhoneCall, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 interface Props {
@@ -73,6 +73,7 @@ export function TeamAnalyticsTable({ rows, windowDays }: Props) {
               <th className="w-20 px-2 py-2.5 text-right">Calls</th>
               <th className="w-20 px-2 py-2.5 text-right">Emails</th>
               <th className="w-20 px-2 py-2.5 text-right">SMS</th>
+              <th className="w-20 px-2 py-2.5 text-right">Viber</th>
               <th className="w-20 px-2 py-2.5 text-right">Total</th>
               <th className="w-24 px-2 py-2.5 text-right">Avg / day</th>
               <th className="w-32 px-3 py-2.5">Last {windowDays === 7 ? "7" : windowDays} days</th>
@@ -142,6 +143,11 @@ export function TeamAnalyticsTable({ rows, windowDays }: Props) {
                     value={row.smsSent}
                     tone="text-orange-600 dark:text-orange-400"
                     icon={MessageSquare}
+                  />
+                  <NumberCell
+                    value={row.viberTouches}
+                    tone="text-purple-600 dark:text-purple-400"
+                    icon={MessageCircle}
                   />
 
                   <td className="px-2 py-3 text-right align-middle font-mono text-sm tabular-nums">

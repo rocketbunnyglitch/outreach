@@ -183,6 +183,20 @@ export function OutreachBrandForm({ initial, action }: OutreachBrandFormProps) {
             />
           </FieldShell>
 
+          <FieldShell
+            name="viberLineE164"
+            label="Viber line"
+            hint="Shared team Viber number. Used for venues Quo can't reach (PH, MENA, EE)."
+            error={fieldErrors.viberLineE164?.[0]}
+          >
+            <Input
+              id="viberLineE164"
+              name="viberLineE164"
+              defaultValue={initial?.viberLineE164 ?? ""}
+              placeholder="+639171234567"
+            />
+          </FieldShell>
+
           <FieldShell name="status" label="Status">
             <Select name="status" defaultValue={initial?.status ?? "active"}>
               <SelectTrigger id="status">

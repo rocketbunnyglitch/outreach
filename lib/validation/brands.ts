@@ -80,6 +80,7 @@ export const outreachBrandCreateSchema = z.object({
   emailSignatureHtml: optionalLongText,
   emailSignatureText: optionalLongText,
   quoLineE164: e164,
+  viberLineE164: e164,
   status: z.enum(["active", "retired"]).default("active"),
 });
 

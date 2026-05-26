@@ -31,6 +31,7 @@ export interface StaffActivityRow {
   calls: number;
   emailsSent: number;
   smsSent: number;
+  viberTouches: number;
   totalTouches: number;
   /** Daily totals, length === windowDays, oldest first. */
   daily: number[];
@@ -42,6 +43,7 @@ export interface TeamAnalyticsTotals {
   calls: number;
   emailsSent: number;
   smsSent: number;
+  viberTouches: number;
   totalTouches: number;
   activeStaffCount: number;
 }
@@ -71,6 +73,7 @@ export async function loadTeamAnalytics(
     calls: number;
     emails_sent: number;
     sms_sent: number;
+    viber_touches: number;
     total_touches: number;
     daily: string; // postgres returns int[] as a string like "{0,1,3,0,5,2,1}"
   }>(sql`
@@ -104,7 +107,10 @@ export async function loadTeamAnalytics(
         COUNT(liw.staff_member_id) FILTER (
           WHERE liw.channel = 'sms'
             AND liw.outcome IN ('sent','interested','confirmed','callback_requested')
-        )::int AS day_sms
+        )::int AS day_sms,
+        COUNT(liw.staff_member_id) FILTER (
+          WHERE liw.channel = 'viber'
+        )::int AS day_viber
       FROM staff_members sm
       CROSS JOIN date_series ds
       LEFT JOIN log_in_window liw
@@ -120,9 +126,10 @@ export async function loadTeamAnalytics(
       COALESCE(SUM(psd.day_calls), 0)::int AS calls,
       COALESCE(SUM(psd.day_emails), 0)::int AS emails_sent,
       COALESCE(SUM(psd.day_sms), 0)::int AS sms_sent,
-      COALESCE(SUM(psd.day_calls + psd.day_emails + psd.day_sms), 0)::int AS total_touches,
+      COALESCE(SUM(psd.day_viber), 0)::int AS viber_touches,
+      COALESCE(SUM(psd.day_calls + psd.day_emails + psd.day_sms + psd.day_viber), 0)::int AS total_touches,
       ARRAY_AGG(
-        (psd.day_calls + psd.day_emails + psd.day_sms)
+        (psd.day_calls + psd.day_emails + psd.day_sms + psd.day_viber)
         ORDER BY psd.day ASC
       )::text AS daily
     FROM staff_members sm
@@ -140,6 +147,7 @@ export async function loadTeamAnalytics(
     calls: number;
     emails_sent: number;
     sms_sent: number;
+    viber_touches: number;
     total_touches: number;
     daily: string;
   };
@@ -160,6 +168,7 @@ export async function loadTeamAnalytics(
       calls: r.calls,
       emailsSent: r.emails_sent,
       smsSent: r.sms_sent,
+      viberTouches: r.viber_touches,
       totalTouches: r.total_touches,
       daily,
       avgPerActiveDay,
@@ -170,6 +179,7 @@ export async function loadTeamAnalytics(
     calls: composed.reduce((a, r) => a + r.calls, 0),
     emailsSent: composed.reduce((a, r) => a + r.emailsSent, 0),
     smsSent: composed.reduce((a, r) => a + r.smsSent, 0),
+    viberTouches: composed.reduce((a, r) => a + r.viberTouches, 0),
     totalTouches: composed.reduce((a, r) => a + r.totalTouches, 0),
     activeStaffCount: composed.filter((r) => r.totalTouches > 0).length,
   };
@@ -196,6 +206,7 @@ export interface StaffDailyDetail {
   calls: number;
   emailsSent: number;
   smsSent: number;
+  viberTouches: number;
   total: number;
 }
 
@@ -210,6 +221,7 @@ export async function loadStaffDailyDetail(opts: {
     calls: number;
     emails_sent: number;
     sms_sent: number;
+    viber_touches: number;
   }>(sql`
     WITH date_series AS (
       SELECT generate_series(
@@ -228,7 +240,8 @@ export async function loadStaffDailyDetail(opts: {
       COUNT(ol.id) FILTER (
         WHERE ol.channel = 'sms'
           AND ol.outcome IN ('sent','interested','confirmed','callback_requested')
-      )::int AS sms_sent
+      )::int AS sms_sent,
+      COUNT(ol.id) FILTER (WHERE ol.channel = 'viber')::int AS viber_touches
     FROM date_series ds
     LEFT JOIN outreach_log ol
       ON ol.staff_member_id = ${opts.staffId}
@@ -237,7 +250,13 @@ export async function loadStaffDailyDetail(opts: {
     ORDER BY ds.day ASC
   `);
 
-  type Row = { day: string; calls: number; emails_sent: number; sms_sent: number };
+  type Row = {
+    day: string;
+    calls: number;
+    emails_sent: number;
+    sms_sent: number;
+    viber_touches: number;
+  };
   const rows: Row[] = Array.isArray(result)
     ? (result as unknown as Row[])
     : ((result as unknown as { rows: Row[] }).rows ?? []);
@@ -247,7 +266,8 @@ export async function loadStaffDailyDetail(opts: {
     calls: r.calls,
     emailsSent: r.emails_sent,
     smsSent: r.sms_sent,
-    total: r.calls + r.emails_sent + r.sms_sent,
+    viberTouches: r.viber_touches,
+    total: r.calls + r.emails_sent + r.sms_sent + r.viber_touches,
   }));
 }
 
@@ -285,6 +305,7 @@ export interface TopVenueRow {
   calls: number;
   emails: number;
   sms: number;
+  viber: number;
   lastTouchAt: string;
 }
 
@@ -309,6 +330,7 @@ export interface StaffActivityProfile {
     calls: number;
     emailsSent: number;
     smsSent: number;
+    viberTouches: number;
     totalTouches: number;
     activeDays: number;
   };
@@ -359,6 +381,7 @@ export async function loadStaffActivityProfile(opts: {
     calls: daily.reduce((a, d) => a + d.calls, 0),
     emailsSent: daily.reduce((a, d) => a + d.emailsSent, 0),
     smsSent: daily.reduce((a, d) => a + d.smsSent, 0),
+    viberTouches: daily.reduce((a, d) => a + d.viberTouches, 0),
     totalTouches: daily.reduce((a, d) => a + d.total, 0),
     activeDays: daily.filter((d) => d.total > 0).length,
   };
@@ -394,6 +417,7 @@ async function loadTopVenuesForStaff(staffId: string, windowDays: number): Promi
     calls: number;
     emails: number;
     sms: number;
+    viber: number;
     last_touch_at: string;
   }>(sql`
     SELECT
@@ -410,6 +434,7 @@ async function loadTopVenuesForStaff(staffId: string, windowDays: number): Promi
         WHERE ol.channel = 'sms'
           AND ol.outcome IN ('sent','interested','confirmed','callback_requested')
       )::int AS sms,
+      COUNT(ol.id) FILTER (WHERE ol.channel = 'viber')::int AS viber,
       MAX(ol.created_at)::text AS last_touch_at
     FROM outreach_log ol
     JOIN venues v ON v.id = ol.venue_id
@@ -429,6 +454,7 @@ async function loadTopVenuesForStaff(staffId: string, windowDays: number): Promi
     calls: number;
     emails: number;
     sms: number;
+    viber: number;
     last_touch_at: string;
   };
   const rows: Row[] = Array.isArray(result)
@@ -443,6 +469,7 @@ async function loadTopVenuesForStaff(staffId: string, windowDays: number): Promi
     calls: r.calls,
     emails: r.emails,
     sms: r.sms,
+    viber: r.viber,
     lastTouchAt: r.last_touch_at,
   }));
 }

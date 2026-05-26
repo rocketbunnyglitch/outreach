@@ -55,6 +55,12 @@ export const outreachBrands = pgTable(
     // Shared phone line shown in signature; per-staff lines may override
     quoLineE164: text("quo_line_e164"),
 
+    // Shared Viber account used by the 2-3 outreach staff for venues in
+    // regions Quo can't service well (PH, parts of MENA, Eastern Europe).
+    // The Viber app on the operator's device handles routing — this
+    // column is the operational record of which number is dialed FROM.
+    viberLineE164: text("viber_line_e164"),
+
     // Reputation isolation lifecycle
     status: outreachBrandStatus("status").notNull().default("active"),
 
