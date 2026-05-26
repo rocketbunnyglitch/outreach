@@ -318,7 +318,7 @@ function ThrottleBadge({
   warmupPhase,
   autoPausedAt,
   autoPausedReason,
-  dailySendLimit,
+  dailySendLimit: _dailySendLimit,
 }: {
   status: Awaited<ReturnType<typeof canSendNow>> | undefined;
   warmupPhase: boolean;
