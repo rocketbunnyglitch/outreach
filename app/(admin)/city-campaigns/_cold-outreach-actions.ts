@@ -174,6 +174,173 @@ export async function archiveColdOutreachEntry(
   }
 }
 
+// =========================================================================
+// Bulk operations
+//
+// Three multi-row actions to speed up day-to-day pipeline management:
+//   - bulkUpdateColdOutreachStatus: stamp the same status on N rows
+//   - bulkAssignColdOutreach: assign N rows to one staff member
+//   - bulkArchiveColdOutreach: archive N rows
+//
+// All three accept a comma-separated entryIds form field (matches the
+// pattern of multi-select <input type="hidden" />) and run their writes
+// in a single transaction so partial failures don't half-apply.
+//
+// Each bumps last_touch_at to NOW() so the changed rows surface as
+// recently-active in the Today widget + analytics. (Operator chose to
+// touch them.) Archive is the exception — it doesn't bump touch since
+// the row is going away.
+// =========================================================================
+
+const bulkUuids = z
+  .string()
+  .min(36)
+  .max(36 * 500 + 500) // safety cap: 500 entries max per call
+  .transform((s) =>
+    s
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(uuid).min(1).max(500));
+
+const bulkStatusSchema = z.object({
+  entryIds: bulkUuids,
+  status: statusSchema,
+  cityCampaignId: uuid.optional(),
+});
+
+export async function bulkUpdateColdOutreachStatus(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ updated: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkStatusSchema.safeParse({
+    entryIds: formData.get("entryIds"),
+    status: formData.get("status"),
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid bulk payload." };
+
+  try {
+    const updated = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE cold_outreach_entries
+        SET status = ${parsed.data.status}::cold_outreach_status,
+            last_touch_at = NOW(),
+            updated_by = ${staff.id},
+            updated_at = NOW()
+        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+          AND archived_at IS NULL
+        RETURNING id
+      `);
+      const rows: Array<{ id: string }> = Array.isArray(result)
+        ? (result as unknown as Array<{ id: string }>)
+        : ((result as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+      return rows.length;
+    });
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    }
+    return { ok: true, data: { updated } };
+  } catch (err) {
+    logger.error({ err }, "bulkUpdateColdOutreachStatus failed");
+    return { ok: false, error: "Bulk status update failed." };
+  }
+}
+
+const bulkAssignSchema = z.object({
+  entryIds: bulkUuids,
+  /** Empty string clears assignment ("none"). */
+  staffMemberId: z
+    .string()
+    .max(36)
+    .transform((s) => s.trim() || null)
+    .pipe(uuid.nullable()),
+  cityCampaignId: uuid.optional(),
+});
+
+export async function bulkAssignColdOutreach(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ updated: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkAssignSchema.safeParse({
+    entryIds: formData.get("entryIds"),
+    staffMemberId: formData.get("staffMemberId") ?? "",
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid bulk payload." };
+
+  try {
+    const updated = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE cold_outreach_entries
+        SET assigned_staff_id = ${parsed.data.staffMemberId},
+            last_touch_at = NOW(),
+            updated_by = ${staff.id},
+            updated_at = NOW()
+        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+          AND archived_at IS NULL
+        RETURNING id
+      `);
+      const rows: Array<{ id: string }> = Array.isArray(result)
+        ? (result as unknown as Array<{ id: string }>)
+        : ((result as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+      return rows.length;
+    });
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    }
+    return { ok: true, data: { updated } };
+  } catch (err) {
+    logger.error({ err }, "bulkAssignColdOutreach failed");
+    return { ok: false, error: "Bulk assign failed." };
+  }
+}
+
+const bulkArchiveSchema = z.object({
+  entryIds: bulkUuids,
+  cityCampaignId: uuid.optional(),
+});
+
+export async function bulkArchiveColdOutreach(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ archived: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkArchiveSchema.safeParse({
+    entryIds: formData.get("entryIds"),
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid bulk payload." };
+
+  try {
+    const archived = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE cold_outreach_entries
+        SET archived_at = NOW(),
+            updated_by = ${staff.id},
+            updated_at = NOW()
+        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+          AND archived_at IS NULL
+        RETURNING id
+      `);
+      const rows: Array<{ id: string }> = Array.isArray(result)
+        ? (result as unknown as Array<{ id: string }>)
+        : ((result as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+      return rows.length;
+    });
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    }
+    return { ok: true, data: { archived } };
+  } catch (err) {
+    logger.error({ err }, "bulkArchiveColdOutreach failed");
+    return { ok: false, error: "Bulk archive failed." };
+  }
+}
+
 /**
  * Generate venue leads via cluster discovery.
  *

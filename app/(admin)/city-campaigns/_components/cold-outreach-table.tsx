@@ -9,6 +9,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   acceptLeadSuggestions,
   archiveColdOutreachEntry,
+  bulkArchiveColdOutreach,
+  bulkAssignColdOutreach,
+  bulkUpdateColdOutreachStatus,
   generateVenueLeads,
   updateColdOutreachField,
   upsertColdOutreachEntry,
@@ -95,6 +98,26 @@ export function ColdOutreachTable({
   staff,
 }: Props) {
   const [adding, setAdding] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected((prev) =>
+      prev.size === entries.length ? new Set() : new Set(entries.map((e) => e.entryId)),
+    );
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
 
   if (entries.length === 0 && !adding) {
     return (
@@ -105,6 +128,9 @@ export function ColdOutreachTable({
       />
     );
   }
+
+  const allSelected = selected.size > 0 && selected.size === entries.length;
+  const someSelected = selected.size > 0 && selected.size < entries.length;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
@@ -123,10 +149,26 @@ export function ColdOutreachTable({
         </p>
       </header>
 
+      {selected.size > 0 && (
+        <BulkActionBar
+          selectedIds={Array.from(selected)}
+          cityCampaignId={cityCampaignId}
+          staff={staff}
+          onComplete={clearSelection}
+        />
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
+              <th className="w-9 px-3 py-2.5">
+                <SelectAllCheckbox
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onChange={toggleAll}
+                />
+              </th>
               <th className="w-48 px-3 py-2.5">Venue</th>
               <th className="w-44 px-2 py-2.5">Email</th>
               <th className="w-24 px-2 py-2.5">ZeroBounce</th>
@@ -145,6 +187,8 @@ export function ColdOutreachTable({
                 staff={staff}
                 cityCampaignId={cityCampaignId}
                 outreachBrandId={outreachBrandId}
+                selected={selected.has(e.entryId)}
+                onToggleSelect={() => toggleOne(e.entryId)}
                 zebra={i % 2 === 1}
               />
             ))}
@@ -180,12 +224,16 @@ function ColdRow({
   staff,
   cityCampaignId,
   outreachBrandId,
+  selected,
+  onToggleSelect,
   zebra,
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
   cityCampaignId: string;
   outreachBrandId: string | null;
+  selected: boolean;
+  onToggleSelect: () => void;
   zebra: boolean;
 }) {
   const [pending, startTx] = useTransition();
@@ -218,8 +266,20 @@ function ColdRow({
         tone,
         "group border-zinc-200/40 border-b transition-colors duration-150 dark:border-zinc-800/30",
         pending && "opacity-60",
+        selected && "bg-blue-500/[0.05] dark:bg-blue-400/[0.06]",
       )}
     >
+      {/* Selection checkbox */}
+      <td className="px-3 py-2 align-middle">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+          aria-label={`Select ${entry.venueName}`}
+        />
+      </td>
+
       {/* Venue */}
       <td className="px-3 py-2 align-middle">
         <Link
@@ -732,5 +792,222 @@ function GenerateLeadsButton({
         </div>
       )}
     </div>
+  );
+}
+
+// =========================================================================
+// Bulk action bar — appears as a sticky strip below the table header when
+// at least one row is selected. Three actions: change status, assign, archive.
+// =========================================================================
+
+function BulkActionBar({
+  selectedIds,
+  cityCampaignId,
+  staff,
+  onComplete,
+}: {
+  selectedIds: string[];
+  cityCampaignId: string;
+  staff: Array<{ id: string; displayName: string }>;
+  onComplete: () => void;
+}) {
+  const [pendingStatus, startStatus] = useTransition();
+  const [pendingAssign, startAssign] = useTransition();
+  const [pendingArchive, startArchive] = useTransition();
+  const [toast, setToast] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  function setStatus(status: string) {
+    setError(null);
+    const fd = new FormData();
+    fd.set("entryIds", selectedIds.join(","));
+    fd.set("status", status);
+    fd.set("cityCampaignId", cityCampaignId);
+    startStatus(async () => {
+      const result = await bulkUpdateColdOutreachStatus(null, fd);
+      if (!result.ok) {
+        setError(result.error ?? "Status update failed.");
+        return;
+      }
+      setToast(
+        `Set ${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} to "${STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status}"`,
+      );
+      onComplete();
+    });
+  }
+
+  function assign(staffMemberId: string) {
+    setError(null);
+    const fd = new FormData();
+    fd.set("entryIds", selectedIds.join(","));
+    fd.set("staffMemberId", staffMemberId);
+    fd.set("cityCampaignId", cityCampaignId);
+    startAssign(async () => {
+      const result = await bulkAssignColdOutreach(null, fd);
+      if (!result.ok) {
+        setError(result.error ?? "Assignment failed.");
+        return;
+      }
+      const assignee = staff.find((s) => s.id === staffMemberId)?.displayName ?? "unassigned";
+      setToast(
+        `Assigned ${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} to ${assignee}`,
+      );
+      onComplete();
+    });
+  }
+
+  function archive() {
+    if (
+      !confirm(
+        `Archive ${selectedIds.length} venue${selectedIds.length === 1 ? "" : "s"} from cold outreach? They'll disappear from the table but can be re-added.`,
+      )
+    )
+      return;
+    setError(null);
+    const fd = new FormData();
+    fd.set("entryIds", selectedIds.join(","));
+    fd.set("cityCampaignId", cityCampaignId);
+    startArchive(async () => {
+      const result = await bulkArchiveColdOutreach(null, fd);
+      if (!result.ok) {
+        setError(result.error ?? "Archive failed.");
+        return;
+      }
+      setToast(`Archived ${result.data?.archived ?? 0} venues`);
+      onComplete();
+    });
+  }
+
+  const busy = pendingStatus || pendingAssign || pendingArchive;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-blue-200/60 border-b bg-blue-50/60 px-5 py-2.5 dark:border-blue-900/40 dark:bg-blue-950/30">
+      <div className="flex items-center gap-2">
+        <span className="font-medium font-mono text-[11px] text-blue-700 uppercase tracking-[0.08em] dark:text-blue-300">
+          {selectedIds.length} selected
+        </span>
+        <button
+          type="button"
+          onClick={onComplete}
+          className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] underline-offset-4 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+        >
+          clear
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Bulk status */}
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+            Status →
+          </span>
+          <select
+            disabled={busy}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v) setStatus(v);
+              e.target.value = "";
+            }}
+            className="h-7 cursor-pointer appearance-none rounded-md border border-zinc-200 bg-white px-2 pr-6 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+          >
+            <option value="">change…</option>
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {pendingStatus && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+        </div>
+
+        {/* Bulk assign */}
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+            Assign →
+          </span>
+          <select
+            disabled={busy}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v !== "_skip") assign(v);
+              e.target.value = "_skip";
+            }}
+            className="h-7 cursor-pointer appearance-none rounded-md border border-zinc-200 bg-white px-2 pr-6 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
+            defaultValue="_skip"
+          >
+            <option value="_skip">pick…</option>
+            <option value="">— Unassign</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.displayName}
+              </option>
+            ))}
+          </select>
+          {pendingAssign && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
+        </div>
+
+        {/* Bulk archive */}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={archive}
+          disabled={busy}
+          className="text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+        >
+          {pendingArchive ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Archiving…
+            </>
+          ) : (
+            <>
+              <Trash2 className="h-3 w-3" /> Archive
+            </>
+          )}
+        </Button>
+      </div>
+
+      {error && (
+        <p className="w-full font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
+      )}
+      {toast && !error && (
+        <p className="w-full font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+          {toast}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SelectAllCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+}) {
+  // React doesn't expose "indeterminate" as a prop — set it via ref
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate && !checked;
+  }, [indeterminate, checked]);
+
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+      aria-label="Select all venues"
+    />
   );
 }
