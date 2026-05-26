@@ -20,7 +20,7 @@
  */
 
 import { logger } from "@/lib/logger";
-import { drainScheduledSends } from "@/lib/send-worker";
+import { drainFollowups, drainScheduledSends } from "@/lib/send-worker";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +37,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await drainScheduledSends();
-    if (result.claimed > 0) {
-      logger.info({ result }, "send worker tick");
+    const [scheduled, followups] = await Promise.all([drainScheduledSends(), drainFollowups()]);
+    if (scheduled.claimed > 0 || followups.claimed > 0) {
+      logger.info({ scheduled, followups }, "send worker tick");
     }
-    return NextResponse.json(result);
+    return NextResponse.json({ scheduled, followups });
   } catch (err) {
     logger.error({ err }, "send worker tick failed");
     return NextResponse.json(

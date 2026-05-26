@@ -30,6 +30,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { isGmailOAuthConfigured, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
+import { enrollOnSend } from "@/lib/outreach-sequences";
 import { canSendNow, maybeGraduateWarmup } from "@/lib/send-throttle";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -202,6 +203,20 @@ export async function sendOutreachEmail(
         await maybeGraduateWarmup(inbox.id);
       } catch (gErr) {
         logger.error({ err: gErr, inboxId: inbox.id }, "warmup graduation failed");
+      }
+
+      // Phase 3: enroll into the follow-up cadence. No-op when no
+      // cadence is defined for this brand.
+      try {
+        await enrollOnSend({
+          venueId: input.venueId,
+          outreachBrandId: input.outreachBrandId,
+          staffMemberId: staff.id,
+          staffOutreachEmailId: inbox.id,
+          recipientEmail: input.to,
+        });
+      } catch (eErr) {
+        logger.error({ err: eErr, venueId: input.venueId }, "sequence enrollment failed");
       }
     }
 

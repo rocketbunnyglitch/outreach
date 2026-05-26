@@ -48,6 +48,12 @@ export const scheduledSends = pgTable(
     /** 'pending' | 'sending' | 'sent' | 'failed' | 'canceled' */
     status: text("status").notNull().default("pending"),
 
+    /**
+     * 'cold' | 'follow_up' | 'transactional'. Transactional bypasses
+     * the cold throttle since it's going to a confirmed relationship.
+     */
+    sendKind: text("send_kind").notNull().default("cold"),
+
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
     windowStart: timestamp("window_start", { withTimezone: true }),
     windowEnd: timestamp("window_end", { withTimezone: true }),

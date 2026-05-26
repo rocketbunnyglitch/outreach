@@ -37,6 +37,7 @@ export * from "./events";
 export * from "./venues";
 export * from "./venue-events";
 export * from "./outreach";
+export * from "./outreach-sequences";
 export * from "./scheduled-sends";
 export * from "./wristbands";
 export * from "./tasks";

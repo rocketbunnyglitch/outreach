@@ -16,6 +16,7 @@ import {
   integer,
   pgTable,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -58,6 +59,13 @@ export const venues = pgTable(
     // Blocklist
     doNotContact: boolean("do_not_contact").notNull().default(false),
     doNotContactReason: text("do_not_contact_reason"),
+
+    /**
+     * Set when a recipient clicks the one-click unsubscribe link in a
+     * cold email. Stops all cadence sends across all brands. Operator
+     * can manually clear via SQL if needed (e.g. wrong-recipient case).
+     */
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
     doNotContactExpiresAt: date("do_not_contact_expires_at"),
 
     ...archivedAt,

@@ -139,7 +139,7 @@ export async function updateVenueEvent(
       .limit(1);
     const previousStatus = previousStatusRow[0]?.status ?? null;
 
-    const [row] = await withAuditContext(staff.id, async (tx) => {
+    const txOutput = await withAuditContext(staff.id, async (tx) => {
       const result = await tx
         .update(venueEvents)
         .set(patch)
@@ -149,10 +149,12 @@ export async function updateVenueEvent(
       // Confirmation cascade — generate auto-tasks atomically with the
       // status flip. Only fires on transition (not on repeated saves
       // while already confirmed).
+      let firePhase4 = false;
       if (input.status !== undefined && isConfirmationTransition(previousStatus, input.status)) {
         try {
           const cascade = await generateConfirmationCascade(tx, id);
           logger.info({ venueEventId: id, ...cascade }, "confirmation cascade fired");
+          firePhase4 = !cascade.skipped;
         } catch (cascadeErr) {
           // Log but don't block the venue_event update. Operators can
           // manually create tasks if cascade fails.
@@ -163,9 +165,26 @@ export async function updateVenueEvent(
         }
       }
 
-      return result;
+      return { result, firePhase4 };
     });
-    if (row?.eventId) revalidatePath(`/events/${row.eventId}`);
+
+    // Phase 4 — if the brand is at Phase 4, queue the cascade emails as
+    // transactional scheduled_sends. Runs OUTSIDE the venue_event tx so
+    // a queue-insert failure doesn't roll back the status flip.
+    if (txOutput?.firePhase4) {
+      try {
+        const { queueCascadeSendsForVenueEvent } = await import("@/lib/cascade-sends-trigger");
+        await queueCascadeSendsForVenueEvent({
+          venueEventId: id,
+          staffMemberId: staff.id,
+        });
+      } catch (sendErr) {
+        logger.error({ err: sendErr, venueEventId: id }, "phase 4 cascade-sends trigger failed");
+      }
+    }
+
+    const finalRow = txOutput?.result?.[0];
+    if (finalRow?.eventId) revalidatePath(`/events/${finalRow.eventId}`);
     revalidatePath("/tasks");
     revalidatePath("/");
     return { ok: true, data: { id } };
