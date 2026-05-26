@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+# But DO commit the example
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+.pm2/
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+*.swp
+
+# Test outputs
+coverage/
+.nyc_output/
+
+# Database backups (use B2 instead)
+*.dump
+*.sql.gz
+backups/
+
+# Secrets directory
+secrets/
+*.key
+*.pem

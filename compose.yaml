@@ -1,0 +1,44 @@
+# Local development services for the crawl engine.
+# Run: `docker compose up -d`
+#
+# Postgres uses port 5433 to avoid conflicting with a system Postgres on 5432.
+# Redis uses port 6379 (default); the connection string in .env.example uses
+# logical DB 1 so it stays isolated from anything else you might be running.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: crawl-engine-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crawl_engine
+      POSTGRES_USER: crawl_engine_app
+      POSTGRES_PASSWORD: devpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - crawl_engine_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crawl_engine_app -d crawl_engine"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: crawl-engine-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - crawl_engine_redis:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  crawl_engine_pg:
+  crawl_engine_redis:
