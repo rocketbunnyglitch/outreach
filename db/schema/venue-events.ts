@@ -10,7 +10,16 @@
  * confirmation cascade (Phase 7) does on status → confirmed.
  */
 
-import { index, pgTable, text, time, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  pgTable,
+  smallint,
+  text,
+  time,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { auditColumns, idColumn, versionColumn } from "../types";
 import { venueEventStatus, venueRole } from "./enums";
 import { events } from "./events";
@@ -32,6 +41,18 @@ export const venueEvents = pgTable(
 
     role: venueRole("role").notNull(),
     status: venueEventStatus("status").notNull().default("lead"),
+
+    /**
+     * Position WITHIN a (event, role) group, 1-indexed.
+     *   - role=wristband:  always 1 (single slot per crawl)
+     *   - role=middle:     1, 2, 3, … (Middle 1, Middle 2, etc.)
+     *   - role=final:      always 1 (single slot per crawl)
+     *   - role=alt_final:  1, 2, 3, … (backup finals; ordered)
+     *
+     * Enforced unique on (event_id, role, slot_position) where not null.
+     * Used by the city sheet to render slot rows in deterministic order.
+     */
+    slotPosition: smallint("slot_position"),
 
     // The slot times the venue agreed to. Stored as time-of-day in the
     // city's local TZ (resolved via cities.timezone). NULL until agreed.

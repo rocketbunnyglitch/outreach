@@ -80,11 +80,12 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
   );
 
   // Group by role so the operator can read the sheet by crawl-stage order
-  // (wristband → middle → final).
-  const grouped: Record<"wristband" | "middle" | "final", VenueEventDetail[]> = {
+  // (wristband → middle → final → alt_final).
+  const grouped: Record<"wristband" | "middle" | "final" | "alt_final", VenueEventDetail[]> = {
     wristband: [],
     middle: [],
     final: [],
+    alt_final: [],
   };
   for (const v of venuesWithQrs) {
     grouped[v.ve.role].push(v);

@@ -43,14 +43,14 @@ export default async function CitiesListPage() {
   }));
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-8 animate-[fade-in_300ms_ease-out]">
+    <div className="mx-auto flex max-w-5xl animate-[fade-in_300ms_ease-out] flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
             Master directory
           </p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight">Cities</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+          <h1 className="mt-2 font-semibold text-4xl tracking-tight">Cities</h1>
+          <p className="mt-2 max-w-2xl text-sm text-zinc-600 leading-relaxed dark:text-zinc-400">
             {items.length} cit{items.length === 1 ? "y" : "ies"} with timezone + coordinates. Reused
             across every campaign — keep this list clean.
           </p>

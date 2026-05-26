@@ -58,7 +58,7 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
     <div className="space-y-6">
       {/* Search */}
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+        <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 text-zinc-400" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -69,7 +69,7 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
           <button
             type="button"
             onClick={() => setQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.1em] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+            className="-translate-y-1/2 absolute top-1/2 right-3 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             clear
           </button>
@@ -78,8 +78,8 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
 
       {/* Empty state */}
       {filtered.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-zinc-300/80 px-6 py-16 text-center dark:border-zinc-700/60">
-          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <div className="rounded-2xl border border-zinc-300/80 border-dashed px-6 py-16 text-center dark:border-zinc-700/60">
+          <p className="font-medium text-sm text-zinc-700 dark:text-zinc-300">
             No cities match "{query}"
           </p>
           <p className="mt-1 text-xs text-zinc-500">
@@ -101,12 +101,12 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
           key={code}
           className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none"
         >
-          <header className="flex items-baseline justify-between gap-3 border-b border-zinc-200/60 bg-zinc-50/60 px-5 py-3 dark:border-zinc-800/40 dark:bg-zinc-900/40">
-            <h2 className="inline-flex items-center gap-2 text-sm font-semibold tracking-tight">
+          <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b bg-zinc-50/60 px-5 py-3 dark:border-zinc-800/40 dark:bg-zinc-900/40">
+            <h2 className="inline-flex items-center gap-2 font-semibold text-sm tracking-tight">
               <Globe className="h-3.5 w-3.5 text-zinc-500" />
               {group.country}
             </h2>
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">
+            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
               {group.items.length} {group.items.length === 1 ? "city" : "cities"}
             </span>
           </header>
@@ -133,12 +133,12 @@ function CityRow({ city }: { city: CityItem }) {
           <div className="flex items-baseline gap-2.5">
             <h3 className="font-medium text-zinc-900 dark:text-zinc-100">{city.name}</h3>
             {city.region && (
-              <span className="font-mono text-[10px] tracking-wide text-zinc-500">
+              <span className="font-mono text-[10px] text-zinc-500 tracking-wide">
                 {city.region}
               </span>
             )}
           </div>
-          <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-zinc-500">
+          <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
             <span>{city.timezone}</span>
             {hasCoords && (
               <>
@@ -159,7 +159,7 @@ function CityRow({ city }: { city: CityItem }) {
         </div>
         <span
           className={cn(
-            "font-mono text-[10px] tracking-widest text-zinc-400",
+            "font-mono text-[10px] text-zinc-400 tracking-widest",
             "translate-x-1 opacity-0 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100",
           )}
         >

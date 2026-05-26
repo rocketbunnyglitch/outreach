@@ -252,7 +252,6 @@ function buildTitle(type: ActionType, sentence: string): string {
 export function hashNoteContent(body: string): string {
   // Lazy require to keep this module client-bundleable for shared types
   // even though the actual hash is server-only.
-  // biome-ignore lint/correctness/noNodejsModules: server only
   const { createHash } = require("node:crypto");
   return createHash("sha256").update(body, "utf8").digest("hex");
 }

@@ -65,7 +65,7 @@ export const eventStatus = pgEnum("event_status", [
 // Venues
 // =========================================================================
 
-export const venueRole = pgEnum("venue_role", ["wristband", "middle", "final"]);
+export const venueRole = pgEnum("venue_role", ["wristband", "middle", "final", "alt_final"]);
 
 export const venueEventStatus = pgEnum("venue_event_status", [
   "lead",

@@ -1,11 +1,12 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
+import { loadCitySheet } from "@/lib/city-sheet-data";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
+import type { CityStatusPill } from "@/lib/tracker-status";
 import { findWarmLeads } from "@/lib/warm-leads";
 import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -16,7 +17,8 @@ import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { CityCampaignForm } from "../_components/city-campaign-form";
-import { EventsList } from "../_components/events-list";
+import { CitySheetHeader } from "../_components/city-sheet-header";
+import { CrawlSlotTable } from "../_components/crawl-slot-table";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +27,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
 
   const { staff: currentStaff } = await requireStaff();
 
-  const [cc, eventRows, staff, notesList] = await Promise.all([
+  const [cc, _eventRows, staff, notesList] = await Promise.all([
     db
       .select({
         cc: cityCampaigns,
@@ -87,6 +89,29 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     countByEvent.set(row.eventId, Number(row.n));
   }
 
+  // Load the premium city-sheet shape (per-crawl slot tables, etc.)
+  const sheetData = await loadCitySheet(id);
+
+  // Aggregate sales + compute status pill the same way the dashboard does
+  const totalTicketsSold = sheetData?.crawls.reduce((sum, c) => sum + (c.ticketsSold ?? 0), 0) ?? 0;
+  const computedStatusPill: CityStatusPill = (() => {
+    if (cc.cc.status === "cancelled") return "cancelled";
+    if (!sheetData) return "outreach";
+    let openSlots = 0;
+    for (const crawl of sheetData.crawls) {
+      const unfilled = crawl.slots.filter(
+        (s) =>
+          s.venueEventId == null &&
+          (s.role === "wristband" || s.role === "middle" || s.role === "final"),
+      );
+      openSlots += unfilled.length;
+    }
+    if (openSlots === 0) return "outreach";
+    if (openSlots === 1) return "need_1_venue";
+    if (openSlots === 2) return "need_2_venues";
+    return "need_3_venues";
+  })();
+
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
     return updateCityCampaign(id, prev, fd);
@@ -97,38 +122,61 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
   }
 
   return (
-    <div className="flex flex-col gap-12">
-      <div className="flex flex-col gap-6">
-        <header>
-          <Link
-            href={`/campaigns/${cc.campaign.id}`}
-            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-          >
-            <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
-          </Link>
-          <h1 className="mt-3 font-semibold text-4xl tracking-tight ">
-            {cc.city.name}
-            {cc.city.region && <span className="ml-3 text-zinc-400">{cc.city.region}</span>}
-          </h1>
-          <div className="mt-3 flex items-center gap-3">
-            <Badge tone={statusTone(cc.cc.status)}>{cc.cc.status}</Badge>
-            <span className="text-sm text-zinc-500">
-              priority {cc.cc.priority} · {cc.cc.targetVenueCount} target venues
-              {cc.leadStaff && ` · lead ${cc.leadStaff.displayName}`}
-            </span>
-          </div>
-        </header>
+    <div className="mx-auto flex max-w-6xl animate-[fade-in_300ms_ease-out] flex-col gap-8">
+      {/* Back link */}
+      <Link
+        href={`/campaigns/${cc.campaign.id}`}
+        className="inline-flex w-fit items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] hover:text-zinc-900 dark:hover:text-zinc-100"
+      >
+        <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
+      </Link>
 
-        <CityCampaignForm initial={cc.cc} staff={staff} action={boundUpdate} />
-      </div>
+      {/* Premium header */}
+      {sheetData && (
+        <CitySheetHeader
+          data={sheetData}
+          totalTicketsSold={totalTicketsSold}
+          statusPill={computedStatusPill}
+        />
+      )}
 
-      <EventsList
-        cityCampaignId={id}
-        events={eventRows.map((r) => ({
-          ...r.event,
-          venueCount: countByEvent.get(r.event.id) ?? 0,
-        }))}
-      />
+      {/* Crawls grouped by day */}
+      {sheetData && sheetData.crawls.length > 0 ? (
+        <section className="flex flex-col gap-5">
+          <header>
+            <h2 className="font-semibold text-2xl tracking-tight">Crawls</h2>
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              {sheetData.crawls.length} crawl{sheetData.crawls.length === 1 ? "" : "s"} across{" "}
+              {Array.from(new Set(sheetData.crawls.map((c) => c.dayPart))).length} day
+              {Array.from(new Set(sheetData.crawls.map((c) => c.dayPart))).length === 1 ? "" : "s"}{" "}
+              · default 4 slots per crawl (Wristband, Middle 1, Middle 2, Final)
+            </p>
+          </header>
+          {sheetData.crawls.map((crawl) => (
+            <CrawlSlotTable
+              key={crawl.eventId}
+              crawl={crawl}
+              cityId={sheetData.cityId}
+              cityCampaignId={sheetData.cityCampaignId}
+              staff={sheetData.staff}
+            />
+          ))}
+        </section>
+      ) : (
+        <section className="rounded-2xl border border-zinc-300/80 border-dashed bg-white/30 p-12 text-center dark:border-zinc-700/60 dark:bg-zinc-950/30">
+          <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">No crawls yet</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Use the CSV importer at{" "}
+            <Link
+              href="/admin"
+              className="text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
+            >
+              /admin
+            </Link>{" "}
+            to bulk-add crawl instances for this city.
+          </p>
+        </section>
+      )}
 
       <WarmLeadsPanel cityName={cc.city.name} campaignName={cc.campaign.name} leads={warmLeads} />
 
@@ -143,15 +191,24 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         deleteAction={deleteNote}
       />
 
+      <details className="rounded-2xl border border-zinc-200/60 bg-white/40 dark:border-zinc-800/40 dark:bg-zinc-950/40">
+        <summary className="cursor-pointer px-5 py-3 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] hover:text-zinc-900 dark:hover:text-zinc-100">
+          Settings · edit city-campaign details
+        </summary>
+        <div className="border-zinc-200/60 border-t px-5 py-4 dark:border-zinc-800/40">
+          <CityCampaignForm initial={cc.cc} staff={staff} action={boundUpdate} />
+        </div>
+      </details>
+
       <form
         action={boundRemove}
-        className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950"
+        className="flex items-center justify-between rounded-2xl border border-rose-200/60 bg-rose-50/40 p-4 dark:border-rose-900/40 dark:bg-rose-950/20"
       >
         <div>
-          <p className="font-medium text-amber-900 text-sm dark:text-amber-200">
+          <p className="font-medium text-rose-900 text-sm dark:text-rose-200">
             Remove this city from the campaign
           </p>
-          <p className="mt-1 text-amber-800 text-xs dark:text-amber-300">
+          <p className="mt-1 text-rose-800/80 text-xs dark:text-rose-300/70">
             Deletes the city-campaign and all its events. The city itself stays.
           </p>
         </div>
@@ -161,10 +218,4 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       </form>
     </div>
   );
-}
-
-function statusTone(s: string): "default" | "success" | "muted" | "warning" {
-  if (s === "active" || s === "confirmed") return "success";
-  if (s === "cancelled") return "warning";
-  return "default";
 }
