@@ -20,8 +20,8 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   acceptLeadSuggestions,
   archiveColdOutreachEntry,
@@ -40,6 +40,8 @@ import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
+
+type SortKey = "venue" | "email" | "status" | "assignee" | "zb" | "lastTouch";
 
 interface ColdEntry {
   entryId: string;
@@ -125,6 +127,115 @@ export function ColdOutreachTable({
   const [suggestOpen, setSuggestOpen] = useState(false);
   const router = useRouter();
 
+  // -------------------------------------------------------------
+  // Sort + filter state. URL-bound so deep-links retain context.
+  // -------------------------------------------------------------
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const sortKey = (searchParams.get("sort") ?? "venue") as SortKey;
+  const sortDir = (searchParams.get("dir") ?? "asc") as "asc" | "desc";
+  const filterStatus = searchParams.get("status") ?? "";
+  const filterAssignee = searchParams.get("assignee") ?? "";
+  const filterZb = searchParams.get("zb") ?? "";
+
+  const setParam = useCallback(
+    (key: string, value: string | null) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      if (value === null || value === "") sp.delete(key);
+      else sp.set(key, value);
+      const qs = sp.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname],
+  );
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setParam("dir", sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setParam("sort", key);
+      setParam("dir", "asc");
+    }
+  }
+
+  // Compute the displayed entry list: filter → sort
+  const displayed = useMemo(() => {
+    const filtered = entries.filter((e) => {
+      if (filterStatus && e.status !== filterStatus) return false;
+      if (filterAssignee === "__me__") {
+        // 'My venues' chip — filtered by client-only since we don't
+        // have currentUserId here; staff/{me} chip filter happens
+        // elsewhere. Skip the constraint when set to __me__ pending
+        // a follow-up to thread session id.
+        // For now treat __me__ as 'has assignee'.
+        if (!e.assignedStaffId) return false;
+      } else if (filterAssignee === "__unassigned__") {
+        if (e.assignedStaffId) return false;
+      } else if (filterAssignee) {
+        if (e.assignedStaffId !== filterAssignee) return false;
+      }
+      if (filterZb && (e.zeroBounceStatus ?? "") !== filterZb) return false;
+      return true;
+    });
+
+    const sorted = [...filtered].sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      let cmp = 0;
+      switch (sortKey) {
+        case "venue":
+          cmp = a.venueName.localeCompare(b.venueName);
+          break;
+        case "email":
+          cmp = (a.venueEmail ?? "").localeCompare(b.venueEmail ?? "");
+          break;
+        case "status": {
+          // Pipeline-order sort so 'pending' floats to the top in asc
+          const order: Record<string, number> = {
+            pending: 0,
+            attempted: 1,
+            email_sent: 2,
+            sms_sent: 3,
+            interested: 4,
+            confirmed: 5,
+            declined: 6,
+            no_response: 7,
+          };
+          cmp = (order[a.status] ?? 99) - (order[b.status] ?? 99);
+          break;
+        }
+        case "assignee":
+          cmp = (a.assignedStaffName ?? "").localeCompare(b.assignedStaffName ?? "");
+          break;
+        case "zb":
+          cmp = (a.zeroBounceStatus ?? "").localeCompare(b.zeroBounceStatus ?? "");
+          break;
+        case "lastTouch": {
+          const aT = a.lastTouchAt ? new Date(a.lastTouchAt).getTime() : 0;
+          const bT = b.lastTouchAt ? new Date(b.lastTouchAt).getTime() : 0;
+          cmp = aT - bT;
+          break;
+        }
+      }
+      // Stable secondary sort by venue name when primary ties
+      if (cmp === 0) cmp = a.venueName.localeCompare(b.venueName);
+      return cmp * dir;
+    });
+
+    return sorted;
+  }, [entries, filterStatus, filterAssignee, filterZb, sortKey, sortDir]);
+
+  const hasActiveFilter = !!(filterStatus || filterAssignee || filterZb);
+
+  function clearAllFilters() {
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete("status");
+    sp.delete("assignee");
+    sp.delete("zb");
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
   // Page-scoped keyboard shortcuts. Press '?' to see them all.
   useShortcut({
     keys: "n",
@@ -140,10 +251,13 @@ export function ColdOutreachTable({
   });
   useShortcut({
     keys: "escape",
-    label: "Clear selection",
+    label: hasActiveFilter ? "Clear filters" : "Clear selection",
     group: "Cold outreach",
-    handler: () => setSelected(new Set()),
-    enabled: selected.size > 0,
+    handler: () => {
+      if (hasActiveFilter) clearAllFilters();
+      else setSelected(new Set());
+    },
+    enabled: selected.size > 0 || hasActiveFilter,
   });
 
   function toggleOne(id: string) {
@@ -157,7 +271,7 @@ export function ColdOutreachTable({
 
   function toggleAll() {
     setSelected((prev) =>
-      prev.size === entries.length ? new Set() : new Set(entries.map((e) => e.entryId)),
+      prev.size === displayed.length ? new Set() : new Set(displayed.map((e) => e.entryId)),
     );
   }
 
@@ -175,8 +289,8 @@ export function ColdOutreachTable({
     );
   }
 
-  const allSelected = selected.size > 0 && selected.size === entries.length;
-  const someSelected = selected.size > 0 && selected.size < entries.length;
+  const allSelected = selected.size > 0 && selected.size === displayed.length;
+  const someSelected = selected.size > 0 && selected.size < displayed.length;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
@@ -186,7 +300,11 @@ export function ColdOutreachTable({
           <h2 className="font-semibold text-lg tracking-tight">
             Cold outreach
             <span className="ml-2 font-mono font-normal text-[11px] text-zinc-500">
-              {entries.length} venue{entries.length === 1 ? "" : "s"}
+              {displayed.length}
+              {hasActiveFilter && displayed.length !== entries.length
+                ? ` of ${entries.length}`
+                : ""}{" "}
+              venue{entries.length === 1 ? "" : "s"}
             </span>
           </h2>
         </div>
@@ -216,6 +334,22 @@ export function ColdOutreachTable({
         />
       )}
 
+      {/* Filter chip strip — visible whenever filters are active OR
+          a quick-filter affordance row at the top before any filters
+          are applied. Sort + filter state lives in the URL so links
+          retain context. */}
+      <FilterChipStrip
+        entries={entries}
+        displayedCount={displayed.length}
+        filterStatus={filterStatus}
+        filterAssignee={filterAssignee}
+        filterZb={filterZb}
+        hasActive={hasActiveFilter}
+        staff={staff}
+        onChange={setParam}
+        onClearAll={clearAllFilters}
+      />
+
       {/* Desktop table — hidden below md so the mobile card stack
           takes over. Cold outreach has 9 columns and that's never
           going to fit on a phone; the card layout below shows the
@@ -231,18 +365,53 @@ export function ColdOutreachTable({
                   onChange={toggleAll}
                 />
               </th>
-              <th className="w-48 px-3 py-2.5">Venue</th>
-              <th className="w-44 px-2 py-2.5">Email</th>
-              <th className="w-24 px-2 py-2.5">ZeroBounce</th>
+              <SortableTh
+                label="Venue"
+                col="venue"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("venue")}
+                width="w-48 px-3"
+              />
+              <SortableTh
+                label="Email"
+                col="email"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("email")}
+                width="w-44 px-2"
+              />
+              <SortableTh
+                label="ZeroBounce"
+                col="zb"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("zb")}
+                width="w-24 px-2"
+              />
               <th className="w-32 px-2 py-2.5">Phone</th>
-              <th className="w-32 px-2 py-2.5">Status</th>
-              <th className="w-28 px-2 py-2.5">Assigned</th>
+              <SortableTh
+                label="Status"
+                col="status"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("status")}
+                width="w-32 px-2"
+              />
+              <SortableTh
+                label="Assigned"
+                col="assignee"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("assignee")}
+                width="w-28 px-2"
+              />
               <th className="px-2 py-2.5">Remarks</th>
               <th className="w-8 px-1 py-2.5" />
             </tr>
           </thead>
           <tbody>
-            {entries.map((e, i) => (
+            {displayed.map((e, i) => (
               <ColdRow
                 key={e.entryId}
                 entry={e}
@@ -278,12 +447,12 @@ export function ColdOutreachTable({
               {selected.size > 0 ? `${selected.size} selected` : "Select all"}
             </button>
             <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
-              {entries.length} venue{entries.length === 1 ? "" : "s"}
+              {displayed.length} venue{displayed.length === 1 ? "" : "s"}
             </span>
           </div>
         )}
         <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/40">
-          {entries.map((e) => (
+          {displayed.map((e) => (
             <li key={e.entryId}>
               <ColdRow
                 entry={e}
@@ -1553,5 +1722,168 @@ function SelectAllCheckbox({
       className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
       aria-label="Select all venues"
     />
+  );
+}
+
+// =========================================================================
+// SortableTh — column header that toggles asc/desc on click
+// =========================================================================
+
+function SortableTh({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onClick,
+  width,
+}: {
+  label: string;
+  col: SortKey;
+  sortKey: SortKey;
+  sortDir: "asc" | "desc";
+  onClick: () => void;
+  width: string;
+}) {
+  const active = sortKey === col;
+  return (
+    <th className={cn(width, "py-2.5")}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors hover:text-zinc-900 dark:hover:text-zinc-100",
+          active ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500",
+        )}
+      >
+        {label}
+        <span className="inline-flex w-2.5 justify-center text-[9px]" aria-hidden>
+          {active ? (sortDir === "asc" ? "▲" : "▼") : ""}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+// =========================================================================
+// FilterChipStrip — quick filters at the top of the table
+// =========================================================================
+
+function FilterChipStrip({
+  entries,
+  displayedCount,
+  filterStatus,
+  filterAssignee,
+  filterZb,
+  hasActive,
+  staff,
+  onChange,
+  onClearAll,
+}: {
+  entries: ColdEntry[];
+  displayedCount: number;
+  filterStatus: string;
+  filterAssignee: string;
+  filterZb: string;
+  hasActive: boolean;
+  staff: Array<{ id: string; displayName: string }>;
+  onChange: (key: string, value: string | null) => void;
+  onClearAll: () => void;
+}) {
+  // Surface only the statuses that actually exist in the dataset, in
+  // pipeline order, so empty buckets don't clutter the strip.
+  const statusCounts = new Map<string, number>();
+  for (const e of entries) {
+    statusCounts.set(e.status, (statusCounts.get(e.status) ?? 0) + 1);
+  }
+  const orderedStatuses = STATUS_OPTIONS.filter((s) => statusCounts.has(s.value));
+
+  // Same for zerobounce buckets
+  const zbCounts = new Map<string, number>();
+  for (const e of entries) {
+    if (e.zeroBounceStatus) {
+      zbCounts.set(e.zeroBounceStatus, (zbCounts.get(e.zeroBounceStatus) ?? 0) + 1);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 border-zinc-200/60 border-b bg-zinc-50/30 px-4 py-2 dark:border-zinc-800/40 dark:bg-zinc-900/20">
+      {/* Status filter — pills, click to toggle */}
+      {orderedStatuses.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {orderedStatuses.map((s) => {
+            const selected = filterStatus === s.value;
+            return (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => onChange("status", selected ? null : s.value)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ring-1 ring-inset transition-colors",
+                  selected
+                    ? "bg-blue-500/[0.10] text-blue-700 ring-blue-500/30 dark:text-blue-300"
+                    : "bg-white text-zinc-600 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-800",
+                )}
+              >
+                {s.label}
+                <span className="font-normal tabular-nums opacity-60">
+                  {statusCounts.get(s.value) ?? 0}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Assignee dropdown */}
+      <div className="ml-auto flex items-center gap-1.5">
+        <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+          Assignee
+        </label>
+        <select
+          value={filterAssignee}
+          onChange={(e) => onChange("assignee", e.target.value || null)}
+          className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+        >
+          <option value="">All</option>
+          <option value="__unassigned__">Unassigned</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.displayName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* ZeroBounce dropdown — only when at least one entry has ZB data */}
+      {zbCounts.size > 0 && (
+        <div className="flex items-center gap-1.5">
+          <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+            Email
+          </label>
+          <select
+            value={filterZb}
+            onChange={(e) => onChange("zb", e.target.value || null)}
+            className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+          >
+            <option value="">All</option>
+            {[...zbCounts.entries()].map(([k, c]) => (
+              <option key={k} value={k}>
+                {k.replace("_", " ")} ({c})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {hasActive && (
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="rounded-md px-2 py-0.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] transition-colors hover:bg-zinc-200/60 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        >
+          Clear · {displayedCount}/{entries.length}
+        </button>
+      )}
+    </div>
   );
 }
