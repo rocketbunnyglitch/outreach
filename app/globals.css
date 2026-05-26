@@ -14,9 +14,8 @@
      components should use `font-sans` (default) with `font-semibold
      tracking-tight` for display-style headings.
 
-     `--font-rounded` is for friendlier display headings — uses SF Pro
-     Rounded on Apple devices (where it's a system font) and falls back
-     to Geist + features that nudge it toward rounded letterforms. */
+     `--font-rounded` picks up SF Pro Rounded on Apple devices and falls
+     back to Geist on other systems. Used for h1-h3. */
   --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "SF Pro Display",
     "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
@@ -26,24 +25,9 @@
   --font-rounded: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", var(--font-geist-sans),
     -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 
-  /* ----- Background tones —————————————————————————————————————
-     Apple elevation model: very dark page, slightly LIGHTER cards
-     floating above it. The previous setup had cards (bg-zinc-950) DARKER
-     than the page (canvas-dark) which is inverted from how macOS / iOS
-     dark mode is built.
-
-     Reference (approximations):
-       page:       #0a0a0c   (near-black, slight blue-cool)
-       card top:   #1e1e22   (Apple system gray 6 dark, top of gradient)
-       card btm:   #18181b   (zinc-900-ish, bottom of gradient)
-       card edge:  rgba(255,255,255,0.07) (top highlight)
-       card line:  #2a2a2e   (subtle outline)
-  */
-  --color-canvas: oklch(0.99 0.002 247);
-  --color-canvas-dark: oklch(0.105 0.003 247);
-
-  --color-card: white;
-  --color-card-border: oklch(0.93 0.003 247);
+  /* ----- Background tones ----- */
+  --color-canvas: #fafafa;
+  --color-canvas-dark: #08080a;
 
   /* Refined animation timings */
   --animate-fade-in: fade-in 200ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
@@ -73,13 +57,6 @@ body {
   letter-spacing: -0.011em;
 }
 
-/* Apple-style display typography:
-   Large headings get heavier weight + tighter tracking automatically.
-   This applies to <h1>-<h3> globally; individual components can still
-   override with Tailwind utilities.
-
-   The `ui-rounded` family at the top of --font-rounded picks up SF Pro
-   Rounded on macOS / iOS for that friendlier display feel. */
 h1,
 h2,
 h3 {
@@ -102,48 +79,60 @@ h1 {
 }
 
 /* ===== Card surface =======================================================
-   Apple-style "elevated card on dark page" treatment. Use on any container
-   that should float above the page surface. Replaces the old pattern
-   `border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950`
-   which had cards equal-to or darker than the page.
+   Apple-style elevated card on near-black page. Belt-and-suspenders dark
+   mode detection: both @media query AND .dark class selector (Tailwind v4
+   uses media by default but components could enable class-based later).
 
-   Three layered effects in dark mode:
-     1. Linear gradient from a slightly-lighter top to base
-     2. 1px outline in a tone between card and page
-     3. Inset 1px top highlight (white at 6% opacity) — the "old Apple"
-        outline that gives the card a subtle 3D feel
-
-   Light mode keeps it simple — white card with a subtle border. The 3D
-   pop is reserved for dark mode where it actually reads.
+   Placed in @layer components so Tailwind utilities applied to the same
+   element don't override the gradient via cascade order.
 */
-.card-surface {
-  background-color: var(--color-card);
-  border: 1px solid var(--color-card-border);
-  border-radius: 1rem; /* 16px — bigger than the old rounded-lg */
+@layer components {
+  .card-surface {
+    background-color: #ffffff;
+    border: 1px solid #e4e4e7;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  }
+
+  .card-surface-quiet {
+    background-color: #ffffff;
+    border: 1px solid #e4e4e7;
+    border-radius: 0.75rem;
+  }
 }
 
+/* Dark mode card treatment — applied via both detection paths */
 @media (prefers-color-scheme: dark) {
   .card-surface {
-    background: linear-gradient(to bottom, oklch(0.215 0.004 247) 0%, oklch(0.18 0.003 247) 100%);
-    border: 1px solid oklch(0.27 0.004 247);
-    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 1px 3px 0 rgba(0, 0, 0, 0.25), 0 1px 0
-      0 rgba(0, 0, 0, 0.4);
+    background-color: #1f1f23;
+    background-image: linear-gradient(to bottom, #2a2a2e 0%, #1a1a1d 100%);
+    border-color: #3f3f46;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 2px 8px
+      0 rgba(0, 0, 0, 0.2);
   }
-}
 
-/* Variant: nested / quieter cards (e.g. inside another card-surface).
-   Less gradient, no shadow — just a subtle background bump. */
-.card-surface-quiet {
-  background-color: var(--color-card);
-  border: 1px solid var(--color-card-border);
-  border-radius: 0.75rem; /* 12px */
-}
-
-@media (prefers-color-scheme: dark) {
   .card-surface-quiet {
-    background-color: oklch(0.19 0.003 247);
-    border: 1px solid oklch(0.24 0.004 247);
+    background-color: #1d1d20;
+    background-image: linear-gradient(to bottom, #232327 0%, #1a1a1d 100%);
+    border-color: #303035;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
   }
+}
+
+/* Class-based fallback in case Tailwind switches to darkMode:'class' */
+.dark .card-surface {
+  background-color: #1f1f23;
+  background-image: linear-gradient(to bottom, #2a2a2e 0%, #1a1a1d 100%);
+  border-color: #3f3f46;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 2px 8px 0
+    rgba(0, 0, 0, 0.2);
+}
+
+.dark .card-surface-quiet {
+  background-color: #1d1d20;
+  background-image: linear-gradient(to bottom, #232327 0%, #1a1a1d 100%);
+  border-color: #303035;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
 }
 
 /* Hairline 1px borders are foundational; harden against subpixel issues */
