@@ -80,6 +80,8 @@ function TopNav({
             <NavLink href="/campaigns">Campaigns</NavLink>
             <NavLink href="/cities">Cities</NavLink>
             <NavLink href="/venues">Venues</NavLink>
+            <NavLink href="/cluster-builder">Clusters</NavLink>
+            <NavLink href="/middle-groups">Middles</NavLink>
             <NavLink href="/goals">Goals</NavLink>
             <NavLink href="/tasks">Tasks</NavLink>
             <NavLink href="/discover">Discover</NavLink>
