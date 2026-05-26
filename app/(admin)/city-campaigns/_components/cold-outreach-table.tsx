@@ -17,6 +17,7 @@ import {
   upsertColdOutreachEntry,
 } from "../_cold-outreach-actions";
 import { AiDraftButton } from "./ai-draft-button";
+import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
@@ -153,6 +154,7 @@ export function ColdOutreachTable({
       {selected.size > 0 && (
         <BulkActionBar
           selectedIds={Array.from(selected)}
+          selectedEntries={entries.filter((e) => selected.has(e.entryId))}
           cityCampaignId={cityCampaignId}
           staff={staff}
           onComplete={clearSelection}
@@ -824,11 +826,18 @@ function GenerateLeadsButton({
 
 function BulkActionBar({
   selectedIds,
+  selectedEntries,
   cityCampaignId,
   staff,
   onComplete,
 }: {
   selectedIds: string[];
+  selectedEntries: Array<{
+    entryId: string;
+    venueId: string;
+    venueName: string;
+    venueEmail: string | null;
+  }>;
   cityCampaignId: string;
   staff: Array<{ id: string; displayName: string }>;
   onComplete: () => void;
@@ -838,6 +847,11 @@ function BulkActionBar({
   const [pendingArchive, startArchive] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bulkAiOpen, setBulkAiOpen] = useState(false);
+
+  // How many of the selection actually have an email — drives the
+  // Draft button label and enabled state.
+  const eligibleForAi = selectedEntries.filter((e) => !!e.venueEmail).length;
 
   useEffect(() => {
     if (!toast) return;
@@ -974,6 +988,27 @@ function BulkActionBar({
           {pendingAssign && <Loader2 className="h-3 w-3 animate-spin text-blue-500" />}
         </div>
 
+        {/* Bulk AI drafts — only meaningful when at least one selected
+            row has an email address; we still render the button even
+            when 0 are eligible so the operator gets the modal's
+            'no emails' explainer instead of a silent disabled state. */}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setBulkAiOpen(true)}
+          disabled={busy}
+          className="text-violet-600 hover:bg-violet-500/10 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+        >
+          <Sparkles className="h-3 w-3" />
+          Draft emails
+          {eligibleForAi !== selectedIds.length && (
+            <span className="ml-1 font-mono text-[9px] uppercase tracking-[0.08em] opacity-70">
+              ({eligibleForAi}/{selectedIds.length})
+            </span>
+          )}
+        </Button>
+
         {/* Bulk archive */}
         <Button
           type="button"
@@ -1003,6 +1038,13 @@ function BulkActionBar({
           {toast}
         </p>
       )}
+
+      <BulkAiDraftModal
+        open={bulkAiOpen}
+        entries={selectedEntries}
+        cityCampaignId={cityCampaignId}
+        onClose={() => setBulkAiOpen(false)}
+      />
     </div>
   );
 }
