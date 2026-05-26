@@ -106,10 +106,56 @@ DB_HOST=$(echo "$DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
 DB_PORT=$(echo "$DATABASE_URL" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
 DB_NAME=$(echo "$DATABASE_URL" | sed -n 's|.*/\([^?]*\).*|\1|p')
 
+PSQL="PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -v ON_ERROR_STOP=1 -X -q -t"
+
+# Ensure tracking table exists. This is itself idempotent.
+PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -X -q -c "
+CREATE TABLE IF NOT EXISTS _outreach_migrations_applied (
+  filename text PRIMARY KEY,
+  applied_at timestamptz NOT NULL DEFAULT now(),
+  checksum text
+);
+" >/dev/null
+
+# Bootstrap: on the first run after introducing this tracking, mark every
+# migration that's been applied as such. We detect "already applied" by
+# checking whether the audit_log table exists (a Phase 1 migration creates
+# it). If it does AND the tracking table is empty, we backfill.
+ALREADY_APPLIED_COUNT=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -X -q -t -A -c \
+  "SELECT count(*) FROM _outreach_migrations_applied;")
+AUDIT_LOG_EXISTS=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -X -q -t -A -c \
+  "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='audit_log';")
+
+if [ "$ALREADY_APPLIED_COUNT" = "0" ] && [ "$AUDIT_LOG_EXISTS" = "1" ]; then
+  log "  bootstrap: marking all existing migrations as already-applied"
+  for f in db/migrations/*.sql; do
+    filename=$(basename "$f")
+    checksum=$(md5sum "$f" | awk '{print $1}')
+    PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -X -q -c \
+      "INSERT INTO _outreach_migrations_applied (filename, checksum) VALUES ('$filename', '$checksum') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+    log "    bootstrap-recorded $filename"
+  done
+fi
+
+# Apply each migration only if not yet recorded.
 for f in db/migrations/*.sql; do
-  log "  applying $f"
+  filename=$(basename "$f")
+  checksum=$(md5sum "$f" | awk '{print $1}')
+  existing=$(PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -X -q -t -A -c \
+    "SELECT checksum FROM _outreach_migrations_applied WHERE filename='$filename';")
+  if [ -n "$existing" ]; then
+    if [ "$existing" != "$checksum" ]; then
+      log "  WARN: $filename has been modified since last apply (checksum mismatch). Skipping anyway."
+    else
+      log "  skip $filename (already applied)"
+    fi
+    continue
+  fi
+  log "  applying $filename (new)"
   PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
     -v ON_ERROR_STOP=1 -f "$f" 2>&1 | tail -3 | tee -a "$LOG_FILE"
+  PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -X -q -c \
+    "INSERT INTO _outreach_migrations_applied (filename, checksum) VALUES ('$filename', '$checksum');" >/dev/null
 done
 
 # === Step 4: Build ===
