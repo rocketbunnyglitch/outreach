@@ -1,5 +1,6 @@
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
+import { loadTeamActivity } from "@/lib/team-activity";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
@@ -7,6 +8,7 @@ import { CitiesTable } from "./_components/dashboard/cities-table";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
+import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
 import { TodayWidget } from "./_components/dashboard/today-widget";
 import { TrackerDashboardTable } from "./_components/dashboard/tracker-dashboard-table";
 
@@ -44,10 +46,13 @@ export default async function DashboardHome({
   // Premium per-campaign tracker + Today digest — both campaign-scoped,
   // loaded in parallel so the dashboard stays under one DB roundtrip
   // budget perceived from the operator's POV.
-  const [{ rows: trackerRows, staff: trackerStaff }, todayDigest] = await Promise.all([
-    campaignId ? loadTrackerData({ campaignId }) : Promise.resolve({ rows: [], staff: [] }),
-    loadTodayDigest(campaignId),
-  ]);
+  const [{ rows: trackerRows, staff: trackerStaff }, todayDigest, teamActivity] = await Promise.all(
+    [
+      campaignId ? loadTrackerData({ campaignId }) : Promise.resolve({ rows: [], staff: [] }),
+      loadTodayDigest(campaignId),
+      loadTeamActivity(4),
+    ],
+  );
 
   const venueProgress =
     data.kpis.venuesTargeted > 0
@@ -200,6 +205,8 @@ export default async function DashboardHome({
             : null
         }
       />
+
+      <TeamActivityWidget summary={teamActivity} />
 
       <section className="flex flex-col gap-3">
         <header className="flex items-baseline justify-between">
