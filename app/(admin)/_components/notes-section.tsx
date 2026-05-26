@@ -191,6 +191,7 @@ function renderBodyWithMentions(body: string): React.ReactNode {
   const parts = body.split(/(@[a-zA-Z0-9_.]{1,30})/g);
   return parts.map((p, i) =>
     p.startsWith("@") ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: parts array is deterministic per body; index is stable
       <span key={i} className="font-medium text-blue-600 dark:text-blue-400">
         {p}
       </span>
