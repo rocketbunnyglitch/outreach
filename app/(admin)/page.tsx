@@ -1,6 +1,7 @@
 import { loadDashboardData } from "@/lib/dashboard-queries";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
+import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
 
 // Always render at request time — dashboard shows live counts from DB.
@@ -133,6 +134,7 @@ export default async function DashboardHome() {
           totalOpen={data.kpis.openTaskCount}
           overdueCount={data.kpis.overdueTaskCount}
         />
+        <NotesWidget notes={data.recentNotes} />
       </section>
     </div>
   );

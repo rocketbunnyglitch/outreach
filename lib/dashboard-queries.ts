@@ -43,9 +43,21 @@ export interface UpcomingTaskRow {
   overdue: boolean;
 }
 
+export interface RecentNoteRow {
+  id: string;
+  body: string;
+  authorName: string;
+  targetType: "venue" | "city_campaign" | "campaign";
+  targetId: string;
+  targetName: string;
+  mentionCount: number;
+  createdAt: Date;
+}
+
 export interface DashboardData {
   cityRows: CityRow[];
   upcomingTasks: UpcomingTaskRow[];
+  recentNotes: RecentNoteRow[];
   kpis: {
     venuesConfirmed: number;
     venuesTargeted: number;
@@ -335,7 +347,8 @@ export async function loadDashboardData(): Promise<DashboardData> {
     totalOutreachCount > 0 ? Math.round((replyCount / totalOutreachCount) * 100) : 0;
 
   // ---- 8. Tasks: upcoming (next 7d) + counts for KPIs ----
-  const [upcomingTaskRowsRaw, taskCountsResult] = await Promise.all([
+  // ---- 9. Recent notes feed (polymorphic target → display name) ----
+  const [upcomingTaskRowsRaw, taskCountsResult, recentNotesRaw] = await Promise.all([
     db
       .select({
         id: tasks.id,
@@ -361,6 +374,42 @@ export async function loadDashboardData(): Promise<DashboardData> {
         overdueTaskCount: sql<number>`count(*) filter (where status = 'pending' and due_at < now())::int`,
       })
       .from(tasks),
+    // Polymorphic notes feed: latest 10 notes joined with their target's
+    // display name via LEFT JOINs gated by target_type. CASE chooses the
+    // right name based on which target_type bucket the row belongs to.
+    db.execute<{
+      id: string;
+      body: string;
+      author_name: string;
+      target_type: "venue" | "city_campaign" | "campaign";
+      target_id: string;
+      target_name: string | null;
+      mention_count: number;
+      created_at: Date;
+    }>(sql`
+      SELECT
+        n.id,
+        n.body,
+        sm.display_name AS author_name,
+        n.target_type::text AS target_type,
+        n.target_id,
+        CASE n.target_type
+          WHEN 'venue' THEN v.name
+          WHEN 'city_campaign' THEN c.name || ' · ' || cm.name
+          WHEN 'campaign' THEN cm2.name
+        END AS target_name,
+        COALESCE(array_length(n.mentions, 1), 0) AS mention_count,
+        n.created_at
+      FROM notes n
+      JOIN staff_members sm ON sm.id = n.author_staff_id
+      LEFT JOIN venues v ON n.target_type = 'venue' AND v.id = n.target_id
+      LEFT JOIN city_campaigns cc ON n.target_type = 'city_campaign' AND cc.id = n.target_id
+      LEFT JOIN cities c ON c.id = cc.city_id
+      LEFT JOIN campaigns cm ON cm.id = cc.campaign_id
+      LEFT JOIN campaigns cm2 ON n.target_type = 'campaign' AND cm2.id = n.target_id
+      ORDER BY n.created_at DESC
+      LIMIT 10
+    `),
   ]);
   const openTaskCount = Number(taskCountsResult[0]?.openTaskCount ?? 0);
   const overdueTaskCount = Number(taskCountsResult[0]?.overdueTaskCount ?? 0);
@@ -375,9 +424,35 @@ export async function loadDashboardData(): Promise<DashboardData> {
     overdue: !!(t.dueAt && t.dueAt < now && t.status === "pending"),
   }));
 
+  // db.execute returns either an array or { rows: [...] } depending on driver
+  type RecentNoteRaw = {
+    id: string;
+    body: string;
+    author_name: string;
+    target_type: "venue" | "city_campaign" | "campaign";
+    target_id: string;
+    target_name: string | null;
+    mention_count: number;
+    created_at: Date;
+  };
+  const recentNotesList: RecentNoteRaw[] = Array.isArray(recentNotesRaw)
+    ? (recentNotesRaw as unknown as RecentNoteRaw[])
+    : ((recentNotesRaw as unknown as { rows: RecentNoteRaw[] }).rows ?? []);
+  const recentNotes: RecentNoteRow[] = recentNotesList.map((n) => ({
+    id: n.id,
+    body: n.body,
+    authorName: n.author_name,
+    targetType: n.target_type,
+    targetId: n.target_id,
+    targetName: n.target_name ?? "(unknown target)",
+    mentionCount: Number(n.mention_count ?? 0),
+    createdAt: new Date(n.created_at),
+  }));
+
   return {
     cityRows,
     upcomingTasks,
+    recentNotes,
     kpis: {
       venuesConfirmed: confirmedVenues,
       venuesTargeted,
