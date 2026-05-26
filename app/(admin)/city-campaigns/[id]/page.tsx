@@ -16,8 +16,10 @@ import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
+import { loadColdOutreach } from "../_cold-outreach-actions";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CitySheetHeader } from "../_components/city-sheet-header";
+import { ColdOutreachTable } from "../_components/cold-outreach-table";
 import { CrawlSlotTable } from "../_components/crawl-slot-table";
 
 export const dynamic = "force-dynamic";
@@ -91,6 +93,9 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
 
   // Load the premium city-sheet shape (per-crawl slot tables, etc.)
   const sheetData = await loadCitySheet(id);
+
+  // Cold outreach pipeline for this city_campaign
+  const coldOutreach = await loadColdOutreach(id);
 
   // Aggregate sales + compute status pill the same way the dashboard does
   const totalTicketsSold = sheetData?.crawls.reduce((sum, c) => sum + (c.ticketsSold ?? 0), 0) ?? 0;
@@ -198,6 +203,13 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
               })),
           })) ?? []
         }
+      />
+
+      <ColdOutreachTable
+        cityCampaignId={id}
+        cityId={cc.city.id}
+        entries={coldOutreach}
+        staff={sheetData?.staff ?? []}
       />
 
       <NotesSection
