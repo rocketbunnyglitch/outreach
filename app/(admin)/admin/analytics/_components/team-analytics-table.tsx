@@ -3,6 +3,7 @@
 import { cn } from "@/lib/cn";
 import type { StaffActivityRow } from "@/lib/team-analytics";
 import { Mail, MessageSquare, PhoneCall, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 interface Props {
   rows: StaffActivityRow[];
@@ -99,9 +100,12 @@ export function TeamAnalyticsTable({ rows, windowDays }: Props) {
                       <Avatar name={row.displayName} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="truncate font-medium text-sm text-zinc-900 dark:text-zinc-100">
+                          <Link
+                            href={`/admin/analytics/${row.staffId}`}
+                            className="truncate font-medium text-sm text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
+                          >
                             {row.displayName}
-                          </p>
+                          </Link>
                           {row.role === "admin" && (
                             <ShieldCheck className="h-3 w-3 text-purple-500" aria-label="Admin" />
                           )}

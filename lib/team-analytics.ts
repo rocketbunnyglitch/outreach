@@ -256,6 +256,254 @@ export async function loadStaffDailyDetail(opts: {
  * into a number[]. Falls back to zeros when the format is unexpected
  * so a malformed cell doesn't crash the page.
  */
+/**
+ * Per-staff profile loader — full activity picture for one operator.
+ *
+ * Loads:
+ *   • Staff member metadata (name, email, role, status)
+ *   • Daily breakdown over the window (drives the bar chart)
+ *   • Top venues by touch count over the window (drives the table)
+ *   • Recent activity feed (last 30 outreach_log entries with venue
+ *     name + outcome + channel for a chronological view)
+ *
+ * Admin-only — caller MUST gate with requireAdmin().
+ */
+
+export interface StaffProfile {
+  staffId: string;
+  displayName: string;
+  primaryEmail: string;
+  role: string;
+  status: string;
+}
+
+export interface TopVenueRow {
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  totalTouches: number;
+  calls: number;
+  emails: number;
+  sms: number;
+  lastTouchAt: string;
+}
+
+export interface ActivityFeedRow {
+  logId: string;
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  channel: string;
+  outcome: string;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface StaffActivityProfile {
+  staff: StaffProfile;
+  windowDays: number;
+  windowStart: string;
+  windowEnd: string;
+  daily: StaffDailyDetail[];
+  totals: {
+    calls: number;
+    emailsSent: number;
+    smsSent: number;
+    totalTouches: number;
+    activeDays: number;
+  };
+  topVenues: TopVenueRow[];
+  recentActivity: ActivityFeedRow[];
+}
+
+export async function loadStaffActivityProfile(opts: {
+  staffId: string;
+  windowDays?: number;
+}): Promise<StaffActivityProfile | null> {
+  const windowDays = Math.min(Math.max(opts.windowDays ?? 30, 1), 365);
+
+  // Staff metadata
+  const staffResult = await db.execute<{
+    id: string;
+    display_name: string;
+    primary_email: string;
+    role: string;
+    status: string;
+  }>(sql`
+    SELECT id, display_name, primary_email, role::text AS role, status::text AS status
+    FROM staff_members
+    WHERE id = ${opts.staffId}
+    LIMIT 1
+  `);
+  type StaffRow = {
+    id: string;
+    display_name: string;
+    primary_email: string;
+    role: string;
+    status: string;
+  };
+  const staffRows: StaffRow[] = Array.isArray(staffResult)
+    ? (staffResult as unknown as StaffRow[])
+    : ((staffResult as unknown as { rows: StaffRow[] }).rows ?? []);
+  const staffRow = staffRows[0];
+  if (!staffRow) return null;
+
+  // Parallel: daily, top venues, recent feed
+  const [daily, topVenues, recentActivity] = await Promise.all([
+    loadStaffDailyDetail({ staffId: opts.staffId, windowDays }),
+    loadTopVenuesForStaff(opts.staffId, windowDays),
+    loadRecentActivityForStaff(opts.staffId, 30),
+  ]);
+
+  const totals = {
+    calls: daily.reduce((a, d) => a + d.calls, 0),
+    emailsSent: daily.reduce((a, d) => a + d.emailsSent, 0),
+    smsSent: daily.reduce((a, d) => a + d.smsSent, 0),
+    totalTouches: daily.reduce((a, d) => a + d.total, 0),
+    activeDays: daily.filter((d) => d.total > 0).length,
+  };
+
+  const today = new Date();
+  const windowStart = new Date(today);
+  windowStart.setDate(windowStart.getDate() - (windowDays - 1));
+
+  return {
+    staff: {
+      staffId: staffRow.id,
+      displayName: staffRow.display_name,
+      primaryEmail: staffRow.primary_email,
+      role: staffRow.role,
+      status: staffRow.status,
+    },
+    windowDays,
+    windowStart: windowStart.toISOString().slice(0, 10),
+    windowEnd: today.toISOString().slice(0, 10),
+    daily,
+    totals,
+    topVenues,
+    recentActivity,
+  };
+}
+
+async function loadTopVenuesForStaff(staffId: string, windowDays: number): Promise<TopVenueRow[]> {
+  const result = await db.execute<{
+    venue_id: string;
+    venue_name: string;
+    city_name: string | null;
+    total_touches: number;
+    calls: number;
+    emails: number;
+    sms: number;
+    last_touch_at: string;
+  }>(sql`
+    SELECT
+      v.id AS venue_id,
+      v.name AS venue_name,
+      c.name AS city_name,
+      COUNT(ol.id)::int AS total_touches,
+      COUNT(ol.id) FILTER (WHERE ol.channel = 'call')::int AS calls,
+      COUNT(ol.id) FILTER (
+        WHERE ol.channel = 'email'
+          AND ol.outcome IN ('sent','interested','confirmed','callback_requested')
+      )::int AS emails,
+      COUNT(ol.id) FILTER (
+        WHERE ol.channel = 'sms'
+          AND ol.outcome IN ('sent','interested','confirmed','callback_requested')
+      )::int AS sms,
+      MAX(ol.created_at)::text AS last_touch_at
+    FROM outreach_log ol
+    JOIN venues v ON v.id = ol.venue_id
+    LEFT JOIN cities c ON c.id = v.city_id
+    WHERE ol.staff_member_id = ${staffId}
+      AND ol.created_at >= CURRENT_DATE - (${windowDays - 1} || ' days')::interval
+    GROUP BY v.id, v.name, c.name
+    ORDER BY total_touches DESC, MAX(ol.created_at) DESC
+    LIMIT 10
+  `);
+
+  type Row = {
+    venue_id: string;
+    venue_name: string;
+    city_name: string | null;
+    total_touches: number;
+    calls: number;
+    emails: number;
+    sms: number;
+    last_touch_at: string;
+  };
+  const rows: Row[] = Array.isArray(result)
+    ? (result as unknown as Row[])
+    : ((result as unknown as { rows: Row[] }).rows ?? []);
+
+  return rows.map((r) => ({
+    venueId: r.venue_id,
+    venueName: r.venue_name,
+    cityName: r.city_name,
+    totalTouches: r.total_touches,
+    calls: r.calls,
+    emails: r.emails,
+    sms: r.sms,
+    lastTouchAt: r.last_touch_at,
+  }));
+}
+
+async function loadRecentActivityForStaff(
+  staffId: string,
+  limit: number,
+): Promise<ActivityFeedRow[]> {
+  const result = await db.execute<{
+    log_id: string;
+    venue_id: string;
+    venue_name: string;
+    city_name: string | null;
+    channel: string;
+    outcome: string;
+    notes: string | null;
+    created_at: string;
+  }>(sql`
+    SELECT
+      ol.id AS log_id,
+      v.id AS venue_id,
+      v.name AS venue_name,
+      c.name AS city_name,
+      ol.channel::text AS channel,
+      ol.outcome::text AS outcome,
+      ol.notes,
+      ol.created_at::text AS created_at
+    FROM outreach_log ol
+    JOIN venues v ON v.id = ol.venue_id
+    LEFT JOIN cities c ON c.id = v.city_id
+    WHERE ol.staff_member_id = ${staffId}
+    ORDER BY ol.created_at DESC
+    LIMIT ${limit}
+  `);
+
+  type Row = {
+    log_id: string;
+    venue_id: string;
+    venue_name: string;
+    city_name: string | null;
+    channel: string;
+    outcome: string;
+    notes: string | null;
+    created_at: string;
+  };
+  const rows: Row[] = Array.isArray(result)
+    ? (result as unknown as Row[])
+    : ((result as unknown as { rows: Row[] }).rows ?? []);
+
+  return rows.map((r) => ({
+    logId: r.log_id,
+    venueId: r.venue_id,
+    venueName: r.venue_name,
+    cityName: r.city_name,
+    channel: r.channel,
+    outcome: r.outcome,
+    notes: r.notes,
+    createdAt: r.created_at,
+  }));
+}
+
 function parsePgIntArray(raw: string | null | number[], expectedLength: number): number[] {
   if (Array.isArray(raw)) return raw;
   if (!raw) return new Array(expectedLength).fill(0);
