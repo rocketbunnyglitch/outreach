@@ -28,37 +28,19 @@ import { events, venueEvents } from "@/db/schema";
 import { db } from "@/lib/db";
 import { eq, inArray } from "drizzle-orm";
 
-export type CityStatusPill =
-  | "outreach"
-  | "need_1_venue"
-  | "need_2_venues"
-  | "need_3_venues"
-  | "cancelled";
-
-export type SlotKind = "wristband" | "middle_pair" | "middle_1" | "middle_2" | "final";
-
-export interface CityNeedSummary {
-  cityCampaignId: string;
-  statusPill: CityStatusPill;
-  openSlotCount: number;
-  /** Aggregated slot pills across all crawls for this city. */
-  slots: SlotKind[];
-  crawlBreakdown: CrawlNeed[];
-}
-
-export interface CrawlNeed {
-  /** Composite key — same day_part + crawl_number identifies a crawl */
-  dayPart: string;
-  crawlNumber: number;
-  needsWristband: boolean;
-  needsMiddle1: boolean;
-  needsMiddle2: boolean;
-  needsFinal: boolean;
-  /** Tickets sold for this specific crawl across its venue_events */
-  ticketsSold: number;
-  /** Sales total for this crawl */
-  salesCents: number;
-}
+export type {
+  CityStatusPill,
+  SlotKind,
+  CityNeedSummary,
+  CrawlNeed,
+} from "./tracker-status-types";
+import type { CityNeedSummary, CityStatusPill, CrawlNeed, SlotKind } from "./tracker-status-types";
+export {
+  STATUS_PILL_TONE,
+  STATUS_PILL_LABEL,
+  SLOT_PILL_TONE,
+  SLOT_PILL_LABEL,
+} from "./tracker-status-types";
 
 /**
  * Compute slot needs for a batch of city_campaigns at once. Single
@@ -201,27 +183,6 @@ export async function computeCityNeeds(
   return out;
 }
 
-export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {
-  // Outreach = quiet emerald, "done with venues, in outreach mode"
-  outreach:
-    "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
-  // Need 1/2/3 share the slot gradient family so the page reads as one system
-  need_1_venue:
-    "bg-amber-400/15 text-amber-800 ring-amber-400/30 dark:bg-amber-400/15 dark:text-amber-200",
-  need_2_venues:
-    "bg-orange-500/15 text-orange-800 ring-orange-500/30 dark:bg-orange-500/15 dark:text-orange-200",
-  need_3_venues: "bg-red-500/15 text-red-800 ring-red-500/30 dark:bg-red-500/15 dark:text-red-300",
-  cancelled: "bg-zinc-500/8 text-zinc-500 ring-zinc-500/15 line-through dark:text-zinc-500",
-};
-
-export const STATUS_PILL_LABEL: Record<CityStatusPill, string> = {
-  outreach: "Outreach",
-  need_1_venue: "Need 1 venue",
-  need_2_venues: "Need 2 venues",
-  need_3_venues: "Need 3+ venues",
-  cancelled: "Cancelled",
-};
-
 /**
  * Slot pills — tuned amber-400 → orange-500 → red-500 so when all three
  * line up they read as ONE continuous gradient bar, not three stickers.
@@ -238,18 +199,3 @@ export const STATUS_PILL_LABEL: Record<CityStatusPill, string> = {
  * one chip instead of two adjacent orange chips that would break the
  * gradient rhythm.
  */
-export const SLOT_PILL_TONE: Record<SlotKind, string> = {
-  wristband: "bg-amber-400 text-amber-950 shadow-sm shadow-amber-400/30",
-  middle_1: "bg-orange-500 text-orange-50 shadow-sm shadow-orange-500/30",
-  middle_2: "bg-orange-500 text-orange-50 shadow-sm shadow-orange-500/30",
-  middle_pair: "bg-orange-500 text-orange-50 shadow-sm shadow-orange-500/30",
-  final: "bg-red-500 text-red-50 shadow-sm shadow-red-500/30",
-};
-
-export const SLOT_PILL_LABEL: Record<SlotKind, string> = {
-  wristband: "Wristband",
-  middle_1: "Middle 1",
-  middle_2: "Middle 2",
-  middle_pair: "Middle 1 + 2",
-  final: "Final",
-};

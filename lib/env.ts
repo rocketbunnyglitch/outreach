@@ -56,6 +56,18 @@ const envSchema = z.object({
   // For verifying inbound POSTs to /api/webhooks/quo
   QUO_WEBHOOK_SIGNING_SECRET: stringOptional,
 
+  // Sentry — graceful no-op when DSN is unset. SENTRY_DSN is for the
+  // server/edge runtimes; NEXT_PUBLIC_SENTRY_DSN ships into the browser
+  // bundle (same DSN value, different consumer). SENTRY_AUTH_TOKEN +
+  // SENTRY_ORG + SENTRY_PROJECT are only needed for the source-map
+  // upload step at build time.
+  SENTRY_DSN: stringOptional,
+  NEXT_PUBLIC_SENTRY_DSN: stringOptional,
+  SENTRY_AUTH_TOKEN: stringOptional,
+  SENTRY_ORG: stringOptional,
+  SENTRY_PROJECT: stringOptional,
+  SENTRY_TRACES_SAMPLE_RATE: stringOptional,
+
   // --- Phase 7: confirmation automations ---
   PUPPETEER_EXECUTABLE_PATH: stringOptional,
 

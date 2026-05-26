@@ -10,7 +10,7 @@ import {
   STATUS_PILL_LABEL,
   STATUS_PILL_TONE,
   type SlotKind,
-} from "@/lib/tracker-status";
+} from "@/lib/tracker-status-types";
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";

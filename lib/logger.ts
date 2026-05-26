@@ -56,3 +56,45 @@ export const logger: Logger = pino({
 export function childLogger(bindings: Record<string, unknown>): Logger {
   return logger.child(bindings);
 }
+
+/**
+ * Send an exception to Sentry AND log it locally with full context.
+ *
+ * Use this instead of bare `logger.error(...)` when something genuinely
+ * went wrong and the operator should see it in Sentry's dashboard —
+ * caught DB errors, failed external API calls, unexpected branches.
+ *
+ * Safe to call without SENTRY_DSN set: the Sentry SDK is a no-op when
+ * uninitialized, so this still logs via Pino either way.
+ *
+ *   try {
+ *     await fetchEventbriteSales(eventId);
+ *   } catch (err) {
+ *     captureException(err, { tag: "eventbrite_sync", eventId });
+ *     return null;
+ *   }
+ */
+export async function captureException(
+  err: unknown,
+  context: Record<string, unknown> = {},
+): Promise<void> {
+  // Always log locally first — Sentry might be down or unconfigured,
+  // and PM2 log files are the source of truth on the VPS.
+  logger.error({ err, ...context }, "captureException");
+
+  // Dynamic import so the Sentry SDK never enters the cold-path bundle
+  // for callers who never error. Safe on both Node + Edge runtimes.
+  if (!process.env.SENTRY_DSN) return;
+  try {
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.withScope((scope) => {
+      for (const [k, v] of Object.entries(context)) {
+        scope.setExtra(k, v);
+      }
+      Sentry.captureException(err);
+    });
+  } catch (sentryErr) {
+    // Never let Sentry failures hide the original problem
+    logger.warn({ sentryErr }, "Sentry captureException failed");
+  }
+}

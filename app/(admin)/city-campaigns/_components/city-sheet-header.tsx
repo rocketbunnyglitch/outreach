@@ -1,6 +1,10 @@
 import type { CitySheetData } from "@/lib/city-sheet-data";
 import { cn } from "@/lib/cn";
-import { type CityStatusPill, STATUS_PILL_LABEL, STATUS_PILL_TONE } from "@/lib/tracker-status";
+import {
+  type CityStatusPill,
+  STATUS_PILL_LABEL,
+  STATUS_PILL_TONE,
+} from "@/lib/tracker-status-types";
 import { MapPin, Printer, User2 } from "lucide-react";
 import Link from "next/link";
 
