@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Check, Loader2, Mail, Plus, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   acceptLeadSuggestions,
@@ -17,6 +18,7 @@ import {
   upsertColdOutreachEntry,
 } from "../_cold-outreach-actions";
 import { AiDraftButton } from "./ai-draft-button";
+import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
@@ -101,6 +103,8 @@ export function ColdOutreachTable({
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const router = useRouter();
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -146,9 +150,20 @@ export function ColdOutreachTable({
             </span>
           </h2>
         </div>
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-          status + ZeroBounce auto-tracked
-        </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setSuggestOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50/40 px-2.5 py-1 font-mono text-[10px] text-violet-700 uppercase tracking-[0.08em] transition-colors hover:bg-violet-100/60 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-300 dark:hover:bg-violet-950/50"
+            title="Have Claude suggest new venues to add"
+          >
+            <Sparkles className="h-2.5 w-2.5" />
+            Suggest venues
+          </button>
+          <p className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] sm:block">
+            status + ZeroBounce auto-tracked
+          </p>
+        </div>
       </header>
 
       {selected.size > 0 && (
@@ -218,6 +233,13 @@ export function ColdOutreachTable({
         )}
         <GenerateLeadsButton cityCampaignId={cityCampaignId} cityId={cityId} compact />
       </footer>
+
+      <AiSuggestVenuesModal
+        cityCampaignId={cityCampaignId}
+        open={suggestOpen}
+        onClose={() => setSuggestOpen(false)}
+        onAdded={() => router.refresh()}
+      />
     </section>
   );
 }
