@@ -1,11 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { listNotes } from "@/lib/notes";
 import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createNote, deleteNote } from "../../_components/notes-actions";
+import { NotesSection } from "../../_components/notes-section";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { EventsList } from "../_components/events-list";
@@ -15,7 +19,9 @@ export const dynamic = "force-dynamic";
 export default async function CityCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [cc, eventRows, staff] = await Promise.all([
+  const { staff: currentStaff } = await requireStaff();
+
+  const [cc, eventRows, staff, notesList] = await Promise.all([
     db
       .select({
         cc: cityCampaigns,
@@ -43,6 +49,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       .from(staffMembers)
       .where(eq(staffMembers.status, "active"))
       .orderBy(asc(staffMembers.displayName)),
+    listNotes("city_campaign", id, currentStaff.id),
   ]);
   if (!cc) notFound();
 
@@ -101,6 +108,14 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           ...r.event,
           venueCount: countByEvent.get(r.event.id) ?? 0,
         }))}
+      />
+
+      <NotesSection
+        targetType="city_campaign"
+        targetId={id}
+        notes={notesList}
+        createAction={createNote}
+        deleteAction={deleteNote}
       />
 
       <form

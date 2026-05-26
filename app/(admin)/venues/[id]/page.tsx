@@ -1,12 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { cities, venues } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
+import { listNotes } from "@/lib/notes";
 import { asc, eq, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createNote, deleteNote } from "../../_components/notes-actions";
+import { NotesSection } from "../../_components/notes-section";
 import { archiveVenue, getVenueOutreachLog, logOutreach, updateVenue } from "../_actions";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueForm } from "../_components/venue-form";
@@ -16,7 +20,9 @@ export const dynamic = "force-dynamic";
 export default async function EditVenuePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [venue, citiesList, outreachBrandsList, outreachEntries, currentCampaign] =
+  const { staff } = await requireStaff();
+
+  const [venue, citiesList, outreachBrandsList, outreachEntries, currentCampaign, notesList] =
     await Promise.all([
       db
         .select()
@@ -32,6 +38,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       listOutreachBrands(),
       getVenueOutreachLog(id),
       getCurrentCampaign(),
+      listNotes("venue", id, staff.id),
     ]);
   if (!venue) notFound();
 
@@ -89,6 +96,14 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         entries={outreachEntries}
         action={logOutreach}
         defaultOutreachBrandId={currentCampaign?.outreachBrand.id}
+      />
+
+      <NotesSection
+        targetType="venue"
+        targetId={id}
+        notes={notesList}
+        createAction={createNote}
+        deleteAction={deleteNote}
       />
 
       <form
