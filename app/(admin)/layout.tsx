@@ -79,6 +79,7 @@ function TopNav({
             <NavLink href="/brands">Brands</NavLink>
             <NavLink href="/campaigns">Campaigns</NavLink>
             <NavLink href="/crawl-matrix">Crawl Matrix</NavLink>
+            <NavLink href="/inbox">Inbox</NavLink>
             <NavLink href="/cities">Cities</NavLink>
             <NavLink href="/venues">Venues</NavLink>
             <NavLink href="/cluster-builder">Clusters</NavLink>
@@ -88,6 +89,7 @@ function TopNav({
             <NavLink href="/discover">Discover</NavLink>
             <NavLink href="/import">Import</NavLink>
             <NavLink href="/templates">Templates</NavLink>
+            <NavLink href="/settings/inboxes">Settings</NavLink>
             <NavLink href="/audit">Audit</NavLink>
           </nav>
         </div>

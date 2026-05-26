@@ -1,0 +1,273 @@
+import { outreachBrands, staffMembers, staffOutreachEmails } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { isGmailOAuthConfigured } from "@/lib/gmail";
+import { asc, eq, isNull } from "drizzle-orm";
+import { AlertCircle, CheckCircle2, Mail, Unplug } from "lucide-react";
+import Link from "next/link";
+import { disconnectInbox } from "./_actions";
+
+export const metadata = { title: "Email Inboxes · Settings · Crawl Engine" };
+export const dynamic = "force-dynamic";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  not_configured:
+    "Gmail OAuth isn't configured on the server. Set GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET in .env.",
+  missing_params: "OAuth callback was missing code or state.",
+  bad_state: "OAuth state was malformed.",
+  csrf: "CSRF validation failed. Try again from the Connect button.",
+  staff_mismatch: "The connecting staffer didn't match. Try again while signed in as yourself.",
+  token_exchange: "Google rejected the authorization code. Try connecting again.",
+  no_refresh_token:
+    "Google didn't return a refresh token. Go to your Google account → Security → 3rd party access, remove 'Outreach Engine', and try again.",
+  userinfo: "Couldn't read your Gmail address from Google after connecting.",
+  persist: "Connection succeeded with Google but the DB write failed. Check server logs.",
+  access_denied: "You denied the consent screen.",
+};
+
+interface Props {
+  searchParams: Promise<{ connected?: string; error?: string }>;
+}
+
+export default async function InboxesPage({ searchParams }: Props) {
+  const params = await searchParams;
+  const { staff } = await requireStaff();
+
+  const oauthReady = isGmailOAuthConfigured();
+
+  // Outreach brands × current staff connections
+  const brands = await db
+    .select({
+      id: outreachBrands.id,
+      displayName: outreachBrands.displayName,
+    })
+    .from(outreachBrands)
+    .where(isNull(outreachBrands.archivedAt))
+    .orderBy(asc(outreachBrands.displayName));
+
+  const myInboxes = await db
+    .select({
+      id: staffOutreachEmails.id,
+      outreachBrandId: staffOutreachEmails.outreachBrandId,
+      emailAddress: staffOutreachEmails.emailAddress,
+      status: staffOutreachEmails.status,
+      lastSyncedAt: staffOutreachEmails.lastSyncedAt,
+    })
+    .from(staffOutreachEmails)
+    .where(eq(staffOutreachEmails.staffMemberId, staff.id));
+
+  const inboxByBrand = new Map(myInboxes.map((i) => [i.outreachBrandId, i]));
+
+  // Other staff members for the per-brand summary at the bottom
+  const allConnections = await db
+    .select({
+      brandId: staffOutreachEmails.outreachBrandId,
+      brandName: outreachBrands.displayName,
+      emailAddress: staffOutreachEmails.emailAddress,
+      status: staffOutreachEmails.status,
+      staffName: staffMembers.displayName,
+    })
+    .from(staffOutreachEmails)
+    .innerJoin(outreachBrands, eq(outreachBrands.id, staffOutreachEmails.outreachBrandId))
+    .innerJoin(staffMembers, eq(staffMembers.id, staffOutreachEmails.staffMemberId))
+    .orderBy(asc(outreachBrands.displayName), asc(staffMembers.displayName));
+
+  return (
+    <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
+      <header>
+        <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Settings</p>
+        <h1 className="mt-1 font-semibold text-4xl tracking-tight">Email inboxes</h1>
+        <p className="mt-2 max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+          Connect your Gmail account to each outreach brand. Cold emails are sent from YOUR Gmail
+          (not a shared inbox), so replies thread naturally and venues see a real human address.
+          Tokens are encrypted with AES-256-GCM before being stored.
+        </p>
+      </header>
+
+      {/* Flash messages */}
+      {params.connected && (
+        <div className="card-surface-quiet flex items-center gap-2 border-l-2 border-l-emerald-500 px-4 py-3 text-sm">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          <span>
+            Connected <span className="font-medium">{decodeURIComponent(params.connected)}</span>.
+          </span>
+        </div>
+      )}
+      {params.error && (
+        <div className="card-surface-quiet flex items-center gap-2 border-l-2 border-l-rose-500 px-4 py-3 text-sm">
+          <AlertCircle className="h-4 w-4 text-rose-500" />
+          <span>{ERROR_MESSAGES[params.error] ?? `Error: ${params.error}`}</span>
+        </div>
+      )}
+
+      {/* Configuration warning */}
+      {!oauthReady && (
+        <section className="card-surface p-5">
+          <header className="mb-3 flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <h2 className="font-semibold text-lg tracking-tight">Gmail OAuth not configured</h2>
+          </header>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            The server doesn't have{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
+              GOOGLE_OAUTH_CLIENT_ID
+            </code>{" "}
+            and{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
+              GOOGLE_OAUTH_CLIENT_SECRET
+            </code>{" "}
+            set. Until those land in{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
+              /var/www/outreach/.env
+            </code>
+            , the connect buttons below are visible but inert.
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            Walkthrough: console.cloud.google.com → New project → Enable Gmail API → OAuth consent
+            (External, Testing) → Add scopes (gmail.send, gmail.readonly, gmail.modify,
+            userinfo.email, openid) → Add test users (your staff Gmail addresses) → Create OAuth
+            Client (Web app) → Redirect URI{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5 text-[10px] dark:bg-zinc-800">
+              https://outreach.barcrawlconnect.com/api/auth/google/callback
+            </code>
+          </p>
+        </section>
+      )}
+
+      {/* My inboxes — per brand */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-semibold text-2xl tracking-tight">Your inboxes</h2>
+        {brands.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            No outreach brands yet. Create one in{" "}
+            <Link href="/brands" className="underline">
+              Brands
+            </Link>
+            .
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {brands.map((brand) => {
+              const inbox = inboxByBrand.get(brand.id);
+              const connected = inbox?.status === "connected";
+              return (
+                <li
+                  key={brand.id}
+                  className="card-surface flex items-center justify-between gap-4 p-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{brand.displayName}</p>
+                    {connected ? (
+                      <p className="mt-0.5 flex items-center gap-1.5 text-xs">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                        <span className="text-zinc-600 dark:text-zinc-400">
+                          {inbox.emailAddress}
+                        </span>
+                        {inbox.lastSyncedAt && (
+                          <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                            · synced {inbox.lastSyncedAt.toLocaleString()}
+                          </span>
+                        )}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-zinc-500">No inbox connected</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {connected ? (
+                      <>
+                        {oauthReady && (
+                          <a
+                            href={`/api/auth/google/start?outreachBrandId=${brand.id}`}
+                            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                          >
+                            Reconnect
+                          </a>
+                        )}
+                        <form
+                          action={async (fd: FormData) => {
+                            "use server";
+                            await disconnectInbox(null, fd);
+                          }}
+                        >
+                          <input type="hidden" name="id" value={inbox.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 text-xs hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                          >
+                            <Unplug className="h-3 w-3" />
+                            Disconnect
+                          </button>
+                        </form>
+                      </>
+                    ) : oauthReady ? (
+                      <a
+                        href={`/api/auth/google/start?outreachBrandId=${brand.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-xs text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                      >
+                        <Mail className="h-3 w-3" />
+                        Connect Gmail
+                      </a>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-md bg-zinc-200 px-3 py-1.5 font-medium text-xs text-zinc-500 dark:bg-zinc-800"
+                        title="GOOGLE_OAUTH_CLIENT_ID not set on server"
+                      >
+                        <Mail className="h-3 w-3" />
+                        Connect Gmail (waiting on config)
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* Team summary */}
+      {allConnections.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-semibold text-2xl tracking-tight">Team connections</h2>
+          <div className="card-surface overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-zinc-200 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800/60">
+                  <th className="px-4 py-2.5">Brand</th>
+                  <th className="px-4 py-2.5">Staff</th>
+                  <th className="px-4 py-2.5">Email</th>
+                  <th className="px-4 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allConnections.map((c, i) => (
+                  <tr
+                    key={`${c.brandId}-${c.emailAddress}`}
+                    className={i % 2 === 1 ? "dark:bg-white/[0.015]" : ""}
+                  >
+                    <td className="px-4 py-2.5">{c.brandName}</td>
+                    <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-400">{c.staffName}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{c.emailAddress}</td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`font-mono text-[10px] uppercase tracking-widest ${
+                          c.status === "connected"
+                            ? "text-emerald-500"
+                            : c.status === "disconnected"
+                              ? "text-zinc-500"
+                              : "text-rose-500"
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
