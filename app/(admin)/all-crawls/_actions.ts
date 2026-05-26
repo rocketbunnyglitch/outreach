@@ -350,8 +350,30 @@ function escapeHtml(s: string): string {
  * If the EB token isn't configured, returns notConfigured immediately
  * without iterating.
  */
+/**
+ * Comma-separated UUID list → trimmed array → validated as uuid[].
+ * Used for bulk operations where the operator selects N rows and we
+ * pass the ids as a single hidden form field.
+ *
+ * Max 200 — both keeps the SQL ANY-array reasonable and prevents an
+ * accidental "select 1000 rows + push" from spamming EB rate limits.
+ */
+const bulkUuidList = z
+  .string()
+  .trim()
+  .transform((s) =>
+    s
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(uuid).min(1).max(200));
+
 const bulkSyncSchema = z.object({
   campaignId: uuid,
+  /** When provided, sync only these specific events. Otherwise sync
+   * every linked event in the campaign. */
+  eventIds: bulkUuidList.optional(),
 });
 
 export async function bulkSyncEventbriteSales(
@@ -364,7 +386,10 @@ export async function bulkSyncEventbriteSales(
   >
 > {
   const { staff } = await requireStaff();
-  const parsed = bulkSyncSchema.safeParse({ campaignId: formData.get("campaignId") });
+  const parsed = bulkSyncSchema.safeParse({
+    campaignId: formData.get("campaignId"),
+    eventIds: formData.get("eventIds") ?? undefined,
+  });
   if (!parsed.success) return { ok: false, error: "Invalid input." };
 
   const { isEventbriteConfigured, fetchEventbriteSales } = await import("@/lib/eventbrite");
@@ -372,14 +397,25 @@ export async function bulkSyncEventbriteSales(
     return { ok: true, data: { notConfigured: true } };
   }
 
-  // Pull every linked event in this campaign
-  const linkedRows = await db.execute<{ id: string; eventbrite_event_id: string }>(sql`
-    SELECT e.id, e.eventbrite_event_id
-    FROM events e
-    JOIN city_campaigns cc ON cc.id = e.city_campaign_id
-    WHERE cc.campaign_id = ${parsed.data.campaignId}
-      AND e.eventbrite_event_id IS NOT NULL
-  `);
+  // Pull every linked event in this campaign — optionally filtered to
+  // a selection. The eventIds filter still requires campaign membership
+  // so a user can't accidentally sync events from another campaign.
+  const linkedRows = parsed.data.eventIds
+    ? await db.execute<{ id: string; eventbrite_event_id: string }>(sql`
+        SELECT e.id, e.eventbrite_event_id
+        FROM events e
+        JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+        WHERE cc.campaign_id = ${parsed.data.campaignId}
+          AND e.eventbrite_event_id IS NOT NULL
+          AND e.id = ANY(${parsed.data.eventIds}::uuid[])
+      `)
+    : await db.execute<{ id: string; eventbrite_event_id: string }>(sql`
+        SELECT e.id, e.eventbrite_event_id
+        FROM events e
+        JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+        WHERE cc.campaign_id = ${parsed.data.campaignId}
+          AND e.eventbrite_event_id IS NOT NULL
+      `);
   const linked: Array<{ id: string; eventbrite_event_id: string }> = Array.isArray(linkedRows)
     ? (linkedRows as unknown as Array<{ id: string; eventbrite_event_id: string }>)
     : ((linkedRows as unknown as { rows: Array<{ id: string; eventbrite_event_id: string }> })
@@ -421,4 +457,200 @@ export async function bulkSyncEventbriteSales(
     ok: true,
     data: { synced, failed, totalLinked: linked.length, ticketsTotal },
   };
+}
+
+// =========================================================================
+// Bulk push descriptions
+//
+// For each selected event with a linked EB id, format its confirmed
+// venues as HTML, PATCH the EB description with the marker-fenced block.
+// Sequential to respect EB rate limits.
+// =========================================================================
+
+const bulkPushSchema = z.object({
+  campaignId: uuid,
+  eventIds: bulkUuidList,
+});
+
+export async function bulkPushEventbriteDescriptions(
+  _prev: unknown,
+  formData: FormData,
+): Promise<
+  ActionResult<{ pushed: number; failed: number; skipped: number } | { notConfigured: true }>
+> {
+  await requireStaff();
+  const parsed = bulkPushSchema.safeParse({
+    campaignId: formData.get("campaignId"),
+    eventIds: formData.get("eventIds"),
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  const { isEventbriteConfigured, updateEventbriteDescription } = await import("@/lib/eventbrite");
+  if (!isEventbriteConfigured()) {
+    return { ok: true, data: { notConfigured: true } };
+  }
+
+  // Resolve which selected events are actually linked to EB. Skip the
+  // others — pushing description to a non-linked event is a no-op
+  // (we don't have an EB id to target).
+  const linkedRows = await db.execute<{ id: string; eventbrite_event_id: string }>(sql`
+    SELECT e.id, e.eventbrite_event_id
+    FROM events e
+    JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+    WHERE cc.campaign_id = ${parsed.data.campaignId}
+      AND e.id = ANY(${parsed.data.eventIds}::uuid[])
+      AND e.eventbrite_event_id IS NOT NULL
+  `);
+  const linked: Array<{ id: string; eventbrite_event_id: string }> = Array.isArray(linkedRows)
+    ? (linkedRows as unknown as Array<{ id: string; eventbrite_event_id: string }>)
+    : ((linkedRows as unknown as { rows: Array<{ id: string; eventbrite_event_id: string }> })
+        .rows ?? []);
+
+  const skipped = parsed.data.eventIds.length - linked.length;
+  let pushed = 0;
+  let failed = 0;
+
+  for (const row of linked) {
+    try {
+      // Load confirmed venue_events for this crawl, build block, push
+      const venueRows = await db
+        .select({
+          role: venueEvents.role,
+          slotPosition: venueEvents.slotPosition,
+          status: venueEvents.status,
+          venueName: venues.name,
+          venueAddress: venues.address,
+          agreedHoursText: venueEvents.agreedHoursText,
+          drinkSpecials: venueEvents.drinkSpecials,
+        })
+        .from(venueEvents)
+        .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+        .where(eq(venueEvents.eventId, row.id))
+        .orderBy(asc(venueEvents.role), asc(venueEvents.slotPosition));
+
+      const block = formatVenuesBlockForBulk(
+        venueRows.map((r) => ({
+          role: r.role as string,
+          slotPosition: r.slotPosition ?? 1,
+          status: r.status as string,
+          venueName: r.venueName,
+          venueAddress: r.venueAddress,
+          agreedHoursText: r.agreedHoursText,
+          drinkSpecials: r.drinkSpecials,
+        })),
+      );
+
+      const ok = await updateEventbriteDescription(row.eventbrite_event_id, block);
+      if (ok) pushed++;
+      else failed++;
+    } catch (err) {
+      logger.warn({ err, eventId: row.id }, "bulk push row failed");
+      failed++;
+    }
+  }
+
+  revalidatePath("/all-crawls");
+  return { ok: true, data: { pushed, failed, skipped } };
+}
+
+// =========================================================================
+// Bulk unlink — clears eventbrite_event_id + eventbrite_url on N events.
+// Useful when a CSV import landed bad EB IDs and the operator wants to
+// reset before re-linking.
+// =========================================================================
+
+const bulkUnlinkSchema = z.object({
+  campaignId: uuid,
+  eventIds: bulkUuidList,
+});
+
+export async function bulkUnlinkEventbrite(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ unlinked: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkUnlinkSchema.safeParse({
+    campaignId: formData.get("campaignId"),
+    eventIds: formData.get("eventIds"),
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  try {
+    const unlinked = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE events
+        SET eventbrite_event_id = NULL,
+            eventbrite_url = NULL,
+            updated_by = ${staff.id},
+            updated_at = NOW()
+        FROM city_campaigns cc
+        WHERE events.id = ANY(${parsed.data.eventIds}::uuid[])
+          AND events.city_campaign_id = cc.id
+          AND cc.campaign_id = ${parsed.data.campaignId}
+          AND events.eventbrite_event_id IS NOT NULL
+        RETURNING events.id
+      `);
+      const rows: Array<{ id: string }> = Array.isArray(result)
+        ? (result as unknown as Array<{ id: string }>)
+        : ((result as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+      return rows.length;
+    });
+    revalidatePath("/all-crawls");
+    return { ok: true, data: { unlinked } };
+  } catch (err) {
+    logger.error({ err }, "bulkUnlinkEventbrite failed");
+    return { ok: false, error: "Bulk unlink failed." };
+  }
+}
+
+/**
+ * Shared block formatter for bulkPushEventbriteDescriptions — kept
+ * here (not imported from pushEventbriteDescription) to avoid pulling
+ * the single-crawl action into the bulk path. Mirrors the same HTML
+ * shape so EB pages render consistently across single + bulk pushes.
+ */
+function formatVenuesBlockForBulk(
+  rows: Array<{
+    role: string;
+    slotPosition: number;
+    status: string;
+    venueName: string;
+    venueAddress: string | null;
+    agreedHoursText: string | null;
+    drinkSpecials: string | null;
+  }>,
+): string {
+  if (rows.length === 0) {
+    return "<p><em>Venue lineup coming soon — check back closer to the event.</em></p>";
+  }
+  const ROLE_LABEL: Record<string, string> = {
+    wristband: "🎟 Wristband Pickup",
+    middle: "🍻 Stop",
+    final: "🏁 Final",
+    alt_final: "🏁 Alt Final",
+  };
+  const lines = rows
+    .filter((r) => ["confirmed", "contract_signed"].includes(r.status))
+    .map((r) => {
+      const role = ROLE_LABEL[r.role] ?? r.role;
+      const hours = r.agreedHoursText ? ` — ${escapeHtmlForBulk(r.agreedHoursText)}` : "";
+      const specials = r.drinkSpecials ? `<br><em>${escapeHtmlForBulk(r.drinkSpecials)}</em>` : "";
+      const address = r.venueAddress
+        ? `<br><span style="color:#666">${escapeHtmlForBulk(r.venueAddress)}</span>`
+        : "";
+      return `<p><strong>${role}: ${escapeHtmlForBulk(r.venueName)}</strong>${hours}${address}${specials}</p>`;
+    });
+  if (lines.length === 0) {
+    return "<p><em>Venue lineup is being finalized.</em></p>";
+  }
+  return ["<h3>🍻 Crawl Stops</h3>", ...lines].join("\n");
+}
+
+function escapeHtmlForBulk(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

@@ -1,10 +1,16 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import type { AllCrawlsRow } from "@/lib/all-crawls-data";
 import { cn } from "@/lib/cn";
-import { Calendar, ChevronDown, Search } from "lucide-react";
+import { Calendar, ChevronDown, Loader2, RefreshCw, Search, Send, Unlink } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  bulkPushEventbriteDescriptions,
+  bulkSyncEventbriteSales,
+  bulkUnlinkEventbrite,
+} from "../_actions";
 import { EventbriteCell } from "./eventbrite-cell";
 
 interface Props {
@@ -70,6 +76,20 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sortKey, setSortKey] = useState<SortKey>("city");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
 
   // Precompute counts for filter chips so they show live totals
   const filterCounts = useMemo(() => {
@@ -119,6 +139,17 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
       setSortDir("asc");
     }
   }
+
+  function toggleAll() {
+    if (selected.size === filtered.length && filtered.length > 0) {
+      clearSelection();
+    } else {
+      setSelected(new Set(filtered.map((r) => r.eventId)));
+    }
+  }
+
+  const allSelected = filtered.length > 0 && selected.size === filtered.length;
+  const someSelected = selected.size > 0 && selected.size < filtered.length;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
@@ -183,55 +214,78 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
-                <SortHeader
-                  label="City"
-                  sortKey="city"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={() => toggleSort("city")}
-                  width="w-44"
-                />
-                <SortHeader
-                  label="Day"
-                  sortKey="day"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={() => toggleSort("day")}
-                  width="w-20"
-                />
-                <th className="w-12 px-2 py-2.5">#</th>
-                <th className="w-28 px-2 py-2.5">Date</th>
-                <SortHeader
-                  label="Tickets"
-                  sortKey="tickets"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={() => toggleSort("tickets")}
-                  width="w-20"
-                />
-                <SortHeader
-                  label="Open"
-                  sortKey="open"
-                  current={sortKey}
-                  dir={sortDir}
-                  onClick={() => toggleSort("open")}
-                  width="w-16"
-                />
-                <th className="w-24 px-2 py-2.5">Status</th>
-                <th className="w-56 px-2 py-2.5">Eventbrite</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((row, i) => (
-                <CrawlRow key={row.eventId} row={row} campaignId={campaignId} zebra={i % 2 === 1} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {selected.size > 0 && (
+            <BulkActionBar
+              selectedIds={Array.from(selected)}
+              campaignId={campaignId}
+              onComplete={clearSelection}
+            />
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
+                  <th className="w-9 px-3 py-2.5">
+                    <SelectAllCheckbox
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onChange={toggleAll}
+                    />
+                  </th>
+                  <SortHeader
+                    label="City"
+                    sortKey="city"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={() => toggleSort("city")}
+                    width="w-44"
+                  />
+                  <SortHeader
+                    label="Day"
+                    sortKey="day"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={() => toggleSort("day")}
+                    width="w-20"
+                  />
+                  <th className="w-12 px-2 py-2.5">#</th>
+                  <th className="w-28 px-2 py-2.5">Date</th>
+                  <SortHeader
+                    label="Tickets"
+                    sortKey="tickets"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={() => toggleSort("tickets")}
+                    width="w-20"
+                  />
+                  <SortHeader
+                    label="Open"
+                    sortKey="open"
+                    current={sortKey}
+                    dir={sortDir}
+                    onClick={() => toggleSort("open")}
+                    width="w-16"
+                  />
+                  <th className="w-24 px-2 py-2.5">Status</th>
+                  <th className="w-56 px-2 py-2.5">Eventbrite</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row, i) => (
+                  <CrawlRow
+                    key={row.eventId}
+                    row={row}
+                    campaignId={campaignId}
+                    zebra={i % 2 === 1}
+                    selected={selected.has(row.eventId)}
+                    onToggleSelect={() => toggleOne(row.eventId)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );
@@ -278,10 +332,14 @@ function CrawlRow({
   row,
   campaignId,
   zebra,
+  selected,
+  onToggleSelect,
 }: {
   row: AllCrawlsRow;
   campaignId: string;
   zebra: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
 
@@ -292,8 +350,18 @@ function CrawlRow({
       className={cn(
         tone,
         "border-zinc-200/40 border-b transition-colors duration-150 hover:bg-blue-500/[0.03] dark:border-zinc-800/30",
+        selected && "bg-blue-500/[0.05] dark:bg-blue-400/[0.06]",
       )}
     >
+      <td className="px-3 py-2 align-middle">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+          aria-label={`Select ${row.cityName} ${row.dayPart} crawl ${row.crawlNumber}`}
+        />
+      </td>
       <td className="px-3 py-2 align-middle">
         <Link
           href={`/city-campaigns/${row.cityCampaignId}`}
@@ -391,4 +459,195 @@ function computeStatusPill(row: AllCrawlsRow): { label: string; tone: string } {
     label: "Outreach",
     tone: "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300",
   };
+}
+
+// =========================================================================
+// Bulk action bar — appears below the header when ≥1 row selected.
+// Three actions: bulk Eventbrite sync, bulk push descriptions, bulk unlink.
+// =========================================================================
+
+function BulkActionBar({
+  selectedIds,
+  campaignId,
+  onComplete,
+}: {
+  selectedIds: string[];
+  campaignId: string;
+  onComplete: () => void;
+}) {
+  const [pendingSync, startSync] = useTransition();
+  const [pendingPush, startPush] = useTransition();
+  const [pendingUnlink, startUnlink] = useTransition();
+  const [toast, setToast] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function runSync() {
+    setError(null);
+    const fd = new FormData();
+    fd.set("campaignId", campaignId);
+    fd.set("eventIds", selectedIds.join(","));
+    startSync(async () => {
+      const result = await bulkSyncEventbriteSales(null, fd);
+      if (!result.ok) {
+        setError(result.error ?? "Sync failed.");
+        return;
+      }
+      if (result.data && "notConfigured" in result.data) {
+        setError("Eventbrite not configured — set EVENTBRITE_PRIVATE_TOKEN on the server.");
+        return;
+      }
+      const { synced, failed, ticketsTotal } = result.data;
+      setToast(
+        `Synced ${synced} crawl${synced === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} failed` : ""} · ${ticketsTotal} total tickets sold`,
+      );
+      onComplete();
+    });
+  }
+
+  async function runPush() {
+    setError(null);
+    const fd = new FormData();
+    fd.set("campaignId", campaignId);
+    fd.set("eventIds", selectedIds.join(","));
+    startPush(async () => {
+      const result = await bulkPushEventbriteDescriptions(null, fd);
+      if (!result.ok) {
+        setError(result.error ?? "Push failed.");
+        return;
+      }
+      if (result.data && "notConfigured" in result.data) {
+        setError("Eventbrite not configured.");
+        return;
+      }
+      const { pushed, failed, skipped } = result.data;
+      setToast(
+        `Pushed ${pushed} description${pushed === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} failed` : ""}${skipped > 0 ? ` · ${skipped} not linked to EB` : ""}`,
+      );
+      onComplete();
+    });
+  }
+
+  async function runUnlink() {
+    if (
+      !confirm(
+        `Clear Eventbrite linkage from ${selectedIds.length} crawl${selectedIds.length === 1 ? "" : "s"}? They'll lose their EB id + URL; the EB events themselves remain untouched.`,
+      )
+    )
+      return;
+    setError(null);
+    const fd = new FormData();
+    fd.set("campaignId", campaignId);
+    fd.set("eventIds", selectedIds.join(","));
+    startUnlink(async () => {
+      const result = await bulkUnlinkEventbrite(null, fd);
+      if (!result.ok) {
+        setError(result.error ?? "Unlink failed.");
+        return;
+      }
+      setToast(`Unlinked ${result.data.unlinked} crawl${result.data.unlinked === 1 ? "" : "s"}`);
+      onComplete();
+    });
+  }
+
+  const busy = pendingSync || pendingPush || pendingUnlink;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-blue-200/60 border-b bg-blue-50/60 px-5 py-2.5 dark:border-blue-900/40 dark:bg-blue-950/30">
+      <div className="flex items-center gap-2">
+        <span className="font-medium font-mono text-[11px] text-blue-700 uppercase tracking-[0.08em] dark:text-blue-300">
+          {selectedIds.length} selected
+        </span>
+        <button
+          type="button"
+          onClick={onComplete}
+          className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] underline-offset-4 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+        >
+          clear
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="ghost" onClick={runSync} disabled={busy}>
+          {pendingSync ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Syncing…
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-3 w-3" /> Sync EB sales
+            </>
+          )}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={runPush} disabled={busy}>
+          {pendingPush ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Pushing…
+            </>
+          ) : (
+            <>
+              <Send className="h-3 w-3" /> Push descriptions
+            </>
+          )}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={runUnlink}
+          disabled={busy}
+          className="text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+        >
+          {pendingUnlink ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" /> Unlinking…
+            </>
+          ) : (
+            <>
+              <Unlink className="h-3 w-3" /> Unlink EB
+            </>
+          )}
+        </Button>
+      </div>
+
+      {error && (
+        <p className="w-full font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>
+      )}
+      {toast && !error && (
+        <p className="w-full font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
+          {toast}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SelectAllCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate && !checked;
+  }, [indeterminate, checked]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+      aria-label="Select all crawls"
+    />
+  );
 }
