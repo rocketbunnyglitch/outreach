@@ -183,11 +183,11 @@ export function TemplateForm({ mode, initial, brands, action }: Props) {
 
           <aside className="flex flex-col gap-4">
             <div>
-              <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+              <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
                 Fields in use ({fieldsInUse.length})
               </p>
               {fieldsInUse.length === 0 ? (
-                <p className="mt-2 text-stone-400 text-xs italic">No merge fields used yet.</p>
+                <p className="mt-2 text-xs text-zinc-400 italic">No merge fields used yet.</p>
               ) : (
                 <ul className="mt-2 flex flex-col gap-1">
                   {fieldsInUse.map((f) => {
@@ -197,7 +197,7 @@ export function TemplateForm({ mode, initial, brands, action }: Props) {
                         key={f}
                         className={`font-mono text-xs ${
                           known
-                            ? "text-stone-700 dark:text-stone-300"
+                            ? "text-zinc-700 dark:text-zinc-300"
                             : "text-rose-600 dark:text-rose-400"
                         }`}
                         title={known?.description ?? "Unknown field"}
@@ -210,17 +210,17 @@ export function TemplateForm({ mode, initial, brands, action }: Props) {
                 </ul>
               )}
             </div>
-            <div className="border-stone-200 border-t pt-4 dark:border-stone-800">
-              <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+            <div className="border-zinc-200 border-t pt-4 dark:border-zinc-800">
+              <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
                 Available fields
               </p>
               <ul className="mt-2 flex flex-col gap-1.5">
                 {KNOWN_MERGE_FIELDS.map((f) => (
                   <li key={f.path} className="flex flex-col">
-                    <code className="font-mono text-[11px] text-stone-700 dark:text-stone-300">
+                    <code className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300">
                       {`{{${f.path}}}`}
                     </code>
-                    <span className="text-[10px] text-stone-500">{f.description}</span>
+                    <span className="text-[10px] text-zinc-500">{f.description}</span>
                   </li>
                 ))}
               </ul>
@@ -247,7 +247,7 @@ export function TemplateForm({ mode, initial, brands, action }: Props) {
         </FieldRow>
       </FormSection>
 
-      <div className="flex justify-end border-stone-200 border-t pt-6 dark:border-stone-800">
+      <div className="flex justify-end border-zinc-200 border-t pt-6 dark:border-zinc-800">
         <SubmitButton mode={mode} />
       </div>
     </form>

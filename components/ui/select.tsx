@@ -17,18 +17,18 @@ export const SelectTrigger = React.forwardRef<
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex h-9 w-full items-center justify-between rounded-md border border-stone-200 bg-white px-3 py-1 text-sm shadow-sm",
-        "transition-colors placeholder:text-stone-400",
-        "focus:outline-none focus:ring-2 focus:ring-stone-900 focus:ring-offset-1",
+        "flex h-9 w-full items-center justify-between rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm",
+        "transition-colors placeholder:text-zinc-400",
+        "focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-1",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        "dark:border-stone-800 dark:bg-stone-950 dark:focus:ring-stone-100",
+        "dark:border-zinc-800 dark:bg-zinc-950 dark:focus:ring-zinc-100",
         className,
       )}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="h-4 w-4 text-stone-400" />
+        <ChevronDown className="h-4 w-4 text-zinc-400" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -43,9 +43,9 @@ export const SelectContent = React.forwardRef<
       <SelectPrimitive.Content
         ref={ref}
         className={cn(
-          "relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-stone-200 bg-white shadow-md",
+          "relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-zinc-200 bg-white shadow-md",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=open]:animate-in",
-          "dark:border-stone-800 dark:bg-stone-950",
+          "dark:border-zinc-800 dark:bg-zinc-950",
           className,
         )}
         position={position}
@@ -66,7 +66,7 @@ export const SelectItem = React.forwardRef<
       ref={ref}
       className={cn(
         "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none",
-        "focus:bg-stone-100 dark:focus:bg-stone-800",
+        "focus:bg-zinc-100 dark:focus:bg-zinc-800",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}

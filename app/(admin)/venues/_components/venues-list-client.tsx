@@ -107,7 +107,7 @@ export function VenuesListClient({ groups, bulkAction }: Props) {
   return (
     <div className="flex flex-col gap-4">
       {(selectedCount > 0 || feedback) && (
-        <div className="-mx-2 sticky top-14 z-30 flex flex-col gap-3 border-stone-200 border-b bg-[color:var(--color-canvas)]/95 px-2 py-3 backdrop-blur-md dark:border-stone-800 dark:bg-[color:var(--color-canvas-dark)]/95">
+        <div className="-mx-2 sticky top-14 z-30 flex flex-col gap-3 border-zinc-200 border-b bg-[color:var(--color-canvas)]/95 px-2 py-3 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/95">
           {selectedCount > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 text-sm">
@@ -115,7 +115,7 @@ export function VenuesListClient({ groups, bulkAction }: Props) {
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="text-stone-500 text-xs underline hover:text-stone-900 dark:hover:text-stone-100"
+                  className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
                 >
                   Clear
                 </button>
@@ -123,7 +123,7 @@ export function VenuesListClient({ groups, bulkAction }: Props) {
                   <button
                     type="button"
                     onClick={selectAll}
-                    className="text-stone-500 text-xs underline hover:text-stone-900 dark:hover:text-stone-100"
+                    className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
                   >
                     Select all {total}
                   </button>
@@ -231,10 +231,10 @@ export function VenuesListClient({ groups, bulkAction }: Props) {
                     if (el) el.indeterminate = someInGroupSelected;
                   }}
                   onChange={() => toggleAllInGroup(group)}
-                  className="h-4 w-4 rounded border-stone-300 dark:border-stone-700"
+                  className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
                   aria-label={`Select all venues in ${group.cityName}`}
                 />
-                <h2 className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+                <h2 className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
                   {group.cityName} · {group.venues.length}
                 </h2>
               </header>
@@ -269,7 +269,7 @@ function VenueListItem({
     <Card
       className={cn(
         "flex items-center gap-4 p-4 transition-colors",
-        selected ? "bg-stone-50 dark:bg-stone-900" : "hover:bg-stone-50 dark:hover:bg-stone-900",
+        selected ? "bg-zinc-50 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900",
       )}
     >
       <input
@@ -277,7 +277,7 @@ function VenueListItem({
         checked={selected}
         onChange={onToggle}
         onClick={(e) => e.stopPropagation()}
-        className="h-4 w-4 rounded border-stone-300 dark:border-stone-700"
+        className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
         aria-label={`Select ${venue.name}`}
       />
       <Link href={`/venues/${venue.id}`} className="flex flex-1 flex-col gap-0.5">
@@ -290,7 +290,7 @@ function VenueListItem({
             </Badge>
           )}
         </div>
-        <p className="text-stone-500 text-xs">
+        <p className="text-xs text-zinc-500">
           {venue.address ?? "No address"}
           {venue.capacity != null && ` · cap ${venue.capacity}`}
         </p>

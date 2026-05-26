@@ -62,15 +62,15 @@ function TopNav({
   provider: string;
 }) {
   return (
-    <header className="sticky top-0 z-40 border-stone-200 border-b bg-[color:var(--color-canvas)]/85 backdrop-blur-md dark:border-stone-800 dark:bg-[color:var(--color-canvas-dark)]/85">
+    <header className="sticky top-0 z-40 border-zinc-200 border-b bg-[color:var(--color-canvas)]/85 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/85">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-6 sm:px-10">
         <div className="flex items-center gap-6">
           <Link
             href="/"
             className="flex items-baseline gap-2 font-semibold text-xl tracking-tight "
           >
-            <span className="text-stone-900 dark:text-stone-100">Crawl</span>
-            <span className="text-stone-400 dark:text-stone-500">Engine</span>
+            <span className="text-zinc-900 dark:text-zinc-100">Crawl</span>
+            <span className="text-zinc-400 dark:text-zinc-500">Engine</span>
           </Link>
 
           <CampaignSwitcher />
@@ -107,7 +107,7 @@ function NavLink({
   if (disabled) {
     return (
       <span
-        className="cursor-not-allowed rounded-md px-3 py-1.5 text-stone-300 dark:text-stone-700"
+        className="cursor-not-allowed rounded-md px-3 py-1.5 text-zinc-300 dark:text-zinc-700"
         title="Coming in a later phase"
       >
         {children}
@@ -117,7 +117,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className="rounded-md px-3 py-1.5 text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+      className="rounded-md px-3 py-1.5 text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
     >
       {children}
     </Link>

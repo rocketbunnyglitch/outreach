@@ -53,15 +53,15 @@ export default async function GoalsListPage() {
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
       <header className="flex items-baseline justify-between gap-4">
         <div>
-          <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">Operations</p>
+          <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Operations</p>
           <h1 className="mt-1 font-semibold text-4xl tracking-tight">Goals</h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Top-down targets for revenue, venue counts, or outreach activity.
           </p>
         </div>
         <Link
           href="/goals/new"
-          className="inline-flex items-center gap-1.5 rounded-md bg-stone-900 px-4 py-2 font-medium text-sm text-stone-50 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
+          className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <Plus className="h-4 w-4" />
           New goal
@@ -69,16 +69,16 @@ export default async function GoalsListPage() {
       </header>
 
       {withProgress.length === 0 ? (
-        <div className="rounded-lg border border-stone-200 border-dashed bg-white p-12 text-center dark:border-stone-800 dark:bg-stone-950">
-          <Target className="mx-auto h-8 w-8 text-stone-400" />
+        <div className="rounded-lg border border-zinc-200 border-dashed bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-950">
+          <Target className="mx-auto h-8 w-8 text-zinc-400" />
           <h3 className="mt-4 font-semibold text-2xl tracking-tight">No goals set yet</h3>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Set a goal for a campaign, city, brand, or staff member and the dashboard will track
             progress.
           </p>
           <Link
             href="/goals/new"
-            className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-stone-900 px-4 py-2 font-medium text-sm text-stone-50 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
+            className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <Plus className="h-4 w-4" />
             Set your first goal
@@ -86,7 +86,7 @@ export default async function GoalsListPage() {
         </div>
       ) : (
         <>
-          <p className="font-mono text-[11px] text-stone-500 uppercase tracking-widest">
+          <p className="font-mono text-[11px] text-zinc-500 uppercase tracking-widest">
             {activeCount} active · {withProgress.length - activeCount} expired
           </p>
 
@@ -135,13 +135,13 @@ function GoalCard({ goal }: { goal: GoalCardData }) {
     <Link
       href={`/goals/${goal.id}`}
       className={cn(
-        "block rounded-lg border border-stone-200 bg-white p-5 transition-colors hover:border-stone-300 hover:bg-stone-50 dark:border-stone-800 dark:bg-stone-950 dark:hover:border-stone-700 dark:hover:bg-stone-900",
+        "block rounded-lg border border-zinc-200 bg-white p-5 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
         isExpired && "opacity-60",
       )}
     >
       <header className="flex items-baseline justify-between">
         <h3 className="font-semibold text-sm tracking-tight">{metricLabel(goal.metric)}</h3>
-        <p className="font-mono text-[10px] text-stone-500 uppercase tracking-widest">
+        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
           {scopeLabel(goal.scope)}
           {isExpired && " · expired"}
         </p>
@@ -151,14 +151,14 @@ function GoalCard({ goal }: { goal: GoalCardData }) {
         <p className="font-mono font-semibold text-2xl tabular-nums">
           {isRevenue ? `$${currentDisplay.toLocaleString()}` : currentDisplay.toLocaleString()}
         </p>
-        <p className="font-mono text-sm text-stone-500 tabular-nums">
+        <p className="font-mono text-sm text-zinc-500 tabular-nums">
           of {isRevenue ? `$${targetDisplay.toLocaleString()}` : targetDisplay.toLocaleString()}
         </p>
       </div>
 
       {goal.progress.applicable ? (
         <div className="mt-3">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
             <div
               className={cn(
                 "h-full rounded-full transition-all",
@@ -166,7 +166,7 @@ function GoalCard({ goal }: { goal: GoalCardData }) {
                   ? "bg-emerald-500"
                   : goal.progress.pct >= 40
                     ? "bg-amber-500"
-                    : "bg-stone-500",
+                    : "bg-zinc-500",
               )}
               style={{ width: `${goal.progress.pct}%` }}
             />
@@ -178,24 +178,24 @@ function GoalCard({ goal }: { goal: GoalCardData }) {
                 ? "text-emerald-500"
                 : goal.progress.pct >= 40
                   ? "text-amber-500"
-                  : "text-stone-500",
+                  : "text-zinc-500",
             )}
           >
             {goal.progress.pct}% complete
           </p>
         </div>
       ) : (
-        <p className="mt-3 font-mono text-[11px] text-stone-400 italic">
+        <p className="mt-3 font-mono text-[11px] text-zinc-400 italic">
           progress not yet tracked for this metric × scope combination
         </p>
       )}
 
-      <footer className="mt-4 flex items-baseline justify-between border-stone-200 border-t pt-3 dark:border-stone-800">
-        <p className="font-mono text-[10px] text-stone-500 tabular-nums">
+      <footer className="mt-4 flex items-baseline justify-between border-zinc-200 border-t pt-3 dark:border-zinc-800">
+        <p className="font-mono text-[10px] text-zinc-500 tabular-nums">
           {formatDate(goal.periodStart)} → {formatDate(goal.periodEnd)}
         </p>
         {goal.setByName && (
-          <p className="font-mono text-[10px] text-stone-500">set by {goal.setByName}</p>
+          <p className="font-mono text-[10px] text-zinc-500">set by {goal.setByName}</p>
         )}
       </footer>
     </Link>

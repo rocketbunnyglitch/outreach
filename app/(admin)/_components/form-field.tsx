@@ -38,7 +38,7 @@ export function FieldShell({
       {error ? (
         <p className="text-amber-700 text-xs dark:text-amber-400">{error}</p>
       ) : hint ? (
-        <p className="text-stone-500 text-xs">{hint}</p>
+        <p className="text-xs text-zinc-500">{hint}</p>
       ) : null}
     </div>
   );
@@ -65,10 +65,10 @@ export function FormSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid grid-cols-1 gap-6 border-stone-200 border-t pt-8 first:border-t-0 first:pt-0 sm:grid-cols-[200px_1fr] dark:border-stone-800">
+    <section className="grid grid-cols-1 gap-6 border-zinc-200 border-t pt-8 first:border-t-0 first:pt-0 sm:grid-cols-[200px_1fr] dark:border-zinc-800">
       <div>
         <h2 className="font-semibold text-lg tracking-tight ">{title}</h2>
-        {description && <p className="mt-1 text-stone-500 text-xs">{description}</p>}
+        {description && <p className="mt-1 text-xs text-zinc-500">{description}</p>}
       </div>
       <div className="flex flex-col gap-5">{children}</div>
     </section>
@@ -81,7 +81,7 @@ export function FormSection({
  */
 export function SecretConfiguredHint({ configured }: { configured: boolean }) {
   return (
-    <p className="text-stone-500 text-xs">
+    <p className="text-xs text-zinc-500">
       {configured ? (
         <>
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />{" "}
@@ -89,7 +89,7 @@ export function SecretConfiguredHint({ configured }: { configured: boolean }) {
         </>
       ) : (
         <>
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-stone-300 align-middle dark:bg-stone-700" />{" "}
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-zinc-300 align-middle dark:bg-zinc-700" />{" "}
           Not configured. Will be encrypted at rest with AES-256-GCM.
         </>
       )}

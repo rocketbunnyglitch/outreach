@@ -64,7 +64,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
         <div>
           <Link
             href="/tasks"
-            className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <ChevronLeft className="h-3 w-3" /> All tasks
           </Link>
@@ -75,7 +75,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
               <Badge tone="muted">{task.targetType.replace("_", " ")}</Badge>
             )}
             {task.completedAt && (
-              <span className="font-mono text-stone-500 text-xs">
+              <span className="font-mono text-xs text-zinc-500">
                 completed {task.completedAt.toLocaleString()}
               </span>
             )}

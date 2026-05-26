@@ -31,7 +31,7 @@ export default async function EditCrawlBrandPage({
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+          <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
             Crawl brand · {brand.slug}
           </p>
           <div className="mt-2 flex flex-wrap items-baseline gap-3">

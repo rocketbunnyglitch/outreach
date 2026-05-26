@@ -94,19 +94,19 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         <header>
           <Link
             href={`/city-campaigns/${eventRow.cc.id}`}
-            className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <ChevronLeft className="h-3 w-3" /> {eventRow.city.name} · {eventRow.campaign.name}
           </Link>
           <h1 className="mt-3 font-semibold text-4xl tracking-tight ">
             {eventRow.event.eventDate}
             {eventRow.event.slotNumber !== 1 && (
-              <span className="ml-3 text-stone-400">slot {eventRow.event.slotNumber}</span>
+              <span className="ml-3 text-zinc-400">slot {eventRow.event.slotNumber}</span>
             )}
           </h1>
           <div className="mt-3 flex items-center gap-3">
             <Badge tone={statusTone(eventRow.event.status)}>{eventRow.event.status}</Badge>
-            <span className="text-sm text-stone-500">
+            <span className="text-sm text-zinc-500">
               {veRows.length} / {eventRow.event.requiredVenueCountTotal} venues · need{" "}
               {eventRow.event.requiredWristbandCount} wristband ·{" "}
               {eventRow.event.requiredMiddleCount} middle · {eventRow.event.requiredFinalCount}{" "}
@@ -116,13 +116,13 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         </header>
 
         {/* Print actions — open in new tab so the operator can keep editing here */}
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 px-4 py-3 dark:border-stone-800 dark:bg-stone-900">
-          <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">Print</span>
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Print</span>
           <a
             href={`/events/${id}/poster`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-3 py-1.5 font-medium text-sm hover:border-stone-300 dark:border-stone-700 dark:bg-stone-800 dark:hover:border-stone-600"
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 font-medium text-sm hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
           >
             🪧 Event poster
           </a>
@@ -130,11 +130,11 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
             href={`/events/${id}/staff-sheet`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md border border-stone-200 bg-white px-3 py-1.5 font-medium text-sm hover:border-stone-300 dark:border-stone-700 dark:bg-stone-800 dark:hover:border-stone-600"
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 font-medium text-sm hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
           >
             📋 Staff sheet
           </a>
-          <span className="ml-auto text-stone-500 text-xs">
+          <span className="ml-auto text-xs text-zinc-500">
             Posters show <strong>confirmed</strong> venues; staff sheets show all{" "}
             <strong>active</strong> (lead/interested/confirmed).
           </span>

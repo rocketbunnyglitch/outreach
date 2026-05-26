@@ -82,17 +82,17 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         <header>
           <Link
             href={`/campaigns/${cc.campaign.id}`}
-            className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
           </Link>
           <h1 className="mt-3 font-semibold text-4xl tracking-tight ">
             {cc.city.name}
-            {cc.city.region && <span className="ml-3 text-stone-400">{cc.city.region}</span>}
+            {cc.city.region && <span className="ml-3 text-zinc-400">{cc.city.region}</span>}
           </h1>
           <div className="mt-3 flex items-center gap-3">
             <Badge tone={statusTone(cc.cc.status)}>{cc.cc.status}</Badge>
-            <span className="text-sm text-stone-500">
+            <span className="text-sm text-zinc-500">
               priority {cc.cc.priority} · {cc.cc.targetVenueCount} target venues
               {cc.leadStaff && ` · lead ${cc.leadStaff.displayName}`}
             </span>

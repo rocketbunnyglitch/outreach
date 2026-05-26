@@ -104,32 +104,32 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
         meta={`${venuesWithQrs.length} active venues`}
       />
 
-      <main className="staff-sheet mx-auto my-6 flex flex-col bg-white text-stone-900 shadow-xl">
+      <main className="staff-sheet mx-auto my-6 flex flex-col bg-white text-zinc-900 shadow-xl">
         {/* Header */}
-        <header className="border-stone-900 border-b-2 px-10 pt-8 pb-6">
+        <header className="border-zinc-900 border-b-2 px-10 pt-8 pb-6">
           <div className="flex items-baseline justify-between gap-6">
             <div>
-              <p className="font-mono text-stone-500 text-xs uppercase tracking-[0.3em]">
+              <p className="font-mono text-xs text-zinc-500 uppercase tracking-[0.3em]">
                 Staff sheet · night of
               </p>
               <h1 className="mt-2 font-semibold text-4xl leading-tight tracking-tight ">
                 {eventRow.crawlBrand.displayName}
               </h1>
-              <p className="mt-1 text-lg text-stone-600">
+              <p className="mt-1 text-lg text-zinc-600">
                 {eventRow.city.name} · {formatDate(eventRow.event.eventDate)}
                 {eventRow.event.slotNumber !== 1 && ` · slot ${eventRow.event.slotNumber}`}
               </p>
             </div>
             <div className="text-right">
-              <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">Lineup</p>
+              <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Lineup</p>
               <p className="mt-1 font-mono text-3xl">
                 <span style={{ color: accentColor }}>{grouped.wristband.length}</span>
-                <span className="text-stone-300">·</span>
+                <span className="text-zinc-300">·</span>
                 <span style={{ color: accentColor }}>{grouped.middle.length}</span>
-                <span className="text-stone-300">·</span>
+                <span className="text-zinc-300">·</span>
                 <span style={{ color: accentColor }}>{grouped.final.length}</span>
               </p>
-              <p className="font-mono text-[10px] text-stone-500 uppercase tracking-wider">
+              <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">
                 wristband · middle · final
               </p>
             </div>
@@ -143,14 +143,14 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
             if (items.length === 0) return null;
             return (
               <section key={role} className="flex flex-col gap-4">
-                <div className="flex items-baseline gap-3 border-stone-200 border-b pb-2">
+                <div className="flex items-baseline gap-3 border-zinc-200 border-b pb-2">
                   <h2
                     className="font-mono text-xs uppercase tracking-[0.3em]"
                     style={{ color: accentColor }}
                   >
                     {role}
                   </h2>
-                  <span className="font-mono text-stone-500 text-xs">
+                  <span className="font-mono text-xs text-zinc-500">
                     {items.length} {items.length === 1 ? "stop" : "stops"}
                   </span>
                 </div>
@@ -164,14 +164,14 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
           })}
 
           {venuesWithQrs.length === 0 && (
-            <p className="font-semibold text-2xl text-stone-400 italic tracking-tight">
+            <p className="font-semibold text-2xl text-zinc-400 italic tracking-tight">
               No active venues linked to this event yet.
             </p>
           )}
         </div>
 
         {/* Footer */}
-        <footer className="mt-auto border-stone-200 border-t px-10 py-4 text-stone-500 text-xs">
+        <footer className="mt-auto border-zinc-200 border-t px-10 py-4 text-xs text-zinc-500">
           <div className="flex items-baseline justify-between">
             <span className="font-mono uppercase tracking-wider">Internal — do not distribute</span>
             <span className="font-mono">Generated {new Date().toLocaleDateString("en-US")}</span>
@@ -186,12 +186,12 @@ function VenueCard({ detail, accentColor }: { detail: VenueEventDetail; accentCo
   const { ve, venue, ourContactName, qrSvg } = detail;
   const slot = formatSlot(ve.slotStartTime, ve.slotEndTime);
   return (
-    <li className="flex gap-5 rounded-md border border-stone-200 p-4">
+    <li className="flex gap-5 rounded-md border border-zinc-200 p-4">
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
           <div>
             <h3 className="font-semibold text-2xl leading-tight tracking-tight">{venue.name}</h3>
-            {venue.address && <p className="text-sm text-stone-500">{venue.address}</p>}
+            {venue.address && <p className="text-sm text-zinc-500">{venue.address}</p>}
           </div>
           <div className="text-right">
             <span
@@ -232,7 +232,7 @@ function VenueCard({ detail, accentColor }: { detail: VenueEventDetail; accentCo
             <Detail
               label="Notes"
               value={
-                <span className="text-stone-600 italic">
+                <span className="text-zinc-600 italic">
                   {venue.internalNotes.length > 200
                     ? `${venue.internalNotes.slice(0, 200)}…`
                     : venue.internalNotes}
@@ -251,7 +251,7 @@ function VenueCard({ detail, accentColor }: { detail: VenueEventDetail; accentCo
           // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted QR SVG output
           dangerouslySetInnerHTML={{ __html: qrSvg }}
         />
-        <p className="font-mono text-[9px] text-stone-500 uppercase tracking-widest">directions</p>
+        <p className="font-mono text-[9px] text-zinc-500 uppercase tracking-widest">directions</p>
       </div>
     </li>
   );
@@ -268,7 +268,7 @@ function Detail({
 }) {
   return (
     <div className={`flex flex-col ${colSpan === 2 ? "col-span-2" : ""}`}>
-      <dt className="font-mono text-[10px] text-stone-400 uppercase tracking-widest">{label}</dt>
+      <dt className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">{label}</dt>
       <dd className="text-sm">{value}</dd>
     </div>
   );

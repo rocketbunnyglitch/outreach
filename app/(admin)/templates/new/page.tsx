@@ -15,7 +15,7 @@ export default async function NewTemplatePage() {
       <header>
         <Link
           href="/templates"
-          className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           <ChevronLeft className="h-3 w-3" /> All templates
         </Link>

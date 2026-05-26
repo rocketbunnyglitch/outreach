@@ -25,7 +25,7 @@ interface Props {
  */
 export function KpiStrip({ kpis }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-stone-200 bg-stone-200 sm:grid-cols-4 lg:grid-cols-5 dark:border-stone-800 dark:bg-stone-800">
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-zinc-200 bg-zinc-200 sm:grid-cols-4 lg:grid-cols-5 dark:border-zinc-800 dark:bg-zinc-800">
       {kpis.map((kpi) => (
         <KpiCard key={kpi.label} kpi={kpi} />
       ))}
@@ -37,11 +37,9 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
   const sparkColor = kpi.trend === "down" ? "text-rose-500" : "text-emerald-500";
 
   return (
-    <div className="flex flex-col gap-3 bg-white p-4 dark:bg-stone-950">
+    <div className="flex flex-col gap-3 bg-white p-4 dark:bg-zinc-950">
       <div className="flex items-start justify-between gap-2">
-        <p className="font-mono text-[10px] text-stone-500 uppercase tracking-widest">
-          {kpi.label}
-        </p>
+        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">{kpi.label}</p>
         {kpi.trend && kpi.trend !== "flat" && <TrendBadge trend={kpi.trend} meta={kpi.meta} />}
       </div>
       <div className="flex items-end justify-between gap-3">
@@ -59,7 +57,7 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
         )}
       </div>
       {kpi.meta && (!kpi.trend || kpi.trend === "flat") && (
-        <p className="font-mono text-[11px] text-stone-500">{kpi.meta}</p>
+        <p className="font-mono text-[11px] text-zinc-500">{kpi.meta}</p>
       )}
     </div>
   );

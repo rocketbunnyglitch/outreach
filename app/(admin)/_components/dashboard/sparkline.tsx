@@ -44,7 +44,7 @@ export function Sparkline({
         viewBox={`0 0 ${width} ${height}`}
         width={width}
         height={height}
-        className="text-stone-700 dark:text-stone-800"
+        className="text-zinc-700 dark:text-zinc-800"
         aria-label={label ?? "no data"}
       >
         <line

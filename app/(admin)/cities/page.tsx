@@ -25,7 +25,7 @@ export default async function CitiesListPage() {
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Cities</h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Geographic destinations. Each has a timezone and an optional coordinate for venue
             clustering.
           </p>
@@ -45,10 +45,10 @@ export default async function CitiesListPage() {
         <div className="grid gap-2">
           {rows.map(({ city, country }) => (
             <Link key={city.id} href={`/cities/${city.id}`} className="group">
-              <Card className="flex items-center justify-between gap-3 p-4 transition-colors group-hover:bg-stone-50 dark:group-hover:bg-stone-900">
+              <Card className="flex items-center justify-between gap-3 p-4 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
                 <div className="flex flex-col gap-0.5">
                   <h2 className="font-medium">{city.name}</h2>
-                  <p className="text-stone-500 text-xs">
+                  <p className="text-xs text-zinc-500">
                     {country.name}
                     {city.region ? ` · ${city.region}` : ""} · {city.timezone}
                     {city.location && (

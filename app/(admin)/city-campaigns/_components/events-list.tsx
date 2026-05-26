@@ -34,7 +34,7 @@ export function EventsList({ cityCampaignId, events }: Props) {
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="font-semibold text-2xl tracking-tight ">Events</h2>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+          <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
             {events.length} {events.length === 1 ? "event" : "events"}
           </span>
           <Button type="button" variant="outline" size="sm" onClick={() => setShowAdd((s) => !s)}>
@@ -48,7 +48,7 @@ export function EventsList({ cityCampaignId, events }: Props) {
       )}
 
       {events.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-6 text-center text-sm text-stone-500">
+        <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
           No events yet. Add one to start assigning venues.
         </Card>
       ) : (
@@ -56,26 +56,26 @@ export function EventsList({ cityCampaignId, events }: Props) {
           {events.map((e) => (
             <li key={e.id}>
               <Link href={`/events/${e.id}`} className="group block">
-                <Card className="flex items-center justify-between gap-4 p-4 transition-colors group-hover:bg-stone-50 dark:group-hover:bg-stone-900">
+                <Card className="flex items-center justify-between gap-4 p-4 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
                   <div className="flex items-center gap-3">
-                    <Calendar className="h-4 w-4 text-stone-400" />
+                    <Calendar className="h-4 w-4 text-zinc-400" />
                     <div className="flex flex-col gap-0.5">
                       <p className="font-medium">
                         {e.eventDate}
                         {e.slotNumber !== 1 && (
-                          <span className="ml-2 font-mono text-stone-500 text-xs">
+                          <span className="ml-2 font-mono text-xs text-zinc-500">
                             slot {e.slotNumber}
                           </span>
                         )}
                       </p>
-                      <p className="text-stone-500 text-xs">
+                      <p className="text-xs text-zinc-500">
                         {e.venueCount} / {e.requiredVenueCountTotal} venues
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge tone={statusTone(e.status)}>{e.status}</Badge>
-                    <ArrowRight className="h-4 w-4 text-stone-400 transition-transform group-hover:translate-x-0.5" />
+                    <ArrowRight className="h-4 w-4 text-zinc-400 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </Card>
               </Link>
@@ -94,7 +94,7 @@ function AddEventForm({
   const [state, formAction] = useActionState(createEvent, null);
   return (
     <Card className="flex flex-col gap-4 p-5">
-      <p className="font-medium text-stone-500 text-xs uppercase tracking-widest">New event</p>
+      <p className="font-medium text-xs text-zinc-500 uppercase tracking-widest">New event</p>
       {state && !state.ok && state.error && <Alert tone="error">{state.error}</Alert>}
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="cityCampaignId" value={cityCampaignId} />

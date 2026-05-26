@@ -96,21 +96,21 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
           </p>
         </header>
 
-        <section className="flex flex-1 flex-col gap-6 px-12 py-10 text-stone-900">
+        <section className="flex flex-1 flex-col gap-6 px-12 py-10 text-zinc-900">
           {confirmed.length === 0 ? (
-            <p className="font-semibold text-2xl text-stone-400 italic tracking-tight">
+            <p className="font-semibold text-2xl text-zinc-400 italic tracking-tight">
               Venues to be announced.
             </p>
           ) : (
             <>
-              <h2 className="font-mono text-stone-500 text-xs uppercase tracking-[0.3em]">
+              <h2 className="font-mono text-xs text-zinc-500 uppercase tracking-[0.3em]">
                 The lineup
               </h2>
               <ol className="flex flex-col gap-5">
                 {confirmed.map(({ ve, venue }) => (
                   <li
                     key={ve.id}
-                    className="flex items-baseline gap-5 border-stone-200 border-b pb-5"
+                    className="flex items-baseline gap-5 border-zinc-200 border-b pb-5"
                   >
                     <span
                       className="font-mono text-xs uppercase tracking-wider"
@@ -122,7 +122,7 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
                       <h3 className="font-semibold text-3xl leading-tight tracking-tight">
                         {venue.name}
                       </h3>
-                      {venue.address && <p className="text-sm text-stone-500">{venue.address}</p>}
+                      {venue.address && <p className="text-sm text-zinc-500">{venue.address}</p>}
                     </div>
                     <span
                       className="rounded-full border px-3 py-0.5 font-mono text-[10px] uppercase tracking-wider"
@@ -142,7 +142,7 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
 
         <footer className="flex items-end justify-between gap-6 px-12 pb-12">
           <div className="flex flex-col gap-1">
-            <p className="font-mono text-stone-500 text-xs uppercase tracking-[0.3em]">
+            <p className="font-mono text-xs text-zinc-500 uppercase tracking-[0.3em]">
               Tickets &amp; info
             </p>
             <p className="font-semibold text-lg tracking-tight" style={{ color: primaryColor }}>
@@ -155,7 +155,7 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
               // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted QR SVG output
               dangerouslySetInnerHTML={{ __html: qrSvg }}
             />
-            <p className="font-mono text-[9px] text-stone-500 uppercase tracking-widest">
+            <p className="font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
               scan to RSVP
             </p>
           </div>

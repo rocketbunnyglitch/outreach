@@ -43,12 +43,12 @@ export function DevImpersonationForm({ staff, from, action }: DevImpersonationFo
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-stone-500 text-xs uppercase tracking-widest">Dev impersonation</p>
+        <p className="text-xs text-zinc-500 uppercase tracking-widest">Dev impersonation</p>
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-[10px] text-amber-800 uppercase tracking-wider dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
           Dev only
         </span>
       </div>
-      <p className="text-stone-500 text-xs">
+      <p className="text-xs text-zinc-500">
         Pick a seeded staff member to sign in as. This provider is disabled in production builds.
       </p>
 
@@ -90,7 +90,7 @@ function StaffButton({
       className="w-full justify-between"
     >
       <span className="font-medium">{displayName}</span>
-      <span className="font-mono text-[10px] text-stone-400 uppercase tracking-wider">{role}</span>
+      <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider">{role}</span>
     </Button>
   );
 }

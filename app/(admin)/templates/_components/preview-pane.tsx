@@ -74,17 +74,17 @@ export function PreviewPane({
     <section className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="flex items-center gap-2 font-semibold text-2xl tracking-tight ">
-          <Eye className="h-5 w-5 text-stone-400" />
+          <Eye className="h-5 w-5 text-zinc-400" />
           Live preview
         </h2>
-        <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+        <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
           {isPending ? "rendering…" : "rendered"}
         </span>
       </header>
 
       {/* Context picker */}
       <Card className="flex flex-col gap-4 p-5">
-        <p className="font-medium text-stone-500 text-xs uppercase tracking-widest">
+        <p className="font-medium text-xs text-zinc-500 uppercase tracking-widest">
           Preview context
         </p>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -101,7 +101,7 @@ export function PreviewPane({
                 {venues.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
                     {v.name}
-                    <span className="ml-2 text-stone-500 text-xs">{v.cityName}</span>
+                    <span className="ml-2 text-xs text-zinc-500">{v.cityName}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -135,22 +135,20 @@ export function PreviewPane({
       </Card>
 
       {/* Rendered preview */}
-      <Card className="flex flex-col gap-0 overflow-hidden border-stone-300 dark:border-stone-700">
-        <header className="flex items-center justify-between gap-3 border-stone-200 border-b bg-stone-50 px-5 py-2.5 dark:border-stone-800 dark:bg-stone-900">
-          <span className="inline-flex items-center gap-2 font-mono text-stone-500 text-xs uppercase tracking-widest">
+      <Card className="flex flex-col gap-0 overflow-hidden border-zinc-300 dark:border-zinc-700">
+        <header className="flex items-center justify-between gap-3 border-zinc-200 border-b bg-zinc-50 px-5 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
+          <span className="inline-flex items-center gap-2 font-mono text-xs text-zinc-500 uppercase tracking-widest">
             <Mail className="h-3.5 w-3.5" /> rendered output
           </span>
         </header>
         <div className="flex flex-col">
-          <div className="border-stone-100 border-b px-5 py-3 dark:border-stone-900">
-            <p className="font-mono text-[10px] text-stone-400 uppercase tracking-widest">
-              Subject
-            </p>
+          <div className="border-zinc-100 border-b px-5 py-3 dark:border-zinc-900">
+            <p className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">Subject</p>
             <p className="mt-1 font-medium text-base">{subjectRendered}</p>
           </div>
           <div className="px-5 py-4">
-            <p className="font-mono text-[10px] text-stone-400 uppercase tracking-widest">Body</p>
-            <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-stone-700 leading-relaxed dark:text-stone-300">
+            <p className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">Body</p>
+            <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-zinc-700 leading-relaxed dark:text-zinc-300">
               {bodyRendered}
             </pre>
           </div>

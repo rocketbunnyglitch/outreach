@@ -185,12 +185,12 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
         title="Operations"
         description="Internal flags and notes. Not surfaced to venues."
       >
-        <div className="flex items-center justify-between gap-3 rounded-md border border-stone-200 px-4 py-3 dark:border-stone-800">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex flex-col gap-0.5">
             <label htmlFor="servesAlcohol" className="font-medium text-sm">
               Serves alcohol
             </label>
-            <p className="text-stone-500 text-xs">
+            <p className="text-xs text-zinc-500">
               Affects which campaign types this venue is eligible for.
             </p>
           </div>
@@ -260,7 +260,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
 function SubmitRow({ mode }: { mode: "create" | "edit" }) {
   const { pending } = useFormStatus();
   return (
-    <div className="flex items-center justify-end gap-3 border-stone-200 border-t pt-6 dark:border-stone-800">
+    <div className="flex items-center justify-end gap-3 border-zinc-200 border-t pt-6 dark:border-zinc-800">
       <Button type="submit" disabled={pending} size="lg">
         {pending
           ? mode === "create"

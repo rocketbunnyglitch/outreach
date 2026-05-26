@@ -142,7 +142,7 @@ export function CampaignForm({
           </FieldShell>
         </FieldRow>
         {mode === "edit" && (
-          <p className="text-stone-500 text-xs">
+          <p className="text-xs text-zinc-500">
             The brand pair is locked after creation. To re-brand, archive and create a new campaign.
           </p>
         )}
@@ -230,7 +230,7 @@ export function CampaignForm({
               }
               placeholder="500000"
             />
-            <p className="mt-1 text-stone-500 text-xs">
+            <p className="mt-1 text-xs text-zinc-500">
               Stored as bigint cents in your campaign's currency (no FX).
             </p>
           </FieldShell>
@@ -256,7 +256,7 @@ export function CampaignForm({
 function SubmitRow({ mode }: { mode: "create" | "edit" }) {
   const { pending } = useFormStatus();
   return (
-    <div className="flex items-center justify-end gap-3 border-stone-200 border-t pt-6 dark:border-stone-800">
+    <div className="flex items-center justify-end gap-3 border-zinc-200 border-t pt-6 dark:border-zinc-800">
       <Button type="submit" disabled={pending} size="lg">
         {pending
           ? mode === "create"

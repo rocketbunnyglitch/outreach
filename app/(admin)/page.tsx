@@ -107,10 +107,10 @@ export default async function DashboardHome() {
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
       <header className="flex items-baseline justify-between gap-4">
         <div>
-          <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">Operations</p>
+          <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Operations</p>
           <h1 className="mt-1 font-semibold text-4xl tracking-tight ">Dashboard</h1>
         </div>
-        <p className="font-mono text-stone-500 text-xs tabular-nums">
+        <p className="font-mono text-xs text-zinc-500 tabular-nums">
           live · {new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
         </p>
       </header>
@@ -120,7 +120,7 @@ export default async function DashboardHome() {
       <section className="flex flex-col gap-3">
         <header className="flex items-baseline justify-between">
           <h2 className="font-semibold text-2xl tracking-tight ">Cities</h2>
-          <p className="font-mono text-[10px] text-stone-500 uppercase tracking-widest">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             {data.cityRows.length} {data.cityRows.length === 1 ? "city" : "cities"} · click to
             expand
           </p>

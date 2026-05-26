@@ -46,10 +46,10 @@ export default async function TemplatesListPage() {
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">
-            <Mail className="-mt-1 mr-2 inline-block h-7 w-7 text-stone-400" />
+            <Mail className="-mt-1 mr-2 inline-block h-7 w-7 text-zinc-400" />
             Email templates
           </h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Templates are scoped per outreach brand and stage. The default template for each stage
             gets used by automation; named variants stay available for manual sends.
           </p>
@@ -65,7 +65,7 @@ export default async function TemplatesListPage() {
       {byBrand.size === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
           <p className="font-semibold text-2xl tracking-tight ">No templates yet.</p>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-zinc-500">
             Create your first template to start authoring outreach copy.
           </p>
         </Card>
@@ -73,26 +73,26 @@ export default async function TemplatesListPage() {
         <div className="flex flex-col gap-10">
           {Array.from(byBrand.values()).map((bg) => (
             <section key={bg.brandName} className="flex flex-col gap-4">
-              <h2 className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+              <h2 className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
                 {bg.brandName}
               </h2>
               <div className="flex flex-col gap-6">
                 {Array.from(bg.stages.values()).map((sg) => (
                   <div key={sg.stage} className="flex flex-col gap-2">
-                    <h3 className="font-medium text-sm text-stone-700 dark:text-stone-300">
+                    <h3 className="font-medium text-sm text-zinc-700 dark:text-zinc-300">
                       {STAGE_LABELS[sg.stage as keyof typeof STAGE_LABELS] ?? sg.stage}
                     </h3>
                     <ol className="flex flex-col gap-1.5">
                       {sg.templates.map((row) => (
                         <li key={row.template.id}>
                           <Link href={`/templates/${row.template.id}`} className="group block">
-                            <Card className="flex items-center justify-between gap-4 p-3 transition-colors group-hover:bg-stone-50 dark:group-hover:bg-stone-900">
+                            <Card className="flex items-center justify-between gap-4 p-3 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
                               <div className="flex items-center gap-2.5">
                                 {row.template.isDefaultForStage && (
                                   <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
                                 )}
                                 <span className="font-medium">{row.template.name}</span>
-                                <span className="font-mono text-stone-500 text-xs">
+                                <span className="font-mono text-xs text-zinc-500">
                                   {row.template.subjectTemplate.slice(0, 60)}
                                   {row.template.subjectTemplate.length > 60 ? "…" : ""}
                                 </span>

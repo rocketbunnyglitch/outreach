@@ -80,12 +80,12 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
         <header>
           <Link
             href="/campaigns"
-            className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <ChevronLeft className="h-3 w-3" /> All campaigns
           </Link>
           <h1 className="mt-3 font-semibold text-4xl tracking-tight ">{campaign.name}</h1>
-          <p className="mt-2 font-mono text-stone-400 text-xs uppercase tracking-wider">
+          <p className="mt-2 font-mono text-xs text-zinc-400 uppercase tracking-wider">
             {campaign.slug}
           </p>
         </header>

@@ -86,16 +86,16 @@ export function CitiesTable({ cities }: Props) {
 
   if (cities.length === 0) {
     return (
-      <div className="rounded-lg border border-stone-200 border-dashed bg-white p-12 text-center dark:border-stone-800 dark:bg-stone-950">
-        <Target className="mx-auto h-8 w-8 text-stone-400" />
+      <div className="rounded-lg border border-zinc-200 border-dashed bg-white p-12 text-center dark:border-zinc-800 dark:bg-zinc-950">
+        <Target className="mx-auto h-8 w-8 text-zinc-400" />
         <h3 className="mt-4 font-semibold text-2xl tracking-tight ">No active campaigns yet</h3>
-        <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Create a campaign and add cities to it, and they'll appear here with live sales + venue
           progress.
         </p>
         <Link
           href="/campaigns/new"
-          className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-stone-900 px-4 py-2 font-medium text-sm text-stone-50 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
+          className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           Create your first campaign
         </Link>
@@ -104,9 +104,9 @@ export function CitiesTable({ cities }: Props) {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-800">
+    <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
       {/* Column header */}
-      <div className="grid grid-cols-12 gap-3 border-stone-200 border-b bg-stone-100 px-4 py-2.5 font-mono text-[10px] text-stone-500 uppercase tracking-widest dark:border-stone-800 dark:bg-stone-900">
+      <div className="grid grid-cols-12 gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800 dark:bg-zinc-900">
         <div className="col-span-3">City</div>
         <div className="col-span-2">Status</div>
         <div className="col-span-2 text-right">Sales</div>
@@ -116,7 +116,7 @@ export function CitiesTable({ cities }: Props) {
       </div>
 
       {/* Rows */}
-      <div className="divide-y divide-stone-200 dark:divide-stone-800">
+      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
         {cities.map((city, idx) => (
           <div key={city.cityId}>
             <CityHeaderRow
@@ -158,8 +158,8 @@ function CityHeaderRow({
       onClick={onClick}
       className={cn(
         "grid w-full grid-cols-12 items-center gap-3 px-4 py-3.5 text-left transition-colors",
-        striped ? "bg-stone-50/50 dark:bg-stone-950" : "bg-white dark:bg-stone-950/40",
-        "hover:bg-stone-100 dark:hover:bg-stone-900",
+        striped ? "bg-zinc-50/50 dark:bg-zinc-950" : "bg-white dark:bg-zinc-950/40",
+        "hover:bg-zinc-100 dark:hover:bg-zinc-900",
       )}
       aria-expanded={isExpanded}
     >
@@ -167,13 +167,13 @@ function CityHeaderRow({
       <div className="col-span-3 flex min-w-0 items-center gap-2">
         <ChevronRight
           className={cn(
-            "h-3.5 w-3.5 shrink-0 text-stone-500 transition-transform",
+            "h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform",
             isExpanded && "rotate-90",
           )}
         />
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate font-medium">{city.cityName}</span>
-          <span className="truncate text-[11px] text-stone-500">
+          <span className="truncate text-[11px] text-zinc-500">
             {city.cityRegion ? `${city.cityRegion} · ` : ""}
             {city.countryName} · {city.campaigns.length}{" "}
             {city.campaigns.length === 1 ? "campaign" : "campaigns"}
@@ -192,7 +192,7 @@ function CityHeaderRow({
           {formatCurrency(city.totalSalesCents)}
         </p>
         {city.totalGoalCents > 0 && (
-          <p className="font-mono text-[10px] text-stone-500 tabular-nums">
+          <p className="font-mono text-[10px] text-zinc-500 tabular-nums">
             of {formatCurrency(city.totalGoalCents)}{" "}
             <span
               className={
@@ -200,7 +200,7 @@ function CityHeaderRow({
                   ? "text-emerald-500"
                   : salesPct >= 40
                     ? "text-amber-500"
-                    : "text-stone-500"
+                    : "text-zinc-500"
               }
             >
               {salesPct}%
@@ -213,17 +213,17 @@ function CityHeaderRow({
       <div className="col-span-2 text-right">
         <p className="font-medium font-mono text-sm tabular-nums">
           {city.venuesConfirmed}
-          <span className="text-stone-500">/{city.venuesTargeted}</span>
+          <span className="text-zinc-500">/{city.venuesTargeted}</span>
         </p>
         {city.venuesTargeted > 0 && (
-          <p className="font-mono text-[10px] text-stone-500 tabular-nums">
+          <p className="font-mono text-[10px] text-zinc-500 tabular-nums">
             <span
               className={
                 venuesPct >= 80
                   ? "text-emerald-500"
                   : venuesPct >= 40
                     ? "text-amber-500"
-                    : "text-stone-500"
+                    : "text-zinc-500"
               }
             >
               {venuesPct}%
@@ -240,7 +240,7 @@ function CityHeaderRow({
       <div className="col-span-2 flex justify-end">
         <Sparkline
           values={city.outreach30d}
-          colorClass={city.outreach30d.some((v) => v > 0) ? "text-emerald-500" : "text-stone-600"}
+          colorClass={city.outreach30d.some((v) => v > 0) ? "text-emerald-500" : "text-zinc-600"}
           width={100}
           showEndDot={city.outreach30d.some((v) => v > 0)}
           label={`${city.cityName} outreach trend`}
@@ -260,13 +260,13 @@ function CityExpandedContent({
   return (
     <div
       className={cn(
-        "border-stone-200 border-t border-dashed px-4 py-4 dark:border-stone-800/50",
-        striped ? "bg-stone-50/30 dark:bg-stone-950" : "bg-stone-50/50 dark:bg-stone-950/60",
+        "border-zinc-200 border-t border-dashed px-4 py-4 dark:border-zinc-800/50",
+        striped ? "bg-zinc-50/30 dark:bg-zinc-950" : "bg-zinc-50/50 dark:bg-zinc-950/60",
       )}
     >
-      <div className="space-y-5 border-stone-200 border-l pl-6 dark:border-stone-800">
+      <div className="space-y-5 border-zinc-200 border-l pl-6 dark:border-zinc-800">
         {city.campaigns.length === 0 && (
-          <p className="text-sm text-stone-500 italic">No campaigns in this city yet.</p>
+          <p className="text-sm text-zinc-500 italic">No campaigns in this city yet.</p>
         )}
         {city.campaigns.map((campaign) => (
           <CampaignBlock key={campaign.cityCampaignId} campaign={campaign} />
@@ -292,7 +292,7 @@ function CampaignBlock({ campaign }: { campaign: CampaignRow }) {
           </Link>
           <StatusBadge status={campaign.status} />
         </div>
-        <div className="flex items-baseline gap-4 font-mono text-[11px] text-stone-500 tabular-nums">
+        <div className="flex items-baseline gap-4 font-mono text-[11px] text-zinc-500 tabular-nums">
           <span>
             <Target className="-mt-0.5 mr-1 inline h-3 w-3" />
             {campaign.venuesConfirmed}/{campaign.venuesTargeted} venues
@@ -313,11 +313,11 @@ function CampaignBlock({ campaign }: { campaign: CampaignRow }) {
       </div>
 
       {campaign.events.length === 0 ? (
-        <p className="pl-4 text-stone-500 text-xs italic">
+        <p className="pl-4 text-xs text-zinc-500 italic">
           No events scheduled.{" "}
           <Link
             href={`/city-campaigns/${campaign.cityCampaignId}`}
-            className="underline hover:text-stone-700 dark:hover:text-stone-300"
+            className="underline hover:text-zinc-700 dark:hover:text-zinc-300"
           >
             Add one
           </Link>
@@ -341,27 +341,27 @@ function EventRowLine({ event }: { event: EventRow }) {
     <li>
       <Link
         href={`/events/${event.eventId}`}
-        className="grid grid-cols-12 items-center gap-3 rounded px-3 py-1.5 text-xs hover:bg-stone-100 dark:hover:bg-stone-900"
+        className="grid grid-cols-12 items-center gap-3 rounded px-3 py-1.5 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
       >
         <div className="col-span-3 flex items-center gap-2">
-          <Calendar className="h-3 w-3 text-stone-500" />
+          <Calendar className="h-3 w-3 text-zinc-500" />
           <span className="font-mono tabular-nums">{formatDate(event.eventDate)}</span>
           {event.slotNumber > 1 && (
-            <span className="font-mono text-[10px] text-stone-500">slot {event.slotNumber}</span>
+            <span className="font-mono text-[10px] text-zinc-500">slot {event.slotNumber}</span>
           )}
         </div>
         <div className="col-span-2">
           <StatusBadge status={event.status} compact />
         </div>
-        <div className="col-span-3 font-mono text-stone-500 tabular-nums">
+        <div className="col-span-3 font-mono text-zinc-500 tabular-nums">
           {event.venuesLinked}/{event.venuesRequired} venues
           {isUnderstaffed && <span className="ml-2 text-amber-500">⚠</span>}
         </div>
-        <div className="col-span-3 font-mono text-[10px] text-stone-500 tabular-nums">
+        <div className="col-span-3 font-mono text-[10px] text-zinc-500 tabular-nums">
           {roleBreakdown}
         </div>
         <div className="col-span-1 text-right">
-          <ExternalLink className="inline h-3 w-3 text-stone-500" />
+          <ExternalLink className="inline h-3 w-3 text-zinc-500" />
         </div>
       </Link>
     </li>
@@ -378,7 +378,7 @@ function StatusBadge({
   const colors: Record<string, string> = {
     active: "bg-emerald-500/10 text-emerald-500 ring-emerald-500/20",
     confirmed: "bg-emerald-500/10 text-emerald-500 ring-emerald-500/20",
-    completed: "bg-stone-500/10 text-stone-400 ring-stone-500/20",
+    completed: "bg-zinc-500/10 text-zinc-400 ring-zinc-500/20",
     planning: "bg-blue-500/10 text-blue-500 ring-blue-500/20",
     planned: "bg-blue-500/10 text-blue-500 ring-blue-500/20",
     cancelled: "bg-rose-500/10 text-rose-500 ring-rose-500/20",

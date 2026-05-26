@@ -15,10 +15,10 @@ interface Props {
  */
 export function TasksWidget({ tasks, totalOpen, overdueCount }: Props) {
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-800">
-      <header className="flex items-baseline justify-between gap-3 border-stone-200 border-b bg-stone-100 px-4 py-2.5 dark:border-stone-800 dark:bg-stone-900">
+    <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-baseline gap-2">
-          <h2 className="font-mono text-[10px] text-stone-500 uppercase tracking-widest">
+          <h2 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             Upcoming tasks
           </h2>
           {overdueCount > 0 && (
@@ -30,7 +30,7 @@ export function TasksWidget({ tasks, totalOpen, overdueCount }: Props) {
         </div>
         <Link
           href="/tasks"
-          className="font-mono text-[10px] text-stone-500 uppercase tracking-widest hover:text-stone-900 dark:hover:text-stone-100"
+          className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           all {totalOpen} →
         </Link>
@@ -38,34 +38,34 @@ export function TasksWidget({ tasks, totalOpen, overdueCount }: Props) {
 
       {tasks.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-          <CheckCircle2 className="h-6 w-6 text-stone-400" />
-          <p className="text-sm text-stone-600 dark:text-stone-400">No upcoming tasks</p>
+          <CheckCircle2 className="h-6 w-6 text-zinc-400" />
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">No upcoming tasks</p>
           <Link
             href="/tasks/new"
-            className="mt-2 inline-flex items-center gap-1 text-stone-500 text-xs hover:text-stone-900 dark:hover:text-stone-100"
+            className="mt-2 inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
           >
             <Plus className="h-3 w-3" />
             New task
           </Link>
         </div>
       ) : (
-        <ul className="divide-y divide-stone-200 dark:divide-stone-800">
+        <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {tasks.map((task) => (
             <li key={task.id}>
               <Link
                 href={`/tasks/${task.id}`}
-                className="grid grid-cols-12 items-center gap-2 px-4 py-2.5 transition-colors hover:bg-stone-100 dark:hover:bg-stone-900"
+                className="grid grid-cols-12 items-center gap-2 px-4 py-2.5 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
               >
                 <div className="col-span-7 min-w-0">
                   <p className="truncate font-medium text-sm">{task.title}</p>
-                  <p className="font-mono text-[11px] text-stone-500">
+                  <p className="font-mono text-[11px] text-zinc-500">
                     {task.assigneeName ?? "unassigned"}
                   </p>
                 </div>
                 <div
                   className={cn(
                     "col-span-4 font-mono text-[11px] tabular-nums",
-                    task.overdue ? "font-medium text-rose-500" : "text-stone-500",
+                    task.overdue ? "font-medium text-rose-500" : "text-zinc-500",
                   )}
                 >
                   {task.dueAt ? (
@@ -81,7 +81,7 @@ export function TasksWidget({ tasks, totalOpen, overdueCount }: Props) {
                     <span className="italic">no due date</span>
                   )}
                 </div>
-                <ChevronRight className="col-span-1 h-3 w-3 text-stone-500" />
+                <ChevronRight className="col-span-1 h-3 w-3 text-zinc-500" />
               </Link>
             </li>
           ))}

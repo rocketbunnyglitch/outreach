@@ -19,7 +19,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn(GeistSans.variable, GeistMono.variable)} suppressHydrationWarning>
       <body
-        className={cn("min-h-screen font-sans antialiased", "text-stone-900 dark:text-stone-100")}
+        className={cn("min-h-screen font-sans antialiased", "text-zinc-900 dark:text-zinc-100")}
       >
         {children}
         <VersionFooter />

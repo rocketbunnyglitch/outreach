@@ -21,10 +21,10 @@ export function UserMenu({ staff, provider }: UserMenuProps) {
   return (
     <div className="flex items-center gap-3">
       <div className="hidden flex-col items-end leading-tight sm:flex">
-        <span className="font-medium text-sm text-stone-900 dark:text-stone-100">
+        <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
           {staff.displayName}
         </span>
-        <span className="font-mono text-[10px] text-stone-500 uppercase tracking-wider">
+        <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">
           {staff.role}
           {provider === "dev-staff-impersonate" && " · dev"}
         </span>
@@ -55,8 +55,8 @@ function Avatar({ displayName }: { displayName: string }) {
     <div
       className={cn(
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-        "bg-stone-900 font-medium font-mono text-[10px] text-stone-50 tracking-wider",
-        "dark:bg-stone-100 dark:text-stone-900",
+        "bg-zinc-900 font-medium font-mono text-[10px] text-zinc-50 tracking-wider",
+        "dark:bg-zinc-100 dark:text-zinc-900",
       )}
     >
       {initials}

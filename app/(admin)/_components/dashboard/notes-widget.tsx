@@ -17,58 +17,58 @@ interface Props {
  */
 export function NotesWidget({ notes }: Props) {
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-800">
-      <header className="flex items-baseline justify-between gap-3 border-stone-200 border-b bg-stone-100 px-4 py-2.5 dark:border-stone-800 dark:bg-stone-900">
-        <h2 className="font-mono text-[10px] text-stone-500 uppercase tracking-widest">
+    <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
+        <h2 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
           Recent notes
         </h2>
-        <span className="font-mono text-[10px] text-stone-500 tabular-nums">
+        <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
           {notes.length} latest
         </span>
       </header>
 
       {notes.length === 0 ? (
-        <div className="bg-white px-4 py-10 text-center dark:bg-stone-950">
-          <MessageSquare className="mx-auto h-5 w-5 text-stone-400" />
-          <p className="mt-3 font-mono text-[11px] text-stone-500 uppercase tracking-widest">
+        <div className="bg-white px-4 py-10 text-center dark:bg-zinc-950">
+          <MessageSquare className="mx-auto h-5 w-5 text-zinc-400" />
+          <p className="mt-3 font-mono text-[11px] text-zinc-500 uppercase tracking-widest">
             No notes yet
           </p>
-          <p className="mt-2 text-stone-500 text-xs">
+          <p className="mt-2 text-xs text-zinc-500">
             Notes added on venues or city-campaigns show up here.
           </p>
         </div>
       ) : (
-        <ul className="divide-y divide-stone-200 bg-white dark:divide-stone-800 dark:bg-stone-950">
+        <ul className="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-950">
           {notes.map((note) => (
             <li key={note.id}>
               <Link
                 href={targetHref(note.targetType, note.targetId)}
-                className="block px-4 py-3 transition-colors hover:bg-stone-50 dark:hover:bg-stone-900"
+                className="block px-4 py-3 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
               >
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="truncate font-semibold text-xs tracking-tight">
                     {note.authorName}
-                    <span className="ml-2 font-mono font-normal text-[10px] text-stone-500 uppercase tracking-wider">
+                    <span className="ml-2 font-mono font-normal text-[10px] text-zinc-500 uppercase tracking-wider">
                       on {targetLabel(note.targetType)}
                     </span>
                   </p>
-                  <span className="shrink-0 font-mono text-[10px] text-stone-500 tabular-nums">
+                  <span className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums">
                     {formatRelative(note.createdAt)}
                   </span>
                 </div>
-                <p className="mt-1 truncate font-medium text-stone-700 text-xs dark:text-stone-300">
+                <p className="mt-1 truncate font-medium text-xs text-zinc-700 dark:text-zinc-300">
                   {note.targetName}
                 </p>
                 <p
                   className={cn(
-                    "mt-2 text-[13px] text-stone-700 leading-relaxed dark:text-stone-300",
+                    "mt-2 text-[13px] text-zinc-700 leading-relaxed dark:text-zinc-300",
                     "line-clamp-2",
                   )}
                 >
                   {excerpt(note.body)}
                 </p>
                 {note.mentionCount > 0 && (
-                  <p className="mt-1.5 font-mono text-[10px] text-stone-500">
+                  <p className="mt-1.5 font-mono text-[10px] text-zinc-500">
                     mentioned {note.mentionCount}
                   </p>
                 )}

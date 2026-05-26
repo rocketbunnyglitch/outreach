@@ -46,7 +46,7 @@ export function CampaignSwitcherClient({
     return (
       <a
         href="/campaigns/new"
-        className="hidden items-center gap-2 rounded-md border border-stone-200 px-3 py-1.5 text-stone-500 text-xs transition-colors hover:border-stone-300 hover:text-stone-900 lg:flex dark:border-stone-800 dark:hover:border-stone-700 dark:hover:text-stone-100"
+        className="hidden items-center gap-2 rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-900 lg:flex dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:text-zinc-100"
       >
         No campaigns yet · <span className="underline">create one</span>
       </a>
@@ -60,23 +60,23 @@ export function CampaignSwitcherClient({
       onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
       className="relative hidden lg:block"
     >
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm transition-colors hover:border-stone-300 dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700">
         <div className="flex flex-col items-start leading-tight">
-          <span className="text-[10px] text-stone-400 uppercase tracking-widest">Campaign</span>
+          <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Campaign</span>
           {currentLabel ? (
-            <span className="max-w-[200px] truncate font-medium text-stone-900 dark:text-stone-100">
+            <span className="max-w-[200px] truncate font-medium text-zinc-900 dark:text-zinc-100">
               {currentLabel}
             </span>
           ) : (
-            <span className="font-medium text-stone-500">Pick one…</span>
+            <span className="font-medium text-zinc-500">Pick one…</span>
           )}
         </div>
-        <ChevronsUpDown className="h-3 w-3 text-stone-400" />
+        <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
       </summary>
 
-      <div className="absolute top-full left-0 z-50 mt-1 w-80 rounded-md border border-stone-200 bg-white p-1 shadow-lg dark:border-stone-800 dark:bg-stone-900">
+      <div className="absolute top-full left-0 z-50 mt-1 w-80 rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
         {currentBrandPair && (
-          <div className="border-stone-100 border-b px-3 py-2 text-[11px] text-stone-500 dark:border-stone-800">
+          <div className="border-zinc-100 border-b px-3 py-2 text-[11px] text-zinc-500 dark:border-zinc-800">
             Currently: {currentBrandPair}
           </div>
         )}
@@ -89,17 +89,17 @@ export function CampaignSwitcherClient({
                   type="submit"
                   className={cn(
                     "flex w-full flex-col items-start gap-0.5 rounded-sm px-3 py-2 text-left text-sm transition-colors",
-                    "hover:bg-stone-100 dark:hover:bg-stone-800",
-                    c.id === currentId && "bg-stone-50 dark:bg-stone-800",
+                    "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                    c.id === currentId && "bg-zinc-50 dark:bg-zinc-800",
                   )}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className="truncate font-medium">{c.name}</span>
                     {c.id === currentId && (
-                      <Check className="h-3 w-3 shrink-0 text-stone-700 dark:text-stone-300" />
+                      <Check className="h-3 w-3 shrink-0 text-zinc-700 dark:text-zinc-300" />
                     )}
                   </div>
-                  <span className="text-[10px] text-stone-500">
+                  <span className="text-[10px] text-zinc-500">
                     {c.outreachBrandName} · {c.crawlBrandName}
                   </span>
                 </button>
@@ -108,14 +108,14 @@ export function CampaignSwitcherClient({
           ))}
         </ul>
         {currentId && (
-          <div className="border-stone-100 border-t p-1 dark:border-stone-800">
+          <div className="border-zinc-100 border-t p-1 dark:border-zinc-800">
             <form action={switchCurrentCampaign}>
               <input type="hidden" name="campaignId" value="_clear" />
               <Button
                 type="submit"
                 variant="ghost"
                 size="sm"
-                className="w-full justify-center text-stone-500 text-xs"
+                className="w-full justify-center text-xs text-zinc-500"
               >
                 Clear selection
               </Button>

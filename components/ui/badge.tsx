@@ -7,10 +7,10 @@ const badgeVariants = cva(
   {
     variants: {
       tone: {
-        default: "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
+        default: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
         success: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
         warning: "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-        muted: "bg-stone-50 text-stone-500 dark:bg-stone-900 dark:text-stone-500",
+        muted: "bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-500",
         accent: "bg-orange-50 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
       },
     },

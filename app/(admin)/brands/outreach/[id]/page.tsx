@@ -31,7 +31,7 @@ export default async function EditOutreachBrandPage({
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+          <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
             Outreach brand · {brand.slug}
           </p>
           <h1 className="mt-2 font-semibold text-4xl tracking-tight ">{brand.displayName}</h1>

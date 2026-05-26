@@ -33,10 +33,10 @@ export default async function DiscoverPage() {
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="font-semibold text-4xl tracking-tight ">
-          <Sparkles className="-mt-1 mr-2 inline-block h-7 w-7 text-stone-400" />
+          <Sparkles className="-mt-1 mr-2 inline-block h-7 w-7 text-zinc-400" />
           Discover venues
         </h1>
-        <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Search Google Places near a city to find candidate venues, then bulk-import the ones you
           want. Dedup by Google Place ID is automatic.
         </p>
@@ -54,7 +54,7 @@ export default async function DiscoverPage() {
       {citiesWithCoords.length === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
           <p className="font-semibold text-2xl tracking-tight ">No cities yet.</p>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-zinc-500">
             <Link href="/cities/new" className="underline">
               Create a city
             </Link>{" "}

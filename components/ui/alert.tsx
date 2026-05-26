@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Info } from "lucide-react";
 import type * as React from "react";
 
 const toneClasses = {
-  info: "border-stone-200 bg-stone-50 text-stone-800 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-200",
+  info: "border-zinc-200 bg-zinc-50 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200",
   error:
     "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
   success:

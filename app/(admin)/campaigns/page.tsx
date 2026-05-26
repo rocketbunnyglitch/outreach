@@ -29,7 +29,7 @@ export default async function CampaignsListPage() {
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Campaigns</h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Each campaign ties an outreach brand to a crawl brand for a specific holiday cycle.
           </p>
         </div>
@@ -43,7 +43,7 @@ export default async function CampaignsListPage() {
       {rows.length === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
           <p className="font-semibold text-2xl tracking-tight ">No campaigns yet.</p>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-zinc-500">
             Create one to start building city + venue plans against a brand pair.
           </p>
         </Card>
@@ -51,34 +51,34 @@ export default async function CampaignsListPage() {
         <div className="grid gap-3">
           {rows.map(({ campaign, outreachBrand, crawlBrand }) => (
             <Link key={campaign.id} href={`/campaigns/${campaign.id}`} className="group">
-              <Card className="flex flex-col gap-3 p-5 transition-colors group-hover:bg-stone-50 dark:group-hover:bg-stone-900">
+              <Card className="flex flex-col gap-3 p-5 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-baseline gap-3">
                     <h2 className="font-semibold text-2xl tracking-tight ">{campaign.name}</h2>
-                    <span className="font-mono text-stone-400 text-xs uppercase tracking-wider">
+                    <span className="font-mono text-xs text-zinc-400 uppercase tracking-wider">
                       {campaign.slug}
                     </span>
                   </div>
                   <Badge tone={statusTone(campaign.status)}>{campaign.status}</Badge>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 text-stone-500 text-xs">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
                   <span>
-                    <span className="text-stone-400">via</span>{" "}
-                    <span className="font-medium text-stone-700 dark:text-stone-300">
+                    <span className="text-zinc-400">via</span>{" "}
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">
                       {outreachBrand.displayName}
                     </span>
                   </span>
-                  <span className="text-stone-300">·</span>
+                  <span className="text-zinc-300">·</span>
                   <span>
-                    <span className="text-stone-400">as</span>{" "}
-                    <span className="font-medium text-stone-700 dark:text-stone-300">
+                    <span className="text-zinc-400">as</span>{" "}
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">
                       {crawlBrand.displayName}
                     </span>{" "}
                     ({campaign.holidayType})
                   </span>
                   {campaign.startDate && (
                     <>
-                      <span className="text-stone-300">·</span>
+                      <span className="text-zinc-300">·</span>
                       <span>
                         {campaign.startDate}
                         {campaign.endDate && ` → ${campaign.endDate}`}

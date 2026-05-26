@@ -32,7 +32,7 @@ export default async function PrintLayout({ children }: { children: React.ReactN
           href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
         />
       </head>
-      <body className="min-h-screen bg-stone-100 antialiased dark:bg-stone-950">{children}</body>
+      <body className="min-h-screen bg-zinc-100 antialiased dark:bg-zinc-950">{children}</body>
     </html>
   );
 }

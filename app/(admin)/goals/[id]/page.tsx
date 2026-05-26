@@ -67,46 +67,46 @@ export default async function GoalDetailPage({ params }: Props) {
       <header>
         <Link
           href="/goals"
-          className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           <ChevronLeft className="h-3 w-3" /> All goals
         </Link>
         <h1 className="mt-3 font-semibold text-4xl tracking-tight">
-          {metricLabel(goal.metric)} <span className="text-stone-500">·</span>{" "}
-          <span className="text-stone-500">{scopeLabel(goal.scope)}</span>
+          {metricLabel(goal.metric)} <span className="text-zinc-500">·</span>{" "}
+          <span className="text-zinc-500">{scopeLabel(goal.scope)}</span>
         </h1>
       </header>
 
       {/* Progress summary */}
-      <section className="rounded-lg border border-stone-200 bg-white p-6 dark:border-stone-800 dark:bg-stone-950">
+      <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex items-baseline justify-between">
-          <p className="font-mono text-[10px] text-stone-500 uppercase tracking-widest">Progress</p>
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Progress</p>
           {progress.applicable && (
-            <p className="font-mono text-stone-500 text-xs tabular-nums">{progress.pct}%</p>
+            <p className="font-mono text-xs text-zinc-500 tabular-nums">{progress.pct}%</p>
           )}
         </div>
         <p className="mt-2 font-mono font-semibold text-3xl tabular-nums">
           {isRevenue ? `$${currentDisplay.toLocaleString()}` : currentDisplay.toLocaleString()}
-          <span className="ml-2 text-base text-stone-500">
+          <span className="ml-2 text-base text-zinc-500">
             of {isRevenue ? `$${targetDisplay.toLocaleString()}` : targetDisplay.toLocaleString()}
           </span>
         </p>
         {progress.applicable && (
-          <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
+          <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
             <div
               className={
                 progress.pct >= 80
                   ? "h-full rounded-full bg-emerald-500 transition-all"
                   : progress.pct >= 40
                     ? "h-full rounded-full bg-amber-500 transition-all"
-                    : "h-full rounded-full bg-stone-500 transition-all"
+                    : "h-full rounded-full bg-zinc-500 transition-all"
               }
               style={{ width: `${progress.pct}%` }}
             />
           </div>
         )}
         {!progress.applicable && (
-          <p className="mt-3 font-mono text-[11px] text-stone-400 italic">
+          <p className="mt-3 font-mono text-[11px] text-zinc-400 italic">
             Progress tracking not yet implemented for this metric × scope combination.
           </p>
         )}

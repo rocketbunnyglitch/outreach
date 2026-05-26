@@ -22,9 +22,10 @@
 
   /* ----- Background tint ----- */
   /* A faint warm tint (vs flat #fff) — gives the chrome a soft "paper" feel
-     without committing to a brand color. */
-  --color-canvas: oklch(0.99 0.005 80);
-  --color-canvas-dark: oklch(0.16 0.005 80);
+     without committing to a brand color. Apple dark mode uses cool/neutral
+     greys (hue near 240 for blue-cool), not the warm stone palette. */
+  --color-canvas: oklch(0.99 0.002 247);
+  --color-canvas-dark: oklch(0.145 0.002 247);
 
   /* Refined animation timings */
   --animate-fade-in: fade-in 200ms cubic-bezier(0.4, 0, 0.2, 1) forwards;

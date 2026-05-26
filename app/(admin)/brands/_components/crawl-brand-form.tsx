@@ -259,10 +259,10 @@ export function CrawlBrandForm({ initial, outreachBrands, action }: CrawlBrandFo
           </FieldShell>
         </FieldRow>
 
-        <div className="flex items-center justify-between gap-3 rounded-md border border-stone-200 px-4 py-3 dark:border-stone-800">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div className="flex flex-col gap-0.5">
             <Label htmlFor="publicAssetsEnabled">Public assets enabled</Label>
-            <p className="text-stone-500 text-xs">
+            <p className="text-xs text-zinc-500">
               Disable to pause public asset regeneration without retiring the brand.
             </p>
           </div>
@@ -279,7 +279,7 @@ export function CrawlBrandForm({ initial, outreachBrands, action }: CrawlBrandFo
         </div>
       </FormSection>
 
-      <div className="flex items-center justify-end gap-3 border-stone-200 border-t pt-6 dark:border-stone-800">
+      <div className="flex items-center justify-end gap-3 border-zinc-200 border-t pt-6 dark:border-zinc-800">
         <Button asChild variant="ghost">
           <Link href="/brands">Cancel</Link>
         </Button>
@@ -309,7 +309,7 @@ function ColorInput({
       />
       {defaultValue && (
         <div
-          className="h-9 w-9 shrink-0 rounded-md border border-stone-200 dark:border-stone-800"
+          className="h-9 w-9 shrink-0 rounded-md border border-zinc-200 dark:border-zinc-800"
           style={{ backgroundColor: defaultValue }}
           aria-hidden
         />

@@ -170,14 +170,14 @@ export function TaskForm({ mode, staffList, initial, action }: TaskFormProps) {
         />
       </FieldShell>
 
-      <div className="flex items-center gap-3 border-stone-200 border-t pt-6 dark:border-stone-800">
+      <div className="flex items-center gap-3 border-zinc-200 border-t pt-6 dark:border-zinc-800">
         <Button type="submit" disabled={pending}>
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {mode === "create" ? "Create task" : "Save changes"}
         </Button>
         <Link
           href="/tasks"
-          className="text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+          className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
         >
           Cancel
         </Link>

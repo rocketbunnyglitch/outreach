@@ -22,18 +22,18 @@ const buttonVariants = cva(
   cn(
     "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium",
     "transition-[background-color,color,border-color,box-shadow] duration-150",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-stone-50 dark:focus-visible:ring-offset-stone-950",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-50 dark:focus-visible:ring-offset-zinc-950",
     "disabled:pointer-events-none disabled:opacity-50",
   ),
   {
     variants: {
       variant: {
         default:
-          "bg-stone-900 text-stone-50 hover:bg-stone-800 focus-visible:ring-stone-900 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 dark:focus-visible:ring-stone-100",
+          "bg-zinc-900 text-zinc-50 hover:bg-zinc-800 focus-visible:ring-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:ring-zinc-100",
         ghost:
-          "text-stone-700 hover:bg-stone-100 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-100",
+          "text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
         outline:
-          "border border-stone-200 bg-transparent text-stone-700 hover:bg-stone-100 dark:border-stone-800 dark:text-stone-300 dark:hover:bg-stone-900",
+          "border border-zinc-200 bg-transparent text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900",
         destructive:
           "text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-900",
       },

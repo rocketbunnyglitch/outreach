@@ -102,7 +102,7 @@ export default async function AuditLogPage({ searchParams }: AuditPageProps) {
       <header className="flex items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Audit log</h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Every change to every table, attributed to the staffer who made it. Append-only,
             populated by Postgres triggers — no app code can falsify these entries.
           </p>
@@ -112,10 +112,10 @@ export default async function AuditLogPage({ searchParams }: AuditPageProps) {
       {/* Filters */}
       <form
         action="/audit"
-        className="flex flex-wrap items-end gap-3 rounded-md border border-stone-200 p-4 dark:border-stone-800"
+        className="flex flex-wrap items-end gap-3 rounded-md border border-zinc-200 p-4 dark:border-zinc-800"
       >
         <div className="flex flex-col gap-1">
-          <label htmlFor="table" className="text-stone-500 text-xs uppercase tracking-widest">
+          <label htmlFor="table" className="text-xs text-zinc-500 uppercase tracking-widest">
             Table
           </label>
           <Select name="table" defaultValue={params.table ?? "_all"}>
@@ -133,7 +133,7 @@ export default async function AuditLogPage({ searchParams }: AuditPageProps) {
           </Select>
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="staff" className="text-stone-500 text-xs uppercase tracking-widest">
+          <label htmlFor="staff" className="text-xs text-zinc-500 uppercase tracking-widest">
             Staff
           </label>
           <Select name="staff" defaultValue={params.staff ?? "_all"}>
@@ -158,13 +158,13 @@ export default async function AuditLogPage({ searchParams }: AuditPageProps) {
             <Link href="/audit">Clear</Link>
           </Button>
         )}
-        <span className="ml-auto font-mono text-stone-500 text-xs">
+        <span className="ml-auto font-mono text-xs text-zinc-500">
           {total.toLocaleString()} entries · page {page} / {totalPages}
         </span>
       </form>
 
       {rows.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-10 text-center text-sm text-stone-500">
+        <Card className="border-dashed bg-transparent p-10 text-center text-sm text-zinc-500">
           No audit entries match these filters.
         </Card>
       ) : (
@@ -197,22 +197,22 @@ function AuditRow({ row }: { row: AuditRowData }) {
   const changedFields = diffFieldNames(row.oldValues, row.newValues);
 
   return (
-    <li className="flex items-center gap-3 rounded-md border border-stone-100 px-4 py-3 transition-colors hover:border-stone-200 dark:border-stone-900 dark:hover:border-stone-800">
+    <li className="flex items-center gap-3 rounded-md border border-zinc-100 px-4 py-3 transition-colors hover:border-zinc-200 dark:border-zinc-900 dark:hover:border-zinc-800">
       <OperationIcon operation={row.operation} />
       <div className="flex flex-1 flex-col gap-0.5">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-stone-700 text-xs uppercase tracking-wider dark:text-stone-300">
+          <span className="font-mono text-xs text-zinc-700 uppercase tracking-wider dark:text-zinc-300">
             {row.tableName}
           </span>
           <Badge tone={operationTone(row.operation)}>{row.operation}</Badge>
           {changedFields.length > 0 && (
-            <span className="text-stone-500 text-xs">
+            <span className="text-xs text-zinc-500">
               {changedFields.slice(0, 5).join(", ")}
               {changedFields.length > 5 ? ` +${changedFields.length - 5}` : ""}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-stone-500 text-xs">
+        <div className="flex items-center gap-3 text-xs text-zinc-500">
           <span className="inline-flex items-center gap-1">
             <User className="h-3 w-3" />
             {row.staffName ?? "system"}
@@ -230,7 +230,7 @@ function AuditRow({ row }: { row: AuditRowData }) {
               <span>·</span>
               <Link
                 href={detailHref}
-                className="underline hover:text-stone-900 dark:hover:text-stone-100"
+                className="underline hover:text-zinc-900 dark:hover:text-zinc-100"
               >
                 view record →
               </Link>
@@ -248,11 +248,11 @@ function OperationIcon({ operation }: { operation: string }) {
     case "INSERT":
       return <Plus className={`${className} text-emerald-600 dark:text-emerald-400`} />;
     case "UPDATE":
-      return <PencilLine className={`${className} text-stone-500`} />;
+      return <PencilLine className={`${className} text-zinc-500`} />;
     case "DELETE":
       return <Trash2 className={`${className} text-rose-600 dark:text-rose-400`} />;
     default:
-      return <Database className={`${className} text-stone-400`} />;
+      return <Database className={`${className} text-zinc-400`} />;
   }
 }
 
@@ -341,13 +341,13 @@ function Pagination({
     return `/audit?${usp.toString()}`;
   };
   return (
-    <div className="flex items-center justify-between gap-3 border-stone-200 border-t pt-4 dark:border-stone-800">
+    <div className="flex items-center justify-between gap-3 border-zinc-200 border-t pt-4 dark:border-zinc-800">
       <Button asChild variant="outline" size="sm" disabled={page <= 1}>
         <Link href={qs(Math.max(1, page - 1))}>
           <ChevronLeft className="h-3 w-3" /> Newer
         </Link>
       </Button>
-      <span className="font-mono text-stone-500 text-xs">
+      <span className="font-mono text-xs text-zinc-500">
         {page} / {totalPages}
       </span>
       <Button asChild variant="outline" size="sm" disabled={page >= totalPages}>

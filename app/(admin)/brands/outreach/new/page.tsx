@@ -31,7 +31,7 @@ export default function NewOutreachBrandPage() {
   return (
     <div className="flex flex-col gap-8">
       <header>
-        <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+        <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
           New outreach brand
         </p>
         <h1 className="mt-2 font-semibold text-4xl tracking-tight ">

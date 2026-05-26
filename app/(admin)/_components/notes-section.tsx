@@ -49,12 +49,12 @@ export function NotesSection({
   }
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-950">
+    <section className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
       <header className="flex items-baseline justify-between">
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg tracking-tight">
-          <MessageSquare className="h-4 w-4 text-stone-500" />
+          <MessageSquare className="h-4 w-4 text-zinc-500" />
           Notes
-          <span className="font-mono font-normal text-[11px] text-stone-500">{notes.length}</span>
+          <span className="font-mono font-normal text-[11px] text-zinc-500">{notes.length}</span>
         </h2>
       </header>
 
@@ -74,7 +74,7 @@ export function NotesSection({
           <Alert tone="error">{createState.error}</Alert>
         )}
         <div className="flex items-center justify-between">
-          <p className="font-mono text-[10px] text-stone-400">Cmd/Ctrl + Enter to submit</p>
+          <p className="font-mono text-[10px] text-zinc-400">Cmd/Ctrl + Enter to submit</p>
           <Button type="submit" disabled={creating || bodyDraft.trim().length === 0} size="sm">
             {creating && <Loader2 className="h-3 w-3 animate-spin" />}
             Post note
@@ -83,7 +83,7 @@ export function NotesSection({
       </form>
 
       {notes.length === 0 ? (
-        <p className="py-6 text-center text-stone-500 text-xs italic">
+        <p className="py-6 text-center text-xs text-zinc-500 italic">
           No notes yet. Add the first one above.
         </p>
       ) : (
@@ -110,8 +110,8 @@ function NoteCard({
   return (
     <li
       className={cn(
-        "flex flex-col gap-2 rounded-md border border-stone-200 p-3 dark:border-stone-800",
-        note.isOwnNote ? "bg-stone-50/50 dark:bg-stone-900/40" : "bg-stone-50 dark:bg-stone-900",
+        "flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800",
+        note.isOwnNote ? "bg-zinc-50/50 dark:bg-zinc-900/40" : "bg-zinc-50 dark:bg-zinc-900",
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -119,12 +119,12 @@ function NoteCard({
           <span className="truncate font-semibold text-xs">
             {note.authorName}
             {note.isOwnNote && (
-              <span className="ml-1 font-mono font-normal text-[10px] text-stone-500 uppercase tracking-wider">
+              <span className="ml-1 font-mono font-normal text-[10px] text-zinc-500 uppercase tracking-wider">
                 you
               </span>
             )}
           </span>
-          <span className="font-mono text-[10px] text-stone-500 tabular-nums">
+          <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
             {formatRelative(note.createdAt)}
           </span>
         </div>
@@ -132,7 +132,7 @@ function NoteCard({
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="text-stone-400 transition-colors hover:text-rose-500"
+            className="text-zinc-400 transition-colors hover:text-rose-500"
             title="Delete note"
             aria-label="Delete note"
           >
@@ -145,7 +145,7 @@ function NoteCard({
             <button
               type="button"
               onClick={() => setConfirming(false)}
-              className="font-mono text-[10px] text-stone-500 uppercase tracking-wider hover:text-stone-900 dark:hover:text-stone-100"
+              className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider hover:text-zinc-900 dark:hover:text-zinc-100"
             >
               cancel
             </button>
@@ -165,12 +165,12 @@ function NoteCard({
         )}
       </div>
 
-      <p className="whitespace-pre-wrap text-sm text-stone-800 leading-relaxed dark:text-stone-200">
+      <p className="whitespace-pre-wrap text-sm text-zinc-800 leading-relaxed dark:text-zinc-200">
         {renderBodyWithMentions(note.body)}
       </p>
 
       {note.mentions.length > 0 && (
-        <p className="font-mono text-[10px] text-stone-500">
+        <p className="font-mono text-[10px] text-zinc-500">
           mentioned: {note.mentions.length}{" "}
           {note.mentions.length === 1 ? "staff member" : "staff members"}
         </p>

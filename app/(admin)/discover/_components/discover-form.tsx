@@ -153,7 +153,7 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
               {TYPE_OPTIONS.map((t) => (
                 <label
                   key={t.value}
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-stone-200 px-3 py-1.5 text-sm hover:border-stone-300 dark:border-stone-800 dark:hover:border-stone-700"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 px-3 py-1.5 text-sm hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                 >
                   <input
                     type="checkbox"
@@ -162,7 +162,7 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
                     defaultChecked={
                       t.value === "bar" || t.value === "night_club" || t.value === "pub"
                     }
-                    className="h-4 w-4 rounded border-stone-300"
+                    className="h-4 w-4 rounded border-zinc-300"
                   />
                   {t.label}
                 </label>
@@ -179,7 +179,7 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
           <header className="flex flex-wrap items-baseline justify-between gap-3">
             <div className="flex items-baseline gap-3">
               <h2 className="font-semibold text-2xl tracking-tight ">Results</h2>
-              <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+              <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
                 {searchState.result.places.length} found ·{" "}
                 {searchState.result.source === "mock" ? "mock data" : "google_places"}
               </span>
@@ -188,14 +188,14 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
               <button
                 type="button"
                 onClick={selectAllNonExisting}
-                className="text-stone-500 text-xs underline hover:text-stone-900 dark:hover:text-stone-100"
+                className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
               >
                 Select all new
               </button>
               <button
                 type="button"
                 onClick={clearSelected}
-                className="text-stone-500 text-xs underline hover:text-stone-900 dark:hover:text-stone-100"
+                className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
               >
                 Clear
               </button>
@@ -225,7 +225,7 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
           </ol>
 
           {selected.size > 0 && (
-            <div className="sticky bottom-4 flex items-center justify-between rounded-md border border-stone-200 bg-white p-3 shadow-lg dark:border-stone-800 dark:bg-stone-900">
+            <div className="sticky bottom-4 flex items-center justify-between rounded-md border border-zinc-200 bg-white p-3 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
               <span className="text-sm">
                 <span className="font-medium font-mono">{selected.size}</span> selected
               </span>
@@ -267,8 +267,8 @@ function PlaceRow({
     <li>
       <label
         className={cn(
-          "flex cursor-pointer items-start gap-3 rounded-md border border-stone-200 px-4 py-3 transition-colors dark:border-stone-800",
-          selected && "border-stone-400 bg-stone-50 dark:border-stone-600 dark:bg-stone-900",
+          "flex cursor-pointer items-start gap-3 rounded-md border border-zinc-200 px-4 py-3 transition-colors dark:border-zinc-800",
+          selected && "border-zinc-400 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900",
           alreadyImported && "opacity-60",
         )}
       >
@@ -277,7 +277,7 @@ function PlaceRow({
           checked={selected}
           onChange={onToggle}
           disabled={alreadyImported}
-          className="mt-1 h-4 w-4 rounded border-stone-300"
+          className="mt-1 h-4 w-4 rounded border-zinc-300"
         />
         <div className="flex flex-1 flex-col gap-1">
           <div className="flex items-center gap-2">
@@ -292,17 +292,17 @@ function PlaceRow({
               <span className="inline-flex items-center gap-0.5 text-amber-700 text-xs dark:text-amber-400">
                 <Star className="h-3 w-3 fill-amber-500 stroke-amber-500" />
                 {place.rating.toFixed(1)}
-                <span className="ml-1 text-stone-400">({place.userRatingCount})</span>
+                <span className="ml-1 text-zinc-400">({place.userRatingCount})</span>
               </span>
             )}
           </div>
           {place.formattedAddress && (
-            <p className="inline-flex items-center gap-1 text-stone-500 text-xs">
+            <p className="inline-flex items-center gap-1 text-xs text-zinc-500">
               <MapPin className="h-3 w-3" />
               {place.formattedAddress}
             </p>
           )}
-          <div className="flex flex-wrap items-center gap-3 text-stone-500 text-xs">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
             {place.phoneE164 && (
               <span className="inline-flex items-center gap-1 font-mono">
                 <Phone className="h-3 w-3" />
@@ -314,7 +314,7 @@ function PlaceRow({
                 href={place.websiteUri}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-flex items-center gap-1 underline hover:text-stone-900 dark:hover:text-stone-100"
+                className="inline-flex items-center gap-1 underline hover:text-zinc-900 dark:hover:text-zinc-100"
                 onClick={(e) => e.stopPropagation()}
               >
                 <ExternalLink className="h-3 w-3" />
@@ -322,7 +322,7 @@ function PlaceRow({
               </a>
             )}
             {place.types.length > 0 && (
-              <span className="font-mono text-[10px] text-stone-400 uppercase tracking-wider">
+              <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider">
                 {place.types.slice(0, 3).join(" · ")}
               </span>
             )}

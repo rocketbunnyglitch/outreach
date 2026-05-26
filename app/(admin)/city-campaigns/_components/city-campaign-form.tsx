@@ -153,7 +153,7 @@ export function CityCampaignForm({ initial, staff, action }: Props) {
         </FieldRow>
       </FormSection>
 
-      <div className="flex justify-end border-stone-200 border-t pt-6 dark:border-stone-800">
+      <div className="flex justify-end border-zinc-200 border-t pt-6 dark:border-zinc-800">
         <SubmitButton />
       </div>
     </form>

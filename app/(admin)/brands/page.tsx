@@ -28,11 +28,9 @@ export default async function BrandsPage() {
   return (
     <div className="flex flex-col gap-12">
       <header className="flex flex-col gap-2">
-        <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
-          Two-brand model
-        </p>
+        <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Two-brand model</p>
         <h1 className="font-semibold text-4xl tracking-tight ">Brands</h1>
-        <p className="max-w-xl text-stone-600 dark:text-stone-400">
+        <p className="max-w-xl text-zinc-600 dark:text-zinc-400">
           Outreach identities (who venues think is contacting them) and crawl identities (what
           ticket buyers see). Every campaign uses both.
         </p>
@@ -99,10 +97,10 @@ function SectionHeader({
   newHref: string;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 border-stone-200 border-b pb-3 dark:border-stone-800">
+    <div className="flex flex-wrap items-end justify-between gap-3 border-zinc-200 border-b pb-3 dark:border-zinc-800">
       <div>
         <h2 className="font-semibold text-2xl tracking-tight ">{title}</h2>
-        <p className="text-sm text-stone-500">{subtitle}</p>
+        <p className="text-sm text-zinc-500">{subtitle}</p>
       </div>
       <Button asChild size="sm" variant="outline">
         <Link href={newHref}>
@@ -124,8 +122,8 @@ function EmptyState({
   href: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-stone-300 border-dashed py-12 dark:border-stone-700">
-      <p className="text-sm text-stone-500">{label}</p>
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-zinc-300 border-dashed py-12 dark:border-zinc-700">
+      <p className="text-sm text-zinc-500">{label}</p>
       <Button asChild size="sm">
         <Link href={href}>{cta}</Link>
       </Button>
@@ -148,7 +146,7 @@ function OutreachBrandCard({
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-xl tracking-tight ">{brand.displayName}</h3>
-              <p className="font-mono text-stone-500 text-xs">@{brand.emailDomain}</p>
+              <p className="font-mono text-xs text-zinc-500">@{brand.emailDomain}</p>
             </div>
             <Badge tone={brand.status === "active" ? "success" : "muted"}>{brand.status}</Badge>
           </div>
@@ -179,7 +177,7 @@ function CrawlBrandCard({
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold text-xl tracking-tight ">{brand.displayName}</h3>
-              <p className="font-mono text-stone-500 text-xs">{brand.slug}</p>
+              <p className="font-mono text-xs text-zinc-500">{brand.slug}</p>
             </div>
             <Badge tone={brand.status === "active" ? "success" : "muted"}>{brand.status}</Badge>
           </div>
@@ -192,7 +190,7 @@ function CrawlBrandCard({
           </div>
 
           {brand.tagline && (
-            <p className="text-sm text-stone-600 italic dark:text-stone-400">"{brand.tagline}"</p>
+            <p className="text-sm text-zinc-600 italic dark:text-zinc-400">"{brand.tagline}"</p>
           )}
 
           <div className="flex flex-wrap gap-1.5 pt-1">
@@ -213,13 +211,13 @@ function ConfigBadge({ label, ok }: { label: string; ok: boolean }) {
         "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wider",
         ok
           ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
-          : "border-stone-200 bg-stone-50 text-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-500",
+          : "border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500",
       )}
     >
       <span
         className={cn(
           "h-1 w-1 rounded-full",
-          ok ? "bg-emerald-500" : "bg-stone-300 dark:bg-stone-700",
+          ok ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700",
         )}
       />
       {label}
@@ -236,14 +234,14 @@ function RetiredList({
 }) {
   return (
     <details className="mt-4">
-      <summary className="cursor-pointer text-stone-500 text-xs uppercase tracking-wider hover:text-stone-700 dark:hover:text-stone-300">
+      <summary className="cursor-pointer text-xs text-zinc-500 uppercase tracking-wider hover:text-zinc-700 dark:hover:text-zinc-300">
         {title} ({brands.length})
       </summary>
       <ul className="mt-3 flex flex-col gap-1.5 text-sm">
         {brands.map((b) => (
-          <li key={b.id} className="text-stone-500">
+          <li key={b.id} className="text-zinc-500">
             {b.displayName}
-            <span className="ml-2 font-mono text-[10px] text-stone-400">{b.slug}</span>
+            <span className="ml-2 font-mono text-[10px] text-zinc-400">{b.slug}</span>
           </li>
         ))}
       </ul>

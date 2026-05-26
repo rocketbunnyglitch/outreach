@@ -46,9 +46,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     <main className="min-h-screen px-6 py-16 sm:py-24">
       <div className="mx-auto flex max-w-md flex-col gap-10">
         <header className="text-center">
-          <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">Crawl Engine</p>
+          <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Crawl Engine</p>
           <h1 className="mt-2 font-semibold text-4xl tracking-tight ">Sign in.</h1>
-          <p className="mt-3 text-sm text-stone-600 dark:text-stone-400">
+          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
             Only pre-provisioned staff can access this engine.
           </p>
         </header>
@@ -67,17 +67,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <GoogleMark />
               Continue with Google
             </Button>
-            <p className="text-center text-stone-500 text-xs">
+            <p className="text-center text-xs text-zinc-500">
               You'll be redirected to Google to sign in with your workspace account.
             </p>
           </form>
         )}
 
         {googleEnabled && devCredentialsEnabled && (
-          <div className="flex items-center gap-3 text-stone-400 text-xs uppercase tracking-widest">
-            <span className="h-px flex-1 bg-stone-200 dark:bg-stone-800" />
+          <div className="flex items-center gap-3 text-xs text-zinc-400 uppercase tracking-widest">
+            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
             or
-            <span className="h-px flex-1 bg-stone-200 dark:bg-stone-800" />
+            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
           </div>
         )}
 

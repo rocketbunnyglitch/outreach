@@ -81,7 +81,7 @@ export function VenueEventsSection({
       )}
 
       {venueEvents.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-6 text-center text-sm text-stone-500">
+        <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
           No venues linked to this event yet.
         </Card>
       ) : (
@@ -110,12 +110,12 @@ function VenueEventRowDisplay({ ve, onEdit }: { ve: VenueEventRow; onEdit: () =>
   return (
     <li>
       <button type="button" onClick={onEdit} className="block w-full text-left">
-        <Card className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-stone-50 dark:hover:bg-stone-900">
+        <Card className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900">
           <div className="flex flex-1 items-center gap-4">
             <Badge tone={roleTone(ve.role)}>{ve.role}</Badge>
             <div className="flex flex-col gap-0.5">
               <p className="font-medium">{ve.venueName}</p>
-              <p className="text-stone-500 text-xs">
+              <p className="text-xs text-zinc-500">
                 {ve.slotStartTime && (
                   <>
                     {ve.slotStartTime.slice(0, 5)}
@@ -238,7 +238,7 @@ function EditVenueEventCard({
               />
             </div>
           </div>
-          <div className="flex items-center justify-between border-stone-100 border-t pt-4 dark:border-stone-900">
+          <div className="flex items-center justify-between border-zinc-100 border-t pt-4 dark:border-zinc-900">
             <Button
               type="button"
               variant="ghost"
@@ -270,7 +270,7 @@ function AddVenueForm({
   const [state, formAction] = useActionState(action, null);
   return (
     <Card className="flex flex-col gap-4 p-5">
-      <p className="font-medium text-stone-500 text-xs uppercase tracking-widest">Add a venue</p>
+      <p className="font-medium text-xs text-zinc-500 uppercase tracking-widest">Add a venue</p>
       {state && !state.ok && state.error && <Alert tone="error">{state.error}</Alert>}
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="eventId" value={eventId} />

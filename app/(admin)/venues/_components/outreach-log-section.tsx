@@ -60,7 +60,7 @@ export function OutreachLogSection({
     <section className="flex flex-col gap-5">
       <header className="flex items-baseline justify-between gap-3">
         <h2 className="font-semibold text-2xl tracking-tight ">Outreach history</h2>
-        <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
+        <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
           {entries.length} {entries.length === 1 ? "entry" : "entries"}
         </span>
       </header>
@@ -73,7 +73,7 @@ export function OutreachLogSection({
       />
 
       {entries.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-6 text-center text-sm text-stone-500">
+        <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
           No outreach logged yet. The first entry above will appear here.
         </Card>
       ) : (
@@ -97,7 +97,7 @@ function LogEntryForm({
 
   return (
     <Card className="flex flex-col gap-4 p-5">
-      <p className="font-medium text-stone-500 text-xs uppercase tracking-widest">
+      <p className="font-medium text-xs text-zinc-500 uppercase tracking-widest">
         Log a touchpoint
       </p>
 
@@ -196,29 +196,29 @@ function SubmitButton() {
 function EntryRow({ entry }: { entry: OutreachLogEntry }) {
   const date = new Date(entry.createdAt);
   return (
-    <li className="flex items-start gap-3 rounded-md border border-stone-200 px-4 py-3 dark:border-stone-800">
+    <li className="flex items-start gap-3 rounded-md border border-zinc-200 px-4 py-3 dark:border-zinc-800">
       <ChannelIcon channel={entry.channel} />
       <div className="flex flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="font-medium text-sm capitalize">{entry.channel}</span>
-          <span className="text-stone-300">·</span>
-          <span className="text-sm text-stone-600 dark:text-stone-400">
+          <span className="text-zinc-300">·</span>
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">
             {entry.outcome.replace(/_/g, " ")}
           </span>
           {entry.outreachBrandName && (
             <>
-              <span className="text-stone-300">·</span>
-              <span className="font-mono text-[10px] text-stone-500 uppercase tracking-wider">
+              <span className="text-zinc-300">·</span>
+              <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">
                 {entry.outreachBrandName}
               </span>
             </>
           )}
         </div>
         {entry.subject && (
-          <p className="text-sm text-stone-700 dark:text-stone-300">{entry.subject}</p>
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">{entry.subject}</p>
         )}
-        {entry.notes && <p className="text-stone-500 text-xs">{entry.notes}</p>}
-        <p className="font-mono text-[10px] text-stone-400 uppercase tracking-wider">
+        {entry.notes && <p className="text-xs text-zinc-500">{entry.notes}</p>}
+        <p className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider">
           {date.toLocaleString()}
           {entry.staffName && ` · ${entry.staffName}`}
         </p>
@@ -228,7 +228,7 @@ function EntryRow({ entry }: { entry: OutreachLogEntry }) {
 }
 
 function ChannelIcon({ channel }: { channel: string }) {
-  const className = "h-4 w-4 text-stone-400";
+  const className = "h-4 w-4 text-zinc-400";
   switch (channel) {
     case "email":
       return <Mail className={className} aria-hidden="true" />;

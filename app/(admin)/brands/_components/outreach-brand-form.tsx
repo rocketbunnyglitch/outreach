@@ -197,7 +197,7 @@ export function OutreachBrandForm({ initial, action }: OutreachBrandFormProps) {
         </FieldRow>
       </FormSection>
 
-      <div className="flex items-center justify-end gap-3 border-stone-200 border-t pt-6 dark:border-stone-800">
+      <div className="flex items-center justify-end gap-3 border-zinc-200 border-t pt-6 dark:border-zinc-800">
         <Button asChild variant="ghost">
           <Link href="/brands">Cancel</Link>
         </Button>
