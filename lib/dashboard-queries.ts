@@ -190,7 +190,12 @@ export async function loadDashboardData(): Promise<DashboardData> {
       ),
     db
       .select({
-        replyCount: sql<number>`count(*) filter (where outcome in ('replied','positive'))::int`,
+        // "Reply rate" = % of touchpoints where the venue actually engaged
+        // back. The outreach_outcome enum doesn't have a generic "replied"
+        // bucket, so we treat the engagement outcomes (interested,
+        // confirmed, callback_requested, declined) as "got a response".
+        // Declined still counts as engagement — they replied, just no.
+        replyCount: sql<number>`count(*) filter (where outcome in ('interested','confirmed','callback_requested','declined'))::int`,
         totalOutreachCount: sql<number>`count(*)::int`,
       })
       .from(outreachLog)
