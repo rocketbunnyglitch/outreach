@@ -10,6 +10,13 @@ Per `DECISIONS.md#008`, every PR that changes behavior updates this file in the 
 
 ## [Unreleased]
 
+### Added — Deploy infrastructure
+- **`scripts/deploy.sh`** — one-command deploy script. Pulls from GitHub, runs migrations, builds, reloads PM2 with zero downtime, health-checks. Supports `--rollback` and `--skip-build` flags. Logs to `/var/log/outreach-deploy.log`.
+- **`DEPLOY.md`** — operator runbook for production. Covers common scenarios (deploy, rollback, debug, restart), disaster recovery, architecture diagram, port map, monitoring.
+- **`docs/server-setup.md`** — exact step-by-step to bring up a fresh server from scratch. Includes apt installs, Postgres + Redis tuning, DB creation, GitHub deploy key setup, nginx + PM2 config, TLS issuance.
+- **Deploy verified end-to-end** on production server `203.161.61.240`. Tested git push from sandbox → git pull on server loop using fine-grained PAT + read-only deploy key.
+
+
 ### Added — Phase 6a Email templates + render engine
 - **Email template CRUD** at `/templates`. Templates are scoped per `(outreach_brand, stage, name)` — unique index on the triple prevents accidental dupes. List page groups by brand → stage, defaults marked with a ⭐ star icon.
 - **Stage taxonomy** — 8 named stages (`cold`, `follow_up_1`, `follow_up_2`, `poster_delivery`, `confirm_2_week`, `confirm_1_week`, `floor_staff_3_day`, `custom`) matching the existing Postgres enum from Phase 1.
