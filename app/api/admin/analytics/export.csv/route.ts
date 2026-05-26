@@ -46,6 +46,7 @@ export async function GET(req: Request) {
     "Calls",
     "Emails Sent",
     "SMS Sent",
+    "Viber",
     "Total Touches",
     "Avg Per Active Day",
     ...dayHeaders,
@@ -61,6 +62,7 @@ export async function GET(req: Request) {
       String(row.calls),
       String(row.emailsSent),
       String(row.smsSent),
+      String(row.viberTouches),
       String(row.totalTouches),
       String(row.avgPerActiveDay),
       ...row.daily.map((n) => String(n)),
@@ -78,6 +80,7 @@ export async function GET(req: Request) {
       String(data.totals.calls),
       String(data.totals.emailsSent),
       String(data.totals.smsSent),
+      String(data.totals.viberTouches),
       String(data.totals.totalTouches),
       "",
     ]

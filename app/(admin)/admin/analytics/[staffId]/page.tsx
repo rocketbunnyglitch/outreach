@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { loadStaffActivityProfile } from "@/lib/team-analytics";
-import { ChevronLeft, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Download, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActivityFeed } from "./_components/activity-feed";
@@ -98,7 +98,17 @@ function ProfileHeader({
             )}
           </p>
         </div>
-        <WindowSelector currentWindow={profile.windowDays} staffId={profile.staff.staffId} />
+        <div className="flex items-center gap-2">
+          <a
+            href={`/api/admin/analytics/${profile.staff.staffId}/export.csv?window=${profile.windowDays}`}
+            download
+            className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-1.5 font-mono text-[11px] text-zinc-600 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+          >
+            <Download className="h-3 w-3" />
+            Download CSV
+          </a>
+          <WindowSelector currentWindow={profile.windowDays} staffId={profile.staff.staffId} />
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-px bg-zinc-200/60 sm:grid-cols-3 lg:grid-cols-6 dark:bg-zinc-800/40">

@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { loadTeamAnalytics } from "@/lib/team-analytics";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import { TeamAnalyticsTable } from "./_components/team-analytics-table";
 
@@ -48,7 +49,13 @@ export default async function TeamAnalyticsPage({
             {data.windowStart} → {data.windowEnd} · {data.windowDays} days
           </p>
         </div>
-        <WindowSelector currentWindow={data.windowDays} />
+        <div className="flex items-center gap-2">
+          <DownloadCsvLink
+            href={`/api/admin/analytics/export.csv?window=${data.windowDays}`}
+            label="Download CSV"
+          />
+          <WindowSelector currentWindow={data.windowDays} />
+        </div>
       </header>
 
       <TotalsStrip totals={data.totals} windowDays={data.windowDays} />
@@ -143,5 +150,25 @@ function WindowSelector({ currentWindow }: { currentWindow: number }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Shared link styled to match the segmented WindowSelector buttons so
+ * the right-side header reads as one compact control group. Uses an
+ * anchor with download attr (rather than fetch+blob) — browser handles
+ * the Content-Disposition header from the route and saves directly to
+ * Downloads with the correct filename.
+ */
+function DownloadCsvLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      download
+      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-1.5 font-mono text-[11px] text-zinc-600 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+    >
+      <Download className="h-3 w-3" />
+      {label}
+    </a>
   );
 }
