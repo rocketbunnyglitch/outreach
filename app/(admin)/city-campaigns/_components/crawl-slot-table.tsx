@@ -178,7 +178,9 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {/* Desktop table — hidden on mobile. 9 columns won't fit
+          a phone, the cards below cover that case. */}
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
@@ -204,11 +206,29 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
                 cityCampaignId={cityCampaignId}
                 staff={staff}
                 zebra={i % 2 === 1}
+                layout="table"
               />
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Mobile card stack — same data + edits, vertical layout */}
+      <ul className="divide-y divide-zinc-200/60 md:hidden dark:divide-zinc-800/40">
+        {allSlots.map((slot) => (
+          <li key={`${slot.role}:${slot.slotPosition}`}>
+            <SlotTableRow
+              slot={slot}
+              crawl={crawl}
+              cityId={cityId}
+              cityCampaignId={cityCampaignId}
+              staff={staff}
+              zebra={false}
+              layout="card"
+            />
+          </li>
+        ))}
+      </ul>
 
       {/* Add-slot affordances */}
       <footer className="flex items-center gap-3 border-zinc-200/60 border-t px-5 py-2.5 dark:border-zinc-800/40">
@@ -242,6 +262,7 @@ function SlotTableRow({
   cityCampaignId,
   staff,
   zebra,
+  layout,
 }: {
   slot: SlotRow;
   crawl: CrawlCard;
@@ -249,6 +270,7 @@ function SlotTableRow({
   cityCampaignId: string;
   staff: Array<{ id: string; displayName: string }>;
   zebra: boolean;
+  layout: "table" | "card";
 }) {
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -286,6 +308,138 @@ function SlotTableRow({
       ? `${ROLE_LABEL[slot.role]} ${slot.slotPosition}`
       : ROLE_LABEL[slot.role];
 
+  // ---------------------------------------------------------------
+  // Card layout (mobile)
+  // ---------------------------------------------------------------
+  if (layout === "card") {
+    return (
+      <article
+        className={cn(
+          "flex flex-col gap-2.5 px-4 py-3 transition-colors",
+          slot.venueEventId == null && "opacity-90",
+          pending && "opacity-60",
+        )}
+      >
+        {/* Header: slot chip + status + clear button */}
+        <div className="flex items-start justify-between gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
+              ROLE_TONE[slot.role],
+            )}
+          >
+            {slotLabel}
+          </span>
+          <div className="flex items-center gap-2">
+            <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
+            {slot.venueEventId && (
+              <button
+                type="button"
+                onClick={clearVenue}
+                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+                aria-label="Clear slot"
+                disabled={pending}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Venue picker — large, the primary control on this card */}
+        <div>
+          <VenueAutocomplete
+            cityId={cityId}
+            selectedName={slot.venueName}
+            onSelect={assignVenue}
+            placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
+          />
+        </div>
+
+        {/* Venue metadata — email + capacity, read-only */}
+        {slot.venueEventId && (
+          <div className="flex items-center gap-4 font-mono text-[10px] text-zinc-500">
+            {slot.venueEmail && <span className="truncate">✉ {slot.venueEmail}</span>}
+            {slot.venueCapacity != null && <span>Cap {slot.venueCapacity}</span>}
+          </div>
+        )}
+
+        {/* Operational fields — inline-editable */}
+        {slot.venueEventId && (
+          <dl className="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-1.5 pl-1 text-xs">
+            <dt className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+              Sched by
+            </dt>
+            <dd>
+              <SlotStaffSelect
+                slot={slot}
+                staff={staff}
+                cityCampaignId={cityCampaignId}
+                disabled={!slot.venueEventId}
+              />
+            </dd>
+
+            <dt className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+              Contact
+            </dt>
+            <dd>
+              <InlineCell
+                field="nightOfContactName"
+                slot={slot}
+                cityCampaignId={cityCampaignId}
+                placeholder="—"
+                disabled={!slot.venueEventId}
+              />
+            </dd>
+
+            <dt className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+              Hours
+            </dt>
+            <dd>
+              <InlineCell
+                field="agreedHoursText"
+                slot={slot}
+                cityCampaignId={cityCampaignId}
+                placeholder="e.g. 9-11pm"
+                disabled={!slot.venueEventId}
+              />
+            </dd>
+
+            <dt className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+              Specials
+            </dt>
+            <dd>
+              <InlineCell
+                field="drinkSpecials"
+                slot={slot}
+                cityCampaignId={cityCampaignId}
+                placeholder="—"
+                disabled={!slot.venueEventId}
+              />
+            </dd>
+          </dl>
+        )}
+
+        {error && (
+          <div className="flex items-start gap-2 rounded-md bg-rose-50 px-2 py-1.5 text-rose-700 text-xs dark:bg-rose-950/30 dark:text-rose-300">
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em]">Conflict</span>
+            <span className="flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="font-mono text-[10px] uppercase tracking-[0.1em] underline-offset-4 hover:underline"
+            >
+              dismiss
+            </button>
+          </div>
+        )}
+      </article>
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // Table layout (desktop) — original render
+  // ---------------------------------------------------------------
   return (
     <>
       <tr
