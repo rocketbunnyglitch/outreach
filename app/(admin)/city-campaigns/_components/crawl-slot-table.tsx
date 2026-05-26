@@ -4,8 +4,10 @@ import { Input } from "@/components/ui/input";
 import type { CrawlCard, SlotRole, SlotRow } from "@/lib/city-sheet-data";
 import { cn } from "@/lib/cn";
 import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { addExtraSlot, assignSlotVenue, clearSlot, updateSlotField } from "../_slot-actions";
+import { MiddleGroupPicker } from "./middle-group-picker";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
 interface Props {
@@ -16,9 +18,9 @@ interface Props {
 }
 
 const DAY_LABEL: Record<CrawlCard["dayPart"], string> = {
-  thursday: "Thursday",
-  friday: "Friday",
-  saturday: "Saturday",
+  thursday_night: "Thursday",
+  friday_night: "Friday",
+  saturday_night: "Saturday",
 };
 
 const ROLE_LABEL: Record<SlotRole, string> = {
@@ -95,25 +97,86 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
           </h3>
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
             {crawl.eventDate}
-            {crawl.middleVenueGroupName && (
+            {crawl.middleGroupSharedWith.length > 0 && (
               <>
-                {" · "}shares middles with{" "}
+                {" · "}
+                shared with{" "}
                 <span className="text-zinc-700 dark:text-zinc-300">
-                  {crawl.middleVenueGroupName}
+                  {crawl.middleGroupSharedWith.map((s) => s.label).join(", ")}
                 </span>
               </>
             )}
           </span>
         </div>
-        {crawl.ticketsSold > 0 && (
-          <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
-            <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-              {crawl.ticketsSold}
-            </span>{" "}
-            tickets
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {crawl.ticketsSold > 0 && (
+            <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                {crawl.ticketsSold}
+              </span>{" "}
+              tickets
+            </span>
+          )}
+          <MiddleGroupPicker
+            eventId={crawl.eventId}
+            cityCampaignId={cityCampaignId}
+            dayPart={crawl.dayPart}
+            currentGroupId={crawl.middleVenueGroupId}
+            currentGroupName={crawl.middleVenueGroupName}
+          />
+        </div>
       </header>
+
+      {/* Shared middle group section — read-only summary of group members */}
+      {crawl.middleVenueGroupId && (
+        <div className="border-zinc-200/60 border-b bg-orange-500/[0.04] px-5 py-4 dark:border-zinc-800/40 dark:bg-orange-500/[0.06]">
+          <div className="mb-2 flex items-baseline justify-between">
+            <p className="font-mono text-[10px] text-orange-700 uppercase tracking-[0.12em] dark:text-orange-300">
+              Middle venues · {crawl.middleVenueGroupName}
+            </p>
+            <Link
+              href={`/middle-groups/${crawl.middleVenueGroupId}`}
+              className="font-mono text-[10px] text-orange-700 uppercase tracking-[0.1em] underline-offset-4 hover:underline dark:text-orange-300"
+            >
+              manage group →
+            </Link>
+          </div>
+          {crawl.middleGroupMembers.length === 0 ? (
+            <p className="text-xs text-zinc-500 italic">
+              Group has no venues yet. Add some via{" "}
+              <Link
+                href={`/middle-groups/${crawl.middleVenueGroupId}`}
+                className="underline-offset-2 hover:underline"
+              >
+                manage group
+              </Link>
+              .
+            </p>
+          ) : (
+            <ul className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+              {crawl.middleGroupMembers.map((m) => (
+                <li
+                  key={m.memberId}
+                  className="flex items-center gap-2 rounded-md bg-white/60 px-2.5 py-1.5 text-xs dark:bg-zinc-900/40"
+                >
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+                  <span className="flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">
+                    {m.venueName}
+                  </span>
+                  {m.venueCapacity != null && (
+                    <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                      {m.venueCapacity}
+                    </span>
+                  )}
+                  <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+                    {m.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -188,9 +251,11 @@ function SlotTableRow({
   zebra: boolean;
 }) {
   const [pending, startTx] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
 
   function assignVenue(v: { id: string; name: string }) {
+    setError(null);
     const fd = new FormData();
     fd.set("eventId", crawl.eventId);
     fd.set("role", slot.role);
@@ -198,7 +263,10 @@ function SlotTableRow({
     fd.set("venueId", v.id);
     fd.set("cityCampaignId", cityCampaignId);
     startTx(async () => {
-      await assignSlotVenue(null, fd);
+      const result = await assignSlotVenue(null, fd);
+      if (!result.ok && result.error) {
+        setError(result.error);
+      }
     });
   }
 
@@ -219,113 +287,132 @@ function SlotTableRow({
       : ROLE_LABEL[slot.role];
 
   return (
-    <tr
-      className={cn(
-        tone,
-        "border-zinc-200/40 border-b transition-colors duration-150 dark:border-zinc-800/30",
-        slot.venueEventId == null && "opacity-90",
-        pending && "opacity-60",
-      )}
-    >
-      {/* Slot label — color chip */}
-      <td className="px-3 py-2 align-middle">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
-            ROLE_TONE[slot.role],
-          )}
-        >
-          {slotLabel}
-        </span>
-      </td>
-
-      {/* Venue picker */}
-      <td className="px-2 py-2 align-middle">
-        <VenueAutocomplete
-          cityId={cityId}
-          selectedName={slot.venueName}
-          onSelect={assignVenue}
-          placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
-        />
-      </td>
-
-      {/* Email — read-only, comes from venues table */}
-      <td className="px-2 py-2 align-middle">
-        <span className="block max-w-[180px] truncate font-mono text-[11px] text-zinc-500">
-          {slot.venueEmail ?? "—"}
-        </span>
-      </td>
-
-      {/* Scheduled by */}
-      <td className="px-2 py-2 align-middle">
-        <SlotStaffSelect
-          slot={slot}
-          staff={staff}
-          cityCampaignId={cityCampaignId}
-          disabled={!slot.venueEventId}
-        />
-      </td>
-
-      {/* Bar contact */}
-      <td className="px-2 py-2 align-middle">
-        <InlineCell
-          field="nightOfContactName"
-          slot={slot}
-          cityCampaignId={cityCampaignId}
-          placeholder="—"
-          disabled={!slot.venueEventId}
-        />
-      </td>
-
-      {/* Hours */}
-      <td className="px-2 py-2 align-middle">
-        <InlineCell
-          field="agreedHoursText"
-          slot={slot}
-          cityCampaignId={cityCampaignId}
-          placeholder="e.g. 9-11pm"
-          disabled={!slot.venueEventId}
-        />
-      </td>
-
-      {/* Capacity — read-only from venues */}
-      <td className="px-2 py-2 text-right align-middle">
-        <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
-          {slot.venueCapacity ?? "—"}
-        </span>
-      </td>
-
-      {/* Drink specials */}
-      <td className="px-2 py-2 align-middle">
-        <InlineCell
-          field="drinkSpecials"
-          slot={slot}
-          cityCampaignId={cityCampaignId}
-          placeholder="—"
-          disabled={!slot.venueEventId}
-        />
-      </td>
-
-      {/* Status */}
-      <td className="px-2 py-2 align-middle">
-        <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
-      </td>
-
-      {/* Clear */}
-      <td className="px-1 py-2 align-middle">
-        {slot.venueEventId && (
-          <button
-            type="button"
-            onClick={clearVenue}
-            className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
-            aria-label="Clear slot"
-            disabled={pending}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+    <>
+      <tr
+        className={cn(
+          tone,
+          "border-zinc-200/40 border-b transition-colors duration-150 dark:border-zinc-800/30",
+          slot.venueEventId == null && "opacity-90",
+          pending && "opacity-60",
         )}
-      </td>
-    </tr>
+      >
+        {/* Slot label — color chip */}
+        <td className="px-3 py-2 align-middle">
+          <span
+            className={cn(
+              "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
+              ROLE_TONE[slot.role],
+            )}
+          >
+            {slotLabel}
+          </span>
+        </td>
+
+        {/* Venue picker */}
+        <td className="px-2 py-2 align-middle">
+          <VenueAutocomplete
+            cityId={cityId}
+            selectedName={slot.venueName}
+            onSelect={assignVenue}
+            placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
+          />
+        </td>
+
+        {/* Email — read-only, comes from venues table */}
+        <td className="px-2 py-2 align-middle">
+          <span className="block max-w-[180px] truncate font-mono text-[11px] text-zinc-500">
+            {slot.venueEmail ?? "—"}
+          </span>
+        </td>
+
+        {/* Scheduled by */}
+        <td className="px-2 py-2 align-middle">
+          <SlotStaffSelect
+            slot={slot}
+            staff={staff}
+            cityCampaignId={cityCampaignId}
+            disabled={!slot.venueEventId}
+          />
+        </td>
+
+        {/* Bar contact */}
+        <td className="px-2 py-2 align-middle">
+          <InlineCell
+            field="nightOfContactName"
+            slot={slot}
+            cityCampaignId={cityCampaignId}
+            placeholder="—"
+            disabled={!slot.venueEventId}
+          />
+        </td>
+
+        {/* Hours */}
+        <td className="px-2 py-2 align-middle">
+          <InlineCell
+            field="agreedHoursText"
+            slot={slot}
+            cityCampaignId={cityCampaignId}
+            placeholder="e.g. 9-11pm"
+            disabled={!slot.venueEventId}
+          />
+        </td>
+
+        {/* Capacity — read-only from venues */}
+        <td className="px-2 py-2 text-right align-middle">
+          <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
+            {slot.venueCapacity ?? "—"}
+          </span>
+        </td>
+
+        {/* Drink specials */}
+        <td className="px-2 py-2 align-middle">
+          <InlineCell
+            field="drinkSpecials"
+            slot={slot}
+            cityCampaignId={cityCampaignId}
+            placeholder="—"
+            disabled={!slot.venueEventId}
+          />
+        </td>
+
+        {/* Status */}
+        <td className="px-2 py-2 align-middle">
+          <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
+        </td>
+
+        {/* Clear */}
+        <td className="px-1 py-2 align-middle">
+          {slot.venueEventId && (
+            <button
+              type="button"
+              onClick={clearVenue}
+              className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+              aria-label="Clear slot"
+              disabled={pending}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </td>
+      </tr>
+      {error && (
+        <tr className="animate-[fade-in_180ms_ease-out] border-zinc-200/40 border-b bg-rose-50/60 dark:border-zinc-800/30 dark:bg-rose-950/30">
+          <td colSpan={10} className="px-3 py-2">
+            <div className="flex items-start gap-2 text-rose-700 text-xs dark:text-rose-300">
+              <span className="font-mono text-[10px] uppercase tracking-[0.1em]">Conflict</span>
+              <span className="flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="font-mono text-[10px] uppercase tracking-[0.1em] underline-offset-4 hover:underline"
+              >
+                dismiss
+              </button>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 

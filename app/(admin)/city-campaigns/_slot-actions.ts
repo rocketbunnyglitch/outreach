@@ -56,6 +56,107 @@ export async function assignSlotVenue(
   if (!parsed.success) return { ok: false, error: "Invalid slot assignment payload." };
   const input = parsed.data;
 
+  // ----- Conflict detection -----
+  // A venue can't be used in CONFLICTING roles on the same day across
+  // crawls within the same city_campaign. Conflict matrix:
+  //   - If assigning as wristband/final/alt_final: venue must not be a
+  //     middle (in either a venue_event OR a middle_venue_group used by
+  //     any same-day event) for ANY other event on that date.
+  //   - If assigning as middle: venue must not be wristband/final/
+  //     alt_final on any other same-day event in this city_campaign.
+  // Within the SAME event the unique index already blocks duplicate
+  // (event, role, slot_position).
+  const conflict = await db.execute<{
+    other_event_id: string;
+    other_role: string;
+    other_day_part: string | null;
+    other_crawl_number: number | null;
+    same_date: boolean;
+  }>(sql`
+    WITH this_event AS (
+      SELECT id, event_date, city_campaign_id FROM events WHERE id = ${input.eventId}
+    ),
+    direct_conflicts AS (
+      -- venue_events on a different event in the same city_campaign, same date
+      SELECT
+        ve.event_id AS other_event_id,
+        ve.role::text AS other_role,
+        e.day_part::text AS other_day_part,
+        e.crawl_number AS other_crawl_number,
+        (e.event_date = (SELECT event_date FROM this_event)) AS same_date
+      FROM venue_events ve
+      JOIN events e ON e.id = ve.event_id
+      WHERE ve.venue_id = ${input.venueId}
+        AND e.city_campaign_id = (SELECT city_campaign_id FROM this_event)
+        AND ve.event_id <> ${input.eventId}
+        AND e.event_date = (SELECT event_date FROM this_event)
+        AND (
+          -- Cross-role conflict matrix
+          (${input.role}::text IN ('wristband','final','alt_final')
+             AND ve.role::text = 'middle')
+          OR
+          (${input.role}::text = 'middle'
+             AND ve.role::text IN ('wristband','final','alt_final'))
+        )
+    ),
+    group_conflicts AS (
+      -- venue is a member of a middle group used by another same-day
+      -- event, and we're assigning as wristband/final/alt_final
+      SELECT
+        e.id AS other_event_id,
+        'middle (shared group)' AS other_role,
+        e.day_part::text AS other_day_part,
+        e.crawl_number AS other_crawl_number,
+        TRUE AS same_date
+      FROM middle_venue_group_members mvgm
+      JOIN events e ON e.middle_venue_group_id = mvgm.middle_venue_group_id
+      WHERE mvgm.venue_id = ${input.venueId}
+        AND e.city_campaign_id = (SELECT city_campaign_id FROM this_event)
+        AND e.event_id <> ${input.eventId}
+        AND e.event_date = (SELECT event_date FROM this_event)
+        AND ${input.role}::text IN ('wristband','final','alt_final')
+    )
+    SELECT * FROM direct_conflicts
+    UNION ALL
+    SELECT * FROM group_conflicts
+    LIMIT 5
+  `);
+
+  const conflictRows: Array<{
+    other_event_id: string;
+    other_role: string;
+    other_day_part: string | null;
+    other_crawl_number: number | null;
+    same_date: boolean;
+  }> = Array.isArray(conflict)
+    ? (conflict as unknown as Array<{
+        other_event_id: string;
+        other_role: string;
+        other_day_part: string | null;
+        other_crawl_number: number | null;
+        same_date: boolean;
+      }>)
+    : ((
+        conflict as unknown as {
+          rows: Array<{
+            other_event_id: string;
+            other_role: string;
+            other_day_part: string | null;
+            other_crawl_number: number | null;
+            same_date: boolean;
+          }>;
+        }
+      ).rows ?? []);
+
+  if (conflictRows.length > 0) {
+    const c = conflictRows[0]!;
+    const label = `${capitalize(c.other_day_part ?? "")} crawl ${c.other_crawl_number ?? "?"} (${c.other_role})`;
+    return {
+      ok: false,
+      error: `Venue conflict: this venue is already used as ${c.other_role} on the same day in ${label}. Pick a different venue or change the other assignment first.`,
+    };
+  }
+
   try {
     const id = await withAuditContext(staff.id, async (tx) => {
       const existing = await tx
@@ -102,6 +203,10 @@ export async function assignSlotVenue(
     logger.error({ err }, "assignSlotVenue failed");
     return { ok: false, error: "Couldn't assign venue. Check for role conflicts." };
   }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 const updateFieldSchema = z.object({

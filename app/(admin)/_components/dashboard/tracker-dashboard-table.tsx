@@ -417,7 +417,7 @@ function CrawlBreakdownRow({
         <div className="flex items-center gap-2 pl-6">
           <span className="h-1 w-1 rounded-full bg-zinc-400/60" />
           <span className="text-xs text-zinc-600 dark:text-zinc-400">
-            {capitalize(crawl.dayPart)} crawl {crawl.crawlNumber}
+            {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
           </span>
         </div>
       </td>
@@ -461,4 +461,11 @@ function firstName(name: string): string {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function dayLabel(dayPart: string): string {
+  // day_part enum values are like "thursday_night" / "friday_night";
+  // tracker rows show the simpler day name.
+  const day = dayPart.split("_")[0] ?? dayPart;
+  return capitalize(day);
 }

@@ -21,6 +21,7 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  middleVenueGroupMembers,
   middleVenueGroups,
   staffMembers,
   venueEvents,
@@ -48,15 +49,34 @@ export interface SlotRow {
   scheduledByStaffName: string | null;
 }
 
+export interface GroupMemberRow {
+  memberId: string;
+  venueId: string;
+  venueName: string;
+  venueEmail: string | null;
+  venueCapacity: number | null;
+  status: string;
+  agreedHoursText: string | null;
+  drinkSpecials: string | null;
+}
+
 export interface CrawlCard {
   eventId: string;
-  dayPart: "thursday" | "friday" | "saturday";
+  dayPart: "thursday_night" | "friday_night" | "saturday_night";
   crawlNumber: number;
   eventDate: string;
   ticketsSold: number;
   middleVenueGroupId: string | null;
   middleVenueGroupName: string | null;
-  /** Always 4 default slots (wristband, middle 1, middle 2, final), plus extras. */
+  /** Other crawls in this city_campaign sharing this group. */
+  middleGroupSharedWith: Array<{ eventId: string; label: string }>;
+  /** Group's venues. Empty unless middleVenueGroupId is set. */
+  middleGroupMembers: GroupMemberRow[];
+  /**
+   * Slot rows. When middleVenueGroupId is set, the Middle 1/Middle 2
+   * default slots are OMITTED — the group's members render in their
+   * place. Wristband + Final + Alt Finals are always slot rows.
+   */
   slots: SlotRow[];
 }
 
@@ -151,6 +171,51 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       : [];
   const groupNameById = new Map(groupRows.map((g) => [g.id, g.name]));
 
+  // Group members for shared-middle display
+  const memberRows =
+    groupIds.length > 0
+      ? await db
+          .select({
+            memberId: middleVenueGroupMembers.id,
+            groupId: middleVenueGroupMembers.middleVenueGroupId,
+            venueId: venues.id,
+            venueName: venues.name,
+            venueEmail: venues.email,
+            venueCapacity: venues.capacity,
+            status: middleVenueGroupMembers.status,
+            agreedHoursText: middleVenueGroupMembers.agreedHoursText,
+            drinkSpecials: middleVenueGroupMembers.drinkSpecials,
+          })
+          .from(middleVenueGroupMembers)
+          .innerJoin(venues, eq(venues.id, middleVenueGroupMembers.venueId))
+          .where(inArray(middleVenueGroupMembers.middleVenueGroupId, groupIds))
+          .orderBy(asc(venues.name))
+      : [];
+  const membersByGroup = new Map<string, GroupMemberRow[]>();
+  for (const m of memberRows) {
+    const list = membersByGroup.get(m.groupId) ?? [];
+    list.push({
+      memberId: m.memberId,
+      venueId: m.venueId,
+      venueName: m.venueName,
+      venueEmail: m.venueEmail,
+      venueCapacity: m.venueCapacity,
+      status: m.status,
+      agreedHoursText: m.agreedHoursText,
+      drinkSpecials: m.drinkSpecials,
+    });
+    membersByGroup.set(m.groupId, list);
+  }
+
+  // "Shared with" map: for each group, the other event ids that use it
+  const eventIdsByGroup = new Map<string, string[]>();
+  for (const ev of eventRows) {
+    if (!ev.middleVenueGroupId) continue;
+    const list = eventIdsByGroup.get(ev.middleVenueGroupId) ?? [];
+    list.push(ev.id);
+    eventIdsByGroup.set(ev.middleVenueGroupId, list);
+  }
+
   // Staff for dropdowns
   const staff = await db
     .select({ id: staffMembers.id, displayName: staffMembers.displayName })
@@ -159,23 +224,35 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
     .orderBy(asc(staffMembers.displayName));
 
   // Compose crawls with default 4 slots (wristband, middle 1, middle 2, final)
-  // plus any extra middles or alt_finals already filled.
+  // plus any extra middles or alt_finals already filled. When a middle group
+  // is attached, the Middle 1/Middle 2 default slots are replaced with the
+  // group's members rendered as a read-only section.
   const crawls: CrawlCard[] = eventRows.map((ev) => {
     const ves = veRows.filter((v) => v.eventId === ev.id);
+    const hasGroup = !!ev.middleVenueGroupId;
 
-    // Required default slots
-    const defaultSlots: Array<{ role: SlotRole; slotPosition: number }> = [
-      { role: "wristband", slotPosition: 1 },
-      { role: "middle", slotPosition: 1 },
-      { role: "middle", slotPosition: 2 },
-      { role: "final", slotPosition: 1 },
-    ];
+    // Required default slots — middles ONLY when no shared group is set
+    const defaultSlots: Array<{ role: SlotRole; slotPosition: number }> = hasGroup
+      ? [
+          { role: "wristband", slotPosition: 1 },
+          { role: "final", slotPosition: 1 },
+        ]
+      : [
+          { role: "wristband", slotPosition: 1 },
+          { role: "middle", slotPosition: 1 },
+          { role: "middle", slotPosition: 2 },
+          { role: "final", slotPosition: 1 },
+        ];
 
-    // Pull in extras: any ve with role+position not in defaultSlots
-    const extras = ves.filter(
-      (v) =>
-        !defaultSlots.some((d) => d.role === v.role && d.slotPosition === (v.slotPosition ?? 1)),
-    );
+    // Pull in extras: any ve with role+position not in defaultSlots, and
+    // also skip ANY middle venue_events when a shared group is in use
+    // (the group is authoritative for middles in that case)
+    const extras = ves.filter((v) => {
+      if (hasGroup && v.role === "middle") return false;
+      return !defaultSlots.some(
+        (d) => d.role === v.role && d.slotPosition === (v.slotPosition ?? 1),
+      );
+    });
 
     // Stable order: defaults first, then extras grouped by role
     const slots: SlotRow[] = [
@@ -192,9 +269,25 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
         .map((v) => slotRowFrom(v, v.role as SlotRole, v.slotPosition ?? 1)),
     ];
 
+    // Sharing — list other events using the same group, with display labels
+    const sharedWith: Array<{ eventId: string; label: string }> = hasGroup
+      ? (eventIdsByGroup.get(ev.middleVenueGroupId as string) ?? [])
+          .filter((otherId) => otherId !== ev.id)
+          .map((otherId) => {
+            const other = eventRows.find((e) => e.id === otherId);
+            return {
+              eventId: otherId,
+              label: other
+                ? `${capitalize(String(other.dayPart ?? ""))} crawl ${other.crawlNumber ?? "?"}`
+                : "another crawl",
+            };
+          })
+      : [];
+
     return {
       eventId: ev.id,
-      dayPart: (ev.dayPart as "thursday" | "friday" | "saturday") ?? "saturday",
+      dayPart:
+        (ev.dayPart as "thursday_night" | "friday_night" | "saturday_night") ?? "saturday_night",
       crawlNumber: ev.crawlNumber ?? 1,
       eventDate: String(ev.eventDate ?? ""),
       ticketsSold: ev.ticketsSold ?? 0,
@@ -202,6 +295,10 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       middleVenueGroupName: ev.middleVenueGroupId
         ? (groupNameById.get(ev.middleVenueGroupId) ?? null)
         : null,
+      middleGroupSharedWith: sharedWith,
+      middleGroupMembers: ev.middleVenueGroupId
+        ? (membersByGroup.get(ev.middleVenueGroupId) ?? [])
+        : [],
       slots,
     };
   });
@@ -274,4 +371,8 @@ function slotRowFrom(ve: VenueEventRow | undefined, role: SlotRole, position: nu
     scheduledByStaffId: ve.ourContactStaffId,
     scheduledByStaffName: ve.staffName,
   };
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

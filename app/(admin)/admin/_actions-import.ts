@@ -41,20 +41,20 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-const DAY_MAP: Record<string, "thursday" | "friday" | "saturday"> = {
-  thu: "thursday",
-  thursday: "thursday",
-  fri: "friday",
-  friday: "friday",
-  sat: "saturday",
-  saturday: "saturday",
+const DAY_MAP: Record<string, "thursday_night" | "friday_night" | "saturday_night"> = {
+  thu: "thursday_night",
+  thursday: "thursday_night",
+  fri: "friday_night",
+  friday: "friday_night",
+  sat: "saturday_night",
+  saturday: "saturday_night",
 };
 
 export interface ParsedRow {
   rowNumber: number; // 1-based, header excluded
   priority: number;
   cityName: string;
-  day: "thursday" | "friday" | "saturday";
+  day: "thursday_night" | "friday_night" | "saturday_night";
   crawlNumber: number;
   resolvedCityId: string | null;
   resolvedCityLabel: string | null;

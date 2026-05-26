@@ -101,7 +101,7 @@ export async function computeCityNeeds(
   const bucketKey = (cc: string, d: string, n: number) => `${cc}::${d}::${n}`;
   const buckets = new Map<string, CrawlBucket>();
   for (const r of rows) {
-    const dayPart = (r.dayPart as string | null) ?? "saturday";
+    const dayPart = (r.dayPart as string | null) ?? "saturday_night";
     const crawlNumber = r.crawlNumber ?? 1;
     const k = bucketKey(r.cityCampaignId, dayPart, crawlNumber);
     let b = buckets.get(k);
