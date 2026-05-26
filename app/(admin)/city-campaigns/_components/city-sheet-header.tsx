@@ -1,7 +1,8 @@
 import type { CitySheetData } from "@/lib/city-sheet-data";
 import { cn } from "@/lib/cn";
 import { type CityStatusPill, STATUS_PILL_LABEL, STATUS_PILL_TONE } from "@/lib/tracker-status";
-import { MapPin, User2 } from "lucide-react";
+import { MapPin, Printer, User2 } from "lucide-react";
+import Link from "next/link";
 
 interface Props {
   data: CitySheetData;
@@ -27,9 +28,19 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
   return (
     <header className="rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
       <div className="flex flex-col gap-1">
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
-          {data.campaignName}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
+            {data.campaignName}
+          </p>
+          <Link
+            href={`/city-campaigns/${data.cityCampaignId}/print`}
+            target="_blank"
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2.5 py-1 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] transition-colors hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+            aria-label="Open print sheet"
+          >
+            <Printer className="h-3 w-3" /> Print sheet
+          </Link>
+        </div>
         <h1 className="font-semibold text-4xl tracking-tight">{data.cityName}</h1>
         <p className="mt-1 flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
           <span className="inline-flex items-center gap-1.5">
