@@ -14,7 +14,11 @@ import {
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { reassignCityCampaign, updateDashboardNote } from "../../_actions-tracker";
+import {
+  reassignCityCampaign,
+  updateCityCampaignStatus,
+  updateDashboardNote,
+} from "../../_actions-tracker";
 
 export interface TrackerRow {
   cityCampaignId: string;
@@ -175,14 +179,7 @@ function CityRow({
         </td>
 
         <td className="px-3 py-2.5 align-middle">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-colors duration-150",
-              STATUS_PILL_TONE[row.need.statusPill],
-            )}
-          >
-            {STATUS_PILL_LABEL[row.need.statusPill]}
-          </span>
+          <StatusOverridePill row={row} />
         </td>
 
         <td className="px-3 py-2.5 align-middle">
@@ -212,6 +209,104 @@ function CityRow({
           />
         ))}
     </>
+  );
+}
+
+function StatusOverridePill({ row }: { row: TrackerRow }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTx] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(e: PointerEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function setStatus(status: "planning" | "active" | "confirmed" | "cancelled") {
+    if (status === row.status) {
+      setOpen(false);
+      return;
+    }
+    const fd = new FormData();
+    fd.set("cityCampaignId", row.cityCampaignId);
+    fd.set("status", status);
+    startTx(async () => {
+      const result = await updateCityCampaignStatus(null, fd);
+      if (result.ok) {
+        setSaved(true);
+        setOpen(false);
+        setTimeout(() => setSaved(false), 1200);
+      }
+    });
+  }
+
+  return (
+    <div ref={containerRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={pending}
+        title="Click to override · pill auto-suggests from open slots"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
+          "hover:scale-[1.03] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-300/40",
+          STATUS_PILL_TONE[row.need.statusPill],
+          pending && "opacity-50",
+        )}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {pending ? (
+          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+        ) : saved ? (
+          <Check className="h-2.5 w-2.5" />
+        ) : null}
+        {STATUS_PILL_LABEL[row.need.statusPill]}
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-full left-0 z-50 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <p className="px-2.5 pt-1 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+            Override status
+          </p>
+          {(["planning", "active", "confirmed", "cancelled"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              className={cn(
+                "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+                "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                s === row.status && "bg-zinc-50 dark:bg-zinc-800/60",
+              )}
+            >
+              <span className="capitalize">{s}</span>
+              {s === row.status && <Check className="h-3 w-3 text-zinc-700 dark:text-zinc-300" />}
+            </button>
+          ))}
+          <p className="border-zinc-200 border-t px-2.5 pt-2 pb-1 text-[10px] text-zinc-500 leading-relaxed dark:border-zinc-800">
+            Auto-suggests from open slot count — override sticks until you change it.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

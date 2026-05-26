@@ -178,7 +178,27 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         </section>
       )}
 
-      <WarmLeadsPanel cityName={cc.city.name} campaignName={cc.campaign.name} leads={warmLeads} />
+      <WarmLeadsPanel
+        cityName={cc.city.name}
+        campaignName={cc.campaign.name}
+        leads={warmLeads}
+        cityCampaignId={id}
+        crawls={
+          sheetData?.crawls.map((c) => ({
+            eventId: c.eventId,
+            dayPart: c.dayPart,
+            crawlNumber: c.crawlNumber,
+            middleVenueGroupId: c.middleVenueGroupId,
+            filledSlots: c.slots
+              .filter((s) => s.venueEventId != null)
+              .map((s) => ({
+                role: s.role,
+                slotPosition: s.slotPosition,
+                venueName: s.venueName,
+              })),
+          })) ?? []
+        }
+      />
 
       <NotesSection
         targetType="city_campaign"
