@@ -63,3 +63,5 @@ Proprietary. Internal use only.
 ## Version
 
 Current production version: `v0.1.0-pre` (Phase 0)
+
+<!-- PAT push test 2026-05-26, will be reverted -->
