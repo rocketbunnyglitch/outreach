@@ -32,6 +32,7 @@ export * from "./staff";
 export * from "./geography";
 export * from "./campaigns";
 export * from "./city-campaigns";
+export * from "./middle-venue-groups";
 export * from "./events";
 export * from "./venues";
 export * from "./venue-events";
