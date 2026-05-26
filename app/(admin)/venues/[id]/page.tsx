@@ -54,7 +54,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
           >
             <ChevronLeft className="h-3 w-3" /> All venues
           </Link>
-          <h1 className="mt-3 font-serif text-4xl tracking-tight">{venue.name}</h1>
+          <h1 className="mt-3 font-semibold text-4xl tracking-tight ">{venue.name}</h1>
         </header>
 
         <VenueForm

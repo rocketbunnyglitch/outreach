@@ -47,7 +47,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="mx-auto flex max-w-md flex-col gap-10">
         <header className="text-center">
           <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">Crawl Engine</p>
-          <h1 className="mt-2 font-serif text-4xl tracking-tight">Sign in.</h1>
+          <h1 className="mt-2 font-semibold text-4xl tracking-tight ">Sign in.</h1>
           <p className="mt-3 text-sm text-stone-600 dark:text-stone-400">
             Only pre-provisioned staff can access this engine.
           </p>

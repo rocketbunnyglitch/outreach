@@ -83,7 +83,7 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
             {eventRow.crawlBrand.holidayType.replace(/^\w/, (c) => c.toUpperCase())} ·{" "}
             {eventRow.city.name}
           </p>
-          <h1 className="mt-4 font-serif text-7xl leading-none tracking-tight">
+          <h1 className="mt-4 font-semibold text-7xl leading-none tracking-tight ">
             {eventRow.crawlBrand.displayName}
           </h1>
           {eventRow.crawlBrand.tagline && (
@@ -91,14 +91,16 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
               {eventRow.crawlBrand.tagline}
             </p>
           )}
-          <p className="mt-8 font-serif text-5xl leading-tight">
+          <p className="mt-8 font-semibold text-5xl leading-tight tracking-tight">
             {formatDate(eventRow.event.eventDate)}
           </p>
         </header>
 
         <section className="flex flex-1 flex-col gap-6 px-12 py-10 text-stone-900">
           {confirmed.length === 0 ? (
-            <p className="font-serif text-2xl text-stone-400 italic">Venues to be announced.</p>
+            <p className="font-semibold text-2xl text-stone-400 italic tracking-tight">
+              Venues to be announced.
+            </p>
           ) : (
             <>
               <h2 className="font-mono text-stone-500 text-xs uppercase tracking-[0.3em]">
@@ -117,7 +119,9 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
                       {ve.slotStartTime ? formatTime(ve.slotStartTime) : ""}
                     </span>
                     <div className="flex flex-1 flex-col gap-1">
-                      <h3 className="font-serif text-3xl leading-tight">{venue.name}</h3>
+                      <h3 className="font-semibold text-3xl leading-tight tracking-tight">
+                        {venue.name}
+                      </h3>
                       {venue.address && <p className="text-sm text-stone-500">{venue.address}</p>}
                     </div>
                     <span
@@ -141,7 +145,7 @@ export default async function PosterPage({ params }: { params: Promise<{ id: str
             <p className="font-mono text-stone-500 text-xs uppercase tracking-[0.3em]">
               Tickets &amp; info
             </p>
-            <p className="font-serif text-lg" style={{ color: primaryColor }}>
+            <p className="font-semibold text-lg tracking-tight" style={{ color: primaryColor }}>
               {publicSubdomain}.{extractRootHost(env.APP_URL)}
             </p>
           </div>

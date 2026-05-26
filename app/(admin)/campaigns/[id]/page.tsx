@@ -84,7 +84,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
           >
             <ChevronLeft className="h-3 w-3" /> All campaigns
           </Link>
-          <h1 className="mt-3 font-serif text-4xl tracking-tight">{campaign.name}</h1>
+          <h1 className="mt-3 font-semibold text-4xl tracking-tight ">{campaign.name}</h1>
           <p className="mt-2 font-mono text-stone-400 text-xs uppercase tracking-wider">
             {campaign.slug}
           </p>

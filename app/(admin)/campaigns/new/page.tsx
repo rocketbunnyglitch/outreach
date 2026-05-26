@@ -21,7 +21,7 @@ export default async function NewCampaignPage() {
         >
           <ChevronLeft className="h-3 w-3" /> All campaigns
         </Link>
-        <h1 className="mt-3 font-serif text-4xl tracking-tight">New campaign</h1>
+        <h1 className="mt-3 font-semibold text-4xl tracking-tight ">New campaign</h1>
         <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
           The brand pair is permanent — pick carefully.
         </p>

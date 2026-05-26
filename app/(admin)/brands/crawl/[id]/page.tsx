@@ -35,7 +35,7 @@ export default async function EditCrawlBrandPage({
             Crawl brand · {brand.slug}
           </p>
           <div className="mt-2 flex flex-wrap items-baseline gap-3">
-            <h1 className="font-serif text-4xl tracking-tight">{brand.displayName}</h1>
+            <h1 className="font-semibold text-4xl tracking-tight ">{brand.displayName}</h1>
             <Badge tone="accent">{brand.holidayType}</Badge>
             <Badge>{brand.geography}</Badge>
           </div>

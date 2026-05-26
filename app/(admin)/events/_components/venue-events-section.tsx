@@ -58,7 +58,7 @@ export function VenueEventsSection({
   return (
     <section className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-3">
-        <h2 className="font-serif text-2xl tracking-tight">Venues</h2>
+        <h2 className="font-semibold text-2xl tracking-tight ">Venues</h2>
         <Button
           type="button"
           variant="outline"

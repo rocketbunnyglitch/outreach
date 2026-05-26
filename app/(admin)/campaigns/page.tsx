@@ -28,7 +28,7 @@ export default async function CampaignsListPage() {
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight">Campaigns</h1>
+          <h1 className="font-semibold text-4xl tracking-tight ">Campaigns</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
             Each campaign ties an outreach brand to a crawl brand for a specific holiday cycle.
           </p>
@@ -42,7 +42,7 @@ export default async function CampaignsListPage() {
 
       {rows.length === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-serif text-2xl tracking-tight">No campaigns yet.</p>
+          <p className="font-semibold text-2xl tracking-tight ">No campaigns yet.</p>
           <p className="mt-2 text-sm text-stone-500">
             Create one to start building city + venue plans against a brand pair.
           </p>
@@ -54,7 +54,7 @@ export default async function CampaignsListPage() {
               <Card className="flex flex-col gap-3 p-5 transition-colors group-hover:bg-stone-50 dark:group-hover:bg-stone-900">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-baseline gap-3">
-                    <h2 className="font-serif text-2xl tracking-tight">{campaign.name}</h2>
+                    <h2 className="font-semibold text-2xl tracking-tight ">{campaign.name}</h2>
                     <span className="font-mono text-stone-400 text-xs uppercase tracking-wider">
                       {campaign.slug}
                     </span>

@@ -59,7 +59,7 @@ export function OutreachLogSection({
   return (
     <section className="flex flex-col gap-5">
       <header className="flex items-baseline justify-between gap-3">
-        <h2 className="font-serif text-2xl tracking-tight">Outreach history</h2>
+        <h2 className="font-semibold text-2xl tracking-tight ">Outreach history</h2>
         <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
           {entries.length} {entries.length === 1 ? "entry" : "entries"}
         </span>

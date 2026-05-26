@@ -50,7 +50,7 @@ export default async function NewVenuePage() {
         >
           <ChevronLeft className="h-3 w-3" /> All venues
         </Link>
-        <h1 className="mt-3 font-serif text-4xl tracking-tight">New venue</h1>
+        <h1 className="mt-3 font-semibold text-4xl tracking-tight ">New venue</h1>
       </header>
 
       <VenueForm mode="create" cities={citiesList} action={createVenue} />

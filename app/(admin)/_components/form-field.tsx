@@ -67,7 +67,7 @@ export function FormSection({
   return (
     <section className="grid grid-cols-1 gap-6 border-stone-200 border-t pt-8 first:border-t-0 first:pt-0 sm:grid-cols-[200px_1fr] dark:border-stone-800">
       <div>
-        <h2 className="font-serif text-lg tracking-tight">{title}</h2>
+        <h2 className="font-semibold text-lg tracking-tight ">{title}</h2>
         {description && <p className="mt-1 text-stone-500 text-xs">{description}</p>}
       </div>
       <div className="flex flex-col gap-5">{children}</div>

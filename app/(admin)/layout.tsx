@@ -65,7 +65,10 @@ function TopNav({
     <header className="sticky top-0 z-40 border-stone-200 border-b bg-[color:var(--color-canvas)]/85 backdrop-blur-md dark:border-stone-800 dark:bg-[color:var(--color-canvas-dark)]/85">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-6 sm:px-10">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-baseline gap-2 font-serif text-xl tracking-tight">
+          <Link
+            href="/"
+            className="flex items-baseline gap-2 font-semibold text-xl tracking-tight "
+          >
             <span className="text-stone-900 dark:text-stone-100">Crawl</span>
             <span className="text-stone-400 dark:text-stone-500">Engine</span>
           </Link>

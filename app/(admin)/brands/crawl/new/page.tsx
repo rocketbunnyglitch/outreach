@@ -34,7 +34,7 @@ export default async function NewCrawlBrandPage() {
         <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
           New crawl brand
         </p>
-        <h1 className="mt-2 font-serif text-4xl tracking-tight">What ticket buyers see.</h1>
+        <h1 className="mt-2 font-semibold text-4xl tracking-tight ">What ticket buyers see.</h1>
       </header>
 
       <CrawlBrandForm action={actionAndMaybeRedirect} outreachBrands={outreachBrands} />

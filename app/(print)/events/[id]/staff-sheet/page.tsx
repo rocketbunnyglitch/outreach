@@ -112,7 +112,7 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
               <p className="font-mono text-stone-500 text-xs uppercase tracking-[0.3em]">
                 Staff sheet · night of
               </p>
-              <h1 className="mt-2 font-serif text-4xl leading-tight tracking-tight">
+              <h1 className="mt-2 font-semibold text-4xl leading-tight tracking-tight ">
                 {eventRow.crawlBrand.displayName}
               </h1>
               <p className="mt-1 text-lg text-stone-600">
@@ -164,7 +164,7 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
           })}
 
           {venuesWithQrs.length === 0 && (
-            <p className="font-serif text-2xl text-stone-400 italic">
+            <p className="font-semibold text-2xl text-stone-400 italic tracking-tight">
               No active venues linked to this event yet.
             </p>
           )}
@@ -190,7 +190,7 @@ function VenueCard({ detail, accentColor }: { detail: VenueEventDetail; accentCo
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
           <div>
-            <h3 className="font-serif text-2xl leading-tight">{venue.name}</h3>
+            <h3 className="font-semibold text-2xl leading-tight tracking-tight">{venue.name}</h3>
             {venue.address && <p className="text-sm text-stone-500">{venue.address}</p>}
           </div>
           <div className="text-right">

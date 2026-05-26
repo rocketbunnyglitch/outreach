@@ -101,7 +101,7 @@ export default async function AuditLogPage({ searchParams }: AuditPageProps) {
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight">Audit log</h1>
+          <h1 className="font-semibold text-4xl tracking-tight ">Audit log</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
             Every change to every table, attributed to the staffer who made it. Append-only,
             populated by Postgres triggers — no app code can falsify these entries.

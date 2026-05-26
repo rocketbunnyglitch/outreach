@@ -98,7 +98,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           >
             <ChevronLeft className="h-3 w-3" /> {eventRow.city.name} · {eventRow.campaign.name}
           </Link>
-          <h1 className="mt-3 font-serif text-4xl tracking-tight">
+          <h1 className="mt-3 font-semibold text-4xl tracking-tight ">
             {eventRow.event.eventDate}
             {eventRow.event.slotNumber !== 1 && (
               <span className="ml-3 text-stone-400">slot {eventRow.event.slotNumber}</span>

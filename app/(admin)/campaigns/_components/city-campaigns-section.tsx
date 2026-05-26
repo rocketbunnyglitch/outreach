@@ -58,7 +58,7 @@ export function CityCampaignsSection({
   return (
     <section className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-3">
-        <h2 className="font-serif text-2xl tracking-tight">Cities</h2>
+        <h2 className="font-semibold text-2xl tracking-tight ">Cities</h2>
         <div className="flex items-center gap-3">
           <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
             {cityCampaigns.length} {cityCampaigns.length === 1 ? "city" : "cities"}

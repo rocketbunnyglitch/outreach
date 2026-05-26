@@ -34,7 +34,7 @@ export default function NewOutreachBrandPage() {
         <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
           New outreach brand
         </p>
-        <h1 className="mt-2 font-serif text-4xl tracking-tight">
+        <h1 className="mt-2 font-semibold text-4xl tracking-tight ">
           The company venues think is contacting them.
         </h1>
       </header>

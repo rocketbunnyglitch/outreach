@@ -18,17 +18,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={cn(GeistSans.variable, GeistMono.variable)} suppressHydrationWarning>
-      <head>
-        {/* Instrument Serif for display moments (page titles, card titles).
-            Loaded via Google Fonts because no NPM package exists.
-            Geist is loaded via the `geist` package above. */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
-        />
-      </head>
       <body
         className={cn("min-h-screen font-sans antialiased", "text-stone-900 dark:text-stone-100")}
       >

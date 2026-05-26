@@ -80,7 +80,7 @@ export default async function EditTemplatePage({ params, searchParams }: PagePro
         >
           <ChevronLeft className="h-3 w-3" /> All templates
         </Link>
-        <h1 className="mt-3 font-serif text-4xl tracking-tight">{template.name}</h1>
+        <h1 className="mt-3 font-semibold text-4xl tracking-tight ">{template.name}</h1>
       </header>
 
       <PreviewPane

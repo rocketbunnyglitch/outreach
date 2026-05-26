@@ -19,7 +19,7 @@ export default async function NewTemplatePage() {
         >
           <ChevronLeft className="h-3 w-3" /> All templates
         </Link>
-        <h1 className="mt-3 font-serif text-4xl tracking-tight">New email template</h1>
+        <h1 className="mt-3 font-semibold text-4xl tracking-tight ">New email template</h1>
       </header>
       <TemplateForm
         mode="create"

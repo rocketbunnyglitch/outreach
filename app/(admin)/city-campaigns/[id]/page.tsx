@@ -79,7 +79,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           >
             <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
           </Link>
-          <h1 className="mt-3 font-serif text-4xl tracking-tight">
+          <h1 className="mt-3 font-semibold text-4xl tracking-tight ">
             {cc.city.name}
             {cc.city.region && <span className="ml-3 text-stone-400">{cc.city.region}</span>}
           </h1>

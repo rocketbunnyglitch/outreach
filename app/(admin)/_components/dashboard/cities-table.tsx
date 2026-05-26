@@ -88,7 +88,7 @@ export function CitiesTable({ cities }: Props) {
     return (
       <div className="rounded-lg border border-stone-200 border-dashed bg-white p-12 text-center dark:border-stone-800 dark:bg-stone-950">
         <Target className="mx-auto h-8 w-8 text-stone-400" />
-        <h3 className="mt-4 font-serif text-2xl tracking-tight">No active campaigns yet</h3>
+        <h3 className="mt-4 font-semibold text-2xl tracking-tight ">No active campaigns yet</h3>
         <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
           Create a campaign and add cities to it, and they'll appear here with live sales + venue
           progress.

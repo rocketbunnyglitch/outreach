@@ -20,7 +20,7 @@ export default async function NewCityPage() {
         >
           <ChevronLeft className="h-3 w-3" /> All cities
         </Link>
-        <h1 className="mt-3 font-serif text-4xl tracking-tight">New city</h1>
+        <h1 className="mt-3 font-semibold text-4xl tracking-tight ">New city</h1>
       </header>
 
       <CityForm mode="create" countries={countriesList} action={createCity} />

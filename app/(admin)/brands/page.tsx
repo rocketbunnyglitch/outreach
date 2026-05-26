@@ -31,7 +31,7 @@ export default async function BrandsPage() {
         <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
           Two-brand model
         </p>
-        <h1 className="font-serif text-4xl tracking-tight">Brands</h1>
+        <h1 className="font-semibold text-4xl tracking-tight ">Brands</h1>
         <p className="max-w-xl text-stone-600 dark:text-stone-400">
           Outreach identities (who venues think is contacting them) and crawl identities (what
           ticket buyers see). Every campaign uses both.
@@ -101,7 +101,7 @@ function SectionHeader({
   return (
     <div className="flex flex-wrap items-end justify-between gap-3 border-stone-200 border-b pb-3 dark:border-stone-800">
       <div>
-        <h2 className="font-serif text-2xl tracking-tight">{title}</h2>
+        <h2 className="font-semibold text-2xl tracking-tight ">{title}</h2>
         <p className="text-sm text-stone-500">{subtitle}</p>
       </div>
       <Button asChild size="sm" variant="outline">
@@ -147,7 +147,7 @@ function OutreachBrandCard({
         <div className="flex flex-col gap-3">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h3 className="font-serif text-xl tracking-tight">{brand.displayName}</h3>
+              <h3 className="font-semibold text-xl tracking-tight ">{brand.displayName}</h3>
               <p className="font-mono text-stone-500 text-xs">@{brand.emailDomain}</p>
             </div>
             <Badge tone={brand.status === "active" ? "success" : "muted"}>{brand.status}</Badge>
@@ -178,7 +178,7 @@ function CrawlBrandCard({
         <div className="flex flex-col gap-3 p-5">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h3 className="font-serif text-xl tracking-tight">{brand.displayName}</h3>
+              <h3 className="font-semibold text-xl tracking-tight ">{brand.displayName}</h3>
               <p className="font-mono text-stone-500 text-xs">{brand.slug}</p>
             </div>
             <Badge tone={brand.status === "active" ? "success" : "muted"}>{brand.status}</Badge>

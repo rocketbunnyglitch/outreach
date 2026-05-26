@@ -45,7 +45,7 @@ export default async function TemplatesListPage() {
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight">
+          <h1 className="font-semibold text-4xl tracking-tight ">
             <Mail className="-mt-1 mr-2 inline-block h-7 w-7 text-stone-400" />
             Email templates
           </h1>
@@ -64,7 +64,7 @@ export default async function TemplatesListPage() {
 
       {byBrand.size === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-serif text-2xl tracking-tight">No templates yet.</p>
+          <p className="font-semibold text-2xl tracking-tight ">No templates yet.</p>
           <p className="mt-2 text-sm text-stone-500">
             Create your first template to start authoring outreach copy.
           </p>

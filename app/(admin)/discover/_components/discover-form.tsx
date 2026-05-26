@@ -111,7 +111,7 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
       {/* Search form */}
       <Card className="flex flex-col gap-5 p-6">
         <header>
-          <h2 className="font-serif text-2xl tracking-tight">Search</h2>
+          <h2 className="font-semibold text-2xl tracking-tight ">Search</h2>
         </header>
         {searchState && !searchState.ok && searchState.error && (
           <Alert tone="error">{searchState.error}</Alert>
@@ -178,7 +178,7 @@ export function DiscoverForm({ cities, searchAction, importAction }: Props) {
         <Card className="flex flex-col gap-5 p-6">
           <header className="flex flex-wrap items-baseline justify-between gap-3">
             <div className="flex items-baseline gap-3">
-              <h2 className="font-serif text-2xl tracking-tight">Results</h2>
+              <h2 className="font-semibold text-2xl tracking-tight ">Results</h2>
               <span className="font-mono text-stone-500 text-xs uppercase tracking-widest">
                 {searchState.result.places.length} found ·{" "}
                 {searchState.result.source === "mock" ? "mock data" : "google_places"}

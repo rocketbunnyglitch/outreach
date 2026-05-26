@@ -73,7 +73,7 @@ export function PreviewPane({
   return (
     <section className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-3">
-        <h2 className="flex items-center gap-2 font-serif text-2xl tracking-tight">
+        <h2 className="flex items-center gap-2 font-semibold text-2xl tracking-tight ">
           <Eye className="h-5 w-5 text-stone-400" />
           Live preview
         </h2>

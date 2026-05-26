@@ -44,7 +44,7 @@ export default async function VenuesListPage() {
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight">Venues</h1>
+          <h1 className="font-semibold text-4xl tracking-tight ">Venues</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
             Bars, restaurants, and event spaces — grouped by city. Select rows to bulk-update DNC or
             archive.
@@ -59,7 +59,7 @@ export default async function VenuesListPage() {
 
       {rows.length === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-serif text-2xl tracking-tight">No venues yet.</p>
+          <p className="font-semibold text-2xl tracking-tight ">No venues yet.</p>
           <p className="mt-2 text-sm text-stone-500">
             Phase 5 will populate venues automatically from Google Maps; for now add them manually
             or import from CSV via /import.

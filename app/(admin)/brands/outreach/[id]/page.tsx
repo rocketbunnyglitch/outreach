@@ -34,7 +34,7 @@ export default async function EditOutreachBrandPage({
           <p className="font-mono text-stone-500 text-xs uppercase tracking-widest">
             Outreach brand · {brand.slug}
           </p>
-          <h1 className="mt-2 font-serif text-4xl tracking-tight">{brand.displayName}</h1>
+          <h1 className="mt-2 font-semibold text-4xl tracking-tight ">{brand.displayName}</h1>
         </div>
         <form action={archive}>
           <Button type="submit" variant="destructive" size="sm" disabled={!!brand.archivedAt}>

@@ -5,15 +5,20 @@
 
 @theme {
   /* ----- Typography stacks -----
-     Geist exposes its faces via CSS variables (--font-geist-sans,
-     --font-geist-mono) set on <html> by the geist npm package. We map
-     Tailwind's font-* tokens to those variables, falling back to system
-     fonts so renders work even if Geist fails to load. */
-  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+     Apple-style: clean geometric sans throughout, NO serifs anywhere.
+     Geist (Vercel) is our primary; falls back to SF Pro on Apple
+     devices via -apple-system, then to other system stacks.
+
+     `--font-serif` is intentionally aliased to the same sans stack so
+     legacy `font-serif` Tailwind classes still render as sans. New
+     components should use `font-sans` (default) with `font-semibold
+     tracking-tight` for display-style headings. */
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  --font-serif: "Instrument Serif", "EB Garamond", "Times New Roman", serif;
+  --font-serif: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Segoe UI", Roboto, sans-serif;
 
   /* ----- Background tint ----- */
   /* A faint warm tint (vs flat #fff) — gives the chrome a soft "paper" feel
@@ -46,7 +51,22 @@ html {
 body {
   background-color: var(--color-canvas);
   font-feature-settings: "ss01", "cv01", "cv09"; /* Geist refinements */
-  letter-spacing: -0.005em;
+  letter-spacing: -0.011em;
+}
+
+/* Apple-style display typography:
+   Large headings get heavier weight + tighter tracking automatically.
+   This applies to <h1>-<h3> globally; individual components can still
+   override with Tailwind utilities. */
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.022em;
+}
+
+h1 {
+  letter-spacing: -0.028em;
 }
 
 @media (prefers-color-scheme: dark) {

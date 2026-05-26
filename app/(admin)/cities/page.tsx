@@ -24,7 +24,7 @@ export default async function CitiesListPage() {
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-serif text-4xl tracking-tight">Cities</h1>
+          <h1 className="font-semibold text-4xl tracking-tight ">Cities</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
             Geographic destinations. Each has a timezone and an optional coordinate for venue
             clustering.
@@ -39,7 +39,7 @@ export default async function CitiesListPage() {
 
       {rows.length === 0 ? (
         <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-serif text-2xl tracking-tight">No cities yet.</p>
+          <p className="font-semibold text-2xl tracking-tight ">No cities yet.</p>
         </Card>
       ) : (
         <div className="grid gap-2">

@@ -75,7 +75,7 @@ function ImportResults({ summary }: { summary: VenueImportSummary }) {
   return (
     <Card className="flex flex-col gap-4 p-5">
       <header className="flex flex-wrap items-baseline gap-4">
-        <h2 className="font-serif text-2xl tracking-tight">Import complete</h2>
+        <h2 className="font-semibold text-2xl tracking-tight ">Import complete</h2>
         <div className="flex items-center gap-4 font-mono text-xs">
           <span className="text-stone-500">{summary.totalRows} rows · </span>
           {summary.inserted > 0 && (
