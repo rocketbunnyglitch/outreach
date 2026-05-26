@@ -1,5 +1,6 @@
 "use client";
 
+import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
 import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
 import { Button } from "@/components/ui/button";
 import { InlineCell } from "@/components/ui/inline-cell";
@@ -382,6 +383,8 @@ export function ColdOutreachTable({
         filterZb={filterZb}
         hasActive={hasActiveFilter}
         staff={staff}
+        cityCampaignId={cityCampaignId}
+        pathname={pathname}
         onChange={setParam}
         onClearAll={clearAllFilters}
       />
@@ -1827,6 +1830,8 @@ function FilterChipStrip({
   filterZb,
   hasActive,
   staff,
+  cityCampaignId,
+  pathname,
   onChange,
   onClearAll,
 }: {
@@ -1837,6 +1842,8 @@ function FilterChipStrip({
   filterZb: string;
   hasActive: boolean;
   staff: Array<{ id: string; displayName: string }>;
+  cityCampaignId: string;
+  pathname: string;
   onChange: (key: string, value: string | null) => void;
   onClearAll: () => void;
 }) {
@@ -1935,6 +1942,13 @@ function FilterChipStrip({
           Clear · {displayedCount}/{entries.length}
         </button>
       )}
+
+      <SavedViewsPicker
+        surface="cold_outreach"
+        contextId={cityCampaignId}
+        filterKeys={["sort", "dir", "status", "assignee", "zb"]}
+        pathname={pathname}
+      />
     </div>
   );
 }
