@@ -1,14 +1,24 @@
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { cities, countries } from "@/db/schema";
 import { db } from "@/lib/db";
-import { asc, isNull } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { CitiesListClient } from "./_components/cities-list-client";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Master cities directory.
+ *
+ * Apple-grade pass: groups cities by country with a sticky country
+ * header band, a search filter that narrows the list as you type
+ * (client-side; the dataset is small), and pill annotations showing
+ * timezone + coordinate completeness at a glance.
+ *
+ * Data loads server-side; the client component handles search +
+ * grouping interactively.
+ */
 export default async function CitiesListPage() {
   const rows = await db
     .select({
@@ -18,54 +28,41 @@ export default async function CitiesListPage() {
     .from(cities)
     .innerJoin(countries, eq(countries.code, cities.countryCode))
     .where(isNull(cities.archivedAt))
-    .orderBy(asc(cities.name));
+    .orderBy(asc(countries.name), asc(cities.region), asc(cities.name));
+
+  // Flatten to simple shape for the client
+  const items = rows.map(({ city, country }) => ({
+    id: city.id,
+    name: city.name,
+    region: city.region,
+    countryCode: country.code,
+    countryName: country.name,
+    timezone: city.timezone,
+    lat: city.location?.lat ?? null,
+    lng: city.location?.lng ?? null,
+  }));
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="mx-auto flex max-w-5xl flex-col gap-8 animate-[fade-in_300ms_ease-out]">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-semibold text-4xl tracking-tight ">Cities</h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Geographic destinations. Each has a timezone and an optional coordinate for venue
-            clustering.
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            Master directory
+          </p>
+          <h1 className="mt-2 text-4xl font-semibold tracking-tight">Cities</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+            {items.length} cit{items.length === 1 ? "y" : "ies"} with timezone + coordinates. Reused
+            across every campaign — keep this list clean.
           </p>
         </div>
         <Button asChild>
           <Link href="/cities/new">
-            <Plus className="h-4 w-4" /> New city
+            <Plus className="h-3.5 w-3.5" /> New city
           </Link>
         </Button>
       </header>
 
-      {rows.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-semibold text-2xl tracking-tight ">No cities yet.</p>
-        </Card>
-      ) : (
-        <div className="grid gap-2">
-          {rows.map(({ city, country }) => (
-            <Link key={city.id} href={`/cities/${city.id}`} className="group">
-              <Card className="flex items-center justify-between gap-3 p-4 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
-                <div className="flex flex-col gap-0.5">
-                  <h2 className="font-medium">{city.name}</h2>
-                  <p className="text-xs text-zinc-500">
-                    {country.name}
-                    {city.region ? ` · ${city.region}` : ""} · {city.timezone}
-                    {city.location && (
-                      <>
-                        {" · "}
-                        <span className="font-mono">
-                          {city.location.lat.toFixed(4)}, {city.location.lng.toFixed(4)}
-                        </span>
-                      </>
-                    )}
-                  </p>
-                </div>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+      <CitiesListClient items={items} />
     </div>
   );
 }
