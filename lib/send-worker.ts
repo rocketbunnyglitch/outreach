@@ -180,7 +180,6 @@ async function processOne(scheduledSendId: string): Promise<ProcessOutcome> {
 
   let externalId: string | null = null;
   let notes: string | null = null;
-  let outreachLogId: string;
 
   if (isLive) {
     try {
@@ -224,7 +223,7 @@ async function processOne(scheduledSendId: string): Promise<ProcessOutcome> {
   }
 
   // Write outreach_log + flip the scheduled row to sent
-  outreachLogId = await withAuditContext(ss.staffMemberId, async (tx) => {
+  const outreachLogId = await withAuditContext(ss.staffMemberId, async (tx) => {
     const [logRow] = await tx
       .insert(outreachLog)
       .values({

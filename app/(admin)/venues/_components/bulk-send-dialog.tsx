@@ -116,6 +116,8 @@ export function BulkSendDialog({
   }, [inbox, selectedVenueIds.length, windowStart, windowEnd]);
 
   // Reset template when brand changes
+  // Reset template when brand changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: brandId is the trigger
   useEffect(() => setTemplateId(""), [brandId]);
 
   const remainingCap = inbox ? inbox.effectiveDailyCap - inbox.sent24h : 0;
@@ -179,6 +181,7 @@ export function BulkSendDialog({
           <div className="flex flex-col gap-4">
             {/* Brand */}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {/* biome-ignore lint/a11y/noLabelWithoutControl: wraps Radix Select / Input controls */}
               <label className="flex flex-col gap-1.5">
                 <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
                   Brand
@@ -198,6 +201,7 @@ export function BulkSendDialog({
               </label>
 
               {/* Template */}
+              {/* biome-ignore lint/a11y/noLabelWithoutControl: wraps Radix Select / Input controls */}
               <label className="flex flex-col gap-1.5">
                 <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
                   Template
@@ -223,6 +227,7 @@ export function BulkSendDialog({
 
             {/* Window */}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {/* biome-ignore lint/a11y/noLabelWithoutControl: wraps Radix Select / Input controls */}
               <label className="flex flex-col gap-1.5">
                 <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
                   Window start
@@ -233,6 +238,7 @@ export function BulkSendDialog({
                   onChange={(e) => setWindowStart(e.target.value)}
                 />
               </label>
+              {/* biome-ignore lint/a11y/noLabelWithoutControl: wraps Radix Select / Input controls */}
               <label className="flex flex-col gap-1.5">
                 <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
                   Window end
@@ -246,6 +252,7 @@ export function BulkSendDialog({
             </div>
 
             {/* Batch label */}
+            {/* biome-ignore lint/a11y/noLabelWithoutControl: wraps Radix Select / Input controls */}
             <label className="flex flex-col gap-1.5">
               <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
                 Batch label (optional)
