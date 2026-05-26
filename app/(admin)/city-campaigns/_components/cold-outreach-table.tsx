@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { useDraft } from "@/lib/use-draft";
 import {
   Check,
+  ClipboardPaste,
   ExternalLink,
   Loader2,
   Mail,
@@ -38,6 +39,7 @@ import {
 import { AiDraftButton } from "./ai-draft-button";
 import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
+import { BulkPasteModal } from "./bulk-paste-modal";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
@@ -125,7 +127,41 @@ export function ColdOutreachTable({
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteRaw, setPasteRaw] = useState<string>("");
   const router = useRouter();
+
+  // -------------------------------------------------------------
+  // Global paste handler — intercept document-level paste events
+  // when the operator pastes TSV content (≥2 cells per row, ≥2
+  // rows). Triggers the bulk paste preview modal. Single-cell or
+  // plain-text pastes are left alone so the operator can still
+  // paste into individual inputs.
+  // -------------------------------------------------------------
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      // Skip if focus is in an input/textarea — those need to receive
+      // normal paste behavior
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+      const text = e.clipboardData?.getData("text/plain");
+      if (!text) return;
+      const lines = text.replace(/\r\n/g, "\n").trim().split("\n");
+      const tabsPerRow = lines.filter((l) => l.includes("\t")).length;
+      if (lines.length >= 2 && tabsPerRow >= 1) {
+        e.preventDefault();
+        setPasteRaw(text);
+        setPasteOpen(true);
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, []);
 
   // -------------------------------------------------------------
   // Sort + filter state. URL-bound so deep-links retain context.
@@ -486,6 +522,10 @@ export function ColdOutreachTable({
             Add venue
           </button>
         )}
+        <span className="hidden font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em] sm:inline-flex">
+          <ClipboardPaste className="mr-1 h-3 w-3" />
+          Or paste rows from Sheets
+        </span>
         <GenerateLeadsButton cityCampaignId={cityCampaignId} cityId={cityId} compact />
       </footer>
 
@@ -494,6 +534,17 @@ export function ColdOutreachTable({
         open={suggestOpen}
         onClose={() => setSuggestOpen(false)}
         onAdded={() => router.refresh()}
+      />
+
+      <BulkPasteModal
+        open={pasteOpen}
+        rawTsv={pasteRaw}
+        cityCampaignId={cityCampaignId}
+        cityId={cityId}
+        onClose={() => {
+          setPasteOpen(false);
+          setPasteRaw("");
+        }}
       />
     </section>
   );

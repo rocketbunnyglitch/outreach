@@ -611,6 +611,160 @@ export async function acceptLeadSuggestions(
   }
 }
 
+// =========================================================================
+// bulkPasteVenues — operator pastes TSV rows from Google Sheets, we
+// create venues + cold outreach entries in one transaction. Dedupes
+// against existing venues in the same city by name (case-insensitive)
+// so re-pasting an overlapping set updates the existing rows rather
+// than creating duplicates.
+// =========================================================================
+
+const pastedRowSchema = z.object({
+  name: z.string().min(1).max(200),
+  email: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+});
+
+const bulkPasteSchema = z.object({
+  cityCampaignId: uuid,
+  cityId: uuid,
+  rowsJson: z.string().min(2),
+});
+
+export async function bulkPasteVenues(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ created: number; updated: number; skipped: number }>> {
+  const { staff } = await requireStaff();
+
+  const parsed = bulkPasteSchema.safeParse(formToObject(formData));
+  if (!parsed.success) return { ok: false, error: "Invalid paste payload." };
+
+  type PastedRow = z.infer<typeof pastedRowSchema>;
+  let rows: PastedRow[];
+  try {
+    const list = JSON.parse(parsed.data.rowsJson);
+    if (!Array.isArray(list)) throw new Error("not array");
+    // Validate each row, drop malformed ones rather than failing the whole
+    // batch — common scenario is one row with a typo in a 50-row paste
+    rows = list
+      .map((r) => pastedRowSchema.safeParse(r))
+      .filter((r): r is { success: true; data: PastedRow } => r.success)
+      .map((r) => r.data);
+  } catch {
+    return { ok: false, error: "Couldn't parse the pasted rows." };
+  }
+
+  if (rows.length === 0) return { ok: false, error: "No valid rows to import." };
+  if (rows.length > 500) return { ok: false, error: "Too many rows — max 500 per paste." };
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      for (const r of rows) {
+        const trimmedName = r.name.trim();
+        const trimmedEmail = r.email?.trim() || null;
+        const trimmedPhone = r.phone?.trim() || null;
+
+        // Validate email + phone formats; skip if either is set but bad
+        if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+          skipped++;
+          continue;
+        }
+        let normalizedPhone: string | null = null;
+        if (trimmedPhone) {
+          const stripped = trimmedPhone.replace(/[\s\-().]/g, "");
+          if (!/^\+?[1-9]\d{6,14}$/.test(stripped)) {
+            skipped++;
+            continue;
+          }
+          normalizedPhone = stripped.startsWith("+") ? stripped : `+${stripped}`;
+        }
+
+        // Case-insensitive name dedupe within the city
+        const existing = await tx
+          .select({ id: venues.id, email: venues.email, phoneE164: venues.phoneE164 })
+          .from(venues)
+          .where(
+            and(
+              eq(venues.cityId, parsed.data.cityId),
+              sql`LOWER(${venues.name}) = LOWER(${trimmedName})`,
+            ),
+          )
+          .limit(1)
+          .then((r) => r[0]);
+
+        let venueId: string;
+        if (existing) {
+          venueId = existing.id;
+          // Only update email/phone if the existing record is empty —
+          // don't clobber operator-curated data with a stale paste
+          const patch: Partial<typeof venues.$inferInsert> = { updatedBy: staff.id };
+          let touched = false;
+          if (trimmedEmail && !existing.email) {
+            patch.email = trimmedEmail;
+            touched = true;
+          }
+          if (normalizedPhone && !existing.phoneE164) {
+            patch.phoneE164 = normalizedPhone;
+            touched = true;
+          }
+          if (touched) {
+            await tx.update(venues).set(patch).where(eq(venues.id, venueId));
+            updated++;
+          }
+        } else {
+          const [row] = await tx
+            .insert(venues)
+            .values({
+              cityId: parsed.data.cityId,
+              name: trimmedName,
+              email: trimmedEmail,
+              phoneE164: normalizedPhone,
+              createdBy: staff.id,
+              updatedBy: staff.id,
+            })
+            .returning({ id: venues.id });
+          if (!row) {
+            skipped++;
+            continue;
+          }
+          venueId = row.id;
+          created++;
+        }
+
+        // Upsert cold outreach entry — if archived, re-activate
+        await tx.execute(sql`
+          INSERT INTO cold_outreach_entries (
+            id, city_campaign_id, venue_id, status, created_by, updated_by, version
+          ) VALUES (
+            gen_random_uuid(), ${parsed.data.cityCampaignId}, ${venueId},
+            'not_contacted', ${staff.id}, ${staff.id}, 1
+          )
+          ON CONFLICT (city_campaign_id, venue_id) DO UPDATE
+            SET archived_at = NULL, updated_by = ${staff.id}, updated_at = NOW()
+            WHERE cold_outreach_entries.archived_at IS NOT NULL
+        `);
+
+        // Fire ZeroBounce on new emails
+        if (!existing && trimmedEmail) {
+          const { validateEmailInBackground } = await import("@/lib/zerobounce");
+          validateEmailInBackground(trimmedEmail, staff.id);
+        }
+      }
+    });
+
+    revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    return { ok: true, data: { created, updated, skipped } };
+  } catch (err) {
+    logger.error({ err }, "bulkPasteVenues failed");
+    return { ok: false, error: "Couldn't import the pasted rows." };
+  }
+}
+
 /**
  * Read helper: cold outreach pipeline for a city_campaign, joined with
  * venue + email_validation (for ZeroBounce status) + assigned staff.
