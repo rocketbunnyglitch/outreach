@@ -79,6 +79,7 @@ function TopNav({
             <NavLink href="/brands">Brands</NavLink>
             <NavLink href="/campaigns">Campaigns</NavLink>
             <NavLink href="/crawl-matrix">Crawl Matrix</NavLink>
+            <NavLink href="/calendar">Calendar</NavLink>
             <NavLink href="/inbox">Inbox</NavLink>
             <NavLink href="/wristbands">Wristbands</NavLink>
             <NavLink href="/cities">Cities</NavLink>
