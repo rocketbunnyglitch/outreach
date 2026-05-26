@@ -222,7 +222,9 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
               onComplete={clearSelection}
             />
           )}
-          <div className="overflow-x-auto">
+          {/* Desktop table — hidden below md. 9 columns can't fit a
+              phone, the card stack below takes over. */}
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
@@ -280,10 +282,48 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
                     zebra={i % 2 === 1}
                     selected={selected.has(row.eventId)}
                     onToggleSelect={() => toggleOne(row.eventId)}
+                    layout="table"
                   />
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile card stack — same data, vertical layout. */}
+          <div className="md:hidden">
+            {filtered.length > 0 && (
+              <div className="flex items-center justify-between gap-2 border-zinc-200/60 border-b bg-zinc-50/40 px-4 py-2 dark:border-zinc-800/40 dark:bg-zinc-900/30">
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="inline-flex items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]"
+                >
+                  <SelectAllCheckbox
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={toggleAll}
+                  />
+                  {selected.size > 0 ? `${selected.size} selected` : "Select all"}
+                </button>
+                <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
+                  {filtered.length} crawl{filtered.length === 1 ? "" : "s"}
+                </span>
+              </div>
+            )}
+            <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/40">
+              {filtered.map((row) => (
+                <li key={row.eventId}>
+                  <CrawlRow
+                    row={row}
+                    campaignId={campaignId}
+                    zebra={false}
+                    selected={selected.has(row.eventId)}
+                    onToggleSelect={() => toggleOne(row.eventId)}
+                    layout="card"
+                  />
+                </li>
+              ))}
+            </ul>
           </div>
         </>
       )}
@@ -334,17 +374,113 @@ function CrawlRow({
   zebra,
   selected,
   onToggleSelect,
+  layout,
 }: {
   row: AllCrawlsRow;
   campaignId: string;
   zebra: boolean;
   selected: boolean;
   onToggleSelect: () => void;
+  layout: "table" | "card";
 }) {
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
 
   // Status pill mirrors the dashboard tracker
   const statusPill = computeStatusPill(row);
+
+  // ---------------------------------------------------------------
+  // Card layout (mobile)
+  // ---------------------------------------------------------------
+  if (layout === "card") {
+    return (
+      <article
+        className={cn(
+          "flex flex-col gap-2 px-4 py-3 transition-colors",
+          selected && "bg-blue-500/[0.06] dark:bg-blue-400/[0.06]",
+        )}
+      >
+        {/* Top row: checkbox + city + day */}
+        <div className="flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+            aria-label={`Select ${row.cityName} ${row.dayPart} crawl ${row.crawlNumber}`}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <Link
+                href={`/city-campaigns/${row.cityCampaignId}`}
+                className="font-medium text-sm text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
+              >
+                {row.cityName}
+                {row.cityRegion && (
+                  <span className="ml-1.5 font-mono text-[10px] text-zinc-500">
+                    {row.cityRegion}
+                  </span>
+                )}
+              </Link>
+              <span
+                className={cn(
+                  "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 font-medium font-mono text-[9px] uppercase tracking-[0.08em] ring-1 ring-inset",
+                  statusPill.tone,
+                )}
+              >
+                {statusPill.label}
+              </span>
+            </div>
+            <p className="mt-0.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+              {DAY_LABEL[row.dayPart] ?? row.dayPart} · Crawl {row.crawlNumber} ·{" "}
+              {row.eventDate ?? "no date"}
+            </p>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <dl className="flex items-center gap-4 pl-6 font-mono text-[10px]">
+          <div>
+            <dt className="text-zinc-500 uppercase tracking-[0.08em]">Tickets</dt>
+            <dd className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">
+              {row.ticketsSold > 0 ? row.ticketsSold : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500 uppercase tracking-[0.08em]">Open slots</dt>
+            <dd
+              className={cn(
+                "font-semibold text-sm tabular-nums",
+                row.openSlots === 0
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : row.openSlots >= 3
+                    ? "text-rose-600 dark:text-rose-400"
+                    : row.openSlots === 2
+                      ? "text-orange-600 dark:text-orange-400"
+                      : "text-amber-600 dark:text-amber-400",
+              )}
+            >
+              {row.openSlots}
+            </dd>
+          </div>
+        </dl>
+
+        {/* Eventbrite */}
+        <div className="pl-6">
+          <EventbriteCell
+            eventId={row.eventId}
+            campaignId={campaignId}
+            currentEbId={row.eventbriteEventId}
+            currentEbUrl={row.eventbriteUrl}
+            ticketsSold={row.ticketsSold}
+          />
+        </div>
+      </article>
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // Table layout (desktop) — original render
+  // ---------------------------------------------------------------
   return (
     <tr
       className={cn(
