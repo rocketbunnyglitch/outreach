@@ -4,6 +4,7 @@ import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
 import { Button } from "@/components/ui/button";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
+import { useShortcut } from "@/components/ui/shortcut-provider";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { useDraft } from "@/lib/use-draft";
@@ -123,6 +124,27 @@ export function ColdOutreachTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [suggestOpen, setSuggestOpen] = useState(false);
   const router = useRouter();
+
+  // Page-scoped keyboard shortcuts. Press '?' to see them all.
+  useShortcut({
+    keys: "n",
+    label: "Add new venue",
+    group: "Cold outreach",
+    handler: () => setAdding(true),
+  });
+  useShortcut({
+    keys: "v",
+    label: "Suggest venues (AI)",
+    group: "Cold outreach",
+    handler: () => setSuggestOpen(true),
+  });
+  useShortcut({
+    keys: "escape",
+    label: "Clear selection",
+    group: "Cold outreach",
+    handler: () => setSelected(new Set()),
+    enabled: selected.size > 0,
+  });
 
   function toggleOne(id: string) {
     setSelected((prev) => {

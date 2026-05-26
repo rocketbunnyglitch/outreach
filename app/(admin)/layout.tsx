@@ -1,10 +1,13 @@
+import { ShortcutProvider } from "@/components/ui/shortcut-provider";
 import { ToastProvider } from "@/components/ui/toast";
 import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
+import { GlobalShortcuts } from "./_components/global-shortcuts";
 import { MobileNav } from "./_components/mobile-nav";
+import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { UserMenu } from "./_components/user-menu";
 
 /**
@@ -32,13 +35,16 @@ export default async function AdminLayout({
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen flex-col">
-        {isDevImpersonation && <DevModeBanner />}
-        <TopNav staff={staff} provider={provider} />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 sm:px-10 sm:py-14">
-          {children}
-        </main>
-      </div>
+      <ShortcutProvider>
+        <div className="flex min-h-screen flex-col">
+          {isDevImpersonation && <DevModeBanner />}
+          <TopNav staff={staff} provider={provider} />
+          <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 sm:px-10 sm:py-14">
+            {children}
+          </main>
+          <GlobalShortcuts />
+        </div>
+      </ShortcutProvider>
     </ToastProvider>
   );
 }
@@ -110,6 +116,7 @@ function TopNav({
         </div>
 
         <div className="flex items-center gap-2">
+          <ShortcutsHintButton />
           <UserMenu staff={staff} provider={provider} />
           <MobileNav isAdmin={staff.role === "admin"} />
         </div>
