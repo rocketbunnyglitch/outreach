@@ -1,12 +1,13 @@
 import { auth, authProviderStatus } from "@/auth";
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { staffMembers } from "@/db/schema";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { and, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { signInAsStaff, signInWithGoogle } from "./_actions";
 import { DevImpersonationForm } from "./_dev-form";
+import { GoogleSignInButton } from "./_google-button";
 
 export const metadata = {
   title: "Sign in · Crawl Engine",
@@ -19,6 +20,37 @@ interface LoginPageProps {
   searchParams: Promise<{ from?: string; error?: string }>;
 }
 
+/**
+ * NextAuth error code → human-readable copy. Covers the common cases the
+ * operator might hit so they get a clear next step instead of a raw enum
+ * string in the URL bar.
+ *
+ * Reference: https://next-auth.js.org/configuration/pages#error-codes
+ */
+function errorMessageFor(code: string | undefined): string | null {
+  if (!code) return null;
+  switch (code) {
+    case "AccessDenied":
+      return "That account isn't a recognized staff member. Ask an admin to add your email to the staff list and try again.";
+    case "OAuthSignin":
+    case "OAuthCallback":
+    case "OAuthCreateAccount":
+      return "Couldn't complete the Google sign-in handshake. Refresh and try again, or contact an admin if it keeps happening.";
+    case "OAuthAccountNotLinked":
+      return "Your Google account is tied to a different sign-in method on file. Ask an admin to reconcile your staff record.";
+    case "Callback":
+      return "Sign-in callback failed. Refresh and try again.";
+    case "SessionRequired":
+      return "You need to be signed in to view that page. Sign in below to continue.";
+    case "Configuration":
+      return "The auth provider isn't configured correctly on the server. Contact an admin.";
+    case "Verification":
+      return "Your sign-in link is invalid or has expired. Try again.";
+    default:
+      return `Sign-in failed (${code}). Try again or contact an admin.`;
+  }
+}
+
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await auth();
   if (session?.user?.staffId) {
@@ -27,6 +59,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const { from = "/", error } = await searchParams;
   const { googleEnabled, devCredentialsEnabled } = authProviderStatus;
+  const errorMessage = errorMessageFor(error);
+  const workspaceDomain = env.GOOGLE_WORKSPACE_DOMAIN;
 
   // Load active staff for the dev picker. Only used in non-prod.
   const devStaff = devCredentialsEnabled
@@ -43,82 +77,82 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     : [];
 
   return (
-    <main className="min-h-screen px-6 py-16 sm:py-24">
-      <div className="mx-auto flex max-w-md flex-col gap-10">
-        <header className="text-center">
-          <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Crawl Engine</p>
-          <h1 className="mt-2 font-semibold text-4xl tracking-tight ">Sign in.</h1>
-          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-            Only pre-provisioned staff can access this engine.
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-gradient-to-br from-zinc-50 via-white to-zinc-100 px-6 py-12 dark:from-zinc-950 dark:via-zinc-950 dark:to-zinc-900">
+      {/* Soft brand glow in the background */}
+      <div
+        aria-hidden="true"
+        className="-z-10 pointer-events-none absolute inset-0 opacity-40 dark:opacity-20"
+        style={{
+          backgroundImage:
+            "radial-gradient(ellipse 800px 400px at 50% 0%, rgba(99,102,241,0.15), transparent 60%)",
+        }}
+      />
+
+      <div className="w-full max-w-md">
+        <header className="mb-8 text-center">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
+            Crawl Engine
+          </p>
+          <h1 className="mt-2 font-semibold text-4xl tracking-tight">Sign in.</h1>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            Pre-provisioned staff only.
           </p>
         </header>
 
-        {error === "AccessDenied" && (
-          <Alert tone="error">
-            That account isn't a recognized staff member. Ask an admin to add your email to{" "}
-            <code className="font-mono text-xs">staff_members</code> and try again.
-          </Alert>
-        )}
+        <div className="rounded-2xl border border-zinc-200/80 bg-white/80 p-7 shadow-lg shadow-zinc-200/40 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+          {errorMessage && (
+            <div className="mb-6">
+              <Alert tone="error">{errorMessage}</Alert>
+            </div>
+          )}
 
-        {googleEnabled && (
-          <form action={signInWithGoogle} className="flex flex-col gap-3">
-            <input type="hidden" name="from" value={from} />
-            <Button type="submit" size="lg" className="w-full">
-              <GoogleMark />
-              Continue with Google
-            </Button>
-            <p className="text-center text-xs text-zinc-500">
-              You'll be redirected to Google to sign in with your workspace account.
-            </p>
-          </form>
-        )}
+          {googleEnabled && (
+            <form action={signInWithGoogle} className="flex flex-col gap-3">
+              <input type="hidden" name="from" value={from} />
+              <GoogleSignInButton />
+              <p className="text-center text-xs text-zinc-500">
+                {workspaceDomain ? (
+                  <>
+                    Sign in with your{" "}
+                    <code className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300">
+                      @{workspaceDomain}
+                    </code>{" "}
+                    account.
+                  </>
+                ) : (
+                  <>You'll be redirected to Google to sign in.</>
+                )}
+              </p>
+            </form>
+          )}
 
-        {googleEnabled && devCredentialsEnabled && (
-          <div className="flex items-center gap-3 text-xs text-zinc-400 uppercase tracking-widest">
-            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
-            or
-            <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
-          </div>
-        )}
+          {googleEnabled && devCredentialsEnabled && (
+            <div className="my-6 flex items-center gap-3 font-mono text-[10px] text-zinc-400 uppercase tracking-[0.18em]">
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+              or dev
+              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+            </div>
+          )}
 
-        {devCredentialsEnabled && (
-          <DevImpersonationForm staff={devStaff} from={from} action={signInAsStaff} />
-        )}
+          {devCredentialsEnabled && (
+            <DevImpersonationForm staff={devStaff} from={from} action={signInAsStaff} />
+          )}
 
-        {!googleEnabled && !devCredentialsEnabled && (
-          <Alert tone="error">
-            No authentication providers are configured. Set{" "}
-            <code className="font-mono text-xs">GOOGLE_OAUTH_CLIENT_ID</code> and{" "}
-            <code className="font-mono text-xs">GOOGLE_OAUTH_CLIENT_SECRET</code> in the
-            environment, or run with <code className="font-mono text-xs">NODE_ENV=development</code>{" "}
-            to enable the dev impersonation provider.
-          </Alert>
-        )}
+          {!googleEnabled && !devCredentialsEnabled && (
+            <Alert tone="error">
+              No authentication providers are configured. Set{" "}
+              <code className="font-mono text-xs">GOOGLE_OAUTH_CLIENT_ID</code> and{" "}
+              <code className="font-mono text-xs">GOOGLE_OAUTH_CLIENT_SECRET</code>, or enable{" "}
+              <code className="font-mono text-xs">ENABLE_DEV_IMPERSONATION=1</code> for local
+              development.
+            </Alert>
+          )}
+        </div>
+
+        <footer className="mt-6 text-center font-mono text-[10px] text-zinc-400 uppercase tracking-[0.14em]">
+          {googleEnabled ? "Google OAuth · Workspace gated" : "Dev impersonation mode"}
+        </footer>
       </div>
     </main>
-  );
-}
-
-function GoogleMark() {
-  // Inline SVG to avoid loading an external asset for the login screen.
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-      />
-      <path
-        fill="currentColor"
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.26 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"
-      />
-      <path
-        fill="currentColor"
-        d="M5.84 14.1c-.22-.66-.35-1.36-.35-2.1s.13-1.44.35-2.1V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.83z"
-      />
-      <path
-        fill="currentColor"
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.83C6.71 7.3 9.14 5.38 12 5.38z"
-      />
-    </svg>
   );
 }
