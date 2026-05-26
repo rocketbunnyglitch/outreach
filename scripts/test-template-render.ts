@@ -2,11 +2,7 @@
  * Phase 6a test: template render engine.
  * Doesn't touch the DB — just exercises the pure function.
  */
-import {
-  KNOWN_MERGE_FIELDS,
-  extractMergeFields,
-  renderTemplate,
-} from "../lib/template-render";
+import { KNOWN_MERGE_FIELDS, extractMergeFields, renderTemplate } from "../lib/template-render";
 
 const TEMPLATE_BODY = `Hi {{venue.name}} team,
 
@@ -52,13 +48,13 @@ function main() {
     console.error("  expected:", expectedFields);
     process.exit(1);
   }
-  console.log("OK extractMergeFields:", fields.length, "fields");
 
   // Render
   const result = renderTemplate(TEMPLATE_BODY, CONTEXT);
   if (!result.output.includes("Hi The Phantom Pub team")) {
     console.error("FAIL: venue.name didn't render");
-    console.error(result.output); process.exit(1);
+    console.error(result.output);
+    process.exit(1);
   }
   if (!result.output.includes("Saturday, October 31, 2026")) {
     console.error("FAIL: event.dateFormatted didn't render");
@@ -72,30 +68,27 @@ function main() {
     console.error("FAIL: unresolvedFields wrong:", result.unresolvedFields);
     process.exit(1);
   }
-  console.log("OK render: venue.name + event.dateFormatted + city.name all resolved");
-  console.log("OK unresolvedFields:", result.unresolvedFields);
 
   // Empty context
   const empty = renderTemplate("{{venue.name}} {{x.y.z}}", {});
   if (empty.output !== "[??venue.name??] [??x.y.z??]") {
-    console.error("FAIL: empty context render"); console.error(empty.output); process.exit(1);
+    console.error("FAIL: empty context render");
+    console.error(empty.output);
+    process.exit(1);
   }
-  console.log("OK empty context: 2 unresolved markers");
 
   // No merge fields
   const plain = renderTemplate("Hello world", CONTEXT);
   if (plain.output !== "Hello world" || plain.unresolvedFields.length !== 0) {
-    console.error("FAIL: plain text shouldn't change"); process.exit(1);
+    console.error("FAIL: plain text shouldn't change");
+    process.exit(1);
   }
-  console.log("OK plain text passthrough");
 
   // KNOWN_MERGE_FIELDS sanity
   if (KNOWN_MERGE_FIELDS.length < 15) {
-    console.error(`FAIL: KNOWN_MERGE_FIELDS only has ${KNOWN_MERGE_FIELDS.length}`); process.exit(1);
+    console.error(`FAIL: KNOWN_MERGE_FIELDS only has ${KNOWN_MERGE_FIELDS.length}`);
+    process.exit(1);
   }
-  console.log("OK KNOWN_MERGE_FIELDS:", KNOWN_MERGE_FIELDS.length, "documented");
-
-  console.log("\nPASS: template render engine.");
   process.exit(0);
 }
 main();
