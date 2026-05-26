@@ -10,6 +10,8 @@ interface NavItem {
   href: string;
   label: string;
   disabled?: boolean;
+  /** When true, only renders for admin users. */
+  adminOnly?: boolean;
 }
 
 const ITEMS: NavItem[] = [
@@ -32,8 +34,16 @@ const ITEMS: NavItem[] = [
   { href: "/import", label: "Import" },
   { href: "/templates", label: "Templates" },
   { href: "/settings/inboxes", label: "Settings" },
-  { href: "/audit", label: "Audit" },
+  // Admin section — only renders for staff.role='admin'
+  { href: "/admin", label: "Admin hub", adminOnly: true },
+  { href: "/admin/analytics", label: "Team analytics", adminOnly: true },
+  { href: "/audit", label: "Audit log", adminOnly: true },
 ];
+
+interface Props {
+  /** When true, admin-only nav items are rendered. */
+  isAdmin?: boolean;
+}
 
 /**
  * Mobile nav drawer for the admin header.
@@ -47,9 +57,10 @@ const ITEMS: NavItem[] = [
  *
  * Active route highlighting matches the desktop NavLink behavior
  * (zinc tint + bold) so the operator's location is obvious on both
- * surfaces.
+ * surfaces. Admin items are separated by a divider + "Admin" caption
+ * so they read as a distinct section.
  */
-export function MobileNav() {
+export function MobileNav({ isAdmin = false }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -73,6 +84,9 @@ export function MobileNav() {
       document.body.style.overflow = "";
     };
   }, [open]);
+
+  const visibleItems = ITEMS.filter((i) => !i.adminOnly || isAdmin);
+  const adminStartIdx = visibleItems.findIndex((i) => i.adminOnly);
 
   return (
     <>
@@ -117,24 +131,33 @@ export function MobileNav() {
           </button>
         </header>
         <nav className="flex flex-col gap-0.5 p-3">
-          {ITEMS.map((item) => {
+          {visibleItems.map((item, idx) => {
             const active =
               item.href === "/"
                 ? pathname === "/"
                 : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const showAdminDivider = item.adminOnly && idx === adminStartIdx;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "rounded-md px-3 py-2.5 text-sm transition-colors",
-                  active
-                    ? "bg-zinc-100 font-semibold text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
-                    : "text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/40",
+              <div key={item.href}>
+                {showAdminDivider && (
+                  <div className="mt-3 mb-1 border-zinc-200 border-t pt-3 dark:border-zinc-800">
+                    <p className="px-3 font-mono text-[10px] text-purple-600 uppercase tracking-[0.14em] dark:text-purple-400">
+                      Admin
+                    </p>
+                  </div>
                 )}
-              >
-                {item.label}
-              </Link>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "block rounded-md px-3 py-2.5 text-sm transition-colors",
+                    active
+                      ? "bg-zinc-100 font-semibold text-zinc-900 dark:bg-zinc-800/80 dark:text-zinc-100"
+                      : "text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/40",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              </div>
             );
           })}
         </nav>

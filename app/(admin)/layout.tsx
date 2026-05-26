@@ -95,13 +95,20 @@ function TopNav({
             <NavLink href="/import">Import</NavLink>
             <NavLink href="/templates">Templates</NavLink>
             <NavLink href="/settings/inboxes">Settings</NavLink>
-            <NavLink href="/audit">Audit</NavLink>
+            {staff.role === "admin" && (
+              <>
+                <span className="mx-1 h-4 w-px bg-zinc-200 dark:bg-zinc-800" aria-hidden="true" />
+                <NavLink href="/admin">Admin</NavLink>
+                <NavLink href="/admin/analytics">Analytics</NavLink>
+                <NavLink href="/audit">Audit</NavLink>
+              </>
+            )}
           </nav>
         </div>
 
         <div className="flex items-center gap-2">
           <UserMenu staff={staff} provider={provider} />
-          <MobileNav />
+          <MobileNav isAdmin={staff.role === "admin"} />
         </div>
       </div>
     </header>

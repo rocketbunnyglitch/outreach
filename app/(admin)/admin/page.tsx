@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq, isNull, sql } from "drizzle-orm";
 import {
@@ -38,7 +38,7 @@ export const dynamic = "force-dynamic";
  *   4. Master cities directory (count + link to add)
  */
 export default async function AdminPage() {
-  await requireStaff();
+  await requireAdmin();
 
   const [campaignRows, cityCount, ccCount, staffCount] = await Promise.all([
     db

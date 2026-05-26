@@ -74,3 +74,36 @@ export async function requireStaff(): Promise<AuthContext> {
   if (!ctx) redirect("/login");
   return ctx;
 }
+
+/**
+ * Like requireStaff, but additionally enforces role='admin'.
+ *
+ * Non-admin staff hitting an admin page get a 404 (not a 403) so we
+ * don't leak the existence of admin-only routes to outreach reps —
+ * they simply see "Not found" and move on.
+ *
+ * Use this on every page/action under /admin/* and on any UI affordance
+ * that exposes cross-user analytics or destructive bulk operations.
+ */
+export async function requireAdmin(): Promise<AuthContext> {
+  const ctx = await requireStaff();
+  if (ctx.staff.role !== "admin") {
+    // Use notFound() instead of a 403 page — it's the convention in
+    // Next 15 for "hide this route from non-privileged callers" and it
+    // composes cleanly with the existing not-found.tsx.
+    const { notFound } = await import("next/navigation");
+    notFound();
+  }
+  return ctx;
+}
+
+/**
+ * Pure read variant — returns null when not admin, useful in shared
+ * components (e.g. the nav layout) that need to conditionally render
+ * admin-only items without forcing a redirect.
+ */
+export async function getAdminOrNull(): Promise<AuthContext | null> {
+  const ctx = await getCurrentStaff();
+  if (!ctx || ctx.staff.role !== "admin") return null;
+  return ctx;
+}
