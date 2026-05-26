@@ -1,5 +1,6 @@
 "use client";
 
+import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
 import { Button } from "@/components/ui/button";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
@@ -545,8 +546,15 @@ function ColdRow({
           />
         </div>
 
-        {/* Archive */}
-        <div className="flex justify-end">
+        {/* History + Archive */}
+        <div className="flex items-center justify-between">
+          <ActivityHistoryButton
+            table="cold_outreach_entries"
+            recordId={entry.entryId}
+            alsoTable="venues"
+            alsoRecordId={entry.venueId}
+            compact
+          />
           <button
             type="button"
             onClick={archive}
@@ -722,17 +730,29 @@ function ColdRow({
         />
       </td>
 
-      {/* Archive */}
+      {/* History + Archive — both row-hover affordances so the row
+          itself reads calm when not interacting. */}
       <td className="px-1 py-2 align-middle">
-        <button
-          type="button"
-          onClick={archive}
-          disabled={pending}
-          className="rounded-md p-1 text-zinc-400 opacity-0 transition-all duration-150 hover:bg-rose-500/[0.08] hover:text-rose-600 group-hover:opacity-100"
-          aria-label="Archive"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <div className="opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+            <ActivityHistoryButton
+              table="cold_outreach_entries"
+              recordId={entry.entryId}
+              alsoTable="venues"
+              alsoRecordId={entry.venueId}
+              compact
+            />
+          </div>
+          <button
+            type="button"
+            onClick={archive}
+            disabled={pending}
+            className="rounded-md p-1 text-zinc-400 opacity-0 transition-all duration-150 hover:bg-rose-500/[0.08] hover:text-rose-600 group-hover:opacity-100"
+            aria-label="Archive"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
       </td>
     </tr>
   );
