@@ -51,18 +51,12 @@ const config: NextConfig = {
  * disableLogger: drop the verbose Sentry init logger from the prod bundle
  * automaticVercelMonitors: irrelevant on our VPS deploy but harmless
  */
-export default withSentryConfig(config, {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: !process.env.CI,
-  widenClientFileUpload: true,
-  // Tree-shake debug logs out of prod via webpack instead of the
-  // deprecated disableLogger flag.
-  reactComponentAnnotation: { enabled: false },
-  // Skip source-map upload when no auth token — keeps local + CI-less
-  // builds fast and avoids the "no SENTRY_AUTH_TOKEN" warning every build.
-  sourcemaps: {
-    disable: !process.env.SENTRY_AUTH_TOKEN,
-  },
-});
+// Sentry wrapping temporarily disabled — with @sentry/nextjs 10.54 +
+// Next 15.5.18 and the client SDK uninitialized (NEXT_PUBLIC_SENTRY_DSN
+// missing from .env), withSentryConfig's build-time navigation
+// instrumentation broke router.push()/replace() in production: clicks
+// fired the RSC fetch but the App Router never committed the new route.
+// Re-enable once either NEXT_PUBLIC_SENTRY_DSN is configured AND a
+// compatible @sentry/nextjs is verified, or the @sentry/nextjs upgrade
+// addresses the App Router instrumentation bug.
+export default config;
