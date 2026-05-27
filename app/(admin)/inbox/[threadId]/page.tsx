@@ -10,6 +10,7 @@ import {
 } from "@/lib/inbox-data";
 import { notFound } from "next/navigation";
 import { FolderList } from "../_components/FolderList";
+import { InboxPresenceBar } from "../_components/InboxPresenceBar";
 import { InboxShell } from "../_components/InboxShell";
 import { ThreadList } from "../_components/ThreadList";
 import { ThreadPane } from "../_components/ThreadPane";
@@ -74,12 +75,15 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   return (
     <InboxShell
       left={
-        <FolderList
-          activeFolder={folder}
-          counts={counts}
-          mineOnly={mineOnly}
-          currentStaffId={currentStaff.id}
-        />
+        <div className="flex h-full flex-col">
+          <FolderList
+            activeFolder={folder}
+            counts={counts}
+            mineOnly={mineOnly}
+            currentStaffId={currentStaff.id}
+          />
+          <InboxPresenceBar currentStaffId={currentStaff.id} />
+        </div>
       }
       middle={
         <ThreadList
