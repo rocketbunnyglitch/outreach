@@ -89,13 +89,13 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
         SELECT
           cc.id::text,
           cc.name,
-          ob.brand_name,
+          ob.display_name AS brand_name,
           true AS is_city_campaign
         FROM city_campaigns cc
         LEFT JOIN campaigns cm ON cm.id = cc.campaign_id
         LEFT JOIN outreach_brands ob ON ob.id = cm.outreach_brand_id
         WHERE cc.archived_at IS NULL
-          AND (cc.name ILIKE ${pattern} OR ob.brand_name ILIKE ${pattern})
+          AND (cc.name ILIKE ${pattern} OR ob.display_name ILIKE ${pattern})
         ORDER BY cc.name
         LIMIT 4
       )
@@ -104,12 +104,12 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
         SELECT
           cm.id::text,
           cm.name,
-          ob.brand_name,
+          ob.display_name AS brand_name,
           false AS is_city_campaign
         FROM campaigns cm
         LEFT JOIN outreach_brands ob ON ob.id = cm.outreach_brand_id
         WHERE cm.archived_at IS NULL
-          AND (cm.name ILIKE ${pattern} OR ob.brand_name ILIKE ${pattern})
+          AND (cm.name ILIKE ${pattern} OR ob.display_name ILIKE ${pattern})
         ORDER BY cm.name
         LIMIT 4
       )

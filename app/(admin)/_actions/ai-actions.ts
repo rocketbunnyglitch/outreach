@@ -94,7 +94,7 @@ export async function draftOutreachEmail(
       c.name AS city_name,
       c.region AS city_region,
       cm.name AS campaign_name,
-      ob.brand_name AS brand_name,
+      ob.display_name AS brand_name,
       ${staff.displayName.split(/\s+/)[0]} AS sender_name,
       (SELECT event_date FROM upcoming) AS upcoming_crawl_date,
       (SELECT history::text FROM history) AS history

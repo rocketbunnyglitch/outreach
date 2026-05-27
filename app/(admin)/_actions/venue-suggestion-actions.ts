@@ -90,8 +90,8 @@ export async function suggestVenuesForCampaign(
     SELECT
       c.name AS city_name,
       c.region AS city_region,
-      ST_Y(c.geocode::geometry)::float AS city_lat,
-      ST_X(c.geocode::geometry)::float AS city_lng
+      ST_Y(c.location::geometry)::float AS city_lat,
+      ST_X(c.location::geometry)::float AS city_lng
     FROM city_campaigns cc
     JOIN cities c ON c.id = cc.city_id
     WHERE cc.id = ${parsed.data.cityCampaignId}
@@ -119,13 +119,13 @@ export async function suggestVenuesForCampaign(
     capacity: number | null;
     slot_kind: string | null;
   }>(sql`
-    SELECT v.name, v.capacity, ve.crawl_position::text AS slot_kind
+    SELECT v.name, v.capacity, ve.role::text AS slot_kind
     FROM venue_events ve
     JOIN events e ON e.id = ve.event_id
     JOIN venues v ON v.id = ve.venue_id
     WHERE e.city_campaign_id = ${parsed.data.cityCampaignId}
       AND ve.status = 'confirmed'
-    ORDER BY ve.crawl_position NULLS LAST, v.name
+    ORDER BY ve.role NULLS LAST, v.name
   `);
   type ConfirmedRow = { name: string; capacity: number | null; slot_kind: string | null };
   const confirmed: ConfirmedRow[] = Array.isArray(confirmedRows)
