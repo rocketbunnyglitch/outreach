@@ -36,11 +36,16 @@ import {
   useColumnFilter,
   useColumnSort,
 } from "@/components/ui/data-table";
+import {
+  formatRealtimeAgo,
+  useRealtimeChannel,
+} from "@/components/ui/data-table/use-realtime-channel";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { cn } from "@/lib/cn";
 import type { OutreachPhase } from "@/lib/outreach-phase";
-import { AlertTriangle, Archive, Loader2, Send, Shield, ShieldOff } from "lucide-react";
+import { AlertTriangle, Archive, Loader2, Send, Shield, ShieldOff, Wifi } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type { bulkUpdateVenues } from "../_actions";
 import { commitVenueListField } from "../_actions";
@@ -60,6 +65,8 @@ interface Props {
   bulkAction: typeof bulkUpdateVenues;
   /** Distinct cities for the city filter dropdown. */
   cityOptions: Array<{ value: string; label: string }>;
+  /** Used by the realtime hook to suppress self-originated events. */
+  currentStaffId: string;
   /** Bulk-send dialog data — when provided, the Queue bulk send button shows */
   bulkSend?: {
     brands: Array<{ id: string; displayName: string; outreachPhase: OutreachPhase }>;
@@ -80,13 +87,25 @@ interface Props {
   };
 }
 
-export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend }: Props) {
+export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentStaffId }: Props) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reasonOpen, setReasonOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [bulkSendOpen, setBulkSendOpen] = useState(false);
+
+  // -----------------------------------------------------------------
+  // Realtime: refresh the page when another operator changes a venue.
+  // Self-events are filtered by currentStaffId so we don't refresh on
+  // our own optimistic update.
+  // -----------------------------------------------------------------
+  const realtime = useRealtimeChannel({
+    channel: "realtime:venues",
+    currentStaffId,
+    onEvent: () => router.refresh(),
+  });
 
   // -----------------------------------------------------------------
   // Sort + filter state (URL-synced via the data-table hooks)
@@ -325,6 +344,34 @@ export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend }: Props) 
             </>
           )}
         </p>
+        {/* Realtime indicator + last-edit chip */}
+        <div className="flex items-center gap-2">
+          {realtime.lastEvent && (
+            <span
+              className="font-mono text-[10px] text-zinc-500 dark:text-zinc-400"
+              title={`last update from another operator at ${realtime.lastEvent.at}`}
+            >
+              {realtime.lastEvent.byStaffName ?? "Someone"} edited{" "}
+              {formatRealtimeAgo(realtime.lastEvent.at)}
+            </span>
+          )}
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em]",
+              realtime.connected
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-zinc-400 dark:text-zinc-600",
+            )}
+            title={
+              realtime.connected
+                ? "Live — changes from teammates appear automatically"
+                : "Realtime disconnected"
+            }
+          >
+            <Wifi className="h-2.5 w-2.5" />
+            {realtime.connected ? "live" : "offline"}
+          </span>
+        </div>
       </div>
 
       {/* The table */}

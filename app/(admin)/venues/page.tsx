@@ -121,6 +121,7 @@ export default async function VenuesListPage() {
           rows={flatRows}
           cityOptions={cityOptions}
           bulkAction={bulkUpdateVenues}
+          currentStaffId={staff.id}
           bulkSend={{
             brands: outreachBrandsList.map((b) => ({
               id: b.id,

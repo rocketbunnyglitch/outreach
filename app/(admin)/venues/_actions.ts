@@ -4,6 +4,7 @@ import { outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { publishRealtime } from "@/lib/realtime-publish";
 import {
   type OutreachLogCreateInput,
   outreachLogCreateSchema,
@@ -340,6 +341,13 @@ export async function bulkUpdateVenues(
       tx.update(venues).set(patch).where(inArray(venues.id, validIds)),
     );
     revalidatePath("/venues");
+    // Realtime notification — table-wide since bulk affects many rows
+    publishRealtime({
+      table: "venues",
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
     return { ok: true, data: { count: validIds.length } };
   } catch (err) {
     logger.error({ err, operation, count: validIds.length }, "bulk update failed");
@@ -406,6 +414,15 @@ export async function commitVenueListField(
       tx.update(venues).set(patch).where(eq(venues.id, venueId)),
     );
     revalidatePath("/venues");
+    // Fire realtime notification so other open tabs refresh themselves.
+    // Fire-and-forget; failures are swallowed.
+    publishRealtime({
+      table: "venues",
+      id: venueId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
     return { ok: true, data: { venueId, field } };
   } catch (err) {
     return wrapDbError(err, `commit venue field: ${field}`);
