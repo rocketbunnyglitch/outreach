@@ -1384,19 +1384,22 @@ function GenerateLeadsButton({
   }> | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [notConfigured, setNotConfigured] = useState(false);
-  const [zeroSuggestions, setZeroSuggestions] = useState(false);
+  const [zeroSuggestions, setZeroSuggestions] = useState<{
+    searchedCount: number;
+    searchedRadiusKm: number;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   function close() {
     setSuggestions(null);
     setSelected(new Set());
     setNotConfigured(false);
-    setZeroSuggestions(false);
+    setZeroSuggestions(null);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: close is stable
   useEffect(() => {
-    const hasPopover = !!suggestions || notConfigured || zeroSuggestions;
+    const hasPopover = !!suggestions || notConfigured || !!zeroSuggestions;
     if (!hasPopover) return;
     function onPointer(e: PointerEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -1419,7 +1422,10 @@ function GenerateLeadsButton({
         return;
       }
       if (result.data.suggestions.length === 0) {
-        setZeroSuggestions(true);
+        setZeroSuggestions({
+          searchedCount: result.data.searchedCount ?? 0,
+          searchedRadiusKm: result.data.searchedRadiusKm ?? 0,
+        });
         return;
       }
       setSuggestions(result.data.suggestions);
@@ -1496,10 +1502,32 @@ function GenerateLeadsButton({
       )}
 
       {zeroSuggestions && (
-        <div className="absolute top-full right-0 z-50 mt-1 w-64 rounded-lg border border-zinc-200 bg-white p-3 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-zinc-700 dark:text-zinc-300">
-            No new suggestions — likely all nearby venues are already in your directory.
-          </p>
+        <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+          {zeroSuggestions.searchedCount === 0 ? (
+            <>
+              <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                Google returned nothing nearby.
+              </p>
+              <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+                Searched bars / nightclubs / restaurants within {zeroSuggestions.searchedRadiusKm}km
+                of the city's recorded center. Either the city has no matching venues (unlikely) or
+                the city's coordinates are wrong. Open the master city record and verify the lat/lng
+                pin.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                {zeroSuggestions.searchedCount} found, all already in your directory.
+              </p>
+              <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+                Google returned {zeroSuggestions.searchedCount} venues within{" "}
+                {zeroSuggestions.searchedRadiusKm}km, but each matched a venue already in your
+                venues table (by place_id). Add venues from a different city, or widen your search
+                by moving the city's center pin.
+              </p>
+            </>
+          )}
         </div>
       )}
 

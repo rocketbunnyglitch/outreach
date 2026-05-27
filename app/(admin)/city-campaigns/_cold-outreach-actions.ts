@@ -508,6 +508,10 @@ export async function generateVenueLeads(
       types: string[];
     }>;
     notConfigured?: boolean;
+    /** How many candidates Google actually returned (before dedup). */
+    searchedCount?: number;
+    /** Radius (km) Google searched at — surface to the operator so they know. */
+    searchedRadiusKm?: number;
   }>
 > {
   const { staff: _staff } = await requireStaff();
@@ -544,15 +548,24 @@ export async function generateVenueLeads(
     };
   }
 
+  // Search broad. Google's max nearby radius is 50km, but anything past
+  // ~15km drifts out of a single 'city center' definition. 8km comfortably
+  // covers downtown-plus-near-suburbs nightlife districts for most North
+  // American cities. The 1.5km default we were on was way too tight —
+  // a venue clustered 2km from the city's recorded center wouldn't show.
+  const SEARCH_RADIUS_M = 8000;
   const candidates = await nearbyVenueSearch({
     lat: coords.lat,
     lng: coords.lng,
-    radiusM: 1500,
+    radiusM: SEARCH_RADIUS_M,
     maxResults: 20,
   });
 
   if (candidates.length === 0) {
-    return { ok: true, data: { suggestions: [] } };
+    return {
+      ok: true,
+      data: { suggestions: [], searchedCount: 0, searchedRadiusKm: SEARCH_RADIUS_M / 1000 },
+    };
   }
 
   // Dedupe against existing venues with the same place_id
@@ -579,7 +592,14 @@ export async function generateVenueLeads(
       types: c.types,
     }));
 
-  return { ok: true, data: { suggestions } };
+  return {
+    ok: true,
+    data: {
+      suggestions,
+      searchedCount: candidates.length,
+      searchedRadiusKm: SEARCH_RADIUS_M / 1000,
+    },
+  };
 }
 
 /**
