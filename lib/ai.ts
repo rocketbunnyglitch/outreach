@@ -30,6 +30,46 @@ const DEFAULT_MODEL = "claude-opus-4-7";
 const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * Machine-readable reason codes for AI failures. Operator-facing UIs
+ * can branch on these to show targeted messages and recovery hints.
+ * See classifyAiError for which HTTP statuses map to which reason.
+ */
+export type AiReason =
+  | "not_configured" // ANTHROPIC_API_KEY env var is missing
+  | "empty_response" // Claude returned nothing or all-whitespace
+  | "auth" // 401/403 from Anthropic
+  | "rate_limit" // 429 from Anthropic
+  | "overloaded" // 529 (Anthropic-specific) or generic 503
+  | "timeout" // AbortSignal expired client-side
+  | "network" // connection error before response
+  | "bad_request" // 400 — model name wrong, prompt too long, etc.
+  | "model_error" // 500/502 from Anthropic
+  | "parse_error" // got text back but failed to extract JSON
+  | "unknown"; // anything else
+
+/**
+ * Result of a Claude call. The `reason` field on failure tells the
+ * caller WHY it failed — operator-facing UIs can show "set
+ * ANTHROPIC_API_KEY" vs "Anthropic API returned 429" vs "model timed
+ * out", instead of a generic "AI failed" message.
+ *
+ * Per CLAUDE.md §12.4 (no silent failures), every failure path here
+ * must populate a reason + log via captureException.
+ */
+export type AiResult =
+  | { ok: true; text: string }
+  | {
+      ok: false;
+      reason: AiReason;
+      /**
+       * Short, operator-facing message safe to surface in the UI.
+       * Don't include stack traces; do include "request_id: abc-123"
+       * when available for log lookup.
+       */
+      message: string;
+    };
+
 export function isAiConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
@@ -52,13 +92,71 @@ function getClient(): Anthropic | null {
 }
 
 /**
- * Generic single-turn completion. Returns the assistant text or null
- * on any error so callers can show a graceful "couldn't generate"
- * state instead of throwing.
+ * Classify an SDK error into our AiResult.reason taxonomy.
  *
- * Errors are forwarded to Sentry via captureException with the
- * provided tag so we can spot patterns in production (rate limits,
- * timeouts, content policy refusals).
+ * The Anthropic SDK throws subclasses of APIError; we read `.status`
+ * to bucket. Anything we don't recognize falls into 'unknown' with
+ * a best-effort message.
+ *
+ * Per CLAUDE.md §12.4 — every error path must produce a specific
+ * reason string, not a silent null.
+ */
+function classifyAiError(err: unknown): { reason: AiReason; message: string } {
+  // Anthropic SDK errors expose .status + .name
+  const e = err as { status?: number; name?: string; message?: string; request_id?: string };
+  const reqIdSuffix = e?.request_id ? ` (request_id: ${e.request_id})` : "";
+
+  if (e?.name === "AbortError") {
+    return { reason: "timeout", message: `Anthropic call timed out after ${DEFAULT_TIMEOUT_MS}ms` };
+  }
+  if (typeof e?.status === "number") {
+    if (e.status === 401 || e.status === 403) {
+      return {
+        reason: "auth",
+        message: `Anthropic returned ${e.status} — ANTHROPIC_API_KEY is invalid or revoked${reqIdSuffix}`,
+      };
+    }
+    if (e.status === 429) {
+      return { reason: "rate_limit", message: `Anthropic rate limit hit (429)${reqIdSuffix}` };
+    }
+    if (e.status === 529) {
+      return {
+        reason: "overloaded",
+        message: `Anthropic overloaded (529) — try again${reqIdSuffix}`,
+      };
+    }
+    if (e.status === 503) {
+      return { reason: "overloaded", message: `Anthropic service unavailable (503)${reqIdSuffix}` };
+    }
+    if (e.status === 400) {
+      return {
+        reason: "bad_request",
+        message: `Anthropic returned 400: ${e.message ?? "bad request"}${reqIdSuffix}`,
+      };
+    }
+    if (e.status >= 500) {
+      return {
+        reason: "model_error",
+        message: `Anthropic server error (${e.status})${reqIdSuffix}`,
+      };
+    }
+  }
+  // ECONNREFUSED, ENOTFOUND, etc.
+  if (e?.message && /(ECONNREFUSED|ENOTFOUND|fetch failed|ETIMEDOUT)/i.test(e.message)) {
+    return { reason: "network", message: `Network error: ${e.message}` };
+  }
+  return {
+    reason: "unknown",
+    message: e?.message
+      ? `Anthropic call failed: ${e.message}${reqIdSuffix}`
+      : "Anthropic call failed",
+  };
+}
+
+/**
+ * Generic single-turn completion. Returns AiResult so the caller can
+ * branch on the specific failure reason (auth vs rate limit vs
+ * timeout). All errors are still captured to Sentry via the tag.
  */
 export async function generateCompletion(opts: {
   /** System prompt — sets context for every turn. */
@@ -73,9 +171,16 @@ export async function generateCompletion(opts: {
   maxTokens?: number;
   /** 0..1; lower = more deterministic. Default 0.7. */
   temperature?: number;
-}): Promise<string | null> {
+}): Promise<AiResult> {
   const client = getClient();
-  if (!client) return null;
+  if (!client) {
+    return {
+      ok: false,
+      reason: "not_configured",
+      message:
+        "ANTHROPIC_API_KEY is not set on the server. Add it to /var/www/outreach/.env and restart the app.",
+    };
+  }
 
   const start = Date.now();
   try {
@@ -106,10 +211,19 @@ export async function generateCompletion(opts: {
       .filter(Boolean)
       .join("\n");
 
-    return text.trim() || null;
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return {
+        ok: false,
+        reason: "empty_response",
+        message: `Claude returned no text (stop_reason: ${response.stop_reason ?? "unknown"})`,
+      };
+    }
+    return { ok: true, text: trimmed };
   } catch (err) {
     await captureException(err, { tag: opts.tag, elapsed_ms: Date.now() - start });
-    return null;
+    const { reason, message } = classifyAiError(err);
+    return { ok: false, reason, message };
   }
 }
 
@@ -164,7 +278,10 @@ export async function draftOutreachEmail(input: {
     notes: string | null;
     daysAgo: number;
   }>;
-}): Promise<{ subject: string; body: string } | null> {
+}): Promise<
+  | { ok: true; data: { subject: string; body: string } }
+  | { ok: false; reason: AiReason; message: string }
+> {
   const isFollowUp = input.history.some((h) => h.channel === "email");
   const lastEmail = input.history.find((h) => h.channel === "email");
 
@@ -293,28 +410,38 @@ This is ${isFollowUp ? `a follow-up (last email ~${lastEmail?.daysAgo}d ago)` : 
 
 Draft the email now.`;
 
-  const text = await generateCompletion({
+  const result = await generateCompletion({
     system,
     prompt,
     tag: "outreach_draft",
     maxTokens: 600,
     temperature: 0.75,
   });
-  if (!text) return null;
+  if (!result.ok) return { ok: false, reason: result.reason, message: result.message };
 
   // Strip code fences if Claude wrapped the JSON despite the instructions
-  const cleaned = text
+  const cleaned = result.text
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
 
   try {
     const parsed = JSON.parse(cleaned) as { subject?: string; body?: string };
-    if (!parsed.subject || !parsed.body) return null;
-    return { subject: parsed.subject.trim(), body: parsed.body.trim() };
+    if (!parsed.subject || !parsed.body) {
+      return {
+        ok: false,
+        reason: "parse_error",
+        message: "Claude returned JSON but missing subject or body fields",
+      };
+    }
+    return { ok: true, data: { subject: parsed.subject.trim(), body: parsed.body.trim() } };
   } catch (err) {
     await captureException(err, { tag: "outreach_draft_parse", rawSample: cleaned.slice(0, 200) });
-    return null;
+    return {
+      ok: false,
+      reason: "parse_error",
+      message: `Claude returned non-JSON output: ${cleaned.slice(0, 80)}…`,
+    };
   }
 }
 
@@ -433,14 +560,20 @@ ${candidateLines}
 
 Rank these candidates now. Return the JSON array.`;
 
-  const text = await generateCompletion({
+  const result = await generateCompletion({
     system,
     prompt,
     tag: "venue_ranking",
     maxTokens: 2048,
     temperature: 0.4, // lower temp for ranking — we want consistency
   });
-  if (!text) return fallback();
+  if (!result.ok) {
+    // Suggest-venues already has a graceful fallback (rating-sorted
+    // candidates). Log the reason so the operator can see WHY ranking
+    // didn't happen in the UI badge.
+    return fallback();
+  }
+  const text = result.text;
 
   const cleaned = text
     .replace(/^```(?:json)?\s*/i, "")

@@ -239,13 +239,44 @@ export async function draftOutreachEmail(
     history,
   });
 
-  if (!draft) {
-    return {
-      ok: false,
-      error:
-        "Claude couldn't generate a draft right now. Try again, or check the Sentry logs if this persists.",
-    };
+  if (!draft.ok) {
+    // Surface the SPECIFIC reason instead of a generic message.
+    // Operators need to see "auth: ANTHROPIC_API_KEY is invalid"
+    // separately from "timeout" so they can fix the right thing.
+    return { ok: false, error: messageForAiReason(draft.reason, draft.message) };
   }
 
-  return { ok: true, data: draft };
+  return { ok: true, data: draft.data };
+}
+
+/**
+ * Translate an AI failure reason into operator-facing copy that hints
+ * at the fix. The raw `message` is appended for engineers to see the
+ * exact API response / request_id when debugging.
+ */
+function messageForAiReason(reason: import("@/lib/ai").AiReason, message: string): string {
+  switch (reason) {
+    case "not_configured":
+      return "AI isn't configured. Add ANTHROPIC_API_KEY to /var/www/outreach/.env and restart the app (pm2 restart outreach).";
+    case "auth":
+      return `Anthropic rejected the API key — it may be revoked or wrong. Verify in https://console.anthropic.com/. Details: ${message}`;
+    case "rate_limit":
+      return `Anthropic rate limit hit. Wait a minute and try again. Details: ${message}`;
+    case "overloaded":
+      return `Anthropic is overloaded right now. Try again in a few seconds. Details: ${message}`;
+    case "timeout":
+      return `The model didn't respond in time. Try again, or shorten the prompt. Details: ${message}`;
+    case "network":
+      return `Network error reaching Anthropic. Check the server's internet. Details: ${message}`;
+    case "bad_request":
+      return `Anthropic rejected the request — likely a bad model name in ANTHROPIC_MODEL env, or a prompt that's too long. Details: ${message}`;
+    case "model_error":
+      return `Anthropic server error. Probably transient — try again. Details: ${message}`;
+    case "empty_response":
+      return `Claude returned an empty response. Details: ${message}`;
+    case "parse_error":
+      return `Claude returned text we couldn't parse as a draft. Try again. Details: ${message}`;
+    default:
+      return `AI failed: ${message}`;
+  }
 }
