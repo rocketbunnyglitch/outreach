@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/cn";
 import { Command, X } from "lucide-react";
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
+import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 /**
  * Global keyboard shortcut layer.
@@ -196,8 +196,13 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [shortcuts, pendingSequence, cheatsheetOpen]);
 
+    const value = useMemo(
+    () => ({ register, showCheatsheet, hideCheatsheet }),
+    [register, showCheatsheet, hideCheatsheet],
+  );
+
   return (
-    <ShortcutContext.Provider value={{ register, showCheatsheet, hideCheatsheet }}>
+    <ShortcutContext.Provider value={value}>
       {children}
       {cheatsheetOpen && (
         <Cheatsheet shortcuts={[...shortcuts.values()]} onClose={hideCheatsheet} />
