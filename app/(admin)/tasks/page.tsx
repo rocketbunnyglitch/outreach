@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { AlertTriangle, Calendar, CheckCircle2, Plus, User } from "lucide-react";
 import Link from "next/link";
+import { AddTaskRow } from "./_components/AddTaskRow";
 
 export const metadata = { title: "Tasks · Crawl Engine" };
 export const dynamic = "force-dynamic";
@@ -184,21 +185,26 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
       {/* Tasks table */}
       {rows.length === 0 ? (
-        <div className="card-surface border-dashed p-12 text-center">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-zinc-400" />
-          <h3 className="mt-4 font-semibold text-2xl tracking-tight">All clear</h3>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            {params.status || params.assignee || params.due
-              ? "No tasks match these filters."
-              : "No open tasks. Create one to get started."}
-          </p>
-          <Link
-            href="/tasks/new"
-            className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            <Plus className="h-4 w-4" />
-            New task
-          </Link>
+        <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <div className="grid grid-cols-12 gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="col-span-5">Task</div>
+            <div className="col-span-2">Assignee</div>
+            <div className="col-span-2">Due</div>
+            <div className="col-span-2">Status</div>
+            <div className="col-span-1 text-right">Source</div>
+          </div>
+          <div className="card-surface flex items-center justify-center border-zinc-200 border-b border-dashed py-12 text-center dark:border-zinc-800">
+            <div>
+              <CheckCircle2 className="mx-auto h-8 w-8 text-zinc-400" />
+              <h3 className="mt-4 font-semibold text-2xl tracking-tight">All clear</h3>
+              <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                {params.status || params.assignee || params.due
+                  ? "No tasks match these filters. Type below to add one anyway."
+                  : "No open tasks. Type below to add your first."}
+              </p>
+            </div>
+          </div>
+          <AddTaskRow staffList={staffList} />
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -271,6 +277,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               );
             })}
           </div>
+          {/* Sheets-style "+ Add row" — type a task, press Enter. No
+              bouncing to /tasks/new for the common case. */}
+          <AddTaskRow staffList={staffList} />
         </div>
       )}
 
