@@ -229,6 +229,51 @@ export const financialLineType = pgEnum("financial_line_type", [
 ]);
 
 // =========================================================================
+// Inbox (Gmail-style threading + classification — 0020_inbox.sql)
+// =========================================================================
+
+/**
+ * thread_state — the state machine that drives folder routing in the Inbox UI.
+ *
+ *   needs_reply     — inbound message waiting on us
+ *   waiting_on_them — we replied, ball in their court
+ *   follow_up_due   — cadence triggered; we should ping again
+ *   closed_won      — they said yes / contract signed
+ *   closed_lost     — declined
+ *   closed_dnc      — do not contact (bounces, unsubscribes, opt-outs)
+ *   archived        — manually archived, no decision implied
+ */
+export const threadState = pgEnum("thread_state", [
+  "needs_reply",
+  "waiting_on_them",
+  "follow_up_due",
+  "closed_won",
+  "closed_lost",
+  "closed_dnc",
+  "archived",
+]);
+
+export const threadDirection = pgEnum("thread_direction", ["inbound", "outbound", "mixed"]);
+
+/**
+ * reply_classification — the AI classifier output, copied onto the thread
+ * for fast list-view rendering. Superset of reply_category to add
+ * callback_requested + unsubscribe + auto_reply + spam.
+ */
+export const replyClassification = pgEnum("reply_classification", [
+  "interested",
+  "question",
+  "callback_requested",
+  "decline",
+  "unsubscribe",
+  "auto_reply",
+  "spam",
+  "unclassified",
+]);
+
+export const messageKind = pgEnum("message_kind", ["email", "sms", "viber", "line", "manual_note"]);
+
+// =========================================================================
 // Audit
 // =========================================================================
 

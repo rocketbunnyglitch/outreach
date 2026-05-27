@@ -12,10 +12,19 @@
  *   "stale replies" alerts.
  */
 
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { auditColumns, idColumn, versionColumn } from "../types";
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { outreachBrands } from "./brands";
-import { outreachChannel, outreachOutcome, replyCategory } from "./enums";
+import { cityCampaigns } from "./city-campaigns";
+import {
+  outreachChannel,
+  outreachOutcome,
+  replyCategory,
+  replyClassification,
+  threadDirection,
+  threadState,
+} from "./enums";
+import { events } from "./events";
 import { staffMembers, staffOutreachEmails } from "./staff";
 import { venueEvents } from "./venue-events";
 import { venues } from "./venues";
@@ -108,7 +117,65 @@ export const emailThreads = pgTable(
 
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }).notNull().defaultNow(),
 
+    // -------------------------------------------------------------------
+    // Inbox UI fields (0020_inbox.sql)
+    // -------------------------------------------------------------------
+    /**
+     * State machine driving folder routing. New inbound message →
+     * needs_reply. We send a reply → waiting_on_them. Etc.
+     */
+    state: threadState("state").notNull().default("needs_reply"),
+
+    /**
+     * Latest reply classification copied onto the thread for fast list
+     * rendering. Updated when the classifier runs on a new inbound msg.
+     */
+    classification: replyClassification("classification").notNull().default("unclassified"),
+
+    /**
+     * Initial direction. 'mixed' once both inbound and outbound exist.
+     */
+    direction: threadDirection("direction").notNull().default("inbound"),
+
+    /** Updated on every inbound message; drives SLA breach computation. */
+    lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
+
+    /** Updated on every reply we send. */
+    lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
+
+    /** ~140-char preview of the latest message body, denormalized. */
+    snippet: text("snippet"),
+
+    /** Total messages in thread; denormalized for list-view speed. */
+    messageCount: integer("message_count").notNull().default(0),
+
+    /** Global unread count (not per-staff in v1). */
+    unreadCount: integer("unread_count").notNull().default(0),
+
+    /** Display name of the latest sender — "Sarah at Lavelle". */
+    lastSenderName: text("last_sender_name"),
+
+    /**
+     * Owner of the thread. Defaults to original sender; admin can reassign.
+     * Note: this overlaps with reply_inbox.assigned_staff_id — the thread
+     * value is canonical and wins on conflict.
+     */
+    assignedStaffId: uuid("assigned_staff_id").references(() => staffMembers.id, {
+      onDelete: "set null",
+    }),
+
+    /** Campaign context — shows as chip in the list, filters URL params. */
+    cityCampaignId: uuid("city_campaign_id").references(() => cityCampaigns.id, {
+      onDelete: "set null",
+    }),
+
+    /** Event context — shows as chip in the list. */
+    eventId: uuid("event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
+
     ...auditColumns,
+    ...archivedAt,
     ...versionColumn,
   },
   (table) => ({
@@ -118,6 +185,28 @@ export const emailThreads = pgTable(
     ),
     venueIdx: index("email_threads_venue_idx").on(table.venueId),
     lastMessageIdx: index("email_threads_last_message_idx").on(table.lastMessageAt),
+    stateLastMsgIdx: index("email_threads_state_last_msg_idx").on(table.state, table.lastMessageAt),
+    assignedStateIdx: index("email_threads_assigned_state_idx").on(
+      table.assignedStaffId,
+      table.state,
+      table.lastMessageAt,
+    ),
+    cityCampaignStateIdx: index("email_threads_city_campaign_state_idx").on(
+      table.cityCampaignId,
+      table.state,
+      table.lastMessageAt,
+    ),
+    eventStateIdx: index("email_threads_event_state_idx").on(
+      table.eventId,
+      table.state,
+      table.lastMessageAt,
+    ),
+    brandStateIdx: index("email_threads_brand_state_idx").on(
+      table.outreachBrandId,
+      table.state,
+      table.lastMessageAt,
+    ),
+    needsReplyInboundIdx: index("email_threads_needs_reply_inbound_idx").on(table.lastInboundAt),
   }),
 );
 
