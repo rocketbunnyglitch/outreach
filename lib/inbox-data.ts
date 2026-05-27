@@ -27,7 +27,7 @@ import {
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 // =========================================================================
 // Folders
@@ -93,6 +93,18 @@ export interface ThreadListFilter {
   assignedStaffId?: string;
   cityCampaignId?: string;
   outreachBrandId?: string;
+  /**
+   * Filter to a specific Gmail alias (staff_outreach_emails.id). When
+   * a staff member has multiple inbox addresses (Bryle has 3 per
+   * decision #027), this lets them focus on one at a time.
+   */
+  aliasId?: string;
+  /**
+   * Free-text search applied to subject, snippet, venue name, and
+   * last-sender name via case-insensitive substring match. Empty or
+   * whitespace-only inputs are ignored.
+   */
+  search?: string;
 }
 
 export interface InboxThreadRow {
@@ -183,6 +195,21 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         filter.cityCampaignId ? eq(emailThreads.cityCampaignId, filter.cityCampaignId) : undefined,
         filter.outreachBrandId
           ? eq(emailThreads.outreachBrandId, filter.outreachBrandId)
+          : undefined,
+        // Alias filter (#027) — match the specific staff_outreach_emails row.
+        filter.aliasId ? eq(emailThreads.staffOutreachEmailId, filter.aliasId) : undefined,
+        // Free-text search. We OR across subject, snippet, venue name, and
+        // last-sender name so operators can find a thread by whichever
+        // attribute they remember. Wrapped in a single OR so the surrounding
+        // and(...) treats it as one condition. Pattern wraps the input in
+        // % wildcards — ilike does case-insensitive matching native to PG.
+        filter.search?.trim()
+          ? or(
+              ilike(emailThreads.subject, `%${filter.search.trim()}%`),
+              ilike(emailThreads.snippet, `%${filter.search.trim()}%`),
+              ilike(venues.name, `%${filter.search.trim()}%`),
+              ilike(emailThreads.lastSenderName, `%${filter.search.trim()}%`),
+            )
           : undefined,
       ),
     )
@@ -396,4 +423,63 @@ export async function fetchVenueCurrentBookings(venueId: string) {
     .from(venueEvents)
     .where(eq(venueEvents.venueId, venueId))
     .limit(20);
+}
+
+// =========================================================================
+// Alias list for inbox filter (session 11 #027 — multi-alias)
+// =========================================================================
+
+/**
+ * Email aliases (staff_outreach_emails rows) available as inbox filter
+ * options.
+ *
+ * Visibility rule per decision #027 + the spirit of the role-gated
+ * surfaces: admin sees every alias across all staff; outreach/lead/
+ * readonly see only the aliases owned by their own staff_member row.
+ * Bryle (3 aliases) gets a 3-option dropdown; JC (1) gets 1.
+ *
+ * If the caller doesn't provide a staffId we treat that as "give me
+ * all" (admin behavior). Status filter excludes archived/inactive
+ * aliases so the dropdown doesn't show stale options.
+ */
+import { staffOutreachEmails } from "@/db/schema";
+
+export interface InboxAliasOption {
+  id: string;
+  emailAddress: string;
+  staffDisplayName: string | null;
+}
+
+export async function fetchInboxAliases(opts: {
+  /** When provided, restricts to aliases owned by this staff member. */
+  staffMemberId?: string;
+  /** Admin sees all aliases regardless of ownership. */
+  isAdmin?: boolean;
+}): Promise<InboxAliasOption[]> {
+  const rows = await db
+    .select({
+      id: staffOutreachEmails.id,
+      emailAddress: staffOutreachEmails.emailAddress,
+      staffDisplayName: staffMembers.displayName,
+      ownerStaffId: staffOutreachEmails.staffMemberId,
+      status: staffOutreachEmails.status,
+    })
+    .from(staffOutreachEmails)
+    .leftJoin(staffMembers, eq(staffMembers.id, staffOutreachEmails.staffMemberId));
+
+  // status filter and ownership filter in JS — the alias list is small
+  // (under ~20 rows even at full team size) so the savings of pushing
+  // these into SQL aren't worth the additional Drizzle complexity here.
+  // 'disconnected' aliases are hidden (they can't receive mail). We keep
+  // 'connected' AND 'needs_reauth' visible so the operator can spot which
+  // alias is broken — clicking it routes them to /settings/inboxes to fix.
+  return rows
+    .filter((r) => r.status === "connected" || r.status === "needs_reauth")
+    .filter((r) => opts.isAdmin || !opts.staffMemberId || r.ownerStaffId === opts.staffMemberId)
+    .map((r) => ({
+      id: r.id,
+      emailAddress: r.emailAddress,
+      staffDisplayName: r.staffDisplayName,
+    }))
+    .sort((a, b) => a.emailAddress.localeCompare(b.emailAddress));
 }

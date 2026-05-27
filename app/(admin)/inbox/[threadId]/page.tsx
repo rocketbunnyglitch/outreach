@@ -3,6 +3,7 @@ import {
   FOLDER_LABELS,
   type InboxFolder,
   fetchFolderCounts,
+  fetchInboxAliases,
   fetchInboxThreads,
   fetchThreadDetail,
   fetchVenueOutreachHistory,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/inbox-data";
 import { notFound } from "next/navigation";
 import { FolderList } from "../_components/FolderList";
+import { InboxFilterBar } from "../_components/InboxFilterBar";
 import { InboxPresenceBar } from "../_components/InboxPresenceBar";
 import { InboxShell } from "../_components/InboxShell";
 import { ThreadList } from "../_components/ThreadList";
@@ -25,6 +27,8 @@ interface Props {
     staff?: string;
     campaign?: string;
     brand?: string;
+    alias?: string;
+    q?: string;
   }>;
 }
 
@@ -51,15 +55,21 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         : undefined;
   const mineOnly = assignedStaffId === currentStaff.id;
 
-  const [detail, threads, counts] = await Promise.all([
+  const [detail, threads, counts, aliases] = await Promise.all([
     fetchThreadDetail(threadId),
     fetchInboxThreads({
       folder,
       assignedStaffId,
       cityCampaignId: search.campaign,
       outreachBrandId: search.brand,
+      aliasId: search.alias,
+      search: search.q,
     }),
     fetchFolderCounts(),
+    fetchInboxAliases({
+      staffMemberId: currentStaff.id,
+      isAdmin: currentStaff.role === "admin",
+    }),
   ]);
 
   if (!detail) notFound();
@@ -71,6 +81,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (mineOnly) preservedQuery.set("staff", currentStaff.id);
   if (search.campaign) preservedQuery.set("campaign", search.campaign);
   if (search.brand) preservedQuery.set("brand", search.brand);
+  if (search.alias) preservedQuery.set("alias", search.alias);
+  if (search.q) preservedQuery.set("q", search.q);
 
   return (
     <InboxShell
@@ -86,12 +98,23 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         </div>
       }
       middle={
-        <ThreadList
-          threads={threads}
-          activeThreadId={threadId}
-          folderLabel={FOLDER_LABELS[folder]}
-          preservedQuery={preservedQuery.toString()}
-        />
+        <div className="flex h-full flex-col">
+          <InboxFilterBar
+            aliases={aliases}
+            currentStaffId={currentStaff.id}
+            mineOnly={mineOnly}
+            activeAliasId={search.alias}
+            initialSearch={search.q}
+          />
+          <div className="flex-1 overflow-y-auto">
+            <ThreadList
+              threads={threads}
+              activeThreadId={threadId}
+              folderLabel={FOLDER_LABELS[folder]}
+              preservedQuery={preservedQuery.toString()}
+            />
+          </div>
+        </div>
       }
       right={<ThreadPane detail={detail} outreachHistory={outreachHistory} />}
     />
