@@ -48,6 +48,7 @@ import { AiDraftButton } from "./ai-draft-button";
 import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { BulkPasteModal } from "./bulk-paste-modal";
+import { FindEmailButton } from "./find-email-button";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
@@ -59,6 +60,9 @@ interface ColdEntry {
   venueName: string;
   venueEmail: string | null;
   venuePhone: string | null;
+  venueWebsite: string | null;
+  venueInstagramHandle: string | null;
+  cityName: string | null;
   venueUpdatedAt: string;
   zeroBounceStatus: string | null;
   status: string;
@@ -847,6 +851,19 @@ function ColdRow({
               />
             </>
           )}
+          {!entry.venueEmail && (
+            <FindEmailButton
+              venueId={entry.venueId}
+              venueName={entry.venueName}
+              venueWebsite={entry.venueWebsite ?? null}
+              venueInstagramHandle={entry.venueInstagramHandle ?? null}
+              venueCity={entry.cityName ?? null}
+              existingEmail={null}
+              outreachBrandId={outreachBrandId}
+              cityCampaignId={cityCampaignId}
+              variant="icon"
+            />
+          )}
         </div>
 
         {/* Phone with Quo controls */}
@@ -980,6 +997,19 @@ function ColdRow({
                 }}
               />
             </>
+          )}
+          {!entry.venueEmail && (
+            <FindEmailButton
+              venueId={entry.venueId}
+              venueName={entry.venueName}
+              venueWebsite={entry.venueWebsite ?? null}
+              venueInstagramHandle={entry.venueInstagramHandle ?? null}
+              venueCity={entry.cityName ?? null}
+              existingEmail={null}
+              outreachBrandId={outreachBrandId}
+              cityCampaignId={cityCampaignId}
+              variant="icon"
+            />
           )}
         </div>
       </td>

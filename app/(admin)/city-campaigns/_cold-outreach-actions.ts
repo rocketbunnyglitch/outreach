@@ -14,7 +14,7 @@
  *     (gracefully degrades when Google Places key isn't configured)
  */
 
-import { coldOutreachEntries, staffMembers, venues } from "@/db/schema";
+import { cities, coldOutreachEntries, staffMembers, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
@@ -857,6 +857,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueName: string;
     venueEmail: string | null;
     venuePhone: string | null;
+    venueWebsite: string | null;
+    venueInstagramHandle: string | null;
+    cityName: string | null;
     venueUpdatedAt: string;
     zeroBounceStatus: string | null;
     status: string;
@@ -874,6 +877,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueName: venues.name,
       venueEmail: venues.email,
       venuePhone: venues.phoneE164,
+      venueWebsite: venues.websiteUrl,
+      venueInstagramHandle: venues.instagramHandle,
+      cityName: cities.name,
       venueUpdatedAt: venues.updatedAt,
       status: coldOutreachEntries.status,
       assignedStaffId: coldOutreachEntries.assignedStaffId,
@@ -883,6 +889,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     })
     .from(coldOutreachEntries)
     .innerJoin(venues, eq(venues.id, coldOutreachEntries.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
     .leftJoin(staffMembers, eq(staffMembers.id, coldOutreachEntries.assignedStaffId))
     .where(
       and(
@@ -915,6 +922,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueName: r.venueName,
     venueEmail: r.venueEmail,
     venuePhone: r.venuePhone,
+    venueWebsite: r.venueWebsite,
+    venueInstagramHandle: r.venueInstagramHandle,
+    cityName: r.cityName,
     venueUpdatedAt: r.venueUpdatedAt.toISOString(),
     zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
     status: r.status as string,

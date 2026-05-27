@@ -483,3 +483,109 @@ export async function createVenueFromRow(
     return wrapDbError(err, "create venue from row");
   }
 }
+
+const findEmailSchema = z.object({
+  venueId: z.string().uuid(),
+  email: z.string().email("That doesn't look like a valid email."),
+  /** Optional brand context so the outreach_log row picks up the right
+      outreachBrandId. If unset, falls back to the first outreach brand
+      the operator can see (best-effort; the dedicated logger is the
+      "I emailed them" action — this is just provenance). */
+  outreachBrandId: z.string().uuid().optional(),
+  /** Free-text source the operator can jot — "found on IG bio",
+      "venue website /contact page". Stored on the outreach_log entry. */
+  source: z.string().max(280).optional(),
+});
+
+/**
+ * setVenueEmailFromSearch — the operator just located a venue's contact
+ * email via the "Find email" assist (which opens the website + Google
+ * search + Instagram in tabs). They paste the address back into the
+ * floating panel and save.
+ *
+ * Three side effects:
+ *   1. venues.email gets the new address
+ *   2. ZeroBounce validation fires in the background (reuses
+ *      lib/zerobounce.ts pattern from updateVenue)
+ *   3. outreach_log entry written with channel='email', outcome='sent'
+ *      and notes="Email collected via manual search · <source>" so the
+ *      provenance is preserved in the venue's history timeline.
+ *
+ * Why a dedicated action rather than re-using updateVenue?
+ *   - Provenance — we want a clear "this address was sourced by the
+ *     operator on day N" marker in outreach_log. Without it, the
+ *     contact email shows up out of nowhere and we lose the audit
+ *     trail.
+ *   - Simpler payload — caller doesn't need to know the full venue
+ *     update schema (cityId, capacity, etc).
+ *   - Future: this is a natural hook point for email-discovery
+ *     analytics ("how many emails did Brandon source this week").
+ */
+export async function setVenueEmailFromSearch(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ venueId: string; email: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = findEmailSchema.safeParse({
+    venueId: formData.get("venueId"),
+    email: String(formData.get("email") ?? "")
+      .trim()
+      .toLowerCase(),
+    outreachBrandId: formData.get("outreachBrandId") ?? undefined,
+    source: formData.get("source") ?? undefined,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.errors[0]?.message ?? "Invalid email.",
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const { venueId, email, outreachBrandId, source } = parsed.data;
+
+  // Resolve a brand for the log row if the caller didn't provide one.
+  let brandId = outreachBrandId;
+  if (!brandId) {
+    const fallback = await db.select({ id: outreachBrands.id }).from(outreachBrands).limit(1);
+    brandId = fallback[0]?.id;
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx.update(venues).set({ email, updatedBy: staff.id }).where(eq(venues.id, venueId));
+
+      // Append provenance to outreach_log. Channel + outcome are
+      // intentionally generic ('email' / 'sent' both fit our intent —
+      // we're recording the moment we acquired an address). The notes
+      // field carries the story.
+      if (brandId) {
+        await tx.insert(outreachLog).values({
+          venueId,
+          outreachBrandId: brandId,
+          channel: "email",
+          outcome: "sent",
+          notes: source
+            ? `Email collected via manual search · ${source.slice(0, 240)}`
+            : "Email collected via manual search",
+          staffMemberId: staff.id,
+          createdBy: staff.id,
+        });
+      }
+    });
+
+    // Background re-validation via ZeroBounce — same pattern as updateVenue
+    try {
+      const { validateEmailInBackground } = await import("@/lib/zerobounce");
+      validateEmailInBackground(email, staff.id);
+    } catch (err) {
+      logger.warn({ err, venueId, email }, "zerobounce background validation skipped");
+    }
+
+    revalidatePath(`/venues/${venueId}`);
+    revalidatePath("/venues");
+    return { ok: true, data: { venueId, email } };
+  } catch (err) {
+    logger.error({ err, venueId }, "setVenueEmailFromSearch failed");
+    return { ok: false, error: "Couldn't save that email." };
+  }
+}
