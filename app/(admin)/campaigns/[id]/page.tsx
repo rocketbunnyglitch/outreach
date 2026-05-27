@@ -20,7 +20,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const { staff } = await requireStaff();
 
-  const [campaign, outreachBrands, crawlBrands, ccRows, allCities, progressRows] =
+  const [campaign, _outreachBrands, _crawlBrands, ccRows, allCities, progressRows] =
     await Promise.all([
       db
         .select()
@@ -96,20 +96,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
           </p>
         </header>
 
-        <CampaignForm
-          mode="edit"
-          initial={campaign}
-          outreachBrands={outreachBrands.map((b) => ({
-            id: b.id,
-            displayName: b.displayName,
-          }))}
-          crawlBrands={crawlBrands.map((b) => ({
-            id: b.id,
-            displayName: b.displayName,
-            holidayType: b.holidayType,
-          }))}
-          action={boundUpdate}
-        />
+        <CampaignForm mode="edit" initial={campaign} action={boundUpdate} />
       </div>
 
       <CityCampaignsSection

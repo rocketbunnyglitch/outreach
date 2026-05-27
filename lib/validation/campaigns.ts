@@ -35,14 +35,14 @@ const isoDateSchema = z
   .optional();
 
 // Allow blank → undefined, otherwise positive int. cents.
-const positiveBigintCentsSchema = z
+const _positiveBigintCentsSchema = z
   .union([
     z.literal("").transform(() => undefined),
     z.coerce.number().int("Must be a whole number of cents").nonnegative("Must be non-negative"),
   ])
   .optional();
 
-const positiveIntSchema = z
+const _positiveIntSchema = z
   .union([z.literal("").transform(() => undefined), z.coerce.number().int().nonnegative()])
   .optional();
 
@@ -50,15 +50,21 @@ export const campaignCreateSchema = z
   .object({
     slug: slugSchema,
     name: z.string().min(2).max(120),
-    outreachBrandId: uuidSchema,
-    crawlBrandId: uuidSchema,
+    // Per DECISIONS.md #022 staff picks brand/alias at send time, so the
+    // form no longer prompts for an outreach brand. The action auto-fills
+    // the legacy DB column with the first-available brand to satisfy the
+    // NOT NULL constraint until the column drop in a future migration.
+    outreachBrandId: uuidSchema.optional(),
+    // Per #023 crawl_brands is being removed; the form no longer asks.
+    // Same auto-fill pattern in the action.
+    crawlBrandId: uuidSchema.optional(),
     holidayType: holidayTypeSchema,
     status: campaignStatusSchema.optional(),
     startDate: isoDateSchema,
     endDate: isoDateSchema,
-    publicSubdomain: z.union([z.literal("").transform(() => undefined), slugSchema]).optional(),
-    revenueGoalCents: positiveBigintCentsSchema,
-    venueCountGoal: positiveIntSchema,
+    // publicSubdomain removed per #024 (public pages live outside this app).
+    // revenueGoalCents + venueCountGoal removed per #025 (goals refactored
+    // to admin-only ticket-sales count, lives under /admin/goals).
   })
   .refine((data) => !data.startDate || !data.endDate || data.startDate <= data.endDate, {
     message: "End date must be on or after start date",
@@ -75,9 +81,8 @@ export const campaignUpdateSchema = z
     status: campaignStatusSchema.optional(),
     startDate: isoDateSchema,
     endDate: isoDateSchema,
-    publicSubdomain: z.union([z.literal("").transform(() => undefined), slugSchema]).optional(),
-    revenueGoalCents: positiveBigintCentsSchema,
-    venueCountGoal: positiveIntSchema,
+    // publicSubdomain / revenueGoalCents / venueCountGoal removed per
+    // operator session 11 (#024 + #025).
   })
   .refine((data) => !data.startDate || !data.endDate || data.startDate <= data.endDate, {
     message: "End date must be on or after start date",

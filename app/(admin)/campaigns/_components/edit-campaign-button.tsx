@@ -10,7 +10,6 @@
  *   - status (planning / active / completed / archived)
  *   - holidayType (stpaddys / halloween / newyears / custom)
  *   - startDate / endDate (with end >= start refinement enforced server-side)
- *   - publicSubdomain
  *
  * Out of scope (use /campaigns/[id] for these):
  *   - swapping outreach brand or crawl brand
@@ -41,7 +40,6 @@ interface Props {
     holidayType: HolidayType;
     startDate: string | null;
     endDate: string | null;
-    publicSubdomain: string | null;
   };
 }
 
@@ -82,7 +80,6 @@ export function EditCampaignButton({ campaign }: Props) {
   const [holiday, setHoliday] = useState<HolidayType>(campaign.holidayType);
   const [startDate, setStartDate] = useState(campaign.startDate ?? "");
   const [endDate, setEndDate] = useState(campaign.endDate ?? "");
-  const [subdomain, setSubdomain] = useState(campaign.publicSubdomain ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, startTx] = useTransition();
@@ -98,7 +95,6 @@ export function EditCampaignButton({ campaign }: Props) {
     setHoliday(campaign.holidayType);
     setStartDate(campaign.startDate ?? "");
     setEndDate(campaign.endDate ?? "");
-    setSubdomain(campaign.publicSubdomain ?? "");
     setError(null);
     setSaved(false);
     setTimeout(() => firstFieldRef.current?.focus(), 0);
@@ -122,7 +118,6 @@ export function EditCampaignButton({ campaign }: Props) {
     fd.set("holidayType", holiday);
     if (startDate) fd.set("startDate", startDate);
     if (endDate) fd.set("endDate", endDate);
-    fd.set("publicSubdomain", subdomain.trim());
 
     startTx(async () => {
       const result = await updateCampaign(campaign.id, null, fd);
@@ -298,24 +293,6 @@ export function EditCampaignButton({ campaign }: Props) {
                   />
                 </label>
               </div>
-
-              <label className="flex flex-col gap-1">
-                <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]">
-                  Public subdomain (optional)
-                </span>
-                <input
-                  type="text"
-                  value={subdomain}
-                  onChange={(e) => setSubdomain(e.target.value)}
-                  placeholder="stpaddys2026"
-                  disabled={pending}
-                  className={cn(
-                    "rounded-md border border-zinc-300 bg-white px-2.5 py-1.5 text-xs",
-                    "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
-                    "dark:border-zinc-700 dark:bg-zinc-900",
-                  )}
-                />
-              </label>
             </div>
 
             {error && (

@@ -69,7 +69,6 @@ export default async function CampaignsListPage() {
                       | "custom",
                     startDate: campaign.startDate ?? null,
                     endDate: campaign.endDate ?? null,
-                    publicSubdomain: campaign.publicSubdomain ?? null,
                   }}
                 />
               </div>

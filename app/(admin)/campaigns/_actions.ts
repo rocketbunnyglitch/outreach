@@ -17,7 +17,7 @@
  * under the wrong brand identity.
  */
 
-import { events, campaigns, crawlBrands } from "@/db/schema";
+import { events, campaigns, crawlBrands, outreachBrands } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -113,13 +113,39 @@ export async function createCampaign(
   }
   const input: CampaignCreateInput = parsed.data;
 
-  const compat = await validateCrawlBrandCompatibility(input.crawlBrandId, input.holidayType);
-  if (!compat.ok) {
+  // Per DECISIONS.md #022 + #023 the form no longer prompts for brand
+  // IDs, but the legacy NOT NULL columns are still in place. Auto-fill
+  // with the first-available brand of each type so creation works
+  // without a schema migration. The brand pair is functionally a no-op
+  // — staff picks alias at send time per #022 and crawl_brand is being
+  // dropped per #023.
+  const fallbackBrands = await db
+    .select({ outreachBrandId: outreachBrands.id })
+    .from(outreachBrands)
+    .limit(1);
+  const fallbackCrawl = await db.select({ id: crawlBrands.id }).from(crawlBrands).limit(1);
+  const resolvedOutreachBrandId = input.outreachBrandId ?? fallbackBrands[0]?.outreachBrandId;
+  const resolvedCrawlBrandId = input.crawlBrandId ?? fallbackCrawl[0]?.id;
+  if (!resolvedOutreachBrandId || !resolvedCrawlBrandId) {
     return {
       ok: false,
-      error: compat.error,
-      fieldErrors: { crawlBrandId: [compat.error] },
+      error:
+        "Cannot create campaign — no outreach or crawl brand exists in the database. Seed at least one brand of each type first.",
     };
+  }
+
+  // Only validate crawl-brand compatibility when the operator explicitly
+  // picked one. Auto-filled brands are arbitrary and the validation is a
+  // no-op safety net we'll fully remove with the crawl_brand schema drop.
+  if (input.crawlBrandId) {
+    const compat = await validateCrawlBrandCompatibility(input.crawlBrandId, input.holidayType);
+    if (!compat.ok) {
+      return {
+        ok: false,
+        error: compat.error,
+        fieldErrors: { crawlBrandId: [compat.error] },
+      };
+    }
   }
 
   let createdId: string;
@@ -130,16 +156,16 @@ export async function createCampaign(
         .values({
           slug: input.slug,
           name: input.name,
-          outreachBrandId: input.outreachBrandId,
-          crawlBrandId: input.crawlBrandId,
+          outreachBrandId: resolvedOutreachBrandId,
+          crawlBrandId: resolvedCrawlBrandId,
           holidayType: input.holidayType,
           status: input.status ?? "planning",
           startDate: input.startDate,
           endDate: input.endDate,
-          publicSubdomain: input.publicSubdomain,
-          revenueGoalCents:
-            input.revenueGoalCents !== undefined ? BigInt(input.revenueGoalCents) : undefined,
-          venueCountGoal: input.venueCountGoal,
+          // publicSubdomain / revenueGoalCents / venueCountGoal removed
+          // per session 11 decisions #024 + #025. The DB columns still
+          // exist (drop migration pending) — Drizzle just doesn't write
+          // to them.
           createdBy: staff.id,
           updatedBy: staff.id,
         })
@@ -195,9 +221,9 @@ export async function updateCampaign(
   if (input.status !== undefined) patch.status = input.status;
   if (input.startDate !== undefined) patch.startDate = input.startDate;
   if (input.endDate !== undefined) patch.endDate = input.endDate;
-  if (input.publicSubdomain !== undefined) patch.publicSubdomain = input.publicSubdomain;
-  if (input.revenueGoalCents !== undefined) patch.revenueGoalCents = BigInt(input.revenueGoalCents);
-  if (input.venueCountGoal !== undefined) patch.venueCountGoal = input.venueCountGoal;
+  // publicSubdomain / revenueGoalCents / venueCountGoal removed from
+  // the form per session 11 decisions #024 + #025; columns remain in
+  // DB until a follow-up migration drops them.
 
   try {
     await withAuditContext(staff.id, async (tx) =>

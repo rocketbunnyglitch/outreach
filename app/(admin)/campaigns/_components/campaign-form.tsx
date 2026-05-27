@@ -11,28 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Campaign, CrawlBrand, OutreachBrand } from "@/db/schema";
+import type { Campaign } from "@/db/schema";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
 interface CampaignFormProps {
   mode: "create" | "edit";
-  initial?: Pick<
-    Campaign,
-    | "slug"
-    | "name"
-    | "outreachBrandId"
-    | "crawlBrandId"
-    | "holidayType"
-    | "status"
-    | "startDate"
-    | "endDate"
-    | "publicSubdomain"
-    | "revenueGoalCents"
-    | "venueCountGoal"
-  >;
-  outreachBrands: Pick<OutreachBrand, "id" | "displayName">[];
-  crawlBrands: Pick<CrawlBrand, "id" | "displayName" | "holidayType">[];
+  initial?: Pick<Campaign, "slug" | "name" | "holidayType" | "status" | "startDate" | "endDate">;
   action: (
     prev: unknown,
     fd: FormData,
@@ -56,13 +41,24 @@ const STATUSES = [
   { value: "archived", label: "Archived" },
 ];
 
-export function CampaignForm({
-  mode,
-  initial,
-  outreachBrands,
-  crawlBrands,
-  action,
-}: CampaignFormProps) {
+/**
+ * CampaignForm — slimmed down per operator session 11. Previous form
+ * asked for a brand pair, public subdomain, and dollar-based goals.
+ * Operator decisions:
+ *
+ *   #022: brand pair removed — staff picks alias at send time
+ *   #024: public subdomain removed — public pages are not subdomains
+ *         of this app
+ *   #025: goals refactored — outreach goals move to a future page,
+ *         admin-only $ goals live at /admin/goals
+ *
+ * What's left: identity (slug, name) + timing (holiday, status, dates).
+ * The server action auto-fills the legacy brand FK columns with the
+ * first-available brand of each type so the NOT NULL constraint in
+ * the DB still passes. Those columns are slated for removal in a
+ * follow-up migration after all UI references are gone.
+ */
+export function CampaignForm({ mode, initial, action }: CampaignFormProps) {
   const [state, formAction] = useActionState(action, null);
 
   return (
@@ -95,57 +91,6 @@ export function CampaignForm({
             />
           </FieldShell>
         </FieldRow>
-      </FormSection>
-
-      <FormSection
-        title="Brand pair"
-        description="Every campaign references both an outreach brand (whose Postmark sends the email) and a crawl brand (the public face). Both are required."
-      >
-        <FieldRow>
-          <FieldShell label="Outreach brand" name="outreachBrandId" required>
-            <Select
-              name="outreachBrandId"
-              defaultValue={initial?.outreachBrandId}
-              required
-              disabled={mode === "edit"}
-            >
-              <SelectTrigger id="outreachBrandId">
-                <SelectValue placeholder="Pick an outreach brand" />
-              </SelectTrigger>
-              <SelectContent>
-                {outreachBrands.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.displayName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FieldShell>
-          <FieldShell label="Crawl brand" name="crawlBrandId" required>
-            <Select
-              name="crawlBrandId"
-              defaultValue={initial?.crawlBrandId}
-              required
-              disabled={mode === "edit"}
-            >
-              <SelectTrigger id="crawlBrandId">
-                <SelectValue placeholder="Pick a crawl brand" />
-              </SelectTrigger>
-              <SelectContent>
-                {crawlBrands.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.displayName} ({b.holidayType})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FieldShell>
-        </FieldRow>
-        {mode === "edit" && (
-          <p className="text-xs text-zinc-500">
-            The brand pair is locked after creation. To re-brand, archive and create a new campaign.
-          </p>
-        )}
       </FormSection>
 
       <FormSection
@@ -193,57 +138,6 @@ export function CampaignForm({
           </FieldShell>
           <FieldShell label="End date" name="endDate">
             <Input id="endDate" name="endDate" type="date" defaultValue={initial?.endDate ?? ""} />
-          </FieldShell>
-        </FieldRow>
-      </FormSection>
-
-      <FormSection
-        title="Public-facing"
-        description="Subdomain for the public crawl page (e.g. halloween-2026.crawl.example)."
-      >
-        <FieldRow>
-          <FieldShell label="Public subdomain" name="publicSubdomain">
-            <Input
-              id="publicSubdomain"
-              name="publicSubdomain"
-              defaultValue={initial?.publicSubdomain ?? ""}
-              placeholder="halloween-2026"
-            />
-          </FieldShell>
-        </FieldRow>
-      </FormSection>
-
-      <FormSection
-        title="Goals"
-        description="Optional. Drives the dashboard widgets in later phases."
-      >
-        <FieldRow>
-          <FieldShell label="Revenue goal (cents)" name="revenueGoalCents">
-            <Input
-              id="revenueGoalCents"
-              name="revenueGoalCents"
-              type="number"
-              min="0"
-              step="1"
-              defaultValue={
-                initial?.revenueGoalCents != null ? String(initial.revenueGoalCents) : ""
-              }
-              placeholder="500000"
-            />
-            <p className="mt-1 text-xs text-zinc-500">
-              Stored as bigint cents in your campaign's currency (no FX).
-            </p>
-          </FieldShell>
-          <FieldShell label="Venue count goal" name="venueCountGoal">
-            <Input
-              id="venueCountGoal"
-              name="venueCountGoal"
-              type="number"
-              min="0"
-              step="1"
-              defaultValue={initial?.venueCountGoal ?? ""}
-              placeholder="40"
-            />
           </FieldShell>
         </FieldRow>
       </FormSection>
