@@ -8,7 +8,7 @@ import { ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
-import { MobileNav } from "./_components/mobile-nav";
+import { MobileSectionNav } from "./_components/mobile-section-nav";
 import { MountCommandPalette } from "./_components/mount-command-palette";
 import { NotificationsBell } from "./_components/notifications-bell";
 import { SendCapPill } from "./_components/send-cap-pill";
@@ -47,6 +47,11 @@ export default async function AdminLayout({
         <div className="flex min-h-screen flex-col">
           {isDevImpersonation && <DevModeBanner />}
           <TopBar staff={staff} provider={provider} sendCap={sendCap} />
+          {/* Mobile-only horizontal section + sub-nav strips. Renders
+              under the TopBar at < lg viewports; hidden at lg+ where
+              SideNav takes over. Replaces the old hamburger drawer
+              (operator session 11). */}
+          <MobileSectionNav isAdmin={staff.role === "admin"} />
           <div className="flex flex-1">
             <SideNav isAdmin={staff.role === "admin"} />
             <main className="min-w-0 flex-1 px-6 py-10 sm:px-10 sm:py-14">{children}</main>
@@ -109,7 +114,6 @@ function TopBar({
           <ThemeToggle />
           <ShortcutsHintButton />
           <UserMenu staff={staff} provider={provider} />
-          <MobileNav isAdmin={staff.role === "admin"} />
         </div>
       </div>
     </header>

@@ -15,8 +15,8 @@
  * the user always knows where they are in the structure.
  *
  * Collapse: the rail is fixed 200px wide; on narrow viewports (<lg)
- * we hide it and rely on MobileNav. Phase 16 could add a collapse-to-
- * icons mode for power users; not in v1.
+ * we hide it and rely on MobileSectionNav. Phase 16 could add a
+ * collapse-to-icons mode for power users; not in v1.
  */
 
 import { cn } from "@/lib/cn";
@@ -88,7 +88,11 @@ const SECTIONS: Array<{
       { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
       { href: "/templates", label: "Templates", icon: <FileCode className="h-3.5 w-3.5" /> },
       { href: "/import", label: "Import", icon: <Upload className="h-3.5 w-3.5" /> },
-      { href: "/settings/inboxes", label: "Email Connection", icon: <Settings className="h-3.5 w-3.5" /> },
+      {
+        href: "/settings/inboxes",
+        label: "Email Connection",
+        icon: <Settings className="h-3.5 w-3.5" />,
+      },
     ],
   },
 ];
