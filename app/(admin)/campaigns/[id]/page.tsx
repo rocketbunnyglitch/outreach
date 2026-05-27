@@ -1,6 +1,7 @@
 import { addCityToCampaign } from "@/app/(admin)/city-campaigns/_actions";
 import { Button } from "@/components/ui/button";
 import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { listCrawlBrands, listOutreachBrands } from "@/lib/brand-context";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
@@ -10,11 +11,13 @@ import { notFound } from "next/navigation";
 import { archiveCampaign, updateCampaign } from "../_actions";
 import { CampaignForm } from "../_components/campaign-form";
 import { CityCampaignsSection } from "../_components/city-campaigns-section";
+import { DeleteCampaignButton } from "../_components/delete-campaign-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function EditCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { staff } = await requireStaff();
 
   const [campaign, outreachBrands, crawlBrands, ccRows, allCities] = await Promise.all([
     db
@@ -129,6 +132,12 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
           Archive
         </Button>
       </form>
+
+      <DeleteCampaignButton
+        campaignId={id}
+        campaignName={campaign.name}
+        isAdmin={staff.role === "admin"}
+      />
     </div>
   );
 }

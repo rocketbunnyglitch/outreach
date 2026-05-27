@@ -17,9 +17,9 @@
  * under the wrong brand identity.
  */
 
-import { campaigns, crawlBrands } from "@/db/schema";
+import { events, campaigns, crawlBrands } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
-import { withAuditContext } from "@/lib/db";
+import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
   type CampaignCreateInput,
@@ -27,10 +27,11 @@ import {
   campaignCreateSchema,
   campaignUpdateSchema,
 } from "@/lib/validation/campaigns";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
+import { z } from "zod";
 
 type ActionResult<T = void> =
   | { ok: true; data: T }
@@ -95,9 +96,6 @@ async function validateCrawlBrandCompatibility(
   }
   return { ok: true };
 }
-
-// Imported here so the helper can use it.
-import { db } from "@/lib/db";
 
 export async function createCampaign(
   _prev: unknown,
@@ -225,3 +223,198 @@ export async function archiveCampaign(id: string): Promise<void> {
   revalidatePath(`/campaigns/${id}`);
   redirect("/campaigns");
 }
+
+/**
+ * deleteCampaignWithConfirmation — admin-only, confirmation-gated cascade
+ * archive of a campaign and everything underneath.
+ *
+ * "Delete" is implemented as archive (archived_at = NOW()) on all
+ * descendant rows, never DELETE — soft-delete is a hard rule across the
+ * engine (CLAUDE.md §6).
+ *
+ * Cascade order — must match FK reference order to avoid resurrecting
+ * archived rows:
+ *   1. events under each city_campaign
+ *   2. cold_outreach_entries under each city_campaign
+ *   3. city_campaigns themselves
+ *   4. the campaign
+ *
+ * Confirmation: caller must pass `confirmName` equal to the campaign's
+ * literal name (case-sensitive). Stops accidental clicks and forces the
+ * operator to look at what they're about to remove.
+ *
+ * Permissions: admin role only. Returns 'forbidden' for non-admin so
+ * the UI can surface why the operation didn't go through.
+ */
+export async function deleteCampaignWithConfirmation(
+  campaignId: string,
+  confirmName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Only admins can delete a campaign." };
+  }
+
+  const campaign = await db
+    .select({ id: campaigns.id, name: campaigns.name })
+    .from(campaigns)
+    .where(eq(campaigns.id, campaignId))
+    .limit(1)
+    .then((r) => r[0]);
+  if (!campaign) return { ok: false, error: "Campaign not found." };
+  if (campaign.name !== confirmName) {
+    return {
+      ok: false,
+      error: `Confirmation didn't match. Type "${campaign.name}" exactly to delete.`,
+    };
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      // 1. Archive every event in every city_campaign under this campaign
+      await tx.execute(sql`
+        UPDATE events
+        SET archived_at = NOW(), updated_by = ${staff.id}, updated_at = NOW()
+        FROM city_campaigns cc
+        WHERE events.city_campaign_id = cc.id
+          AND cc.campaign_id = ${campaignId}
+          AND events.archived_at IS NULL
+      `);
+      // 2. Archive cold_outreach_entries under those city_campaigns
+      await tx.execute(sql`
+        UPDATE cold_outreach_entries
+        SET archived_at = NOW(), updated_by = ${staff.id}, updated_at = NOW()
+        FROM city_campaigns cc
+        WHERE cold_outreach_entries.city_campaign_id = cc.id
+          AND cc.campaign_id = ${campaignId}
+          AND cold_outreach_entries.archived_at IS NULL
+      `);
+      // 3. Archive city_campaigns themselves
+      await tx.execute(sql`
+        UPDATE city_campaigns
+        SET archived_at = NOW(), updated_by = ${staff.id}, updated_at = NOW()
+        WHERE campaign_id = ${campaignId}
+          AND archived_at IS NULL
+      `);
+      // 4. Archive the campaign
+      await tx
+        .update(campaigns)
+        .set({ status: "archived", archivedAt: new Date(), updatedBy: staff.id })
+        .where(eq(campaigns.id, campaignId));
+    });
+  } catch (err) {
+    return wrapDbError(err, "delete campaign with cascade");
+  }
+
+  revalidatePath("/campaigns");
+  return { ok: true };
+}
+
+/**
+ * addCrawlToCityCampaign — creates a new event (a "crawl") under a city
+ * campaign. The schema already supports the venue mix via the
+ * required_* columns, so this action just exposes them.
+ *
+ * Defaults match the most common shape:
+ *   - 4 total venues (1 wristband + 2 middles + 1 final)
+ *   - alternate shape: 5 total with 3 middles (set via the `extendedMiddle` flag)
+ *   - status: planned
+ *
+ * The operator can later override per-venue hours via the venue_events
+ * table's agreed_hours_text — we don't set timing here; that lives on
+ * the event's startsAt/endsAt as the tentative wrapper.
+ */
+export async function addCrawlToCityCampaign(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ eventId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = addCrawlSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Validation failed.",
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+  const input = parsed.data;
+
+  // Resolve next slot_number on the same date
+  const existing = await db
+    .select({ slot: events.slotNumber })
+    .from(events)
+    .where(
+      and(eq(events.cityCampaignId, input.cityCampaignId), eq(events.eventDate, input.eventDate)),
+    );
+  const maxSlot = existing.reduce((m, r) => Math.max(m, r.slot), 0);
+  const nextSlot = maxSlot + 1;
+
+  // Compute the venue mix from the shape choice
+  const isExtended = input.extendedMiddle === true;
+  const totalRequired = isExtended ? 5 : 4;
+  const middlesRequired = isExtended ? 3 : 2;
+
+  let startsAt: Date | null = null;
+  let endsAt: Date | null = null;
+  if (input.tentativeStart) startsAt = new Date(input.tentativeStart);
+  if (input.tentativeEnd) endsAt = new Date(input.tentativeEnd);
+
+  try {
+    const [row] = await withAuditContext(staff.id, async (tx) =>
+      tx
+        .insert(events)
+        .values({
+          cityCampaignId: input.cityCampaignId,
+          eventDate: input.eventDate,
+          slotNumber: nextSlot,
+          dayPart: input.dayPart ?? null,
+          startsAt,
+          endsAt,
+          routeLabel: input.routeLabel ?? null,
+          requiredVenueCountTotal: totalRequired,
+          requiredWristbandCount: 1,
+          requiredFinalCount: 1,
+          requiredMiddleCount: middlesRequired,
+          createdBy: staff.id,
+          updatedBy: staff.id,
+        })
+        .returning({ id: events.id }),
+    );
+    if (!row) return { ok: false, error: "Insert returned no row." };
+
+    revalidatePath(`/city-campaigns/${input.cityCampaignId}`);
+    return { ok: true, data: { eventId: row.id } };
+  } catch (err) {
+    return wrapDbError(err, "add crawl");
+  }
+}
+
+const addCrawlSchema = z.object({
+  cityCampaignId: z
+    .string()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  eventDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD"),
+  dayPart: z
+    .enum([
+      "thursday_night",
+      "friday_night",
+      "saturday_day",
+      "saturday_night",
+      "sunday_day",
+      "sunday_night",
+      "other",
+    ])
+    .optional(),
+  /** "9:00 PM" → ISO timestamp tentative starts_at, mirrored to UTC. */
+  tentativeStart: z.string().optional(),
+  tentativeEnd: z.string().optional(),
+  routeLabel: z.string().max(120).optional(),
+  /** 3 middles instead of 2; total = 5 venues. */
+  extendedMiddle: z
+    .union([
+      z.boolean(),
+      z.literal("on").transform(() => true),
+      z.literal("off").transform(() => false),
+    ])
+    .optional(),
+});

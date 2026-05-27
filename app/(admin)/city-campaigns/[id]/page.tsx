@@ -19,6 +19,7 @@ import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
 import { CityTime } from "../_components/CityTime";
 import { CityVenueMap } from "../_components/CityVenueMap";
+import { AddCrawlRow } from "../_components/add-crawl-row";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CitySheetHeader } from "../_components/city-sheet-header";
 import { ColdOutreachTable } from "../_components/cold-outreach-table";
@@ -177,20 +178,17 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
               staff={sheetData.staff}
             />
           ))}
+          <AddCrawlRow cityCampaignId={id} cityName={cc.city.name} />
         </section>
       ) : (
-        <section className="rounded-2xl border border-zinc-300/80 border-dashed bg-white/30 p-12 text-center dark:border-zinc-700/60 dark:bg-zinc-950/30">
+        <section className="card-surface-quiet flex flex-col gap-4 border-dashed p-8 text-center">
           <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">No crawls yet</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            Use the CSV importer at{" "}
-            <Link
-              href="/admin"
-              className="text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
-            >
-              /admin
-            </Link>{" "}
-            to bulk-add crawl instances for this city.
+          <p className="text-xs text-zinc-500">
+            Add the first crawl below. You can edit the per-venue hours after attaching venues.
           </p>
+          <div className="mx-auto w-full max-w-xl text-left">
+            <AddCrawlRow cityCampaignId={id} cityName={cc.city.name} />
+          </div>
         </section>
       )}
 
