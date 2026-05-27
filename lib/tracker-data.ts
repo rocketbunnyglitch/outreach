@@ -51,7 +51,7 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
     }>(sql`
       SELECT city_campaign_id, coalesce(sum(ticket_sales_count), 0)::int AS tickets
       FROM events
-      WHERE city_campaign_id = ANY(${cityCampaignIds}::uuid[])
+      WHERE city_campaign_id = ANY(${sql.raw(`ARRAY[${cityCampaignIds.map((id) => `'${id}'::uuid`).join(",")}]`)})
         AND archived_at IS NULL
       GROUP BY city_campaign_id
     `);
