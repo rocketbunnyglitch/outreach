@@ -13,6 +13,7 @@ import { NotificationsBell } from "./_components/notifications-bell";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
 import { ThemeToggle } from "./_components/theme-toggle";
+import { TimezonePicker } from "./_components/timezone-picker";
 import { UserMenu } from "./_components/user-menu";
 
 /**
@@ -91,6 +92,7 @@ function TopBar({
         </div>
         <div className="flex items-center gap-2">
           <NotificationsBell />
+          <TimezonePicker currentTimezone={staff.timezone ?? "America/Toronto"} />
           <ThemeToggle />
           <ShortcutsHintButton />
           <UserMenu staff={staff} provider={provider} />

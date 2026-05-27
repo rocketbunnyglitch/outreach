@@ -300,8 +300,8 @@ function MapShell({
   cached?: boolean;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
-      <header className="flex items-baseline justify-between border-zinc-200 border-b bg-zinc-50/40 px-5 py-3 dark:border-zinc-800 dark:bg-zinc-950/30">
+    <section className="card-surface overflow-hidden p-0">
+      <header className="flex items-baseline justify-between border-zinc-200 border-b px-5 py-3 dark:border-zinc-800">
         <div className="flex items-baseline gap-3">
           <h2 className="flex items-center gap-1.5 font-semibold text-sm">
             <MapPin className="h-3.5 w-3.5 text-zinc-400" />

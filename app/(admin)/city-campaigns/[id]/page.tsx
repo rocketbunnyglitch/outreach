@@ -17,6 +17,7 @@ import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
+import { CityTime } from "../_components/CityTime";
 import { CityVenueMap } from "../_components/CityVenueMap";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CitySheetHeader } from "../_components/city-sheet-header";
@@ -136,6 +137,15 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       >
         <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
       </Link>
+
+      {/* Current time in the city + viewer's local time.
+          Helps avoid "scheduling a call at 3pm without realizing that's
+          3am there" mistakes. */}
+      <CityTime
+        cityName={cc.city.name}
+        cityTimezone={cc.city.timezone}
+        viewerTimezone={currentStaff.timezone ?? "America/Toronto"}
+      />
 
       {/* Premium header */}
       {sheetData && (

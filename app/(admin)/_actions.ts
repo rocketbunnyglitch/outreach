@@ -5,7 +5,12 @@
  */
 
 import { signOut } from "@/auth";
+import { staffMembers } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { clearCurrentCampaignCookie, setCurrentCampaignCookie } from "@/lib/current-campaign";
+import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function signOutAction(): Promise<void> {
@@ -26,4 +31,32 @@ export async function switchCurrentCampaign(formData: FormData): Promise<void> {
   }
   // Refresh every admin route — most pages display per-campaign data.
   revalidatePath("/", "layout");
+}
+
+/**
+ * Update the current staffer's IANA timezone. Surfaces dates/times in
+ * the operator's local zone across the app — see CityTime for the
+ * canonical consumer.
+ *
+ * Validation: we only accept timezones that Intl.DateTimeFormat
+ * recognizes. No allow-list — the universe of IANA timezones is huge
+ * and updates regularly; relying on the runtime keeps us aligned with
+ * whatever browsers + Node consider valid.
+ */
+export async function setStaffTimezone(timezone: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  try {
+    // Validate by feeding it to Intl. Throws RangeError if unknown.
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
+  } catch {
+    return { ok: false, error: "That doesn't look like a valid timezone." };
+  }
+  try {
+    await db.update(staffMembers).set({ timezone }).where(eq(staffMembers.id, staff.id));
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (err) {
+    logger.error({ err, staffId: staff.id, timezone }, "setStaffTimezone failed");
+    return { ok: false, error: "Couldn't save your timezone." };
+  }
 }
