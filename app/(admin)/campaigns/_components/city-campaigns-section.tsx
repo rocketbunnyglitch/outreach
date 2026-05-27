@@ -13,9 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { CityProgressRow } from "@/lib/city-progress";
-import { Plus, X } from "lucide-react";
-import { useActionState, useState } from "react";
+import { X } from "lucide-react";
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { BulkAddCities } from "./bulk-add-cities";
 import { CityProgressCard } from "./city-progress-card";
 
 interface CityOption {
@@ -55,8 +56,6 @@ export function CityCampaignsSection({
   unassignedCities,
   addAction,
 }: Props) {
-  const [showAdd, setShowAdd] = useState(false);
-
   return (
     <section className="flex flex-col gap-4">
       <header className="flex items-baseline justify-between gap-3">
@@ -65,22 +64,23 @@ export function CityCampaignsSection({
           <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
             {cityCampaigns.length} {cityCampaigns.length === 1 ? "city" : "cities"}
           </span>
-          {unassignedCities.length > 0 && (
-            <Button type="button" variant="outline" size="sm" onClick={() => setShowAdd((s) => !s)}>
-              <Plus className="h-3 w-3" /> Add city
-            </Button>
-          )}
         </div>
       </header>
 
-      {showAdd && (
-        <AddCityForm
-          campaignId={campaignId}
-          unassignedCities={unassignedCities}
-          action={addAction}
-          onCancel={() => setShowAdd(false)}
-        />
-      )}
+      <BulkAddCities
+        campaignId={campaignId}
+        unassignedCities={unassignedCities}
+        renderManualForm={() => (
+          <AddCityForm
+            campaignId={campaignId}
+            unassignedCities={unassignedCities}
+            action={addAction}
+            onCancel={() => {
+              /* manual form has no cancel here — embedded in tab */
+            }}
+          />
+        )}
+      />
 
       {cityCampaigns.length === 0 ? (
         <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
