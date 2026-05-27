@@ -46,11 +46,23 @@ const googleEnabled =
 // underlying environment. The explicit env var means the operator must
 // make a deliberate choice to enable impersonation.
 //
-// Belt-and-suspenders safety: we also require googleEnabled to be FALSE.
-// In production, Google must be configured, which means dev impersonation
-// is automatically off even if someone accidentally exports
-// ENABLE_DEV_IMPERSONATION=1.
-const devCredentialsEnabled = env.ENABLE_DEV_IMPERSONATION === "1" && !googleEnabled;
+// Historically we also required `!googleEnabled` as belt-and-suspenders.
+// That was removed when an operator got locked out of Google OAuth
+// (redirect_uri_mismatch) and needed dev impersonation as an emergency
+// fallback — gating on Google's presence made recovery impossible from
+// inside the app. The single env var is now the only gate. We surface a
+// loud warning banner on the login page (and in server logs) whenever
+// dev impersonation is active so it can't quietly stay on.
+const devCredentialsEnabled = env.ENABLE_DEV_IMPERSONATION === "1";
+
+// Log loudly at startup when dev impersonation is active. Helps catch
+// "oops, that env var was supposed to come off after recovery" cases.
+if (devCredentialsEnabled) {
+  logger.warn(
+    { googleEnabled },
+    "⚠️  DEV IMPERSONATION IS ENABLED. Anyone with access to /login can sign in as any active staff member without OAuth. Set ENABLE_DEV_IMPERSONATION=0 (or unset it) and redeploy to disable.",
+  );
+}
 
 const providers: NonNullable<typeof authConfig.providers> = [];
 

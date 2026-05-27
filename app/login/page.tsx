@@ -106,6 +106,19 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </div>
           )}
 
+          {googleEnabled && devCredentialsEnabled && (
+            <div className="mb-6 rounded-md border-2 border-amber-400/60 bg-amber-50 p-3 dark:border-amber-700/60 dark:bg-amber-950/40">
+              <p className="font-mono text-[10px] text-amber-800 uppercase tracking-[0.08em] dark:text-amber-300">
+                ⚠ Dev impersonation enabled
+              </p>
+              <p className="mt-1 text-amber-900 text-xs dark:text-amber-200">
+                Anyone reaching this page can sign in as any active staff member without Google. Set{" "}
+                <code className="font-mono">ENABLE_DEV_IMPERSONATION=0</code> in the server env and
+                redeploy to disable.
+              </p>
+            </div>
+          )}
+
           {googleEnabled && (
             <form action={signInWithGoogle} className="flex flex-col gap-3">
               <input type="hidden" name="from" value={from} />
