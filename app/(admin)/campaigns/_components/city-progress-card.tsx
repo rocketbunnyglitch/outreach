@@ -20,7 +20,7 @@
  */
 
 import type { CityProgressRow } from "@/lib/city-progress";
-import { pipelineHealthFor } from "@/lib/city-progress";
+import { pipelineHealthFor } from "@/lib/city-progress-shared";
 import { cn } from "@/lib/cn";
 import { ChevronRight, CircleDot, Sparkles, TriangleAlert } from "lucide-react";
 import Link from "next/link";
