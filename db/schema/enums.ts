@@ -51,12 +51,14 @@ export const cityCampaignStatus = pgEnum("city_campaign_status", [
   "planning",
   "active",
   "confirmed",
+  "contract_signed",
   "cancelled",
 ]);
 
 export const eventStatus = pgEnum("event_status", [
   "planned",
   "confirmed",
+  "contract_signed",
   "completed",
   "cancelled",
 ]);
@@ -73,6 +75,7 @@ export const venueEventStatus = pgEnum("venue_event_status", [
   "interested",
   "negotiating",
   "confirmed",
+  "contract_signed",
   "declined",
   "cancelled",
 ]);
@@ -101,6 +104,7 @@ export const outreachOutcome = pgEnum("outreach_outcome", [
   "declined",
   "interested",
   "confirmed",
+  "contract_signed",
   "wrong_number",
 ]);
 
