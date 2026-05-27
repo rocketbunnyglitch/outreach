@@ -117,7 +117,7 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
       e.crawl_number,
       e.event_date::text AS event_date,
       COALESCE(e.ticket_sales_count, 0)::int AS tickets_sold,
-      e.ticket_price_cents::int AS ticket_price_cents,
+      NULL::int AS ticket_price_cents, -- events has no price column; field is unused in UI
       e.middle_venue_group_id,
       mvg.name AS middle_venue_group_name,
       e.eventbrite_event_id,
