@@ -428,3 +428,58 @@ export async function commitVenueListField(
     return wrapDbError(err, `commit venue field: ${field}`);
   }
 }
+
+// =========================================================================
+// createVenueFromRow — used by the in-table "+ Add row" affordance to
+// create a minimal venue inline. Differs from createVenue in that it:
+//   - Doesn't redirect (stays on /venues, refreshes the list)
+//   - Takes only city + name (the bare minimum); detail page is for the rest
+//   - Returns the new venue id so the client can highlight or focus it
+// =========================================================================
+
+const createVenueRowSchema = z.object({
+  cityId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  name: z.string().min(1).max(200),
+});
+
+export async function createVenueFromRow(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+
+  const parsed = createVenueRowSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return { ok: false, error: "Pick a city and enter a name." };
+  }
+  const { cityId, name } = parsed.data;
+
+  try {
+    const [row] = await withAuditContext(staff.id, async (tx) =>
+      tx
+        .insert(venues)
+        .values({
+          cityId,
+          name: name.trim(),
+          doNotContact: false,
+          createdBy: staff.id,
+          updatedBy: staff.id,
+        })
+        .returning({ id: venues.id }),
+    );
+    if (!row) {
+      return { ok: false, error: "Insert returned no row." };
+    }
+    revalidatePath("/venues");
+    publishRealtime({
+      table: "venues",
+      id: row.id,
+      type: "insert",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return { ok: true, data: { id: row.id } };
+  } catch (err) {
+    return wrapDbError(err, "create venue from row");
+  }
+}

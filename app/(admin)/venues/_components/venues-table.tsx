@@ -49,7 +49,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type { bulkUpdateVenues } from "../_actions";
-import { commitVenueListField } from "../_actions";
+import { commitVenueListField, createVenueFromRow } from "../_actions";
 import { BulkSendDialog } from "./bulk-send-dialog";
 
 interface VenueRow {
@@ -64,8 +64,15 @@ interface VenueRow {
 interface Props {
   rows: VenueRow[];
   bulkAction: typeof bulkUpdateVenues;
-  /** Distinct cities for the city filter dropdown. */
+  /** Distinct city names for the filter dropdown (display + filter value). */
   cityOptions: Array<{ value: string; label: string }>;
+  /**
+   * Full list of cities with both id and name — used by the "+ Add row"
+   * affordance, which needs cityId to insert a new venue. Separate from
+   * cityOptions because the filter is name-based for display, but the
+   * insert needs the UUID.
+   */
+  addRowCities: Array<{ id: string; name: string }>;
   /** Used by the realtime hook to suppress self-originated events. */
   currentStaffId: string;
   /** Bulk-send dialog data — when provided, the Queue bulk send button shows */
@@ -88,7 +95,14 @@ interface Props {
   };
 }
 
-export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentStaffId }: Props) {
+export function VenuesTable({
+  rows,
+  bulkAction,
+  cityOptions,
+  addRowCities,
+  bulkSend,
+  currentStaffId,
+}: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -464,6 +478,7 @@ export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentSt
               onCellFocusChange={setMyFocusedCell}
             />
           ))}
+          <AddVenueRow cities={addRowCities} />
         </DataTableBody>
       </DataTable>
 
@@ -660,4 +675,117 @@ function sortKeyFor(row: VenueRow, column: string): string | number {
     default:
       return "";
   }
+}
+
+// =========================================================================
+// AddVenueRow — Sheets-style "+ Add row" footer row that becomes a new
+// venue on Enter. Skips the /venues/new form entirely for the common
+// case (just need name + city; everything else can be set inline or on
+// the detail page).
+// =========================================================================
+
+function AddVenueRow({ cities }: { cities: Array<{ id: string; name: string }> }) {
+  const [name, setName] = useState("");
+  const [cityId, setCityId] = useState<string>(cities[0]?.id ?? "");
+  const [pending, startTx] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function commit() {
+    setError(null);
+    if (!name.trim()) {
+      setError("Enter a venue name first.");
+      return;
+    }
+    if (!cityId) {
+      setError("Pick a city first.");
+      return;
+    }
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("cityId", cityId);
+      fd.set("name", name.trim());
+      const result = await createVenueFromRow(null, fd);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setName("");
+      router.refresh();
+    });
+  }
+
+  return (
+    <tr className="group/add border-zinc-200/60 border-t bg-zinc-50/40 dark:border-zinc-800/40 dark:bg-zinc-900/20">
+      <td className="w-9 px-3 py-2 text-center font-mono text-[10px] text-zinc-400">+</td>
+      <td className="px-2 py-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+          }}
+          placeholder="+ Add a venue…"
+          className={cn(
+            "w-full rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-sm transition-colors",
+            "hover:border-zinc-300 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+            "dark:focus:border-blue-400 dark:focus:bg-zinc-900 dark:hover:border-zinc-700",
+            "placeholder:text-zinc-400",
+          )}
+          aria-label="New venue name"
+          disabled={pending}
+        />
+      </td>
+      <td className="w-40 px-2 py-2">
+        <select
+          value={cityId}
+          onChange={(e) => setCityId(e.target.value)}
+          disabled={pending}
+          className={cn(
+            "w-full appearance-none rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-xs transition-colors",
+            "hover:border-zinc-300 focus:border-blue-500 focus:outline-none",
+            "dark:focus:border-blue-400 dark:hover:border-zinc-700",
+          )}
+          aria-label="New venue city"
+        >
+          {cities.length === 0 && <option value="">No cities yet</option>}
+          {cities.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="px-2 py-2 text-xs text-zinc-400">—</td>
+      <td className="w-24 px-2 py-2 text-right text-xs text-zinc-400">—</td>
+      <td className="w-20 px-2 py-2 text-center">
+        {pending ? (
+          <Loader2 className="mx-auto h-3 w-3 animate-spin text-blue-500" />
+        ) : (
+          <button
+            type="button"
+            onClick={commit}
+            disabled={!name.trim()}
+            className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em] transition-colors hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-zinc-100"
+            title="Press Enter to add"
+          >
+            add
+          </button>
+        )}
+        {error && (
+          <p
+            className="mt-1 text-[10px] text-rose-600 dark:text-rose-400"
+            role="alert"
+            title={error}
+          >
+            {error.length > 32 ? `${error.slice(0, 32)}…` : error}
+          </p>
+        )}
+      </td>
+    </tr>
+  );
 }

@@ -58,6 +58,14 @@ export default async function VenuesListPage() {
     .sort()
     .map((name) => ({ value: name, label: name }));
 
+  // Full list of cities (id + name) for the "+ Add row" affordance.
+  const allCities = await db
+    .select({ id: cities.id, name: cities.name })
+    .from(cities)
+    .where(isNull(cities.archivedAt))
+    .orderBy(asc(cities.name));
+  const addRowCities = allCities.map((c) => ({ id: c.id, name: c.name }));
+
   // Bulk-send dialog data — brands + templates + inbox throttle status per
   // brand for the logged-in staffer. Shape is what BulkSendDialog needs.
   const outreachBrandsList = await listOutreachBrands();
@@ -120,6 +128,7 @@ export default async function VenuesListPage() {
         <VenuesTable
           rows={flatRows}
           cityOptions={cityOptions}
+          addRowCities={addRowCities}
           bulkAction={bulkUpdateVenues}
           currentStaffId={staff.id}
           bulkSend={{
