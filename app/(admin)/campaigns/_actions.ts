@@ -17,7 +17,7 @@
  * under the wrong brand identity.
  */
 
-import { events, campaigns, crawlBrands, outreachBrands } from "@/db/schema";
+import { events, campaigns, cityCampaigns, crawlBrands, outreachBrands } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -444,3 +444,114 @@ const addCrawlSchema = z.object({
     ])
     .optional(),
 });
+
+// =========================================================================
+// Bulk add crawls (operator session 11 — sibling of #026 bulk-add-cities)
+// =========================================================================
+
+/**
+ * Create one event/crawl per cityCampaign in this campaign, all on
+ * the same date. Skips cities that already have an event on that
+ * date+slot (the events_city_campaign_date_slot_unique index does the
+ * dedup at insert time via ON CONFLICT DO NOTHING).
+ *
+ * Operator quote (session 11):
+ *   "I should also be able to mass add crawls for all cities for a
+ *    campaign so I should be able to choose add crawls for all cities."
+ *
+ * Semantics for v1:
+ *   - One crawl per city per call (slotNumber=1). Cities that already
+ *     have a slot-1 crawl on the date are silently skipped.
+ *   - extendedMiddle flag controls 4-venue vs 5-venue shape (matches
+ *     the per-city addCrawlToCityCampaign).
+ *   - No tentative start/end times on bulk — operators set those
+ *     per-crawl after. Day-part is enough for the schedule view to
+ *     bucket them.
+ *
+ * Returns { added, skipped } so the operator sees what happened. The
+ * action lives here (campaigns/_actions.ts) instead of events/_actions
+ * because the operation is scoped to a campaign, not a single event.
+ */
+export async function addCrawlToAllCities(input: {
+  campaignId: string;
+  eventDate: string; // yyyy-MM-dd
+  dayPart?:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other";
+  extendedMiddle?: boolean;
+}): Promise<ActionResult<{ added: number; skipped: number; total: number }>> {
+  const { staff } = await requireStaff();
+
+  // Pull every cityCampaign in this campaign. We don't filter by status
+  // here — even 'cancelled' cityCampaigns can receive a new crawl;
+  // operator may be re-activating them. The cityCampaigns table has no
+  // archived_at column (CLAUDE.md §12.1) so no archive filter applies.
+  const ccRows = await db
+    .select({ id: cityCampaigns.id })
+    .from(cityCampaigns)
+    .where(eq(cityCampaigns.campaignId, input.campaignId));
+
+  if (ccRows.length === 0) {
+    return {
+      ok: false,
+      error: "This campaign has no cities yet. Add cities first, then bulk-add crawls.",
+    };
+  }
+
+  // Schema validation on date — same regex as addCrawlSchema. The action
+  // accepts a plain string from the form rather than a parsed Date so
+  // PG can do its own date coercion on the column.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.eventDate)) {
+    return { ok: false, error: "Date must be in YYYY-MM-DD format." };
+  }
+
+  const isExtended = input.extendedMiddle === true;
+  const totalRequired = isExtended ? 5 : 4;
+  const middlesRequired = isExtended ? 3 : 2;
+
+  // Build the values list. slotNumber=1 across the board — operators
+  // wanting a 2nd same-day crawl in a specific city use the per-city
+  // addCrawlToCityCampaign instead.
+  const rows = ccRows.map((cc) => ({
+    cityCampaignId: cc.id,
+    eventDate: input.eventDate,
+    slotNumber: 1,
+    dayPart: input.dayPart ?? null,
+    requiredVenueCountTotal: totalRequired,
+    requiredWristbandCount: 1,
+    requiredFinalCount: 1,
+    requiredMiddleCount: middlesRequired,
+    createdBy: staff.id,
+    updatedBy: staff.id,
+  }));
+
+  try {
+    const inserted = await withAuditContext(staff.id, async (tx) =>
+      tx
+        .insert(events)
+        .values(rows)
+        // The unique index on (city_campaign_id, event_date, slot_number)
+        // does the dedup. Cities with an existing slot-1 crawl on this
+        // date are silently skipped — they appear in `skipped`.
+        .onConflictDoNothing()
+        .returning({ id: events.id }),
+    );
+
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    return {
+      ok: true,
+      data: {
+        added: inserted.length,
+        skipped: rows.length - inserted.length,
+        total: rows.length,
+      },
+    };
+  } catch (err) {
+    return wrapDbError(err, "bulk add crawls");
+  }
+}

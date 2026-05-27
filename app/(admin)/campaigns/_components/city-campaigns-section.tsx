@@ -18,6 +18,7 @@ import { X } from "lucide-react";
 import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { BulkAddCities } from "./bulk-add-cities";
+import { BulkAddCrawls } from "./bulk-add-crawls";
 import { CityProgressCard } from "./city-progress-card";
 
 interface CityOption {
@@ -156,6 +157,14 @@ export function CityCampaignsSection({
           />
         )}
       />
+
+      {/* Bulk-add-crawls — sibling action that schedules a crawl
+          (event) in every city in this campaign on the same date.
+          Hidden when there are no cities yet (the button would just
+          error). */}
+      {cityCampaigns.length > 0 && (
+        <BulkAddCrawls campaignId={campaignId} cityCount={cityCampaigns.length} />
+      )}
 
       {cityCampaigns.length === 0 ? (
         <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
