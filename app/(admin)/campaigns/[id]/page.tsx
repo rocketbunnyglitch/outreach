@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { listCrawlBrands, listOutreachBrands } from "@/lib/brand-context";
+import { loadCityCampaignProgress } from "@/lib/city-progress";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -19,41 +20,43 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
   const { id } = await params;
   const { staff } = await requireStaff();
 
-  const [campaign, outreachBrands, crawlBrands, ccRows, allCities] = await Promise.all([
-    db
-      .select()
-      .from(campaigns)
-      .where(eq(campaigns.id, id))
-      .limit(1)
-      .then((r) => r[0]),
-    listOutreachBrands(),
-    listCrawlBrands(),
-    db
-      .select({
-        id: cityCampaigns.id,
-        cityName: cities.name,
-        cityRegion: cities.region,
-        priority: cityCampaigns.priority,
-        targetVenueCount: cityCampaigns.targetVenueCount,
-        salesGoalCents: cityCampaigns.salesGoalCents,
-        status: cityCampaigns.status,
-        leadStaffName: staffMembers.displayName,
-      })
-      .from(cityCampaigns)
-      .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
-      .leftJoin(staffMembers, eq(staffMembers.id, cityCampaigns.leadStaffId))
-      .where(eq(cityCampaigns.campaignId, id))
-      .orderBy(asc(cityCampaigns.priority), asc(cities.name)),
-    db
-      .select({
-        id: cities.id,
-        name: cities.name,
-        region: cities.region,
-      })
-      .from(cities)
-      .where(isNull(cities.archivedAt))
-      .orderBy(asc(cities.name)),
-  ]);
+  const [campaign, outreachBrands, crawlBrands, ccRows, allCities, progressRows] =
+    await Promise.all([
+      db
+        .select()
+        .from(campaigns)
+        .where(eq(campaigns.id, id))
+        .limit(1)
+        .then((r) => r[0]),
+      listOutreachBrands(),
+      listCrawlBrands(),
+      db
+        .select({
+          id: cityCampaigns.id,
+          cityName: cities.name,
+          cityRegion: cities.region,
+          priority: cityCampaigns.priority,
+          targetVenueCount: cityCampaigns.targetVenueCount,
+          salesGoalCents: cityCampaigns.salesGoalCents,
+          status: cityCampaigns.status,
+          leadStaffName: staffMembers.displayName,
+        })
+        .from(cityCampaigns)
+        .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+        .leftJoin(staffMembers, eq(staffMembers.id, cityCampaigns.leadStaffId))
+        .where(eq(cityCampaigns.campaignId, id))
+        .orderBy(asc(cityCampaigns.priority), asc(cities.name)),
+      db
+        .select({
+          id: cities.id,
+          name: cities.name,
+          region: cities.region,
+        })
+        .from(cities)
+        .where(isNull(cities.archivedAt))
+        .orderBy(asc(cities.name)),
+      loadCityCampaignProgress(id),
+    ]);
 
   if (!campaign) notFound();
 
@@ -112,6 +115,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
       <CityCampaignsSection
         campaignId={id}
         cityCampaigns={ccRows}
+        progressRows={progressRows}
         unassignedCities={unassignedCities}
         addAction={addCityToCampaign}
       />

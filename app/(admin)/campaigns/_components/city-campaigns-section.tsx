@@ -1,7 +1,6 @@
 "use client";
 
 import { Alert } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,10 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowRight, Plus, X } from "lucide-react";
-import Link from "next/link";
+import type { CityProgressRow } from "@/lib/city-progress";
+import { Plus, X } from "lucide-react";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { CityProgressCard } from "./city-progress-card";
 
 interface CityOption {
   id: string;
@@ -38,6 +38,7 @@ interface CityCampaignRow {
 interface Props {
   campaignId: string;
   cityCampaigns: CityCampaignRow[];
+  progressRows: CityProgressRow[];
   unassignedCities: CityOption[];
   addAction: (prev: unknown, fd: FormData) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -50,6 +51,7 @@ interface Props {
 export function CityCampaignsSection({
   campaignId,
   cityCampaigns,
+  progressRows,
   unassignedCities,
   addAction,
 }: Props) {
@@ -86,28 +88,9 @@ export function CityCampaignsSection({
         </Card>
       ) : (
         <ol className="flex flex-col gap-2">
-          {cityCampaigns.map((cc) => (
-            <li key={cc.id}>
-              <Link href={`/city-campaigns/${cc.id}`} className="group block">
-                <Card className="flex items-center justify-between gap-4 p-4 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
-                  <div className="flex flex-1 flex-col gap-1">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{cc.cityName}</span>
-                      {cc.cityRegion && (
-                        <span className="text-xs text-zinc-500">{cc.cityRegion}</span>
-                      )}
-                      <Badge tone={statusTone(cc.status)}>{cc.status}</Badge>
-                    </div>
-                    <p className="text-xs text-zinc-500">
-                      Priority {cc.priority} · {cc.targetVenueCount} venues
-                      {cc.salesGoalCents != null &&
-                        ` · goal $${(Number(cc.salesGoalCents) / 100).toLocaleString()}`}
-                      {cc.leadStaffName && ` · lead ${cc.leadStaffName}`}
-                    </p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-zinc-400 transition-transform group-hover:translate-x-0.5" />
-                </Card>
-              </Link>
+          {progressRows.map((row) => (
+            <li key={row.cityCampaignId}>
+              <CityProgressCard row={row} />
             </li>
           ))}
         </ol>
@@ -212,10 +195,4 @@ function SubmitButton() {
       {pending ? "Adding…" : "Add"}
     </Button>
   );
-}
-
-function statusTone(s: string): "default" | "success" | "muted" | "warning" {
-  if (s === "active" || s === "confirmed") return "success";
-  if (s === "cancelled") return "warning";
-  return "default";
 }
