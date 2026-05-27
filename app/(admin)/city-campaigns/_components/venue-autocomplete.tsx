@@ -3,7 +3,8 @@
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Loader2, MapPin, Plus, Search } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { createVenueFromMapsUrl, quickCreateVenue, searchVenues } from "../_slot-actions";
 
 interface VenueHit {
@@ -56,7 +57,50 @@ export function VenueAutocomplete({
   const [mapsPending, startMaps] = useTransition();
   const [mapsError, setMapsError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const inputWrapRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Portal positioning state. We render the dropdown into document.body
+  // (escaping the table cell's stacking context that was causing the
+  // operator's "transparent dropdown" / "can't click venue" bug) so it
+  // always paints above sibling rows. The position is computed from the
+  // input's getBoundingClientRect — refreshed on scroll + resize so the
+  // dropdown stays glued to the input.
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const recomputePos = useCallback(() => {
+    const el = inputWrapRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPos({
+      // Position BELOW the input. Add a small 4px gap.
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
+
+  // Recompute every time the dropdown opens, the query changes (results
+  // grow/shrink), or the viewport scrolls/resizes. useLayoutEffect runs
+  // synchronously before paint so we don't see the dropdown flicker
+  // in a stale position. query + hits.length aren't read directly
+  // inside the effect, but their changes correlate with the dropdown's
+  // height changing — we intentionally re-run to recompute position
+  // after results grow.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePos();
+    function onScrollOrResize() {
+      recomputePos();
+    }
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, query, hits.length, recomputePos]);
 
   const isMapsUrl =
     /^https?:\/\//i.test(query) && /google\.com\/maps|goo\.gl|maps\.app\.goo\.gl/i.test(query);
@@ -156,7 +200,7 @@ export function VenueAutocomplete({
           {selectedName ?? placeholder}
         </button>
       ) : (
-        <div className="relative">
+        <div ref={inputWrapRef} className="relative">
           {isMapsUrl ? (
             <MapPin className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3 w-3 text-blue-500" />
           ) : (
@@ -187,67 +231,106 @@ export function VenueAutocomplete({
             )}
           </div>
 
-          {isMapsUrl && (
-            <div className="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-lg dark:border-blue-900/50 dark:bg-zinc-900">
-              <button
-                type="button"
-                onClick={handleMapsUrl}
-                disabled={mapsPending}
-                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors hover:bg-blue-500/[0.08] dark:hover:bg-blue-500/[0.12]"
-              >
-                <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                <span className="flex-1">
-                  <strong className="font-medium text-zinc-900 dark:text-zinc-100">
-                    Autopopulate from Maps link
-                  </strong>
-                  <br />
-                  <span className="text-[10px] text-zinc-500">
-                    Pulls name, address, phone, website, coords
-                  </span>
-                </span>
-                {mapsPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                ) : (
-                  <Plus className="h-3 w-3 text-blue-500" />
-                )}
-              </button>
-              {mapsError && (
-                <div className="border-zinc-200 border-t bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800 dark:border-zinc-800 dark:bg-amber-950/30 dark:text-amber-300">
-                  {mapsError}
-                </div>
-              )}
-            </div>
-          )}
+          {/*
+            Dropdowns rendered via React Portal into document.body so they
+            escape the table cell's stacking context. Previously rendered
+            with z-50 INSIDE the cell — but a sibling table row's
+            position:relative content creates its own stacking context at
+            the same level, drawing over our z-50. That gave the operator
+            the "transparent dropdown, can't click venue" bug from session
+            11. Portal renders at document.body root → z-50 wins against
+            anything else in the page.
 
-          {!isMapsUrl && (hits.length > 0 || showCreate) && (
-            <div className="absolute top-full right-0 left-0 z-50 mt-1 max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
-              {hits.map((v) => (
+            We compute the absolute position via getBoundingClientRect on
+            inputWrapRef + listen for scroll/resize so the dropdown
+            stays glued to the input.
+          */}
+          {pos != null &&
+            isMapsUrl &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                style={{
+                  position: "fixed",
+                  top: pos.top,
+                  left: pos.left,
+                  width: pos.width,
+                }}
+                className="z-50 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-lg dark:border-blue-900/50 dark:bg-zinc-900"
+              >
                 <button
-                  key={v.id}
                   type="button"
-                  onClick={() => handleSelect(v)}
-                  className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                  onClick={handleMapsUrl}
+                  disabled={mapsPending}
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs transition-colors hover:bg-blue-500/[0.08] dark:hover:bg-blue-500/[0.12]"
                 >
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{v.name}</span>
-                  <span className="font-mono text-[10px] text-zinc-500">
-                    {v.email ?? "no email"}
-                    {v.capacity != null && ` · ${v.capacity} cap`}
-                    {v.address && ` · ${v.address.slice(0, 40)}`}
+                  <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                  <span className="flex-1">
+                    <strong className="font-medium text-zinc-900 dark:text-zinc-100">
+                      Autopopulate from Maps link
+                    </strong>
+                    <br />
+                    <span className="text-[10px] text-zinc-500">
+                      Pulls name, address, phone, website, coords
+                    </span>
                   </span>
+                  {mapsPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                  ) : (
+                    <Plus className="h-3 w-3 text-blue-500" />
+                  )}
                 </button>
-              ))}
-              {showCreate && (
-                <button
-                  type="button"
-                  onClick={handleCreate}
-                  className="flex w-full items-center gap-2 border-zinc-200 border-t px-3 py-2 text-xs text-zinc-700 transition-colors hover:bg-emerald-500/[0.06] dark:border-zinc-800 dark:text-zinc-300"
-                >
-                  <Plus className="h-3 w-3" />
-                  Create "<span className="font-medium">{query.trim()}</span>" as new venue
-                </button>
-              )}
-            </div>
-          )}
+                {mapsError && (
+                  <div className="border-zinc-200 border-t bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800 dark:border-zinc-800 dark:bg-amber-950/30 dark:text-amber-300">
+                    {mapsError}
+                  </div>
+                )}
+              </div>,
+              document.body,
+            )}
+
+          {pos != null &&
+            !isMapsUrl &&
+            (hits.length > 0 || showCreate) &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                style={{
+                  position: "fixed",
+                  top: pos.top,
+                  left: pos.left,
+                  width: pos.width,
+                }}
+                className="z-50 max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+              >
+                {hits.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => handleSelect(v)}
+                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                  >
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{v.name}</span>
+                    <span className="font-mono text-[10px] text-zinc-500">
+                      {v.email ?? "no email"}
+                      {v.capacity != null && ` · ${v.capacity} cap`}
+                      {v.address && ` · ${v.address.slice(0, 40)}`}
+                    </span>
+                  </button>
+                ))}
+                {showCreate && (
+                  <button
+                    type="button"
+                    onClick={handleCreate}
+                    className="flex w-full items-center gap-2 border-zinc-200 border-t px-3 py-2 text-xs text-zinc-700 transition-colors hover:bg-emerald-500/[0.06] dark:border-zinc-800 dark:text-zinc-300"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Create "<span className="font-medium">{query.trim()}</span>" as new venue
+                  </button>
+                )}
+              </div>,
+              document.body,
+            )}
         </div>
       )}
     </div>
