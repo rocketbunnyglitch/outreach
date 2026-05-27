@@ -249,6 +249,9 @@ export interface InboxThreadDetail {
     eventCrawlNumber: number | null;
     lastMessageAt: Date;
     messageCount: number;
+    /** Global unread count on the thread; used by inbox UI to drive
+        the "auto mark as read on open" effect + unread badges. */
+    unreadCount: number;
   };
   messages: Array<{
     id: string;
@@ -289,6 +292,7 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       eventCrawlNumber: events.crawlNumber,
       lastMessageAt: emailThreads.lastMessageAt,
       messageCount: emailThreads.messageCount,
+      unreadCount: emailThreads.unreadCount,
     })
     .from(emailThreads)
     .innerJoin(venues, eq(venues.id, emailThreads.venueId))
