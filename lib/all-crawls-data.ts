@@ -112,7 +112,7 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
       c.id AS city_id,
       c.name AS city_name,
       c.region AS city_region,
-      c.country AS city_country,
+      c.country_code AS city_country,
       e.day_part::text AS day_part,
       e.crawl_number,
       e.event_date::text AS event_date,
