@@ -161,4 +161,75 @@ Everything else (Postgres, PostGIS, Redis, our Caddy config) is installed by `sc
 2. Check DECISIONS.md for prior reasoning on similar points.
 3. If still unclear, add to OPEN_QUESTIONS.md with options + recommendation and stop. Do not guess.
 
-Last updated: phase 0 scaffold.
+---
+
+## 12. GUARDRAILS — production incidents
+
+Every rule here is here because I (Claude) broke production in a way that cost a fix commit. Read this section before writing raw SQL or splitting modules across the server/client boundary.
+
+### 12.1 Raw SQL is NOT type-checked. Verify every column.
+
+Drizzle catches `venues.foo` at compile time when `foo` isn't a column. Raw `` sql`...` `` blocks are opaque strings to TypeScript. Every column name in a raw SQL block must be verified against the source-of-truth schema in `db/schema/*.ts` BEFORE the SQL is written, not after deploy crashes.
+
+**My pattern-match failures (each cost a fix commit):**
+
+| Wrong | Right | Table | Where |
+|---|---|---|---|
+| `staff_outreach_emails.display_name` | join `staff_members.display_name` via `staff_member_id` | `staff_outreach_emails` has `email_address`, NOT `display_name` | `9849827` |
+| `events.ticket_price_cents` | no such column — use `NULL::int` or remove | `events` has `ticket_sales_count` but NO price column | `9a3a2ce` |
+| `outreach_brands.brand_name` | `outreach_brands.display_name` | every brand-name SQL site | `68f1e14` |
+| `cities.geocode` | `cities.location` (PostGIS `geography(POINT)`) | venue-suggestion + similar | `68f1e14` |
+| `venue_events.crawl_position` | `venue_events.role` (enum) + `venue_events.slot_position` | role is the slot kind; position is within-role | `68f1e14` |
+| `staff_outreach_emails.archived_at` | no such column — gate by `status` enum instead | this table has no soft-delete column | `2b569d2` |
+| `cities.country` | `cities.country_code` (FK to countries) or `cities.region` | the column is country_code, not country | earlier fix |
+
+**Process before writing raw SQL:** open `db/schema/<table>.ts`, `grep -E "^\s+\w+:"` the column list, write the SQL against THAT list. Don't trust memory, don't trust the column names in nearby SQL, don't trust the carry-over summary at the top of the transcript (it has been wrong before).
+
+**Process before deploying raw SQL:** `bash scripts/audit-raw-sql.sh` and visually walk every column reference.
+
+### 12.2 `import "server-only"` poisons the whole module for client value-imports
+
+A module with `import "server-only"` at the top (or any transitive db/drizzle import) cannot have ANY values imported from a client component — only types. A value import pulls the whole module into the client bundle, webpack tries to bundle db/pg into the browser, build fails:
+
+```
+Import trace: lib/foo.ts -> some-client-component.tsx -> some-section.tsx
+```
+
+**Patterns:**
+
+```ts
+// ❌ WRONG: value import from server-only module in a client component
+import { pipelineHealthFor } from "@/lib/city-progress"; // <- module is server-only
+
+// ✅ OK: type-only import (erased at compile, no runtime bundle pull)
+import type { CityProgressRow } from "@/lib/city-progress";
+
+// ✅ OK: split client-safe pure helpers + types into a *-shared.ts module
+// lib/foo-shared.ts            <- no server-only, no db, just types + pure fns
+// lib/foo.ts                   <- imports "server-only", exports * from "./foo-shared", adds loaders
+import { pipelineHealthFor } from "@/lib/city-progress-shared";
+```
+
+**When to split:** the moment a client component needs a non-type export from a server module, stop and split. Don't try to bend the import.
+
+**Reference fix:** `ce5550e`. Pattern now lives as `lib/city-progress.ts` (server) + `lib/city-progress-shared.ts` (client-safe).
+
+### 12.3 SQL errors in admin-shell rendering crash EVERY route
+
+`getStaffSendCapStatus` is called by the top-bar pill in the admin shell. When it threw `42703 column does not exist`, every page in `/(admin)/*` rendered "Application error". Server-component throws in shell-level rendering kill the entire route group.
+
+**Rule:** any query that runs in the layout / shell / sidebar / top-bar must be wrapped in `try/catch` with a graceful fallback. The pill should disappear, not crash the app.
+
+Pre-deploy smoke test for shell components: load `/`, `/venues`, `/campaigns`, `/inbox`, `/city-campaigns/[any-id]` and confirm each renders without "Application error".
+
+### 12.4 try/catch swallows SQL errors silently
+
+`palette-search.ts` had the wrong column name for months — every Cmd+K search silently returned empty because the catch logged + returned `[]`. Users never saw an error, just felt the feature was broken.
+
+**Rule:** when a try/catch around a query exists, the catch must log via `logger.error` with the full err object AND the query intent. Pre-deploy: `grep -rn "catch.*{$" lib/ app/` and check every catch surfaces the error to Sentry or stdout. Bonus: a silent-failure unit test that asserts a known-bad query throws.
+
+### 12.5 The carry-over transcript summary is not a schema source
+
+The transcript header from a compacted prior session lists column names. Those notes are second-hand and have been wrong (they had `staffOutreachEmails.emailAddress` documented correctly but I still tried to select a different non-existent column from that same table). The transcript is for context, not source-of-truth. `db/schema/*.ts` is source-of-truth.
+
+Last updated: 2026-05-27 — added §12 after 4 production-breaking commits in one session.
