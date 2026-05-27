@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* Dark-mode variant strategy:
+   We keep the OS @media query for components that style via raw CSS (the
+   .card-surface block below uses @media (prefers-color-scheme: dark) for
+   that). For Tailwind utilities the variant uses .dark as the class hook.
+   
+   The toggle in the top bar offers three states:
+     light  → <html class="light">       (forces light even on dark OS)
+     dark   → <html class="dark">        (forces dark even on light OS)
+     system → no class on <html>         (falls through to OS @media)
+   
+   By default Tailwind 4 keys `dark:` off prefers-color-scheme; we override
+   that here so the toggle wins. For "system" state, we use a meta-script
+   in layout.tsx that re-applies .dark on every prefers-color-scheme
+   change so the OS still drives it. This trades a tiny bit of JS overhead
+   for a uniform single source of truth (the class). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Tailwind 4 CSS-first config. Design tokens live in @theme; map to
    utility classes automatically. */
 
