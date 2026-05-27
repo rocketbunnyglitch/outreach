@@ -82,7 +82,6 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
            email_address AS email, staff_member_id, outreach_brand_id
     FROM staff_outreach_emails
     WHERE gmail_oauth_refresh_token IS NOT NULL
-      AND archived_at IS NULL
     ORDER BY COALESCE(gmail_last_polled_at, '1970-01-01'::timestamptz) ASC
     LIMIT ${BATCH_INBOX_LIMIT}
     FOR UPDATE SKIP LOCKED

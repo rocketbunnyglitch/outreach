@@ -9,7 +9,7 @@ ALTER TABLE staff_outreach_emails
 
 CREATE INDEX IF NOT EXISTS staff_outreach_emails_gmail_poll_idx
   ON staff_outreach_emails (gmail_last_polled_at NULLS FIRST)
-  WHERE gmail_oauth_refresh_token IS NOT NULL AND archived_at IS NULL;
+  WHERE gmail_oauth_refresh_token IS NOT NULL;
 
 COMMENT ON COLUMN staff_outreach_emails.gmail_last_polled_at
   IS 'Set by the gmail polling worker on every pass, regardless of outcome. Order-by NULLS FIRST so brand-new inboxes get polled first.';
