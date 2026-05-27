@@ -45,6 +45,18 @@ export const staffMembers = pgTable(
     // user-TZ display in cross-city views.
     timezone: text("timezone").notNull().default("America/Toronto"),
 
+    // E.164 cell phone for the staffer. Powers Quo escalation handoff
+    // (Yesu/JC escalate calls to Brandon) and future per-staffer call-from
+    // routing. Migration 0023 seeds Yesu + JC. NULL allowed: not every
+    // staffer needs one on file (e.g. Gela / Web & Graphics).
+    phoneE164: text("phone_e164"),
+
+    // Free-form display title shown in the UI ("Outreach Specialist",
+    // "Outreach Manager", "Outreach Director", "Web & Graphics", etc).
+    // Distinct from `role`, which gates permissions; `title` is purely
+    // display. See DECISIONS.md and migration 0023.
+    title: text("title"),
+
     // Top-down weekly goals (Section 7.4 of the spec). 0 = no goal set.
     weeklyEmailGoal: integer("weekly_email_goal").notNull().default(0),
     weeklyCallGoal: integer("weekly_call_goal").notNull().default(0),
