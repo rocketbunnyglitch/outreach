@@ -30,6 +30,7 @@ import { db } from "@/lib/db";
 import {
   isGoogleMapsConfigured,
   nearbyVenueSearch,
+  resolveMapsUrlToPlace,
   textSearchPlaces,
   weightedCenter,
 } from "@/lib/google-places";
@@ -302,6 +303,8 @@ export async function addPlaceToCampaign(opts: {
             name: opts.place.name,
             googlePlaceId: opts.place.placeId,
             address: opts.place.address,
+            phoneE164: opts.place.phone,
+            websiteUrl: opts.place.website,
             location: { lng: opts.place.lng, lat: opts.place.lat },
             createdBy: staff.id,
             updatedBy: staff.id,
@@ -485,4 +488,109 @@ export async function fetchCityMapBestCenter(opts: {
   }
 
   return result;
+}
+
+// =========================================================================
+// addVenueFromMapsUrl — paste a Google Maps URL, get a venue in the
+// directory + a cold-outreach entry on the campaign, all in one shot.
+//
+// Three URL shapes handled by parseGoogleMapsUrl + resolveShortMapsUrl
+// in lib/google-places.ts:
+//   - https://www.google.com/maps/place/... (place_id embedded)
+//   - https://goo.gl/maps/... (short link; HEAD-redirect-resolved)
+//   - https://maps.app.goo.gl/... (mobile share link; same resolver)
+//
+// On success: name, address, phone, website, lat/lng, types persisted
+// onto the venue + a cold-outreach entry created in the campaign.
+//
+// Failure cases (returned as { ok: false, error }):
+//   - URL doesn't parse / isn't a Google Maps URL
+//   - URL is coord-only (no place_id) — operator should re-share after
+//     tapping the specific business on the map
+//   - Places Details lookup fails (rate limit, expired place id)
+//   - Maps API key not configured
+// =========================================================================
+
+export async function addVenueFromMapsUrl(opts: {
+  cityCampaignId: string;
+  url: string;
+}): Promise<{
+  ok: boolean;
+  venueId?: string;
+  /** What we resolved — surfaced so the UI can show a preview before
+      navigating away. Populated on success only. */
+  resolved?: {
+    name: string;
+    address: string | null;
+    phone: string | null;
+    website: string | null;
+  };
+  error?: string;
+}> {
+  await requireStaff();
+
+  if (!isGoogleMapsConfigured()) {
+    return { ok: false, error: "Google Maps API key isn't configured." };
+  }
+
+  const url = opts.url.trim();
+  if (!url) return { ok: false, error: "Paste a Google Maps URL first." };
+
+  // Resolve the city to attach the venue to
+  const cityRows = await db.execute<{ city_id: string }>(sql`
+    SELECT cc.city_id FROM city_campaigns cc
+    WHERE cc.id = ${opts.cityCampaignId}
+    LIMIT 1
+  `);
+  const cityList: Array<{ city_id: string }> = Array.isArray(cityRows)
+    ? (cityRows as unknown as Array<{ city_id: string }>)
+    : ((cityRows as unknown as { rows: Array<{ city_id: string }> }).rows ?? []);
+  const cityId = cityList[0]?.city_id;
+  if (!cityId) return { ok: false, error: "City campaign not found." };
+
+  // Resolve the URL → PlaceDetails
+  const place = await resolveMapsUrlToPlace(url);
+  if (!place) {
+    return {
+      ok: false,
+      error:
+        "Couldn't resolve that URL. If it's a coord-only link, tap the specific venue on the map first, then share again.",
+    };
+  }
+  if (place.lat == null || place.lng == null) {
+    return {
+      ok: false,
+      error: "Resolved the URL but Google didn't return coords for the venue.",
+    };
+  }
+
+  // Hand off to the existing add-to-campaign flow
+  const addResult = await addPlaceToCampaign({
+    cityCampaignId: opts.cityCampaignId,
+    cityId,
+    place: {
+      placeId: place.placeId,
+      name: place.name,
+      lat: place.lat,
+      lng: place.lng,
+      address: place.address,
+      phone: place.phone,
+      website: place.website,
+      rating: place.rating,
+      userRatingCount: place.userRatingCount,
+      types: place.types,
+    },
+  });
+
+  if (!addResult.ok) return { ok: false, error: addResult.error };
+  return {
+    ok: true,
+    venueId: addResult.venueId,
+    resolved: {
+      name: place.name,
+      address: place.address,
+      phone: place.phone,
+      website: place.website,
+    },
+  };
 }

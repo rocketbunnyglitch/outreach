@@ -24,6 +24,7 @@ import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CitySheetHeader } from "../_components/city-sheet-header";
 import { ColdOutreachTable } from "../_components/cold-outreach-table";
 import { CrawlSlotTable } from "../_components/crawl-slot-table";
+import { PasteMapsUrl } from "../_components/paste-maps-url";
 
 export const dynamic = "force-dynamic";
 
@@ -222,6 +223,9 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         staff={sheetData?.staff ?? []}
         currentStaffId={currentStaff.id}
       />
+
+      {/* Paste a Google Maps URL → directory + cold-outreach entry */}
+      {process.env.GOOGLE_MAPS_API_KEY && <PasteMapsUrl cityCampaignId={id} />}
 
       {/* Visual venue discovery — pin-tap any bar/restaurant/club to add */}
       {process.env.GOOGLE_MAPS_API_KEY && (
