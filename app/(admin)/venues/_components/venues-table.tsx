@@ -116,12 +116,55 @@ export function VenuesTable({
   // Realtime: refresh the page when another operator changes a venue.
   // Self-events are filtered by currentStaffId so we don't refresh on
   // our own optimistic update.
+  //
+  // Additionally, track recently-edited row ids in a Map of rowId →
+  // {expiresAt, byStaffName, color} so we can briefly highlight the row
+  // after a teammate's change. The highlight auto-clears after ~3s.
   // -----------------------------------------------------------------
+  const [recentEdits, setRecentEdits] = useState<
+    Map<
+      string,
+      { expiresAt: number; byStaffName: string | null; color: ReturnType<typeof colorForStaff> }
+    >
+  >(() => new Map());
   const realtime = useRealtimeChannel({
     channel: "realtime:venues",
     currentStaffId,
-    onEvent: () => router.refresh(),
+    onEvent: (event) => {
+      router.refresh();
+      if (event.id && event.byStaffId) {
+        setRecentEdits((prev) => {
+          const next = new Map(prev);
+          next.set(event.id ?? "", {
+            expiresAt: Date.now() + 3000,
+            byStaffName: event.byStaffName ?? null,
+            color: colorForStaff(event.byStaffId ?? ""),
+          });
+          return next;
+        });
+      }
+    },
   });
+
+  // Clean up expired highlights periodically
+  useEffect(() => {
+    if (recentEdits.size === 0) return;
+    const id = setInterval(() => {
+      setRecentEdits((prev) => {
+        const now = Date.now();
+        let mutated = false;
+        const next = new Map(prev);
+        for (const [k, v] of next) {
+          if (v.expiresAt < now) {
+            next.delete(k);
+            mutated = true;
+          }
+        }
+        return mutated ? next : prev;
+      });
+    }, 500);
+    return () => clearInterval(id);
+  }, [recentEdits.size]);
 
   // -----------------------------------------------------------------
   // Presence: who else is viewing this page? Shows an avatar stack in
@@ -527,6 +570,7 @@ export function VenuesTable({
               rowPeers={peersByRow.get(`venue:${venue.id}`) ?? []}
               onMouseEnter={() => setHoveredRowId(`venue:${venue.id}`)}
               onMouseLeave={() => setHoveredRowId(null)}
+              recentEdit={recentEdits.get(venue.id) ?? null}
             />
           ))}
           <AddVenueRow cities={addRowCities} />
@@ -565,6 +609,7 @@ function VenueTableRow({
   rowPeers,
   onMouseEnter,
   onMouseLeave,
+  recentEdit,
 }: {
   venue: VenueRow;
   selected: boolean;
@@ -579,6 +624,12 @@ function VenueTableRow({
   }>;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  /** Highlight info if this row was recently edited by a teammate. */
+  recentEdit: {
+    expiresAt: number;
+    byStaffName: string | null;
+    color: ReturnType<typeof colorForStaff>;
+  } | null;
 }) {
   const nameCellId = `venue:${venue.id}:name`;
   const capacityCellId = `venue:${venue.id}:capacity`;
@@ -587,8 +638,12 @@ function VenueTableRow({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        "group/row relative transition-colors",
+        "group/row relative transition-colors duration-700",
         selected && "bg-blue-50/50 dark:bg-blue-950/20",
+        // Brief background flash when a teammate just changed this row.
+        // The recentEdit prop is provided for ~3s then cleared by the parent's
+        // expiry timer; the transition-colors above smooths the fade-out.
+        recentEdit && "bg-amber-50/60 dark:bg-amber-950/30",
       )}
     >
       <td className="w-9 px-3 py-2">
