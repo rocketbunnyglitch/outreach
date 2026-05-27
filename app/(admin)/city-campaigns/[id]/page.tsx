@@ -17,6 +17,7 @@ import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
+import { CityVenueMap } from "../_components/CityVenueMap";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CitySheetHeader } from "../_components/city-sheet-header";
 import { ColdOutreachTable } from "../_components/cold-outreach-table";
@@ -213,6 +214,15 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         staff={sheetData?.staff ?? []}
         currentStaffId={currentStaff.id}
       />
+
+      {/* Visual venue discovery — pin-tap any bar/restaurant/club to add */}
+      {process.env.GOOGLE_MAPS_API_KEY && (
+        <CityVenueMap
+          cityCampaignId={id}
+          cityId={cc.city.id}
+          googleMapsApiKey={process.env.GOOGLE_MAPS_API_KEY}
+        />
+      )}
 
       <NotesSection
         targetType="city_campaign"
