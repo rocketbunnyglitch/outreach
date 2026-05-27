@@ -298,3 +298,133 @@ function escapeHtml(s: string): string {
 // DB requires it. For email_messages we side-step it because the table
 // has no audit columns by design (it's an immutable ledger).
 void withAuditContext;
+
+/**
+ * setThreadClassification — manual override of the triage classification.
+ * Once an operator sets one explicitly, the Gmail poller's auto-update
+ * guard (only-when-unclassified) protects this choice from getting
+ * clobbered by a later inbound message.
+ */
+export async function setThreadClassification(
+  threadId: string,
+  classification:
+    | "interested"
+    | "question"
+    | "callback_requested"
+    | "decline"
+    | "unsubscribe"
+    | "auto_reply"
+    | "spam"
+    | "unclassified",
+): Promise<ActionResult<{ ok: true }>> {
+  const { staff } = await requireStaff();
+  try {
+    await db.execute(sql`
+      UPDATE email_threads
+      SET classification = ${classification}::reply_classification,
+          updated_at = NOW(),
+          updated_by = ${staff.id}
+      WHERE id = ${threadId}
+    `);
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName,
+    });
+    revalidatePath("/inbox");
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    logger.error({ err, threadId, classification }, "setThreadClassification failed");
+    return { ok: false, error: "Couldn't update classification." };
+  }
+}
+
+/**
+ * backfillThreadClassifications — re-runs the triage classifier across
+ * every thread that's currently unclassified, using the latest inbound
+ * message in each thread as the signal.
+ *
+ * Admin-only — meant for one-shot cleanup after the classifier ships or
+ * after a rule update. Caps at 500 threads per run to avoid hammering
+ * the DB; re-run to keep going if there are more.
+ */
+export async function backfillThreadClassifications(): Promise<
+  ActionResult<{ updated: number; remaining: number }>
+> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Only admins can run the classifier backfill." };
+  }
+
+  const { classifyInboundEmail } = await import("@/lib/triage-classifier");
+
+  // Pull up to 500 threads that are still unclassified, joined with
+  // their latest inbound message.
+  const rows = await db.execute<{
+    thread_id: string;
+    subject: string | null;
+    body_text: string | null;
+    from_address: string;
+  }>(sql`
+    WITH latest_inbound AS (
+      SELECT DISTINCT ON (thread_id)
+        thread_id, subject, body_text, from_address
+      FROM email_messages
+      WHERE direction = 'inbound'
+      ORDER BY thread_id, sent_at DESC
+    )
+    SELECT t.id AS thread_id, li.subject, li.body_text, li.from_address
+    FROM email_threads t
+    JOIN latest_inbound li ON li.thread_id = t.id
+    WHERE t.classification = 'unclassified'
+    LIMIT 500
+  `);
+  type Row = {
+    thread_id: string;
+    subject: string | null;
+    body_text: string | null;
+    from_address: string;
+  };
+  const list: Row[] = Array.isArray(rows)
+    ? (rows as unknown as Row[])
+    : ((rows as unknown as { rows: Row[] }).rows ?? []);
+
+  let updated = 0;
+  for (const r of list) {
+    const result = classifyInboundEmail({
+      subject: r.subject,
+      bodyText: r.body_text,
+      fromAddress: r.from_address,
+    });
+    if (result.classification === "unclassified") continue;
+    try {
+      await db.execute(sql`
+        UPDATE email_threads
+        SET classification = ${result.classification}::reply_classification,
+            updated_at = NOW(),
+            updated_by = ${staff.id}
+        WHERE id = ${r.thread_id}
+          AND classification = 'unclassified'
+      `);
+      updated++;
+    } catch (err) {
+      logger.warn({ err, threadId: r.thread_id }, "backfill update failed");
+    }
+  }
+
+  // Count what's still left
+  const remainingRows = await db.execute<{ n: number }>(sql`
+    SELECT COUNT(*)::int AS n
+    FROM email_threads
+    WHERE classification = 'unclassified'
+  `);
+  const remainingList = Array.isArray(remainingRows)
+    ? (remainingRows as unknown as Array<{ n: number }>)
+    : ((remainingRows as unknown as { rows: Array<{ n: number }> }).rows ?? []);
+  const remaining = remainingList[0]?.n ?? 0;
+
+  revalidatePath("/inbox");
+  return { ok: true, data: { updated, remaining } };
+}

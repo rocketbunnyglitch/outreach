@@ -2,6 +2,8 @@ import { cn } from "@/lib/cn";
 import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
 import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
 import Link from "next/link";
+import { ClassificationPicker } from "./ClassificationPicker";
+import { ThreadActions } from "./ThreadActions";
 
 /**
  * Right pane — full thread conversation + CRM rail below.
@@ -47,6 +49,28 @@ export function ThreadPane({
           <span>· {thread.brandName}</span>
           {thread.campaignName && <span>· {thread.campaignName}</span>}
         </p>
+        {/* Triage classification + state actions */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <ClassificationPicker
+            threadId={thread.id}
+            current={
+              thread.classification as
+                | "interested"
+                | "question"
+                | "callback_requested"
+                | "decline"
+                | "unsubscribe"
+                | "auto_reply"
+                | "spam"
+                | "unclassified"
+            }
+          />
+          <ThreadActions
+            threadId={thread.id}
+            currentState={thread.state}
+            unreadCount={thread.unreadCount}
+          />
+        </div>
       </header>
 
       {/* Messages */}

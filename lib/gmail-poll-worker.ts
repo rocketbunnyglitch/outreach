@@ -46,6 +46,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { refreshAccessToken } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
+import { classifyInboundEmail } from "@/lib/triage-classifier";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 const BATCH_INBOX_LIMIT = 10;
@@ -299,6 +300,18 @@ async function ingestMessage(opts: {
   // deferred until we sanitize on the way out)
   const bodyText = extractPlainText(msg.payload as GmailPayload | undefined);
 
+  // Rule-based triage classification — only for inbound messages.
+  // Outbound replies don't get classified (the operator wrote them, no
+  // signal to extract). Tagged on the thread for fast list-view filtering.
+  const classification =
+    direction === "inbound"
+      ? classifyInboundEmail({
+          subject,
+          bodyText,
+          fromAddress: fromHeader,
+        })
+      : null;
+
   // Find or create the thread.
   let threadId: string;
   let threadCreated = false;
@@ -335,6 +348,11 @@ async function ingestMessage(opts: {
             subject,
             state: direction === "inbound" ? "needs_reply" : "waiting_on_them",
             direction,
+            // Newly created threads start with the triage classifier's
+            // best guess. The operator can override via the UI; future
+            // inbound messages won't clobber a manual choice (see the
+            // UPDATE below — it's guarded by classification = 'unclassified').
+            classification: classification?.classification ?? "unclassified",
             snippet,
             messageCount: 0,
             unreadCount: direction === "inbound" ? 1 : 0,
@@ -383,13 +401,27 @@ async function ingestMessage(opts: {
       target: [emailMessages.gmailMessageId, emailMessages.staffOutreachEmailId],
     });
 
-  // Roll thread counters forward.
+  // Roll thread counters forward. Classification only auto-updates when
+  // the thread is currently 'unclassified' AND the new inbound message
+  // has a confident classification — protects manual operator overrides
+  // from being clobbered by a later auto-reply etc.
+  const autoUpgradeClassification =
+    direction === "inbound" && classification && classification.classification !== "unclassified";
+
   await db.execute(sql`
     UPDATE email_threads
     SET
       message_count = message_count + 1,
       ${direction === "inbound" ? sql`unread_count = unread_count + 1,` : sql``}
       ${direction === "inbound" ? sql`last_inbound_at = ${receivedAt},` : sql`last_outbound_at = ${receivedAt},`}
+      ${
+        autoUpgradeClassification
+          ? sql`classification = CASE
+                  WHEN classification = 'unclassified' THEN ${classification.classification}::reply_classification
+                  ELSE classification
+                END,`
+          : sql``
+      }
       snippet = ${snippet},
       last_sender_name = ${extractSenderName(fromHeader)},
       state = CASE
