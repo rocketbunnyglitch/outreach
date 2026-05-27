@@ -150,6 +150,74 @@ export async function draftOutreachEmail(
     }
   }
 
+  // -------------------------------------------------------------------
+  // Slot inventory: for each upcoming event in this city campaign,
+  // compute how many open slots remain by role. "Open" = required count
+  // minus count of venue_events in 'confirmed' or 'contract_signed'
+  // status. We only care about future events.
+  // -------------------------------------------------------------------
+  const inventoryResult = await db.execute<{
+    event_date: string;
+    day_part: string | null;
+    open_wristband: number;
+    open_middle: number;
+    open_final: number;
+  }>(sql`
+    SELECT
+      e.event_date::text AS event_date,
+      e.day_part::text AS day_part,
+      GREATEST(
+        e.required_wristband_count - COALESCE((
+          SELECT COUNT(*) FROM venue_events ve
+          WHERE ve.event_id = e.id
+            AND ve.role = 'wristband'
+            AND ve.status IN ('confirmed', 'contract_signed')
+        ), 0),
+        0
+      )::int AS open_wristband,
+      GREATEST(
+        e.required_middle_count - COALESCE((
+          SELECT COUNT(*) FROM venue_events ve
+          WHERE ve.event_id = e.id
+            AND ve.role = 'middle'
+            AND ve.status IN ('confirmed', 'contract_signed')
+        ), 0),
+        0
+      )::int AS open_middle,
+      GREATEST(
+        e.required_final_count - COALESCE((
+          SELECT COUNT(*) FROM venue_events ve
+          WHERE ve.event_id = e.id
+            AND ve.role = 'final'
+            AND ve.status IN ('confirmed', 'contract_signed')
+        ), 0),
+        0
+      )::int AS open_final
+    FROM events e
+    WHERE e.city_campaign_id = ${parsed.data.cityCampaignId}
+      AND e.event_date >= CURRENT_DATE
+      AND e.archived_at IS NULL
+    ORDER BY e.event_date ASC
+    LIMIT 8
+  `);
+  type InventoryRow = {
+    event_date: string;
+    day_part: string | null;
+    open_wristband: number;
+    open_middle: number;
+    open_final: number;
+  };
+  const inventoryRows: InventoryRow[] = Array.isArray(inventoryResult)
+    ? (inventoryResult as unknown as InventoryRow[])
+    : ((inventoryResult as unknown as { rows: InventoryRow[] }).rows ?? []);
+  const slotInventory = inventoryRows.map((row) => ({
+    eventDate: row.event_date,
+    dayPart: row.day_part,
+    openWristband: row.open_wristband,
+    openMiddle: row.open_middle,
+    openFinal: row.open_final,
+  }));
+
   const draft = await aiDraft({
     venue: {
       name: ctx.venue_name,
@@ -167,6 +235,7 @@ export async function draftOutreachEmail(
     },
     intendedRole: parsed.data.intendedRole,
     upcomingCrawlDate: ctx.upcoming_crawl_date,
+    slotInventory,
     history,
   });
 

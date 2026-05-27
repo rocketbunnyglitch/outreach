@@ -141,6 +141,22 @@ export async function draftOutreachEmail(input: {
   intendedRole: "wristband" | "middle" | "final" | "alt_final" | "unspecified";
   /** Earliest crawl date in the city — gives the email urgency framing. */
   upcomingCrawlDate: string | null;
+  /**
+   * Per-upcoming-event slot availability for this city campaign.
+   * Each row says "on date X, role Y still has N open slots".
+   * Used so the draft pitches a slot type that's actually OPEN —
+   * if the wristband for Sept 14 is taken but a middle is open,
+   * the email proposes middle instead of pitching wristband.
+   *
+   * If empty, the prompt falls back to generic flexibility language.
+   */
+  slotInventory: Array<{
+    eventDate: string;
+    dayPart: string | null;
+    openWristband: number;
+    openMiddle: number;
+    openFinal: number;
+  }>;
   /** Prior outreach attempts to this venue, oldest first. */
   history: Array<{
     channel: string;
@@ -160,15 +176,90 @@ Style rules:
 - Tone: friendly business peer, not salesy. Match the voice of a small-business owner reaching out to another small-business owner.
 - Always mention: who we are, what we're proposing, expected attendance + revenue impact, what we need from them, a soft next-step CTA.
 - Never make up specifics we don't have (don't fabricate dates, capacity numbers, or past relationships).
+- When the prompt provides a slot inventory, ground the pitch in WHICH slots are actually open on WHICH dates. Don't propose a slot type that's marked taken across all dates. If everything is taken, frame the email as building a relationship for the next campaign instead.
 - If this is a follow-up, acknowledge the prior touch lightly and offer fresh value.
 - End with the sender's first name only — no signature block (the system appends one).
 
 Output format: return ONLY a JSON object on a single line with two keys: "subject" and "body". The body should use \\n\\n for paragraph breaks. No markdown, no preamble, no apologies. Just the JSON.`;
 
-  const roleHint =
-    input.intendedRole === "unspecified"
-      ? "We'd be open to slotting them as a wristband-pickup venue (early in the night), a middle stop, or a final destination — whichever fits their vibe."
-      : `We're hoping to slot them as a ${input.intendedRole.replace("_", " ")} venue in the crawl.`;
+  // Build a slot-inventory hint that tells Claude what's actually open.
+  // Three branches:
+  //   1. operator specified a role AND that role is open on some date → pitch it
+  //   2. operator specified a role but it's closed everywhere → pitch any open alternative + note the gap
+  //   3. operator left it unspecified → list whatever's open across dates
+  const totalOpen = input.slotInventory.reduce(
+    (acc, ev) => ({
+      wristband: acc.wristband + ev.openWristband,
+      middle: acc.middle + ev.openMiddle,
+      final: acc.final + ev.openFinal,
+    }),
+    { wristband: 0, middle: 0, final: 0 },
+  );
+
+  // Pretty per-date string for the prompt.
+  const inventoryLines = input.slotInventory
+    .map((ev) => {
+      const parts: string[] = [];
+      if (ev.openWristband > 0) parts.push(`${ev.openWristband} wristband`);
+      if (ev.openMiddle > 0) parts.push(`${ev.openMiddle} middle`);
+      if (ev.openFinal > 0) parts.push(`${ev.openFinal} final`);
+      const summary = parts.length > 0 ? parts.join(", ") : "no open slots (every slot filled)";
+      const date = ev.dayPart ? `${ev.eventDate} (${ev.dayPart.replace("_", " ")})` : ev.eventDate;
+      return `  - ${date}: ${summary}`;
+    })
+    .join("\n");
+
+  let roleHint: string;
+  if (input.intendedRole === "unspecified") {
+    if (input.slotInventory.length === 0) {
+      roleHint =
+        "We don't have specific crawl dates locked in for this city yet — pitch the partnership at a high level and propose finding a slot together.";
+    } else {
+      const openSummary: string[] = [];
+      if (totalOpen.wristband > 0) openSummary.push("wristband-pickup (early in the night)");
+      if (totalOpen.middle > 0) openSummary.push("middle stop");
+      if (totalOpen.final > 0) openSummary.push("final destination");
+      if (openSummary.length === 0) {
+        roleHint =
+          "All slots in our current crawls are filled — pitch this as building a relationship for the next campaign rather than the current one.";
+      } else {
+        roleHint = `We have openings for ${openSummary.join(", ")}. Suggest the slot that best fits their vibe (e.g. a high-energy late spot for final, a casual early venue for wristband).`;
+      }
+    }
+  } else {
+    // Operator specified a role. Check if it's actually open.
+    const roleKey =
+      input.intendedRole === "wristband"
+        ? "openWristband"
+        : input.intendedRole === "middle"
+          ? "openMiddle"
+          : "openFinal";
+    const datesWithRoleOpen = input.slotInventory.filter((ev) => ev[roleKey] > 0);
+
+    if (datesWithRoleOpen.length > 0) {
+      const dateList = datesWithRoleOpen
+        .slice(0, 3)
+        .map((ev) => ev.eventDate)
+        .join(", ");
+      roleHint = `We're hoping to slot them as a ${input.intendedRole.replace("_", " ")} venue. Open ${input.intendedRole.replace("_", " ")} slots on: ${dateList}.`;
+    } else {
+      // The requested role is closed everywhere. Pivot to whatever IS open.
+      const alternatives: string[] = [];
+      if (totalOpen.wristband > 0) alternatives.push("wristband-pickup");
+      if (totalOpen.middle > 0) alternatives.push("middle stop");
+      if (totalOpen.final > 0) alternatives.push("final destination");
+      if (alternatives.length === 0) {
+        roleHint = `We originally hoped for a ${input.intendedRole.replace("_", " ")} slot, but every slot in our current crawls is filled. Pitch this as building a relationship for the next campaign.`;
+      } else {
+        roleHint = `The ${input.intendedRole.replace("_", " ")} slot is taken on every current crawl date, so don't lead with that — instead pitch ${alternatives.join(" or ")} as the available option.`;
+      }
+    }
+  }
+
+  const inventoryHint =
+    input.slotInventory.length > 0
+      ? `\nCrawl slot inventory (current campaign):\n${inventoryLines}\n`
+      : "";
 
   const historyHint =
     input.history.length === 0
@@ -195,7 +286,7 @@ Campaign:
   Upcoming crawl date: ${input.upcomingCrawlDate ?? "(no specific date yet — soon)"}
 
 Intent: ${roleHint}
-
+${inventoryHint}
 ${historyHint}
 
 This is ${isFollowUp ? `a follow-up (last email ~${lastEmail?.daysAgo}d ago)` : "a first-touch email"}.
