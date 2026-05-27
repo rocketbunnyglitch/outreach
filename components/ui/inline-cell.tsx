@@ -46,6 +46,17 @@ interface Props {
     /** Tailwind classes from colorForStaff() — typically just `ring` and `bg`. */
     color: { bg: string; ring: string; text: string };
   } | null;
+  /**
+   * Grid coordinates for arrow-key navigation. When BOTH are provided,
+   * the cell's trigger button gets a `data-grid-cell="r:c"` attribute
+   * which the parent table's useGridArrowNav hook reads to move focus
+   * between neighboring cells.
+   *
+   * After Enter-in-edit commits, focus auto-moves down a row (Sheets
+   * convention). After Escape, focus returns to the cell's own button.
+   */
+  gridRow?: number;
+  gridCol?: number;
 }
 
 /**
@@ -80,6 +91,8 @@ export function InlineCell({
   cellId,
   onFocusChange,
   peerFocus,
+  gridRow,
+  gridCol,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -87,6 +100,37 @@ export function InlineCell({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  // Tracks where focus should go after a successful commit. Set in
+  // onKeyDown depending on which key the operator pressed.
+  const postCommitDirRef = useRef<"down" | "right" | "self" | null>(null);
+
+  // After a successful commit, move focus per postCommitDirRef. Runs
+  // when `pending` flips back to false AND there's no error.
+  useEffect(() => {
+    if (pending) return;
+    if (error) return;
+    const dir = postCommitDirRef.current;
+    if (!dir) return;
+    postCommitDirRef.current = null;
+
+    if (dir === "self") {
+      buttonRef.current?.focus();
+      return;
+    }
+    if (gridRow == null || gridCol == null) return;
+    const nextRow = dir === "down" ? gridRow + 1 : gridRow;
+    const nextCol = dir === "right" ? gridCol + 1 : gridCol;
+    // Tiny defer so React's commit phase finishes before we hunt for
+    // the next button in the DOM (it may have just rendered).
+    requestAnimationFrame(() => {
+      const next = document.querySelector<HTMLButtonElement>(
+        `[data-grid-cell="${nextRow}:${nextCol}"]`,
+      );
+      if (next) next.focus();
+      else buttonRef.current?.focus();
+    });
+  }, [pending, error, gridRow, gridCol]);
 
   // Sync draft + clear optimistic on incoming prop change (server source-of-truth)
   useEffect(() => {
@@ -126,8 +170,28 @@ export function InlineCell({
     setEditing(false);
     const next = draft.trim();
 
-    // No-op when unchanged
-    if (next === value.trim()) return;
+    // No-op when unchanged. Still respect postCommitDirRef so Enter
+    // on an unchanged cell still moves focus down (matches Sheets).
+    if (next === value.trim()) {
+      const dir = postCommitDirRef.current;
+      postCommitDirRef.current = null;
+      if (dir === "self") {
+        requestAnimationFrame(() => buttonRef.current?.focus());
+        return;
+      }
+      if (dir && gridRow != null && gridCol != null) {
+        const nextRow = dir === "down" ? gridRow + 1 : gridRow;
+        const nextCol = dir === "right" ? gridCol + 1 : gridCol;
+        requestAnimationFrame(() => {
+          const target = document.querySelector<HTMLButtonElement>(
+            `[data-grid-cell="${nextRow}:${nextCol}"]`,
+          );
+          if (target) target.focus();
+          else buttonRef.current?.focus();
+        });
+      }
+      return;
+    }
 
     // Local validation
     if (validate) {
@@ -164,18 +228,26 @@ export function InlineCell({
     setEditing(false);
     setDraft(value);
     setError(null);
+    // Pull focus back to the cell's trigger so arrow nav can continue
+    // without an extra Tab. requestAnimationFrame avoids racing the
+    // editing→non-editing render.
+    requestAnimationFrame(() => buttonRef.current?.focus());
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
+      postCommitDirRef.current = "down";
       commit();
     } else if (e.key === "Escape") {
       e.preventDefault();
+      postCommitDirRef.current = "self";
       cancel();
     } else if (e.key === "Tab") {
-      // Let the default tab behavior run (move to next focusable),
-      // but commit on the way out.
+      // Default tab behavior also fires — focus will move to the next
+      // tabbable element. We set 'right' so that if the table has a
+      // sparse tab order, we still snap to the grid-right cell.
+      postCommitDirRef.current = "right";
       commit();
     }
   }
@@ -221,8 +293,20 @@ export function InlineCell({
       )}
     >
       <button
+        ref={buttonRef}
         type="button"
         onClick={startEdit}
+        onKeyDown={(e) => {
+          // Arrow nav happens at the table level via useGridArrowNav.
+          // We only handle Enter / F2 here to enter edit mode without
+          // a mouse click. (Browsers already fire onClick on Enter for
+          // a focused button, so technically only F2 is custom here.)
+          if (e.key === "F2") {
+            e.preventDefault();
+            startEdit();
+          }
+        }}
+        data-grid-cell={gridRow != null && gridCol != null ? `${gridRow}:${gridCol}` : undefined}
         disabled={disabled}
         aria-label={label ?? "Edit"}
         className={cn(

@@ -44,13 +44,14 @@ import {
   usePresenceHeartbeat,
   useRealtimeChannel,
 } from "@/components/ui/data-table";
+import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { cn } from "@/lib/cn";
 import type { OutreachPhase } from "@/lib/outreach-phase";
 import { AlertTriangle, Archive, Loader2, Send, Shield, ShieldOff, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { bulkUpdateVenues } from "../_actions";
 import { commitVenueListField, createVenueFromRow } from "../_actions";
 import { BulkSendDialog } from "./bulk-send-dialog";
@@ -365,8 +366,15 @@ export function VenuesTable({
   // -----------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------
+  // Arrow-key cell-to-cell nav (Sheets-style). The hook attaches a
+  // keydown listener to gridNavRef.current and moves focus between
+  // any InlineCell with `data-grid-cell` set. No effect on cells
+  // without grid coords — opt-in per cell.
+  const gridNavRef = useRef<HTMLDivElement>(null);
+  useGridArrowNav(gridNavRef);
+
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={gridNavRef} className="flex flex-col gap-4">
       {/* Live cursors overlay — fixed-positioned, pointer-events:none.
           Renders other peers' mouse positions as colored arrows + labels. */}
       <LiveCursorsLayer cursors={cursors} />
@@ -596,10 +604,11 @@ export function VenuesTable({
         </DataTableHead>
 
         <DataTableBody>
-          {visibleRows.map((venue) => (
+          {visibleRows.map((venue, rowIndex) => (
             <VenueTableRow
               key={venue.id}
               venue={venue}
+              rowIndex={rowIndex}
               selected={selected.has(venue.id)}
               onToggle={() => toggle(venue.id)}
               peerFocusByCell={peerFocusByCell}
@@ -639,6 +648,7 @@ export function VenuesTable({
 
 function VenueTableRow({
   venue,
+  rowIndex,
   selected,
   onToggle,
   peerFocusByCell,
@@ -649,6 +659,9 @@ function VenueTableRow({
   recentEdit,
 }: {
   venue: VenueRow;
+  /** 0-indexed row position; powers arrow-key cell-to-cell nav via
+      the data-grid-cell attribute on each inline cell's button. */
+  rowIndex: number;
   selected: boolean;
   onToggle: () => void;
   peerFocusByCell: Map<string, { displayName: string; color: ReturnType<typeof colorForStaff> }>;
@@ -699,6 +712,8 @@ function VenueTableRow({
         <div className="flex items-center gap-2">
           <InlineCell
             cellId={nameCellId}
+            gridRow={rowIndex}
+            gridCol={0}
             onFocusChange={onCellFocusChange}
             peerFocus={peerFocusByCell.get(nameCellId) ?? null}
             value={venue.name}
@@ -738,6 +753,8 @@ function VenueTableRow({
       <td className="w-24 px-2 py-2 text-right">
         <InlineCell
           cellId={capacityCellId}
+          gridRow={rowIndex}
+          gridCol={1}
           onFocusChange={onCellFocusChange}
           peerFocus={peerFocusByCell.get(capacityCellId) ?? null}
           value={venue.capacity == null ? "" : String(venue.capacity)}
