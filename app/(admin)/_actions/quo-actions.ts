@@ -327,3 +327,164 @@ export async function logViberAttempt(
     return { ok: false, error: "Couldn't log the Viber attempt." };
   }
 }
+
+const callOutcomeSchema = z.object({
+  /** The original logCallAttempt's returned id, so we can update the
+      same row instead of creating a duplicate. Optional — if missing
+      we insert a fresh row (for callers that didn't log on click). */
+  logId: uuid.optional(),
+  venueId: uuid,
+  outreachBrandId: uuid,
+  cityCampaignId: uuid.optional(),
+  coldEntryId: uuid.optional(),
+  outcome: z.enum([
+    "wrong_number",
+    "no_answer",
+    "voicemail",
+    "email_collected",
+    "callback_requested",
+    "interested",
+    "declined",
+    "competing_event",
+    "hours_mismatch",
+  ]),
+  notes: z.string().max(2000).optional(),
+});
+
+/**
+ * recordCallOutcome — operator-driven follow-up after a click-to-call.
+ * Updates the placeholder outreach_log row (if logId provided) with the
+ * actual outcome + notes, or inserts a fresh row when called without
+ * an initial logCallAttempt.
+ *
+ * Side effects driven by the outcome:
+ *   wrong_number       → venues.phone may need re-validation; we flag
+ *                        the venue with a 'bad_phone' note (notes column)
+ *   declined / competing_event / hours_mismatch
+ *                      → cold_outreach_entries.status → 'declined'
+ *   interested / email_collected / callback_requested
+ *                      → cold_outreach_entries.status → 'warm'
+ *   no_answer / voicemail
+ *                      → no status change; last_touch_at bumped only
+ */
+export async function recordCallOutcome(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ logId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = callOutcomeSchema.safeParse({
+    logId: formData.get("logId") ?? undefined,
+    venueId: formData.get("venueId"),
+    outreachBrandId: formData.get("outreachBrandId"),
+    cityCampaignId: formData.get("cityCampaignId") ?? undefined,
+    coldEntryId: formData.get("coldEntryId") ?? undefined,
+    outcome: formData.get("outcome"),
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "Invalid outcome payload.",
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const { outcome, notes, logId, coldEntryId, cityCampaignId } = parsed.data;
+
+  // Map outcome → cold_outreach_status (uses the existing enum)
+  type ColdStatus =
+    | "interested"
+    | "called"
+    | "declined"
+    | "wrong_number"
+    | "no_answer"
+    | "voicemail";
+  const statusByOutcome: Record<string, ColdStatus> = {
+    interested: "interested",
+    email_collected: "interested",
+    callback_requested: "called",
+    declined: "declined",
+    competing_event: "declined",
+    hours_mismatch: "declined",
+    wrong_number: "wrong_number",
+    no_answer: "no_answer",
+    voicemail: "voicemail",
+  };
+  const nextEntryStatus: ColdStatus | null = statusByOutcome[outcome] ?? null;
+
+  try {
+    const finalLogId = await withAuditContext(staff.id, async (tx) => {
+      let id = logId;
+      if (id) {
+        // Update placeholder row from logCallAttempt
+        await tx
+          .update(outreachLog)
+          .set({
+            outcome,
+            notes: notes ?? null,
+          })
+          .where(eq(outreachLog.id, id));
+      } else {
+        // No prior placeholder — insert fresh
+        const [row] = await tx
+          .insert(outreachLog)
+          .values({
+            venueId: parsed.data.venueId,
+            outreachBrandId: parsed.data.outreachBrandId,
+            channel: "call",
+            outcome,
+            notes: notes ?? null,
+            staffMemberId: staff.id,
+            createdBy: staff.id,
+          })
+          .returning({ id: outreachLog.id });
+        id = row?.id ?? "";
+      }
+
+      // wrong_number: null out the venue's phone so future click-to-call
+      // attempts don't auto-target a known-bad number. The outreach_log
+      // row still has the original outcome + notes for forensics.
+      if (outcome === "wrong_number") {
+        await tx
+          .update(venues)
+          .set({
+            phoneE164: null,
+            updatedBy: staff.id,
+          })
+          .where(eq(venues.id, parsed.data.venueId));
+      }
+
+      // Cold outreach status bump
+      if (coldEntryId && nextEntryStatus) {
+        await tx
+          .update(coldOutreachEntries)
+          .set({
+            status: nextEntryStatus,
+            lastTouchAt: new Date(),
+            updatedBy: staff.id,
+          })
+          .where(eq(coldOutreachEntries.id, coldEntryId));
+      } else if (coldEntryId) {
+        // No status change but bump last touch
+        await tx
+          .update(coldOutreachEntries)
+          .set({
+            lastTouchAt: new Date(),
+            updatedBy: staff.id,
+          })
+          .where(eq(coldOutreachEntries.id, coldEntryId));
+      }
+
+      return id;
+    });
+
+    if (cityCampaignId) {
+      revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    }
+    revalidatePath(`/venues/${parsed.data.venueId}`);
+    return { ok: true, data: { logId: finalLogId } };
+  } catch (err) {
+    logger.error({ err, outcome }, "recordCallOutcome failed");
+    return { ok: false, error: "Couldn't save the call outcome." };
+  }
+}

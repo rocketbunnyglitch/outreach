@@ -6,6 +6,7 @@ import { buildViberCallLink, buildViberChatLink } from "@/lib/viber";
 import { Loader2, MessageCircle, MessageSquare, PhoneCall, Send, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { logCallAttempt, logViberAttempt, sendQuoSmsToVenue } from "../../_actions/quo-actions";
+import { CallOutcomePopover } from "./call-outcome-popover";
 
 interface Props {
   venueId: string;
@@ -42,6 +43,12 @@ export function QuoDialControls({
 }: Props) {
   const [calling, startCall] = useTransition();
   const [smsOpen, setSmsOpen] = useState(false);
+  // The placeholder log id from the click — passed to the outcome
+  // popover so saving the result updates the same row instead of
+  // creating a duplicate.
+  const [pendingCallLogId, setPendingCallLogId] = useState<string | null>(null);
+  // Tracks whether the outcome popover should be visible.
+  const [outcomeOpen, setOutcomeOpen] = useState(false);
 
   if (!venuePhone) {
     return <span className="font-mono text-[10px] text-zinc-400">—</span>;
@@ -52,16 +59,23 @@ export function QuoDialControls({
       window.open(`tel:${venuePhone}`, "_self");
       return;
     }
-    // Fire-and-forget log; the tel: deep-link opens immediately
     const fd = new FormData();
     fd.set("venueId", venueId);
     fd.set("outreachBrandId", outreachBrandId);
     fd.set("cityCampaignId", cityCampaignId);
     fd.set("coldEntryId", coldEntryId);
     startCall(async () => {
-      await logCallAttempt(null, fd);
+      const result = await logCallAttempt(null, fd);
+      if (result.ok && result.data) {
+        setPendingCallLogId(result.data.logId);
+        // Show the outcome popover so the operator captures the result
+        // as the call progresses. They can dismiss without saving if
+        // it was a mis-tap.
+        setOutcomeOpen(true);
+      }
     });
-    // Open the dialer simultaneously
+    // Open the dialer simultaneously — tel: hands off to the device's
+    // phone app / OpenPhone desktop / iPhone hand-off
     window.open(`tel:${venuePhone}`, "_self");
   }
 
@@ -121,6 +135,20 @@ export function QuoDialControls({
           cityCampaignId={cityCampaignId}
           coldEntryId={coldEntryId}
           onClose={() => setSmsOpen(false)}
+        />
+      )}
+      {outcomeOpen && pendingCallLogId && outreachBrandId && (
+        <CallOutcomePopover
+          logId={pendingCallLogId}
+          venueId={venueId}
+          venueName={venueName}
+          outreachBrandId={outreachBrandId}
+          cityCampaignId={cityCampaignId}
+          coldEntryId={coldEntryId}
+          onClose={() => {
+            setOutcomeOpen(false);
+            setPendingCallLogId(null);
+          }}
         />
       )}
     </div>

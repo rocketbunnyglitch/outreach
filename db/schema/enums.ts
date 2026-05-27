@@ -106,6 +106,9 @@ export const outreachOutcome = pgEnum("outreach_outcome", [
   "confirmed",
   "contract_signed",
   "wrong_number",
+  "email_collected",
+  "competing_event",
+  "hours_mismatch",
 ]);
 
 export const replyCategory = pgEnum("reply_category", [
