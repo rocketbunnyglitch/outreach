@@ -72,6 +72,7 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
           v.name ILIKE ${pattern}
           OR v.address ILIKE ${pattern}
           OR v.email ILIKE ${pattern}
+          OR v.phone_e164 ILIKE ${pattern}
         )
       ORDER BY similarity(v.name, ${q}) DESC NULLS LAST, v.name
       LIMIT 8
@@ -88,15 +89,16 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       (
         SELECT
           cc.id::text,
-          cc.name,
+          c.name AS name,
           ob.display_name AS brand_name,
           true AS is_city_campaign
         FROM city_campaigns cc
+        LEFT JOIN cities c ON c.id = cc.city_id
         LEFT JOIN campaigns cm ON cm.id = cc.campaign_id
         LEFT JOIN outreach_brands ob ON ob.id = cm.outreach_brand_id
-        WHERE cc.archived_at IS NULL
-          AND (cc.name ILIKE ${pattern} OR ob.display_name ILIKE ${pattern})
-        ORDER BY cc.name
+        WHERE cc.status != 'cancelled'
+          AND (c.name ILIKE ${pattern} OR ob.display_name ILIKE ${pattern})
+        ORDER BY c.name
         LIMIT 4
       )
       UNION ALL
