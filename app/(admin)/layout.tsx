@@ -11,6 +11,7 @@ import { GlobalShortcuts } from "./_components/global-shortcuts";
 import { MobileSectionNav } from "./_components/mobile-section-nav";
 import { MountCommandPalette } from "./_components/mount-command-palette";
 import { NotificationsBell } from "./_components/notifications-bell";
+import { PrimeTimePill } from "./_components/prime-time-pill";
 import { SendCapPill } from "./_components/send-cap-pill";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
@@ -103,6 +104,7 @@ function TopBar({
           <CampaignSwitcher />
         </div>
         <div className="flex items-center gap-2">
+          <PrimeTimePill timezone={staff.timezone ?? "America/Toronto"} />
           <SendCapPill
             inboxes={sendCap.inboxes}
             totalSent={sendCap.totalSent24h}
