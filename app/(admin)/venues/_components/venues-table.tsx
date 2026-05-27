@@ -32,6 +32,7 @@ import {
   FilterChipSet,
   FilterRow,
   FilterTextInput,
+  LiveCursorsLayer,
   PresenceAvatarStack,
   SortableHeader,
   applyColumnFilters,
@@ -39,6 +40,7 @@ import {
   formatRealtimeAgo,
   useColumnFilter,
   useColumnSort,
+  useLiveCursors,
   usePresenceHeartbeat,
   useRealtimeChannel,
 } from "@/components/ui/data-table";
@@ -189,6 +191,16 @@ export function VenuesTable({
     currentStaffId,
     focusedCellId: myFocusedCell ?? undefined,
     focusedRowId: debouncedRowId ?? undefined,
+  });
+
+  // -----------------------------------------------------------------
+  // Phase 15: live cursors. Renders a small colored arrow + name label
+  // wherever a peer's mouse is. Same per-staff color palette as the
+  // avatar stack, per-cell focus indicators, and per-row dots.
+  // -----------------------------------------------------------------
+  const { cursors } = useLiveCursors({
+    route: "/venues",
+    currentStaffId,
   });
 
   // Build a lookup of cellId → peer info, so each InlineCell can render
@@ -349,6 +361,10 @@ export function VenuesTable({
   // -----------------------------------------------------------------
   return (
     <div className="flex flex-col gap-4">
+      {/* Live cursors overlay — fixed-positioned, pointer-events:none.
+          Renders other peers' mouse positions as colored arrows + labels. */}
+      <LiveCursorsLayer cursors={cursors} />
+
       {/* Bulk action bar — appears when anything is selected */}
       {selectedCount > 0 && (
         <div className="-mx-2 sticky top-14 z-30 flex flex-col gap-3 border-zinc-200 border-b bg-[color:var(--color-canvas)]/95 px-2 py-3 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/95">

@@ -69,3 +69,12 @@ export {
 } from "./use-presence-heartbeat";
 
 export { PresenceAvatarStack, colorForStaff } from "./presence-avatar-stack";
+
+export {
+  useLiveCursors,
+  type CursorState,
+  type UseLiveCursorsOptions,
+  type UseLiveCursorsReturn,
+} from "./use-live-cursors";
+
+export { LiveCursorsLayer } from "./live-cursors-layer";
