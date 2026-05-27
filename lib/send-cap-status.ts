@@ -72,7 +72,7 @@ export async function getStaffSendCapStatus(staffId: string): Promise<StaffSendC
     SELECT
       soe.id,
       soe.email_address,
-      soe.display_name,
+      s.display_name,
       soe.daily_send_limit,
       soe.warmup_phase,
       soe.warmup_started_at,
@@ -86,6 +86,7 @@ export async function getStaffSendCapStatus(staffId: string): Promise<StaffSendC
           AND em.sent_at > NOW() - INTERVAL '24 hours'
       ), 0)::int AS sent_24h
     FROM staff_outreach_emails soe
+    JOIN staff_members s ON s.id = soe.staff_member_id
     WHERE soe.staff_member_id = ${staffId}
       AND soe.gmail_oauth_refresh_token IS NOT NULL
   `);
