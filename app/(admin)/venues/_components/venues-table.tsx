@@ -47,7 +47,7 @@ import type { OutreachPhase } from "@/lib/outreach-phase";
 import { AlertTriangle, Archive, Loader2, Send, Shield, ShieldOff, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import type { bulkUpdateVenues } from "../_actions";
 import { commitVenueListField, createVenueFromRow } from "../_actions";
 import { BulkSendDialog } from "./bulk-send-dialog";
@@ -129,10 +129,22 @@ export function VenuesTable({
   // we're editing.
   // -----------------------------------------------------------------
   const [myFocusedCell, setMyFocusedCell] = useState<string | null>(null);
+  // Row the user is currently hovering. Debounced so we don't write to
+  // Redis on every mousemove. 250ms is enough for "they actually stopped
+  // on this row" without feeling laggy when scrolling.
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [debouncedRowId, setDebouncedRowId] = useState<string | null>(null);
+  useEffect(() => {
+    if (hoveredRowId === debouncedRowId) return;
+    const t = setTimeout(() => setDebouncedRowId(hoveredRowId), 250);
+    return () => clearTimeout(t);
+  }, [hoveredRowId, debouncedRowId]);
+
   const presence = usePresenceHeartbeat({
     route: "/venues",
     currentStaffId,
     focusedCellId: myFocusedCell ?? undefined,
+    focusedRowId: debouncedRowId ?? undefined,
   });
 
   // Build a lookup of cellId → peer info, so each InlineCell can render
@@ -145,6 +157,32 @@ export function VenuesTable({
         displayName: v.displayName,
         color: colorForStaff(v.staffId),
       });
+    }
+    return map;
+  }, [presence.others]);
+
+  // Phase 13: lookup of rowId → peer[] for the per-row mini avatars on
+  // the right edge of each row. A row can have multiple peers near it
+  // (one hovering while another is editing a cell), so values are arrays.
+  // We also fold focusedCellId → rowId here so 'editing a cell' implies
+  // 'present on the row' for free.
+  const peersByRow = useMemo(() => {
+    const map = new Map<
+      string,
+      Array<{ staffId: string; displayName: string; color: ReturnType<typeof colorForStaff> }>
+    >();
+    for (const v of presence.others) {
+      const rowId =
+        v.focusedRowId ?? (v.focusedCellId ? extractRowIdFromCellId(v.focusedCellId) : undefined);
+      if (!rowId) continue;
+      const entry = {
+        staffId: v.staffId,
+        displayName: v.displayName,
+        color: colorForStaff(v.staffId),
+      };
+      const list = map.get(rowId);
+      if (list && !list.some((p) => p.staffId === v.staffId)) list.push(entry);
+      else if (!list) map.set(rowId, [entry]);
     }
     return map;
   }, [presence.others]);
@@ -476,6 +514,9 @@ export function VenuesTable({
               onToggle={() => toggle(venue.id)}
               peerFocusByCell={peerFocusByCell}
               onCellFocusChange={setMyFocusedCell}
+              rowPeers={peersByRow.get(`venue:${venue.id}`) ?? []}
+              onMouseEnter={() => setHoveredRowId(`venue:${venue.id}`)}
+              onMouseLeave={() => setHoveredRowId(null)}
             />
           ))}
           <AddVenueRow cities={addRowCities} />
@@ -511,18 +552,34 @@ function VenueTableRow({
   onToggle,
   peerFocusByCell,
   onCellFocusChange,
+  rowPeers,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   venue: VenueRow;
   selected: boolean;
   onToggle: () => void;
   peerFocusByCell: Map<string, { displayName: string; color: ReturnType<typeof colorForStaff> }>;
   onCellFocusChange: (cellId: string | null) => void;
+  /** Peers currently focused on this row (hover or editing a cell here). */
+  rowPeers: Array<{
+    staffId: string;
+    displayName: string;
+    color: ReturnType<typeof colorForStaff>;
+  }>;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
 }) {
   const nameCellId = `venue:${venue.id}:name`;
   const capacityCellId = `venue:${venue.id}:capacity`;
   return (
     <tr
-      className={cn("group/row transition-colors", selected && "bg-blue-50/50 dark:bg-blue-950/20")}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={cn(
+        "group/row relative transition-colors",
+        selected && "bg-blue-50/50 dark:bg-blue-950/20",
+      )}
     >
       <td className="w-9 px-3 py-2">
         <input
@@ -604,9 +661,34 @@ function VenueTableRow({
         />
       </td>
 
-      {/* DNC toggle */}
-      <td className="w-20 px-2 py-2 text-center">
+      {/* DNC toggle + per-row peer dots (Phase 13) */}
+      <td className="relative w-20 px-2 py-2 text-center">
         <DncToggle venue={venue} />
+        {rowPeers.length > 0 && (
+          <div
+            className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-0 flex items-center gap-0.5"
+            aria-hidden="true"
+          >
+            {rowPeers.slice(0, 3).map((p) => (
+              <span
+                key={p.staffId}
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full border border-white dark:border-zinc-900",
+                  p.color.bg,
+                )}
+                title={`${p.displayName} is on this row`}
+              />
+            ))}
+            {rowPeers.length > 3 && (
+              <span
+                className="font-mono text-[8px] text-zinc-400"
+                title={`+${rowPeers.length - 3} more`}
+              >
+                +{rowPeers.length - 3}
+              </span>
+            )}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -788,4 +870,19 @@ function AddVenueRow({ cities }: { cities: Array<{ id: string; name: string }> }
       </td>
     </tr>
   );
+}
+
+// =========================================================================
+// Helpers
+// =========================================================================
+
+/**
+ * Cell IDs look like 'venue:<uuid>:<field>'. Extract the rowId (the
+ * 'venue:<uuid>' prefix) so cell focus also lights up the containing row
+ * for Phase 13's per-row peer dots.
+ */
+function extractRowIdFromCellId(cellId: string): string | undefined {
+  const parts = cellId.split(":");
+  if (parts.length < 2) return undefined;
+  return `${parts[0]}:${parts[1]}`;
 }
