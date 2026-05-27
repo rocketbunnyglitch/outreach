@@ -197,10 +197,16 @@ export function VenuesTable({
   // Phase 15: live cursors. Renders a small colored arrow + name label
   // wherever a peer's mouse is. Same per-staff color palette as the
   // avatar stack, per-cell focus indicators, and per-row dots.
+  //
+  // showCursors is per-session; some operators find cursor motion
+  // distracting. Toggle is exposed via a small button in the header
+  // strip. No persistence in v1 — refresh resets to 'on'.
   // -----------------------------------------------------------------
+  const [showCursors, setShowCursors] = useState(true);
   const { cursors } = useLiveCursors({
     route: "/venues",
     currentStaffId,
+    enabled: showCursors,
   });
 
   // Build a lookup of cellId → peer info, so each InlineCell can render
@@ -521,6 +527,21 @@ export function VenuesTable({
             <Wifi className="h-2.5 w-2.5" />
             {realtime.connected ? "live" : "offline"}
           </span>
+          {/* Cursor opt-out for operators who find peer cursors
+              distracting. Per-session; refresh resets. */}
+          <button
+            type="button"
+            onClick={() => setShowCursors((v) => !v)}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] transition-colors",
+              showCursors
+                ? "text-zinc-500 hover:bg-zinc-200/60 hover:text-zinc-900 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100"
+                : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700",
+            )}
+            title={showCursors ? "Hide peer cursors (this session)" : "Show peer cursors"}
+          >
+            {showCursors ? "cursors on" : "cursors off"}
+          </button>
         </div>
       </div>
 
