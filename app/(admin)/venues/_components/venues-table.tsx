@@ -21,6 +21,7 @@
  *   • Optimistic locking via the existing audit log on venues.
  */
 
+import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
 import type { queueBulkSend } from "@/app/(admin)/send-queue/_actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -407,23 +408,32 @@ export function VenuesTable({
 
       {/* Result summary strip */}
       <div className="flex items-baseline justify-between gap-3">
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-          {visibleRows.length}
-          {visibleRows.length !== rows.length && ` of ${rows.length}`} venues
-          {filter.activeColumns.length > 0 && (
-            <>
-              {" "}
-              ·{" "}
-              <button
-                type="button"
-                onClick={filter.clear}
-                className="underline-offset-2 hover:underline"
-              >
-                clear filters
-              </button>
-            </>
-          )}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            {visibleRows.length}
+            {visibleRows.length !== rows.length && ` of ${rows.length}`} venues
+            {filter.activeColumns.length > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <button
+                  type="button"
+                  onClick={filter.clear}
+                  className="underline-offset-2 hover:underline"
+                >
+                  clear filters
+                </button>
+              </>
+            )}
+          </p>
+          {/* Saved views: ?sort=... + ?f.* params get bundled into named views */}
+          <SavedViewsPicker
+            surface="venues"
+            contextId={null}
+            filterKeys={["sort", "f.name", "f.cityName", "f.address", "f.doNotContact"]}
+            pathname="/venues"
+          />
+        </div>
         {/* Realtime indicator + last-edit chip + presence avatars */}
         <div className="flex items-center gap-3">
           <PresenceAvatarStack people={presence.others} />
