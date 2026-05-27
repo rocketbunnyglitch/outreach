@@ -75,7 +75,7 @@ export async function loadTeamActivity(windowHours = 4): Promise<TeamActivitySum
     target_name: string | null;
   };
   type OutreachRow = {
-    occurred_at: string;
+    created_at: string;
     staff_member_id: string;
     display_name: string;
     channel: string;
@@ -113,7 +113,7 @@ export async function loadTeamActivity(windowHours = 4): Promise<TeamActivitySum
     `),
     db.execute<OutreachRow>(sql`
       SELECT
-        ol.occurred_at::text AS occurred_at,
+        ol.created_at::text AS created_at,
         ol.staff_member_id::text AS staff_member_id,
         sm.display_name,
         ol.channel::text AS channel,
@@ -121,8 +121,8 @@ export async function loadTeamActivity(windowHours = 4): Promise<TeamActivitySum
       FROM outreach_log ol
       JOIN staff_members sm ON sm.id = ol.staff_member_id
       JOIN venues v ON v.id = ol.venue_id
-      WHERE ol.occurred_at > NOW() - (${hours} || ' hours')::interval
-      ORDER BY ol.occurred_at DESC
+      WHERE ol.created_at > NOW() - (${hours} || ' hours')::interval
+      ORDER BY ol.created_at DESC
       LIMIT 500
     `),
   ]);
@@ -189,10 +189,10 @@ export async function loadTeamActivity(windowHours = 4): Promise<TeamActivitySum
   for (const r of outreachRows) {
     const entry = ensure(r.staff_member_id, r.display_name);
     entry.counts.outreach++;
-    if (r.occurred_at > entry.lastActiveAt) entry.lastActiveAt = r.occurred_at;
+    if (r.created_at > entry.lastActiveAt) entry.lastActiveAt = r.created_at;
     if (entry.recent.length < 5) {
       entry.recent.push({
-        when: r.occurred_at,
+        when: r.created_at,
         verb: VERB_LABELS[r.channel] ?? r.channel,
         target: r.venue_name,
       });
