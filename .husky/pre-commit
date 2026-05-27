@@ -1,19 +1,17 @@
 #!/usr/bin/env sh
 
-# Pre-commit: run Biome on staged files, then typecheck the whole project.
-# Fast failures are good — keep this lean.
+# Pre-commit: run Biome on the repo, then typecheck.
+# Uses npm (matches the package-lock.json in this repo). If you switch
+# to pnpm later, change these to 'pnpm exec' / 'pnpm typecheck'.
 
-# Biome check on the whole repo is faster than per-file in practice (it
-# warm-caches everything). If this becomes too slow, switch to lint-staged.
-pnpm exec biome check . || {
+npm exec biome check . || {
   echo ""
-  echo "❌ Biome found issues. Fix with: pnpm lint:fix"
+  echo "X Biome found issues. Fix with: npm run lint:fix"
   exit 1
 }
 
-# Typecheck. Slow path; revisit if it becomes a friction point.
-pnpm typecheck || {
+npm run typecheck || {
   echo ""
-  echo "❌ TypeScript errors. Fix before committing."
+  echo "X TypeScript errors. Fix before committing."
   exit 1
 }

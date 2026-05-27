@@ -1,12 +1,11 @@
 #!/usr/bin/env sh
 
-# Commit message lint via commitlint. Enforces Conventional Commits format.
-# Format: <type>(<scope>): <subject>
-# Example: feat(outreach): add gmail oauth flow
+# Enforces Conventional Commits via commitlint.
+# Uses npm (matches the package-lock.json in this repo).
 
-pnpm exec commitlint --edit "$1" || {
+npm exec commitlint --edit "$1" || {
   echo ""
-  echo "❌ Commit message does not follow Conventional Commits."
+  echo "X Commit message does not follow Conventional Commits."
   echo ""
   echo "Format: <type>(<scope>)?: <subject>"
   echo "Types:  feat | fix | docs | style | refactor | perf | test | build | ci | chore | revert"
