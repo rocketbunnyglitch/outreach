@@ -24,6 +24,7 @@ export default auth((req) => {
   // Public surfaces (mirror what auth.config.ts authorized() considers public)
   const isPublic =
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/cron") ||
     pathname === "/api/health" ||
     pathname === "/login" ||
     pathname.startsWith("/_next") ||
