@@ -33,7 +33,7 @@ const ITEMS: NavItem[] = [
   { href: "/discover", label: "Discover" },
   { href: "/import", label: "Import" },
   { href: "/templates", label: "Templates" },
-  { href: "/settings/inboxes", label: "Settings" },
+  { href: "/settings/inboxes", label: "Email Connection" },
   // Admin section — only renders for staff.role='admin'
   { href: "/admin", label: "Admin hub", adminOnly: true },
   { href: "/admin/analytics", label: "Team analytics", adminOnly: true },

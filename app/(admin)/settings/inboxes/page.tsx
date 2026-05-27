@@ -8,7 +8,7 @@ import { AlertCircle, CheckCircle2, Mail, Unplug } from "lucide-react";
 import Link from "next/link";
 import { disconnectInbox } from "./_actions";
 
-export const metadata = { title: "Email Inboxes · Settings · Crawl Engine" };
+export const metadata = { title: "Email Connection · Crawl Engine" };
 export const dynamic = "force-dynamic";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -98,7 +98,7 @@ export default async function InboxesPage({ searchParams }: Props) {
   return (
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
       <header>
-        <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Settings</p>
+        <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Email Connection</p>
         <h1 className="mt-1 font-semibold text-4xl tracking-tight">Email inboxes</h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
           Connect your Gmail account to each outreach brand. Cold emails are sent from YOUR Gmail

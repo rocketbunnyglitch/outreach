@@ -88,7 +88,7 @@ const SECTIONS: Array<{
       { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
       { href: "/templates", label: "Templates", icon: <FileCode className="h-3.5 w-3.5" /> },
       { href: "/import", label: "Import", icon: <Upload className="h-3.5 w-3.5" /> },
-      { href: "/settings/inboxes", label: "Settings", icon: <Settings className="h-3.5 w-3.5" /> },
+      { href: "/settings/inboxes", label: "Email Connection", icon: <Settings className="h-3.5 w-3.5" /> },
     ],
   },
 ];
