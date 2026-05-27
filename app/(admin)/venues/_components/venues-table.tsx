@@ -34,6 +34,7 @@ import {
   PresenceAvatarStack,
   SortableHeader,
   applyColumnFilters,
+  colorForStaff,
   formatRealtimeAgo,
   useColumnFilter,
   useColumnSort,
@@ -110,11 +111,29 @@ export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentSt
   // -----------------------------------------------------------------
   // Presence: who else is viewing this page? Shows an avatar stack in
   // the header strip. The meeting-room feature.
+  // Local focus state — passed to the heartbeat so peers see what cell
+  // we're editing.
   // -----------------------------------------------------------------
+  const [myFocusedCell, setMyFocusedCell] = useState<string | null>(null);
   const presence = usePresenceHeartbeat({
     route: "/venues",
     currentStaffId,
+    focusedCellId: myFocusedCell ?? undefined,
   });
+
+  // Build a lookup of cellId → peer info, so each InlineCell can render
+  // a colored ring + corner pill when a teammate is editing it.
+  const peerFocusByCell = useMemo(() => {
+    const map = new Map<string, { displayName: string; color: ReturnType<typeof colorForStaff> }>();
+    for (const v of presence.others) {
+      if (!v.focusedCellId) continue;
+      map.set(v.focusedCellId, {
+        displayName: v.displayName,
+        color: colorForStaff(v.staffId),
+      });
+    }
+    return map;
+  }, [presence.others]);
 
   // -----------------------------------------------------------------
   // Sort + filter state (URL-synced via the data-table hooks)
@@ -441,6 +460,8 @@ export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentSt
               venue={venue}
               selected={selected.has(venue.id)}
               onToggle={() => toggle(venue.id)}
+              peerFocusByCell={peerFocusByCell}
+              onCellFocusChange={setMyFocusedCell}
             />
           ))}
         </DataTableBody>
@@ -473,11 +494,17 @@ function VenueTableRow({
   venue,
   selected,
   onToggle,
+  peerFocusByCell,
+  onCellFocusChange,
 }: {
   venue: VenueRow;
   selected: boolean;
   onToggle: () => void;
+  peerFocusByCell: Map<string, { displayName: string; color: ReturnType<typeof colorForStaff> }>;
+  onCellFocusChange: (cellId: string | null) => void;
 }) {
+  const nameCellId = `venue:${venue.id}:name`;
+  const capacityCellId = `venue:${venue.id}:capacity`;
   return (
     <tr
       className={cn("group/row transition-colors", selected && "bg-blue-50/50 dark:bg-blue-950/20")}
@@ -497,6 +524,9 @@ function VenueTableRow({
       <td className="px-2 py-2">
         <div className="flex items-center gap-2">
           <InlineCell
+            cellId={nameCellId}
+            onFocusChange={onCellFocusChange}
+            peerFocus={peerFocusByCell.get(nameCellId) ?? null}
             value={venue.name}
             placeholder="(unnamed)"
             label="Venue name"
@@ -533,6 +563,9 @@ function VenueTableRow({
       {/* Capacity — inline-editable number */}
       <td className="w-24 px-2 py-2 text-right">
         <InlineCell
+          cellId={capacityCellId}
+          onFocusChange={onCellFocusChange}
+          peerFocus={peerFocusByCell.get(capacityCellId) ?? null}
           value={venue.capacity == null ? "" : String(venue.capacity)}
           placeholder="—"
           label="Capacity"

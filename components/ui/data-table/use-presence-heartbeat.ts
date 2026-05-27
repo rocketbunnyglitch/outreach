@@ -4,27 +4,28 @@
  * usePresenceHeartbeat — sends heartbeats on a 10s cadence and exposes
  * the current viewer roster.
  *
+ * Two transports work together:
+ *   1. HTTP POST /api/presence/heartbeat every 10s — claims our spot in
+ *      the registry and pulls a fresh roster of who else is here.
+ *   2. SSE subscription to a presence-change channel — when any peer
+ *      focuses/blurs/joins/leaves, the server pushes a notification and
+ *      this hook fires an immediate re-poll. Result: per-cell focus
+ *      indicators update within ~50ms instead of waiting up to 10s.
+ *
  * The heartbeat fires:
  *   • Immediately on mount (to claim presence right away)
  *   • Every 10s while the component is mounted AND the tab is visible
  *     (no point burning Redis writes on a backgrounded tab)
  *   • Once more when the tab becomes visible again after being hidden,
  *     so the user shows up as soon as they refocus
+ *   • Immediately when focusedRowId or focusedCellId changes (so peers
+ *     see "X is editing" without delay)
+ *   • Immediately when ANY peer's presence changes (via SSE push)
  *
  * On unmount, fires a best-effort `drop` request (navigator.sendBeacon
  * if available — survives navigation; XHR fallback otherwise) so the
  * avatar disappears immediately for other viewers instead of waiting
  * for the 30s TTL.
- *
- * Usage:
- *
- *   const { viewers, others } = usePresenceHeartbeat({
- *     route: "/venues",
- *     currentStaffId: staff.id,
- *     focusedRowId: hoveredRowId,        // optional, for Phase 13
- *     focusedCellId: editingCellId,      // optional, for Phase 14
- *   });
- *   <AvatarStack people={others} />
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -129,6 +130,43 @@ export function usePresenceHeartbeat({
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [enabled, intervalMs, beat]);
+
+  // -----------------------------------------------------------------
+  // Immediate heartbeat on focus changes — so peers see "X is editing"
+  // within ~50ms of the click instead of waiting up to 10s.
+  // -----------------------------------------------------------------
+  useEffect(() => {
+    if (!enabled) return;
+    if (focusedCellId === undefined && focusedRowId === undefined) return;
+    beat();
+  }, [enabled, focusedCellId, focusedRowId, beat]);
+
+  // -----------------------------------------------------------------
+  // SSE: when any peer's presence changes (joined, moved focus, left),
+  // re-poll the roster immediately. Keeps peer-focus indicators feeling
+  // live without bumping the heartbeat cadence.
+  // -----------------------------------------------------------------
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof window === "undefined") return;
+    const channel = `realtime:presence-route-${route}`;
+    const sseUrl = `/api/realtime/stream?channel=${encodeURIComponent(channel)}`;
+    const source = new EventSource(sseUrl);
+    source.addEventListener("realtime", (e) => {
+      const messageEvent = e as MessageEvent;
+      try {
+        const event = JSON.parse(messageEvent.data) as { byStaffId?: string };
+        // Skip self-events — we already know our own state
+        if (event.byStaffId && event.byStaffId === currentStaffId) return;
+        beat();
+      } catch {
+        // ignore malformed
+      }
+    });
+    return () => {
+      source.close();
+    };
+  }, [enabled, route, currentStaffId, beat]);
 
   // -----------------------------------------------------------------
   // Unmount cleanup — fire a /drop so other viewers see us leave instantly

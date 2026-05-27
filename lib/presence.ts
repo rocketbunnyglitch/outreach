@@ -22,6 +22,7 @@
  */
 
 import { logger } from "./logger";
+import { publishRealtime } from "./realtime-publish";
 import { getRedis } from "./redis";
 
 const KEY_PREFIX = "presence:route:";
@@ -40,6 +41,13 @@ export interface PresenceEntry {
 
 /**
  * Record a heartbeat for `staffId` on `route`. Resets the 30s TTL.
+ *
+ * Also publishes a presence-update realtime event when the focused row
+ * or cell changes since the previous heartbeat. This is the push half
+ * of the focus indicator — peers see "X is editing this cell" within
+ * milliseconds of the click, instead of waiting up to 10s for their
+ * next heartbeat poll.
+ *
  * Fire-and-forget — failures are logged but never thrown.
  */
 export async function recordHeartbeat(
@@ -48,10 +56,37 @@ export async function recordHeartbeat(
 ): Promise<void> {
   const key = `${KEY_PREFIX}${route}:${entry.staffId}`;
   const payload: PresenceEntry = { ...entry, at: new Date().toISOString() };
+
+  let prev: PresenceEntry | null = null;
   try {
-    await getRedis().set(key, JSON.stringify(payload), "EX", TTL_SECONDS);
+    const redis = getRedis();
+    const prevRaw = await redis.get(key);
+    if (prevRaw) {
+      try {
+        prev = JSON.parse(prevRaw) as PresenceEntry;
+      } catch {
+        // tolerate corrupted JSON
+      }
+    }
+    await redis.set(key, JSON.stringify(payload), "EX", TTL_SECONDS);
   } catch (err) {
     logger.warn({ err, route, staffId: entry.staffId }, "presence heartbeat write failed");
+    return;
+  }
+
+  // Publish a presence-change event when focused row or cell changed,
+  // so subscribers can update peer-focus borders immediately.
+  const focusChanged =
+    prev?.focusedCellId !== payload.focusedCellId || prev?.focusedRowId !== payload.focusedRowId;
+  const joined = prev === null;
+  if (focusChanged || joined) {
+    publishRealtime({
+      table: `presence-route-${route}`,
+      id: entry.staffId,
+      type: "update",
+      byStaffId: entry.staffId,
+      byStaffName: entry.displayName,
+    });
   }
 }
 

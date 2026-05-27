@@ -25,6 +25,27 @@ interface Props {
   disabled?: boolean;
   /** Aria-label for the input. */
   label?: string;
+  /**
+   * Logical cell id, e.g. "venue:abc:capacity". Used for presence/realtime
+   * to identify which cell is currently being edited by which staffer.
+   * When provided, the parent receives focus change callbacks.
+   */
+  cellId?: string;
+  /**
+   * Called when this cell enters or leaves edit mode. The argument is the
+   * cellId (entering) or null (leaving). Use to update presence state.
+   */
+  onFocusChange?: (cellId: string | null) => void;
+  /**
+   * Another staffer is focused on this cell. Renders a colored border +
+   * corner pill in their assigned color so the local user knows not to
+   * edit at the same time.
+   */
+  peerFocus?: {
+    displayName: string;
+    /** Tailwind classes from colorForStaff() — typically just `ring` and `bg`. */
+    color: { bg: string; ring: string; text: string };
+  } | null;
 }
 
 /**
@@ -56,6 +77,9 @@ export function InlineCell({
   maxWidth,
   disabled,
   label,
+  cellId,
+  onFocusChange,
+  peerFocus,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -77,6 +101,12 @@ export function InlineCell({
       inputRef.current.select();
     }
   }, [editing]);
+
+  // Notify parent on focus enter/leave (for presence tracking)
+  useEffect(() => {
+    if (!onFocusChange) return;
+    onFocusChange(editing ? (cellId ?? null) : null);
+  }, [editing, cellId, onFocusChange]);
 
   // Clear stale error after 4s so the row resettles
   useEffect(() => {
@@ -184,7 +214,12 @@ export function InlineCell({
   }
 
   return (
-    <div className="group/cell relative inline-flex max-w-full items-center gap-1">
+    <div
+      className={cn(
+        "group/cell relative inline-flex max-w-full items-center gap-1 rounded-sm",
+        peerFocus && cn("ring-2 ring-offset-1 dark:ring-offset-zinc-950", peerFocus.color.ring),
+      )}
+    >
       <button
         type="button"
         onClick={startEdit}
@@ -199,18 +234,39 @@ export function InlineCell({
           disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
         )}
         style={maxWidth ? { maxWidth } : undefined}
-        title={error ?? (isEmpty ? "Click to add" : "Click to edit")}
+        title={
+          peerFocus
+            ? `${peerFocus.displayName} is editing this cell`
+            : (error ?? (isEmpty ? "Click to add" : "Click to edit"))
+        }
       >
         {isEmpty ? placeholder : formatted}
       </button>
       {pending && (
         <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin text-blue-500" aria-hidden="true" />
       )}
-      {!pending && !disabled && !editing && (
+      {!pending && !disabled && !editing && !peerFocus && (
         <Pencil
           className="h-2.5 w-2.5 shrink-0 text-zinc-300 opacity-0 transition-opacity group-hover/cell:opacity-100 dark:text-zinc-600"
           aria-hidden="true"
         />
+      )}
+      {peerFocus && (
+        <span
+          className={cn(
+            "-top-2 -right-2 pointer-events-none absolute z-10 rounded-full border border-white px-1 font-medium font-mono text-[9px] text-white leading-tight shadow-sm dark:border-zinc-950",
+            peerFocus.color.bg,
+          )}
+          aria-label={`${peerFocus.displayName} is editing`}
+          title={`${peerFocus.displayName} is editing this cell`}
+        >
+          {peerFocus.displayName
+            .split(/\s+/)
+            .map((p) => p.charAt(0))
+            .slice(0, 2)
+            .join("")
+            .toUpperCase()}
+        </span>
       )}
       {error && (
         <span
