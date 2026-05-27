@@ -299,7 +299,7 @@ export async function bulkUpdateColdOutreachStatus(
             last_touch_at = NOW(),
             updated_by = ${staff.id},
             updated_at = NOW()
-        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+        WHERE id IN ${parsed.data.entryIds}
           AND archived_at IS NULL
         RETURNING id
       `);
@@ -355,7 +355,7 @@ export async function bulkAssignColdOutreach(
             last_touch_at = NOW(),
             updated_by = ${staff.id},
             updated_at = NOW()
-        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+        WHERE id IN ${parsed.data.entryIds}
           AND archived_at IS NULL
         RETURNING id
       `);
@@ -403,7 +403,7 @@ export async function bulkArchiveColdOutreach(
         SET archived_at = NOW(),
             updated_by = ${staff.id},
             updated_at = NOW()
-        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+        WHERE id IN ${parsed.data.entryIds}
           AND archived_at IS NULL
         RETURNING id
       `);
@@ -451,7 +451,7 @@ export async function bulkUnarchiveColdOutreach(
         SET archived_at = NULL,
             updated_by = ${staff.id},
             updated_at = NOW()
-        WHERE id = ANY(${parsed.data.entryIds}::uuid[])
+        WHERE id IN ${parsed.data.entryIds}
           AND archived_at IS NOT NULL
         RETURNING id
       `);
@@ -559,7 +559,7 @@ export async function generateVenueLeads(
   const placeIds = candidates.map((c) => c.placeId);
   const existing = await db.execute<{ google_place_id: string }>(sql`
     SELECT google_place_id FROM venues
-    WHERE google_place_id = ANY(${placeIds}::text[])
+    WHERE google_place_id IN ${placeIds}
   `);
   const existingList: Array<{ google_place_id: string }> = Array.isArray(existing)
     ? (existing as unknown as Array<{ google_place_id: string }>)
@@ -881,7 +881,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     const validations = await db.execute<{ email: string; status: string }>(sql`
       SELECT email, status::text AS status
       FROM email_validations
-      WHERE email = ANY(${emails.map((e) => e.toLowerCase())}::text[])
+      WHERE email IN ${emails.map((e) => e.toLowerCase())}
     `);
     const list: Array<{ email: string; status: string }> = Array.isArray(validations)
       ? (validations as unknown as Array<{ email: string; status: string }>)

@@ -439,7 +439,7 @@ async function resolveCityNames(lowerNames: string[]): Promise<Map<string, CityM
   }>(sql`
     SELECT id, name, region, country_code, lower(name) AS lower_name
     FROM cities
-    WHERE archived_at IS NULL AND lower(name) = ANY(${lowerNames}::text[])
+    WHERE archived_at IS NULL AND lower(name) IN ${lowerNames}
   `);
 
   type CityRow = {

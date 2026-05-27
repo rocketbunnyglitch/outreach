@@ -420,7 +420,7 @@ export async function bulkSyncEventbriteSales(
         JOIN city_campaigns cc ON cc.id = e.city_campaign_id
         WHERE cc.campaign_id = ${parsed.data.campaignId}
           AND e.eventbrite_event_id IS NOT NULL
-          AND e.id = ANY(${parsed.data.eventIds}::uuid[])
+          AND e.id IN ${parsed.data.eventIds}
       `)
     : await db.execute<{ id: string; eventbrite_event_id: string }>(sql`
         SELECT e.id, e.eventbrite_event_id
@@ -521,7 +521,7 @@ export async function bulkPushEventbriteDescriptions(
     FROM events e
     JOIN city_campaigns cc ON cc.id = e.city_campaign_id
     WHERE cc.campaign_id = ${parsed.data.campaignId}
-      AND e.id = ANY(${parsed.data.eventIds}::uuid[])
+      AND e.id IN ${parsed.data.eventIds}
       AND e.eventbrite_event_id IS NOT NULL
   `);
   const linked: Array<{ id: string; eventbrite_event_id: string }> = Array.isArray(linkedRows)
@@ -617,7 +617,7 @@ export async function bulkUnlinkEventbrite(
             updated_by = ${staff.id},
             updated_at = NOW()
         FROM city_campaigns cc
-        WHERE events.id = ANY(${parsed.data.eventIds}::uuid[])
+        WHERE events.id IN ${parsed.data.eventIds}
           AND events.city_campaign_id = cc.id
           AND cc.campaign_id = ${parsed.data.campaignId}
           AND events.eventbrite_event_id IS NOT NULL

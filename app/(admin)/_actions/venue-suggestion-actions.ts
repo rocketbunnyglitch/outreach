@@ -152,7 +152,7 @@ export async function suggestVenuesForCampaign(
     const dupes = await db.execute<{ google_place_id: string }>(sql`
       SELECT google_place_id
       FROM venues
-      WHERE google_place_id = ANY(${placeIds}::text[])
+      WHERE google_place_id IN ${placeIds}
         AND city_id = (SELECT city_id FROM city_campaigns WHERE id = ${parsed.data.cityCampaignId})
     `);
     type DupeRow = { google_place_id: string };
