@@ -224,10 +224,20 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
     >
       {addError && <ErrorBanner>{addError}</ErrorBanner>}
       {data.places.length === 0 && (
-        <InfoBanner>
-          {data.reason === "google_returned_nothing"
-            ? "Google has no bars / restaurants / nightclubs registered in this city. Either the lat/lng pin is wrong, or the city actually has none."
-            : "No places to show."}
+        <InfoBanner tone={data.reason === "google_error" ? "error" : "info"}>
+          {data.reason === "google_error" ? (
+            <>
+              <strong className="font-medium">Google Places call failed.</strong>{" "}
+              {data.errorDetail ?? "See server logs."}
+            </>
+          ) : data.reason === "google_returned_nothing" ? (
+            "Google has no bars / restaurants / nightclubs registered around this center. Try 'Search this area' after panning the map, or verify the city's lat/lng."
+          ) : (
+            // not_configured + no_city_coords are handled by the early-return
+            // screens above (lines 187 + 199). 'unknown' lands here when the
+            // load promise threw outside the action.
+            "No places to show yet — give it a moment, or pan to search a new area."
+          )}
         </InfoBanner>
       )}
       <div className="relative">
@@ -290,8 +300,16 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
               position={{ lat: selectedPlace.lat, lng: selectedPlace.lng }}
               onCloseClick={() => setSelectedPlace(null)}
             >
-              <div className="min-w-[200px] max-w-[260px] p-1">
-                <h4 className="font-semibold text-sm">{selectedPlace.name}</h4>
+              {/*
+                Google's InfoWindow hardcodes a white background even in
+                dark mode. The body's `dark:text-zinc-100` would otherwise
+                bleed in and render the heading as light-grey-on-white
+                (operator session 11: "bar name shows up in light grey on
+                a white pop up screen"). So we force `text-zinc-900` here
+                with NO dark variant — dark text on white always.
+              */}
+              <div className="min-w-[200px] max-w-[260px] p-1 text-zinc-900">
+                <h4 className="font-semibold text-sm text-zinc-900">{selectedPlace.name}</h4>
                 {selectedPlace.address && (
                   <p className="mt-0.5 text-[11px] text-zinc-600">{selectedPlace.address}</p>
                 )}
@@ -300,7 +318,7 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
                     <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                     {selectedPlace.rating.toFixed(1)}
                     {selectedPlace.userRatingCount != null && (
-                      <span className="text-zinc-400">
+                      <span className="text-zinc-500">
                         {" "}
                         · {selectedPlace.userRatingCount} reviews
                       </span>
@@ -450,7 +468,20 @@ function ErrorBanner({ children }: { children: React.ReactNode }) {
   );
 }
 
-function InfoBanner({ children }: { children: React.ReactNode }) {
+function InfoBanner({
+  children,
+  tone = "info",
+}: {
+  children: React.ReactNode;
+  tone?: "info" | "error";
+}) {
+  if (tone === "error") {
+    return (
+      <div className="border-amber-300 border-b bg-amber-50 px-4 py-2 text-amber-900 text-xs dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+        {children}
+      </div>
+    );
+  }
   return (
     <div className="border-zinc-200 border-b bg-zinc-50 px-4 py-2 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
       {children}

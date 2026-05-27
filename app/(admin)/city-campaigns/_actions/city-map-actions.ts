@@ -72,6 +72,12 @@ export interface CityMapResult {
     | "google_returned_nothing"
     | "google_error"
     | "unknown";
+  /**
+   * Operator-facing detail string when reason === 'google_error'.
+   * Includes specific guidance like "key rejected (403) — referrer
+   * restriction" so the operator knows where to fix it.
+   */
+  errorDetail?: string;
   cached?: boolean;
 }
 
@@ -160,7 +166,14 @@ export async function fetchCityMapPlaces(opts: {
     });
   } catch (err) {
     logger.warn({ err, cityCampaignId: opts.cityCampaignId }, "city-map nearby search failed");
-    return { ok: true, center: { lat, lng }, radiusKm, places: [], reason: "google_error" };
+    return {
+      ok: true,
+      center: { lat, lng },
+      radiusKm,
+      places: [],
+      reason: "google_error",
+      errorDetail: parseGooglePlacesError(err),
+    };
   }
 
   if (candidates.length === 0) {
@@ -621,4 +634,39 @@ export async function addVenueFromMapsUrl(opts: {
       website: place.website,
     },
   };
+}
+
+/**
+ * Translate a Google Places error into operator-facing copy that
+ * points at the fix. Shared between the city-map and discover flows.
+ *
+ * Never leak stack traces; safe to display in the UI.
+ *
+ * See CLAUDE.md §12.4 — no silent failures: every Places error
+ * surfaces a specific reason the operator can act on.
+ */
+function parseGooglePlacesError(err: unknown): string {
+  const e = err as { status?: number; message?: string; code?: string };
+  if (!process.env.GOOGLE_MAPS_API_KEY) {
+    return "GOOGLE_MAPS_API_KEY is not set on the server. Add it to /var/www/outreach/.env and restart.";
+  }
+  if (typeof e?.status === "number") {
+    if (e.status === 403) {
+      return "Google rejected the key (403). Either the HTTP referrer restriction in Cloud Console doesn't include outreach.barcrawlconnect.com, OR Places API (New) isn't enabled.";
+    }
+    if (e.status === 429) {
+      return "Google quota/rate-limit hit (429).";
+    }
+    if (e.status === 401) {
+      return "Google rejected the key (401). Verify the key string in .env matches the active key in Cloud Console.";
+    }
+    if (e.status >= 500) {
+      return `Google server error (${e.status}). Probably transient.`;
+    }
+  }
+  if (e?.message && /(ECONNREFUSED|ENOTFOUND|fetch failed|ETIMEDOUT)/i.test(e.message)) {
+    return `Network error: ${e.message}`;
+  }
+  if (e?.message) return e.message.slice(0, 200);
+  return "Unknown error.";
 }

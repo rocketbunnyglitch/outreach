@@ -114,11 +114,54 @@ export async function searchPlaces(_prev: unknown, formData: FormData): Promise<
     return { ok: true, result, cityId: city.id, existingPlaceIds };
   } catch (err) {
     logger.error({ err }, "places search failed");
+    // Per CLAUDE.md §12.4 — no silent failures. The operator must be
+    // able to see which API failed and how, so they know whether the
+    // fix is in Cloud Console (key restriction), .env
+    // (GOOGLE_MAPS_API_KEY missing), or something else.
+    const detail = parseGoogleMapsError(err);
     return {
       ok: false,
-      error: "Places search failed. See server logs.",
+      error: `Places search failed. ${detail}`,
     };
   }
+}
+
+/**
+ * Surface enough info about a Places API error that the operator can
+ * fix it. Specifically distinguishes:
+ *   - missing key (env var unset)
+ *   - key rejected (403 — usually referrer restriction or API not
+ *     enabled in Cloud Console)
+ *   - rate / quota (429)
+ *   - network (ECONN*)
+ *   - other (return the raw message)
+ *
+ * Never leak stack traces; safe to display in the UI.
+ */
+function parseGoogleMapsError(err: unknown): string {
+  const e = err as { status?: number; message?: string; code?: string };
+  if (!process.env.GOOGLE_MAPS_API_KEY) {
+    return "GOOGLE_MAPS_API_KEY is not set on the server. Add it to /var/www/outreach/.env and restart.";
+  }
+  if (typeof e?.status === "number") {
+    if (e.status === 403) {
+      return "Google rejected the Maps API key (403). Most common causes: the HTTP referrer restriction in Cloud Console doesn't include outreach.barcrawlconnect.com, OR Places API (New) isn't enabled for this key. https://console.cloud.google.com/apis/credentials";
+    }
+    if (e.status === 429) {
+      return "Google Maps quota/rate-limit hit (429). Wait or check billing.";
+    }
+    if (e.status === 401) {
+      return "Google rejected the key (401). Verify the key string in /var/www/outreach/.env matches the active key in Cloud Console.";
+    }
+    if (e.status >= 500) {
+      return `Google Maps server error (${e.status}). Likely transient — try again.`;
+    }
+  }
+  if (e?.message && /(ECONNREFUSED|ENOTFOUND|fetch failed|ETIMEDOUT)/i.test(e.message)) {
+    return `Network error reaching Google: ${e.message}`;
+  }
+  if (e?.message) return e.message.slice(0, 200);
+  return "Unknown error — check the server logs for the stack trace.";
 }
 
 interface ImportResult {
