@@ -10,7 +10,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { queueBulkSend } from "./../send-queue/_actions";
 import { bulkUpdateVenues } from "./_actions";
-import { VenuesListClient } from "./_components/venues-list-client";
+import { VenuesTable } from "./_components/venues-table";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,7 @@ export default async function VenuesListPage() {
     if (existing) existing.push(row);
     else byCity.set(key, [row]);
   }
-  const groups = Array.from(byCity.entries()).map(([cityName, cityRows]) => ({
+  const _groups = Array.from(byCity.entries()).map(([cityName, cityRows]) => ({
     cityName,
     venues: cityRows.map((r) => ({
       id: r.venue.id,
@@ -44,6 +44,19 @@ export default async function VenuesListPage() {
       doNotContact: r.venue.doNotContact,
     })),
   }));
+
+  // Flatten rows for the table; build distinct city list for the filter
+  const flatRows = rows.map((r) => ({
+    id: r.venue.id,
+    name: r.venue.name,
+    cityName: r.city.name,
+    address: r.venue.address,
+    capacity: r.venue.capacity,
+    doNotContact: r.venue.doNotContact,
+  }));
+  const cityOptions = Array.from(new Set(flatRows.map((r) => r.cityName)))
+    .sort()
+    .map((name) => ({ value: name, label: name }));
 
   // Bulk-send dialog data — brands + templates + inbox throttle status per
   // brand for the logged-in staffer. Shape is what BulkSendDialog needs.
@@ -84,8 +97,8 @@ export default async function VenuesListPage() {
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Venues</h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Bars, restaurants, and event spaces — grouped by city. Select rows to bulk-update DNC,
-            archive, or queue cold sends.
+            Bars, restaurants, and event spaces. Click a column header to sort; use the filter row
+            for a quick narrow. Inline-edit name, capacity, and DNC on any row.
           </p>
         </div>
         <Button asChild>
@@ -104,8 +117,9 @@ export default async function VenuesListPage() {
           </p>
         </Card>
       ) : (
-        <VenuesListClient
-          groups={groups}
+        <VenuesTable
+          rows={flatRows}
+          cityOptions={cityOptions}
           bulkAction={bulkUpdateVenues}
           bulkSend={{
             brands: outreachBrandsList.map((b) => ({

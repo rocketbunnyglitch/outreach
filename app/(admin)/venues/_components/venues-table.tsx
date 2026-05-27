@@ -1,0 +1,573 @@
+"use client";
+
+/**
+ * VenuesTable — replaces VenuesListClient's card grouping with a single
+ * sortable, filterable, inline-editable table.
+ *
+ * What changed vs the old client:
+ *   • Cards → table rows. City moves from a section header to a column
+ *     (sortable like everything else).
+ *   • Inline edit on Name, Capacity, DNC checkbox. Drilling into the
+ *     detail page only needed for richer fields (address, coordinates,
+ *     internal notes).
+ *   • Sort + filter on every column via URL params (?sort=name:asc,
+ *     ?f.city=toronto). Shareable, deep-linkable.
+ *   • Bulk select preserved — checkbox column on the left, action bar at
+ *     the top once anything's checked.
+ *   • Filtered count + "x of y" indicator near the action bar.
+ *
+ * What stayed:
+ *   • Mark/unmark DNC, archive, queue bulk send — exactly as before.
+ *   • Optimistic locking via the existing audit log on venues.
+ */
+
+import type { queueBulkSend } from "@/app/(admin)/send-queue/_actions";
+import { Button } from "@/components/ui/button";
+import {
+  DataTable,
+  DataTableBody,
+  DataTableHead,
+  FilterCellEmpty,
+  FilterChipSet,
+  FilterRow,
+  FilterTextInput,
+  SortableHeader,
+  applyColumnFilters,
+  useColumnFilter,
+  useColumnSort,
+} from "@/components/ui/data-table";
+import { InlineCell } from "@/components/ui/inline-cell";
+import { cn } from "@/lib/cn";
+import type { OutreachPhase } from "@/lib/outreach-phase";
+import { AlertTriangle, Archive, Loader2, Send, Shield, ShieldOff } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState, useTransition } from "react";
+import type { bulkUpdateVenues } from "../_actions";
+import { commitVenueListField } from "../_actions";
+import { BulkSendDialog } from "./bulk-send-dialog";
+
+interface VenueRow {
+  id: string;
+  name: string;
+  cityName: string;
+  address: string | null;
+  capacity: number | null;
+  doNotContact: boolean;
+}
+
+interface Props {
+  rows: VenueRow[];
+  bulkAction: typeof bulkUpdateVenues;
+  /** Distinct cities for the city filter dropdown. */
+  cityOptions: Array<{ value: string; label: string }>;
+  /** Bulk-send dialog data — when provided, the Queue bulk send button shows */
+  bulkSend?: {
+    brands: Array<{ id: string; displayName: string; outreachPhase: OutreachPhase }>;
+    brandConfig: Record<
+      string,
+      {
+        templates: Array<{ id: string; name: string; stage: string }>;
+        inbox: {
+          inboxId: string | null;
+          minSecondsBetweenSends: number;
+          effectiveDailyCap: number;
+          sent24h: number;
+          warmupDay: number | null;
+        } | null;
+      }
+    >;
+    queueAction: typeof queueBulkSend;
+  };
+}
+
+export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend }: Props) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [reasonOpen, setReasonOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [bulkSendOpen, setBulkSendOpen] = useState(false);
+
+  // -----------------------------------------------------------------
+  // Sort + filter state (URL-synced via the data-table hooks)
+  // -----------------------------------------------------------------
+  const sort = useColumnSort({
+    defaultSort: [
+      { column: "cityName", direction: "asc" },
+      { column: "name", direction: "asc" },
+    ],
+  });
+  const filter = useColumnFilter();
+
+  // -----------------------------------------------------------------
+  // Derived: filtered + sorted rows
+  // -----------------------------------------------------------------
+  const visibleRows = useMemo(() => {
+    // Filter
+    const filtered = applyColumnFilters(rows, filter, {
+      name: (row, vals) => {
+        const q = vals[0]?.toLowerCase() ?? "";
+        return row.name.toLowerCase().includes(q);
+      },
+      cityName: (row, vals) => vals.includes(row.cityName),
+      address: (row, vals) => {
+        const q = vals[0]?.toLowerCase() ?? "";
+        return (row.address ?? "").toLowerCase().includes(q);
+      },
+      doNotContact: (row, vals) => {
+        // values are "true" / "false" strings
+        return vals.includes(String(row.doNotContact));
+      },
+    });
+
+    // Sort
+    if (sort.state.length === 0) return filtered;
+    return [...filtered].sort((a, b) => {
+      for (const { column, direction } of sort.state) {
+        const sign = direction === "asc" ? 1 : -1;
+        const av = sortKeyFor(a, column);
+        const bv = sortKeyFor(b, column);
+        if (av < bv) return -1 * sign;
+        if (av > bv) return 1 * sign;
+      }
+      return 0;
+    });
+  }, [rows, filter, sort.state]);
+
+  const selectedCount = selected.size;
+  const visibleIds = visibleRows.map((r) => r.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someVisibleSelected = !allVisibleSelected && visibleIds.some((id) => selected.has(id));
+
+  // -----------------------------------------------------------------
+  // Handlers
+  // -----------------------------------------------------------------
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allVisibleSelected || someVisibleSelected) {
+      // Some/all selected → clear those
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.delete(id);
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.add(id);
+        return next;
+      });
+    }
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  function applyBulk(operation: "mark_dnc" | "unmark_dnc" | "archive") {
+    if (operation === "mark_dnc" && !reason.trim()) {
+      setReasonOpen(true);
+      return;
+    }
+    setFeedback(null);
+    startTransition(async () => {
+      const result = await bulkAction(
+        Array.from(selected),
+        operation,
+        operation === "mark_dnc" ? reason : undefined,
+      );
+      if (!result.ok) {
+        setFeedback(`Failed: ${result.error}`);
+        return;
+      }
+      setFeedback(
+        operation === "archive"
+          ? `Archived ${result.data.count} venues.`
+          : operation === "mark_dnc"
+            ? `Marked ${result.data.count} as DNC.`
+            : `Unmarked ${result.data.count} from DNC.`,
+      );
+      setSelected(new Set());
+      setReason("");
+      setReasonOpen(false);
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Bulk action bar — appears when anything is selected */}
+      {selectedCount > 0 && (
+        <div className="-mx-2 sticky top-14 z-30 flex flex-col gap-3 border-zinc-200 border-b bg-[color:var(--color-canvas)]/95 px-2 py-3 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/95">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="font-medium font-mono">{selectedCount} selected</span>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {bulkSend && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => setBulkSendOpen(true)}
+                  disabled={isPending}
+                >
+                  <Send className="h-3 w-3" /> Queue bulk send
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => applyBulk("mark_dnc")}
+                disabled={isPending}
+              >
+                <ShieldOff className="h-3 w-3" /> Mark DNC
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => applyBulk("unmark_dnc")}
+                disabled={isPending}
+              >
+                <Shield className="h-3 w-3" /> Unmark DNC
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => applyBulk("archive")}
+                disabled={isPending}
+              >
+                <Archive className="h-3 w-3" /> Archive
+              </Button>
+            </div>
+          </div>
+          {/* DNC reason input — only when prompted */}
+          {reasonOpen && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950">
+              <p className="text-amber-800 text-xs dark:text-amber-300">
+                Reason for DNC (required, will be saved on each venue):
+              </p>
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. owner asked to stop contacting"
+                className="flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs dark:border-amber-700 dark:bg-zinc-900"
+              />
+              <Button
+                size="sm"
+                variant="default"
+                disabled={!reason.trim() || isPending}
+                onClick={() => applyBulk("mark_dnc")}
+              >
+                {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Mark DNC"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={isPending}
+                onClick={() => {
+                  setReasonOpen(false);
+                  setReason("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+          {feedback && (
+            <div
+              className={cn(
+                "text-xs",
+                feedback.startsWith("Failed")
+                  ? "text-rose-700 dark:text-rose-400"
+                  : "text-emerald-700 dark:text-emerald-400",
+              )}
+            >
+              {feedback}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Result summary strip */}
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+          {visibleRows.length}
+          {visibleRows.length !== rows.length && ` of ${rows.length}`} venues
+          {filter.activeColumns.length > 0 && (
+            <>
+              {" "}
+              ·{" "}
+              <button
+                type="button"
+                onClick={filter.clear}
+                className="underline-offset-2 hover:underline"
+              >
+                clear filters
+              </button>
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* The table */}
+      <DataTable density="compact">
+        <DataTableHead>
+          <tr className="border-zinc-200 border-b dark:border-zinc-800">
+            <th className="w-9 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someVisibleSelected;
+                }}
+                onChange={toggleAll}
+                aria-label="Select all visible venues"
+                className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
+              />
+            </th>
+            <SortableHeader column="name" sort={sort}>
+              Venue
+            </SortableHeader>
+            <SortableHeader column="cityName" sort={sort} width="w-40">
+              City
+            </SortableHeader>
+            <SortableHeader column="address" sort={sort}>
+              Address
+            </SortableHeader>
+            <SortableHeader column="capacity" sort={sort} width="w-24" align="right">
+              Capacity
+            </SortableHeader>
+            <SortableHeader column="doNotContact" sort={sort} width="w-20" align="center">
+              DNC
+            </SortableHeader>
+          </tr>
+          <FilterRow>
+            <FilterCellEmpty width="w-9" />
+            <FilterTextInput column="name" filter={filter} placeholder="Filter name…" />
+            <FilterChipSet column="cityName" filter={filter} options={cityOptions} width="w-40" />
+            <FilterTextInput column="address" filter={filter} placeholder="Filter address…" />
+            <FilterCellEmpty width="w-24" />
+            <FilterChipSet
+              column="doNotContact"
+              filter={filter}
+              options={[
+                { value: "true", label: "Yes" },
+                { value: "false", label: "No" },
+              ]}
+              width="w-20"
+            />
+          </FilterRow>
+        </DataTableHead>
+
+        <DataTableBody>
+          {visibleRows.map((venue) => (
+            <VenueTableRow
+              key={venue.id}
+              venue={venue}
+              selected={selected.has(venue.id)}
+              onToggle={() => toggle(venue.id)}
+            />
+          ))}
+        </DataTableBody>
+      </DataTable>
+
+      {visibleRows.length === 0 && (
+        <div className="rounded-md border border-zinc-200 border-dashed p-8 text-center text-sm text-zinc-500 dark:border-zinc-800">
+          {rows.length === 0 ? "No venues yet." : "No venues match the current filters."}
+        </div>
+      )}
+
+      {bulkSend && bulkSendOpen && (
+        <BulkSendDialog
+          selectedVenueIds={Array.from(selected)}
+          brands={bulkSend.brands}
+          brandConfig={bulkSend.brandConfig}
+          queueAction={bulkSend.queueAction}
+          onClose={() => setBulkSendOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// =========================================================================
+// Row
+// =========================================================================
+
+function VenueTableRow({
+  venue,
+  selected,
+  onToggle,
+}: {
+  venue: VenueRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <tr
+      className={cn("group/row transition-colors", selected && "bg-blue-50/50 dark:bg-blue-950/20")}
+    >
+      <td className="w-9 px-3 py-2">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
+          aria-label={`Select ${venue.name}`}
+        />
+      </td>
+
+      {/* Name — inline-editable, also links to detail page via icon */}
+      <td className="px-2 py-2">
+        <div className="flex items-center gap-2">
+          <InlineCell
+            value={venue.name}
+            placeholder="(unnamed)"
+            label="Venue name"
+            onCommit={async (next) => {
+              const fd = new FormData();
+              fd.set("venueId", venue.id);
+              fd.set("field", "name");
+              fd.set("value", next);
+              const result = await commitVenueListField(null, fd);
+              return result.ok ? { ok: true } : { ok: false, error: result.error };
+            }}
+          />
+          <Link
+            href={`/venues/${venue.id}`}
+            className="shrink-0 font-mono text-[10px] text-zinc-400 opacity-0 transition-opacity hover:text-zinc-700 group-hover/row:opacity-100 dark:hover:text-zinc-300"
+            title="Open venue detail"
+          >
+            ↗
+          </Link>
+        </div>
+      </td>
+
+      {/* City — not editable from here (would require cityId join with all cities) */}
+      <td className="w-40 px-2 py-2 text-xs text-zinc-600 dark:text-zinc-400">{venue.cityName}</td>
+
+      {/* Address — display only (full edit is on the detail page since address
+          + coordinates + Google Place ID need to stay in sync) */}
+      <td className="px-2 py-2 text-xs text-zinc-600 dark:text-zinc-400">
+        <span className="line-clamp-1" title={venue.address ?? undefined}>
+          {venue.address ?? <span className="text-zinc-400">—</span>}
+        </span>
+      </td>
+
+      {/* Capacity — inline-editable number */}
+      <td className="w-24 px-2 py-2 text-right">
+        <InlineCell
+          value={venue.capacity == null ? "" : String(venue.capacity)}
+          placeholder="—"
+          label="Capacity"
+          variant="mono"
+          inputType="text"
+          validate={(next) => {
+            if (next.trim() === "") return null;
+            const n = Number.parseInt(next.trim(), 10);
+            if (!Number.isFinite(n) || n < 0) return "Must be a non-negative number.";
+            if (n > 1_000_000) return "Too large.";
+            return null;
+          }}
+          onCommit={async (next) => {
+            const fd = new FormData();
+            fd.set("venueId", venue.id);
+            fd.set("field", "capacity");
+            fd.set("value", next);
+            const result = await commitVenueListField(null, fd);
+            return result.ok ? { ok: true } : { ok: false, error: result.error };
+          }}
+        />
+      </td>
+
+      {/* DNC toggle */}
+      <td className="w-20 px-2 py-2 text-center">
+        <DncToggle venue={venue} />
+      </td>
+    </tr>
+  );
+}
+
+function DncToggle({ venue }: { venue: VenueRow }) {
+  const [pending, startTx] = useTransition();
+  const [optimistic, setOptimistic] = useState<boolean | null>(null);
+  const current = optimistic ?? venue.doNotContact;
+
+  function flip() {
+    const next = !current;
+    setOptimistic(next);
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("venueId", venue.id);
+      fd.set("field", "doNotContact");
+      fd.set("value", String(next));
+      const result = await commitVenueListField(null, fd);
+      if (!result.ok) {
+        setOptimistic(null);
+      }
+      // On success leave optimistic until the server-driven re-render
+      // arrives via revalidatePath.
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={flip}
+      disabled={pending}
+      aria-label={current ? "Unmark DNC" : "Mark as do-not-contact"}
+      className={cn(
+        "inline-flex h-5 w-5 items-center justify-center rounded-md transition-colors",
+        current
+          ? "bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-950 dark:text-rose-400 dark:hover:bg-rose-900"
+          : "bg-zinc-100 text-zinc-400 hover:bg-zinc-200 dark:bg-zinc-900 dark:hover:bg-zinc-800",
+        pending && "opacity-60",
+      )}
+    >
+      {current ? <AlertTriangle className="h-3 w-3" /> : null}
+    </button>
+  );
+}
+
+// =========================================================================
+// Sort key resolver — maps column id to comparable value
+// =========================================================================
+
+function sortKeyFor(row: VenueRow, column: string): string | number {
+  switch (column) {
+    case "name":
+      return row.name.toLowerCase();
+    case "cityName":
+      return row.cityName.toLowerCase();
+    case "address":
+      return (row.address ?? "").toLowerCase();
+    case "capacity":
+      // null sorts to the end regardless of asc/desc — use Infinity for asc,
+      // we re-multiply by the direction sign downstream. Simpler: treat null
+      // as 0 for now (consistent with how the cards displayed it).
+      return row.capacity ?? -1;
+    case "doNotContact":
+      return row.doNotContact ? 1 : 0;
+    default:
+      return "";
+  }
+}

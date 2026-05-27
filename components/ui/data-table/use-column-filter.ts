@@ -180,7 +180,7 @@ export function parseFilterParams(
  *     name:   (row, vals) => vals.some(v => row.name.toLowerCase().includes(v.toLowerCase())),
  *   });
  */
-export function applyColumnFilters<T extends Record<string, unknown>>(
+export function applyColumnFilters<T>(
   rows: T[],
   filter: UseColumnFilterReturn,
   matchers: Record<string, (row: T, values: string[]) => boolean>,

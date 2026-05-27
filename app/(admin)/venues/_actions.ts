@@ -18,6 +18,7 @@ import { desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
+import { z } from "zod";
 
 type ActionResult<T = void> =
   | { ok: true; data: T }
@@ -343,5 +344,70 @@ export async function bulkUpdateVenues(
   } catch (err) {
     logger.error({ err, operation, count: validIds.length }, "bulk update failed");
     return { ok: false, error: "Bulk update failed. See server logs." };
+  }
+}
+
+// =========================================================================
+// commitVenueListField — per-field inline edit for the /venues table
+//
+// Kept narrow: only fields that make sense to edit from a list row. Drilling
+// into /venues/[id] is still the right move for richer edits (address +
+// coordinates, internal notes, etc.).
+//
+// Fields supported:
+//   name        — string, non-empty
+//   capacity    — integer or empty (clears)
+//   doNotContact — boolean (the bulk action also exists; this is the
+//                  single-row toggle from the table)
+// =========================================================================
+
+const commitVenueListFieldSchema = z.object({
+  venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  field: z.enum(["name", "capacity", "doNotContact"]),
+  value: z.string().max(500),
+});
+
+export async function commitVenueListField(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ venueId: string; field: string }>> {
+  const { staff } = await requireStaff();
+
+  const parsed = commitVenueListFieldSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid edit payload." };
+  }
+
+  const { venueId, field, value } = parsed.data;
+  const trimmed = value.trim();
+
+  const patch: Partial<typeof venues.$inferInsert> = { updatedBy: staff.id };
+
+  if (field === "name") {
+    if (trimmed.length === 0) return { ok: false, error: "Venue name can't be empty." };
+    patch.name = trimmed;
+  } else if (field === "capacity") {
+    if (trimmed.length === 0) {
+      patch.capacity = null;
+    } else {
+      const n = Number.parseInt(trimmed, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 1_000_000) {
+        return { ok: false, error: "Capacity must be a non-negative number." };
+      }
+      patch.capacity = n;
+    }
+  } else if (field === "doNotContact") {
+    patch.doNotContact = trimmed === "true";
+    if (!patch.doNotContact) patch.doNotContactReason = null;
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx.update(venues).set(patch).where(eq(venues.id, venueId)),
+    );
+    revalidatePath("/venues");
+    return { ok: true, data: { venueId, field } };
+  } catch (err) {
+    return wrapDbError(err, `commit venue field: ${field}`);
   }
 }
