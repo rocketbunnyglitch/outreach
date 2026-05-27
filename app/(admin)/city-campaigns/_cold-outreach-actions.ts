@@ -19,6 +19,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
+import { publishRealtime } from "@/lib/realtime-publish";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -135,7 +136,27 @@ export async function updateColdOutreachField(
       }
       await tx.update(coldOutreachEntries).set(patch).where(eq(coldOutreachEntries.id, entryId));
     });
-    if (cityCampaignId) revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    if (cityCampaignId) {
+      revalidatePath(`/city-campaigns/${cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
+    }
+    // Realtime push so other open tabs viewing this campaign refresh.
+    // Channel is scoped per cityCampaignId so different campaigns don't fan
+    // out to each other.
+    if (cityCampaignId) {
+      publishRealtime({
+        table: `cold-outreach-${cityCampaignId}`,
+        id: entryId,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
+    }
     return { ok: true, data: { id: entryId } };
   } catch (err) {
     logger.error({ err }, "updateColdOutreachField failed");
@@ -166,7 +187,15 @@ export async function archiveColdOutreachEntry(
         .set({ archivedAt: new Date(), updatedBy: staff.id })
         .where(eq(coldOutreachEntries.id, parsed.data.entryId));
     });
-    if (parsed.data.cityCampaignId) revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
+    }
     return { ok: true, data: { id: parsed.data.entryId } };
   } catch (err) {
     logger.error({ err }, "archiveColdOutreachEntry failed");
@@ -198,7 +227,15 @@ export async function unarchiveColdOutreachEntry(
         .set({ archivedAt: null, updatedBy: staff.id })
         .where(eq(coldOutreachEntries.id, parsed.data.entryId));
     });
-    if (parsed.data.cityCampaignId) revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
+    }
     return { ok: true, data: { id: parsed.data.entryId } };
   } catch (err) {
     logger.error({ err }, "unarchiveColdOutreachEntry failed");
@@ -273,6 +310,12 @@ export async function bulkUpdateColdOutreachStatus(
     });
     if (parsed.data.cityCampaignId) {
       revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
     }
     return { ok: true, data: { updated } };
   } catch (err) {
@@ -323,6 +366,12 @@ export async function bulkAssignColdOutreach(
     });
     if (parsed.data.cityCampaignId) {
       revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
     }
     return { ok: true, data: { updated } };
   } catch (err) {
@@ -365,6 +414,12 @@ export async function bulkArchiveColdOutreach(
     });
     if (parsed.data.cityCampaignId) {
       revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
     }
     return { ok: true, data: { archived } };
   } catch (err) {
@@ -407,6 +462,12 @@ export async function bulkUnarchiveColdOutreach(
     });
     if (parsed.data.cityCampaignId) {
       revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
     }
     return { ok: true, data: { restored } };
   } catch (err) {

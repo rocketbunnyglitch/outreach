@@ -3,6 +3,12 @@
 import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
 import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
 import { Button } from "@/components/ui/button";
+import {
+  PresenceAvatarStack,
+  formatRealtimeAgo,
+  usePresenceHeartbeat,
+  useRealtimeChannel,
+} from "@/components/ui/data-table";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
 import { useShortcut } from "@/components/ui/shortcut-provider";
@@ -19,6 +25,7 @@ import {
   Plus,
   Sparkles,
   Trash2,
+  Wifi,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -69,6 +76,8 @@ interface Props {
   outreachBrandId: string | null;
   entries: ColdEntry[];
   staff: Array<{ id: string; displayName: string }>;
+  /** Current logged-in staff id — used by realtime + presence hooks. */
+  currentStaffId: string;
 }
 
 const STATUS_OPTIONS: Array<{ value: string; label: string; tone: string }> = [
@@ -124,6 +133,7 @@ export function ColdOutreachTable({
   outreachBrandId,
   entries,
   staff,
+  currentStaffId,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -131,6 +141,25 @@ export function ColdOutreachTable({
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteRaw, setPasteRaw] = useState<string>("");
   const router = useRouter();
+
+  // -------------------------------------------------------------
+  // Realtime: refresh when teammates edit entries in the same
+  // city-campaign. Channel is scoped by cityCampaignId so different
+  // campaigns don't fan out to each other.
+  // -------------------------------------------------------------
+  const realtime = useRealtimeChannel({
+    channel: `realtime:cold-outreach-${cityCampaignId}`,
+    currentStaffId,
+    onEvent: () => router.refresh(),
+  });
+
+  // -------------------------------------------------------------
+  // Presence: who else is viewing this city sheet?
+  // -------------------------------------------------------------
+  const presence = usePresenceHeartbeat({
+    route: `/city-campaigns/${cityCampaignId}`,
+    currentStaffId,
+  });
 
   // -------------------------------------------------------------
   // Global paste handler — intercept document-level paste events
@@ -346,6 +375,32 @@ export function ColdOutreachTable({
           </h2>
         </div>
         <div className="flex items-center gap-3">
+          <PresenceAvatarStack people={presence.others} size={22} />
+          {realtime.lastEvent && (
+            <span
+              className="font-mono text-[10px] text-zinc-500 dark:text-zinc-400"
+              title={`last update from another operator at ${realtime.lastEvent.at}`}
+            >
+              {realtime.lastEvent.byStaffName ?? "Someone"} edited{" "}
+              {formatRealtimeAgo(realtime.lastEvent.at)}
+            </span>
+          )}
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em]",
+              realtime.connected
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-zinc-400 dark:text-zinc-600",
+            )}
+            title={
+              realtime.connected
+                ? "Live — changes from teammates appear automatically"
+                : "Realtime disconnected"
+            }
+          >
+            <Wifi className="h-2.5 w-2.5" />
+            {realtime.connected ? "live" : "offline"}
+          </span>
           <button
             type="button"
             onClick={() => setSuggestOpen(true)}
