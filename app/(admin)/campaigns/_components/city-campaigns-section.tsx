@@ -43,6 +43,13 @@ interface Props {
   progressRows: CityProgressRow[];
   unassignedCities: CityOption[];
   addAction: (prev: unknown, fd: FormData) => Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Whether the signed-in operator is an admin. Used to gate the dollar
+   * fields (sales goal cents) per session 11 decision #025 — outreach
+   * staff should not see dollar amounts. Non-admins still see + edit
+   * priority, target counts, lead staff, status — just not money.
+   */
+  isAdmin?: boolean;
 }
 
 /**
@@ -76,6 +83,7 @@ export function CityCampaignsSection({
   progressRows,
   unassignedCities,
   addAction,
+  isAdmin = false,
 }: Props) {
   const [sortBy, setSortBy] = useState<SortKey>("priority_high");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -141,6 +149,7 @@ export function CityCampaignsSection({
             campaignId={campaignId}
             unassignedCities={unassignedCities}
             action={addAction}
+            isAdmin={isAdmin}
             onCancel={() => {
               /* manual form has no cancel here — embedded in tab */
             }}
@@ -268,11 +277,13 @@ function AddCityForm({
   unassignedCities,
   action,
   onCancel,
+  isAdmin = false,
 }: {
   campaignId: string;
   unassignedCities: CityOption[];
   action: Props["addAction"];
   onCancel: () => void;
+  isAdmin?: boolean;
 }) {
   const [state, formAction] = useActionState(action, null);
 
@@ -318,16 +329,22 @@ function AddCityForm({
           <NumField name="targetMiddleCount" label="Middle" defaultValue={2} />
           <NumField name="targetFinalCount" label="Final" defaultValue={1} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="salesGoalCents">Sales goal (cents)</Label>
-          <Input
-            id="salesGoalCents"
-            name="salesGoalCents"
-            type="number"
-            min="0"
-            placeholder="500000"
-          />
-        </div>
+        {/* Sales goal — admin-only per decision #025. Outreach staff
+            shouldn't see dollar fields; the value is set + tracked
+            elsewhere by admin. Non-admins get nothing rendered here so
+            the form stays compact for them. */}
+        {isAdmin && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="salesGoalCents">Sales goal (cents)</Label>
+            <Input
+              id="salesGoalCents"
+              name="salesGoalCents"
+              type="number"
+              min="0"
+              placeholder="500000"
+            />
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onCancel}>
             <X className="h-3 w-3" /> Cancel

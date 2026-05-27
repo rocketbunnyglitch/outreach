@@ -252,7 +252,12 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           Settings · edit city-campaign details
         </summary>
         <div className="border-zinc-200/60 border-t px-5 py-4 dark:border-zinc-800/40">
-          <CityCampaignForm initial={cc.cc} staff={staff} action={boundUpdate} />
+          <CityCampaignForm
+            initial={cc.cc}
+            staff={staff}
+            isAdmin={currentStaff.role === "admin"}
+            action={boundUpdate}
+          />
         </div>
       </details>
 

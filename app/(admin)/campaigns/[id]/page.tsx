@@ -105,6 +105,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
         progressRows={progressRows}
         unassignedCities={unassignedCities}
         addAction={addCityToCampaign}
+        isAdmin={staff.role === "admin"}
       />
 
       <form

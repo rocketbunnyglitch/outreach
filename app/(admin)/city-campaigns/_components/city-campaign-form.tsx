@@ -26,6 +26,12 @@ interface Props {
     status: string;
   };
   staff: { id: string; displayName: string }[];
+  /**
+   * Whether the signed-in operator is an admin. Used to gate the dollar
+   * fields (sales goal cents) per session 11 decision #025 — outreach
+   * staff should not see dollar amounts.
+   */
+  isAdmin?: boolean;
   action: (
     prev: unknown,
     fd: FormData,
@@ -36,7 +42,7 @@ interface Props {
   }>;
 }
 
-export function CityCampaignForm({ initial, staff, action }: Props) {
+export function CityCampaignForm({ initial, staff, isAdmin = false, action }: Props) {
   const [state, formAction] = useActionState(action, null);
 
   return (
@@ -140,16 +146,21 @@ export function CityCampaignForm({ initial, staff, action }: Props) {
               </SelectContent>
             </Select>
           </FieldShell>
-          <FieldShell label="Sales goal (cents)" name="salesGoalCents">
-            <Input
-              id="salesGoalCents"
-              name="salesGoalCents"
-              type="number"
-              min="0"
-              defaultValue={initial.salesGoalCents != null ? String(initial.salesGoalCents) : ""}
-              placeholder="500000"
-            />
-          </FieldShell>
+          {/* Sales goal — admin-only per session 11 decision #025.
+              Outreach staff see priority + target counts + lead but
+              not dollar amounts. */}
+          {isAdmin && (
+            <FieldShell label="Sales goal (cents)" name="salesGoalCents">
+              <Input
+                id="salesGoalCents"
+                name="salesGoalCents"
+                type="number"
+                min="0"
+                defaultValue={initial.salesGoalCents != null ? String(initial.salesGoalCents) : ""}
+                placeholder="500000"
+              />
+            </FieldShell>
+          )}
         </FieldRow>
       </FormSection>
 
