@@ -225,9 +225,52 @@ export function isGoogleMapsConfigured(): boolean {
  * Returns either { placeId } or { lat, lng } or { shortUrl } for the
  * caller to follow up with resolveShortMapsUrl.
  */
+/**
+ * parseGoogleMapsUrl — accept any of Google's many share-link shapes,
+ * return a tagged union the caller can use to look up the venue.
+ *
+ * Shapes handled (in priority order):
+ *
+ *   1. ChIJ place_id embedded in path/data:
+ *      `/maps/place/Foo/.../data=!4m6!1sChIJxxxxx`
+ *      → { placeId }
+ *
+ *   2. place_id as query param:
+ *      `/maps/search/?api=1&query=Foo&query_place_id=ChIJxxxxx`
+ *      → { placeId }
+ *
+ *   3. CID (Customer ID — legacy Google Maps internal venue id):
+ *      `/maps?cid=9000584681264449884`
+ *      `/?cid=9000584681264449884`
+ *      → { cid, lat?, lng? }
+ *      The new Places API doesn't accept CIDs. resolveMapsUrlToPlace
+ *      bridges via the legacy place-details endpoint to convert
+ *      cid → place_id.
+ *
+ *   4. /maps/search/<query>/...  (a SEARCH, not a single venue):
+ *      → { searchQuery }
+ *      Operator should redo the share on the specific venue tile.
+ *
+ *   5. Coord-only (no venue):
+ *      `/maps/@43.65,-79.38,15z` or `?ll=43.65,-79.38`
+ *      → { lat, lng }
+ *      Operator needs to tap the specific venue first.
+ *
+ *   6. Short links (maps.app.goo.gl / goo.gl):
+ *      → { shortUrl }   — caller follows the redirect via
+ *                         resolveShortMapsUrl()
+ *
+ * Returns null if the URL doesn't parse or doesn't look like Google.
+ */
 export function parseGoogleMapsUrl(
   rawUrl: string,
-): { placeId: string } | { lat: number; lng: number } | { shortUrl: string } | null {
+):
+  | { placeId: string }
+  | { cid: string; lat?: number; lng?: number }
+  | { searchQuery: string; lat?: number; lng?: number }
+  | { lat: number; lng: number }
+  | { shortUrl: string }
+  | null {
   let url: URL;
   try {
     url = new URL(rawUrl.trim());
@@ -240,28 +283,70 @@ export function parseGoogleMapsUrl(
     return null;
   }
 
+  // 6. short links — caller resolves via HEAD redirect
   if (host === "maps.app.goo.gl" || host === "goo.gl") {
     return { shortUrl: rawUrl.trim() };
   }
 
+  // 2. explicit query_place_id
   const placeIdQuery = url.searchParams.get("query_place_id");
   if (placeIdQuery) return { placeId: placeIdQuery };
 
+  // 1. place_id embedded in path !1s prefix or place_id: literal
   const dataParam = url.pathname + url.search;
   const placeIdMatch =
     dataParam.match(/!1s(ChIJ[A-Za-z0-9_\-]+)/) ?? dataParam.match(/place_id:([A-Za-z0-9_\-]+)/);
   if (placeIdMatch?.[1]) return { placeId: placeIdMatch[1] };
 
+  // Helper: extract `ll=lat,lng` from the query string (cid URLs have this)
+  function llFromQuery(): { lat: number; lng: number } | null {
+    const ll = url.searchParams.get("ll");
+    if (!ll) return null;
+    const [latStr, lngStr] = ll.split(",");
+    if (!latStr || !lngStr) return null;
+    const lat = Number.parseFloat(latStr);
+    const lng = Number.parseFloat(lngStr);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }
+
+  // 3. CID (Customer ID). Decimal digits, often very long (up to 20).
+  const cid = url.searchParams.get("cid");
+  if (cid && /^\d+$/.test(cid)) {
+    const ll = llFromQuery();
+    return ll ? { cid, lat: ll.lat, lng: ll.lng } : { cid };
+  }
+
+  // 4. /maps/search/<query>/... — a search, not a venue
+  const searchMatch = url.pathname.match(/\/maps\/search\/([^/]+)/);
+  if (searchMatch?.[1]) {
+    const raw = searchMatch[1];
+    // The path segment may use '+' for spaces (URL-encoded)
+    const query = decodeURIComponent(raw.replace(/\+/g, " "));
+    const coordMatch = url.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (coordMatch?.[1] && coordMatch[2]) {
+      return {
+        searchQuery: query,
+        lat: Number.parseFloat(coordMatch[1]),
+        lng: Number.parseFloat(coordMatch[2]),
+      };
+    }
+    return { searchQuery: query };
+  }
+
+  // 5. coord-only — either in path (@lat,lng) or query (?ll=lat,lng)
   const coordMatch = url.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (coordMatch?.[1] && coordMatch[2]) {
     return { lat: Number.parseFloat(coordMatch[1]), lng: Number.parseFloat(coordMatch[2]) };
   }
+  const ll = llFromQuery();
+  if (ll) return ll;
   return null;
 }
 
 export async function resolveShortMapsUrl(
   shortUrl: string,
-): Promise<{ placeId: string } | { lat: number; lng: number } | null> {
+): Promise<Exclude<ReturnType<typeof parseGoogleMapsUrl>, { shortUrl: string } | null> | null> {
   try {
     const response = await fetch(shortUrl, {
       method: "HEAD",
@@ -272,6 +357,8 @@ export async function resolveShortMapsUrl(
     if (!location) return null;
     const parsed = parseGoogleMapsUrl(location);
     if (!parsed) return null;
+    // Recursive shortUrl shouldn't happen (Google doesn't chain short
+    // links), but guard anyway
     if ("shortUrl" in parsed) return null;
     return parsed;
   } catch {
@@ -334,32 +421,114 @@ function mapPlaceDetailsJson(json: Record<string, unknown>): PlaceDetails | null
 }
 
 /**
+ * Result of resolving a pasted Maps URL.
+ *
+ * - `venue`: we got a specific business with full details. Use as-is.
+ * - `search_url`: the URL is a Maps SEARCH page, not a venue. The
+ *   caller should tell the operator to use the city-map's
+ *   pan-and-search feature instead, or re-share from the specific
+ *   venue tile.
+ * - `coord_only`: the URL only has lat/lng (no place_id, no CID).
+ *   Operator should tap the specific venue on the Maps app first
+ *   and re-share.
+ * - `cid_unresolved`: we recognized a CID but couldn't convert it to
+ *   a place_id (network issue or Google didn't redirect cleanly).
+ *   Caller can fall back to a Nearby Search if lat/lng was included.
+ * - `not_a_maps_url`: doesn't look like a Google Maps URL at all.
+ * - `lookup_failed`: had a place_id but Place Details API call failed.
+ */
+export type ResolveMapsUrlResult =
+  | { kind: "venue"; place: PlaceDetails }
+  | { kind: "search_url"; query: string; lat?: number; lng?: number }
+  | { kind: "coord_only"; lat: number; lng: number }
+  | { kind: "cid_unresolved"; cid: string; lat?: number; lng?: number }
+  | { kind: "not_a_maps_url" }
+  | { kind: "lookup_failed" };
+
+/**
+ * Resolve a CID (Customer ID — legacy Google Maps internal venue id)
+ * to a modern place_id (ChIJ…). The new Places API doesn't accept CIDs
+ * directly, so we follow https://www.google.com/maps?cid=<cid> and try
+ * two strategies:
+ *
+ *   1. The Location header / final URL of the redirect chain usually
+ *      contains /maps/place/.../data=!1sChIJ…  → parse that.
+ *   2. Failing that, scan the HTML body for the first `ChIJ…` token.
+ *      Google embeds the place_id in the page even when no redirect
+ *      delivers it via URL.
+ *
+ * Returns null if both strategies fail (e.g. network timeout, or
+ * Google's CID format changed). Caller can fall back to a Nearby
+ * Search at the lat/lng that was alongside the CID in the URL.
+ */
+async function resolveCidToPlaceId(cid: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://www.google.com/maps?cid=${encodeURIComponent(cid)}`, {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
+
+    // Strategy 1 — final URL after redirects often holds the place_id
+    const finalUrl = response.url;
+    const fromUrl = parseGoogleMapsUrl(finalUrl);
+    if (fromUrl && "placeId" in fromUrl) return fromUrl.placeId;
+
+    // Strategy 2 — HTML body scan
+    const text = await response.text();
+    // ChIJ-prefixed place_ids are typically 27 chars. Match conservatively
+    // to avoid false positives.
+    const match = text.match(/(ChIJ[A-Za-z0-9_-]{20,30})/);
+    if (match?.[1]) return match[1];
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Convenience: paste a Maps URL → place details in one call.
  *
- * Returns null when:
- *   - URL doesn't parse
- *   - Short URL can't be resolved
- *   - GOOGLE_MAPS_API_KEY isn't configured
- *   - Places Details lookup fails
- *
- * Caller (typically a server action) translates null into a graceful
- * "couldn't autopopulate, please fill manually" message.
+ * Returns a discriminated union so the caller can show a specific
+ * error message per URL shape (search vs coord-only vs CID failure)
+ * instead of a generic "couldn't resolve" string.
  */
-export async function resolveMapsUrlToPlace(rawUrl: string): Promise<PlaceDetails | null> {
+export async function resolveMapsUrlToPlace(rawUrl: string): Promise<ResolveMapsUrlResult> {
   let parsed = parseGoogleMapsUrl(rawUrl);
-  if (!parsed) return null;
+  if (!parsed) return { kind: "not_a_maps_url" };
+
   if ("shortUrl" in parsed) {
     const resolved = await resolveShortMapsUrl(parsed.shortUrl);
-    if (!resolved) return null;
+    if (!resolved) return { kind: "lookup_failed" };
     parsed = resolved;
   }
-  if ("placeId" in parsed) {
-    return fetchPlaceDetails(parsed.placeId);
+
+  if ("searchQuery" in parsed) {
+    return {
+      kind: "search_url",
+      query: parsed.searchQuery,
+      lat: parsed.lat,
+      lng: parsed.lng,
+    };
   }
-  // Coord-only URLs lack a place_id; we can't cheaply resolve to a
-  // specific business. Operator should re-share from the Maps app
-  // after clicking the venue (which produces a place_id URL).
-  return null;
+
+  if ("cid" in parsed) {
+    const placeId = await resolveCidToPlaceId(parsed.cid);
+    if (!placeId) {
+      return { kind: "cid_unresolved", cid: parsed.cid, lat: parsed.lat, lng: parsed.lng };
+    }
+    const place = await fetchPlaceDetails(placeId);
+    return place ? { kind: "venue", place } : { kind: "lookup_failed" };
+  }
+
+  if ("placeId" in parsed) {
+    const place = await fetchPlaceDetails(parsed.placeId);
+    return place ? { kind: "venue", place } : { kind: "lookup_failed" };
+  }
+
+  // Coord-only — last branch
+  return { kind: "coord_only", lat: parsed.lat, lng: parsed.lng };
 }
 
 /**

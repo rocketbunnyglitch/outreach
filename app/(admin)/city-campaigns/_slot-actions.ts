@@ -451,14 +451,21 @@ export async function createVenueFromMapsUrl(
     };
   }
 
-  const details = await resolveMapsUrlToPlace(parsed.data.url);
-  if (!details) {
-    return {
-      ok: false,
-      error:
-        "Couldn't resolve that Maps URL. Try opening the venue in Maps and re-sharing — the link needs a place_id.",
+  const resolveResult = await resolveMapsUrlToPlace(parsed.data.url);
+  if (resolveResult.kind !== "venue") {
+    const errorByKind: Record<Exclude<typeof resolveResult.kind, "venue">, string> = {
+      not_a_maps_url: "That doesn't look like a Google Maps URL.",
+      search_url:
+        "That URL is a Maps search, not a specific venue. Tap a venue tile in the search results and re-share.",
+      coord_only:
+        "That URL only has map coordinates, not a venue. In the Maps app, tap the specific venue first.",
+      cid_unresolved:
+        "We recognized the venue ID but Google didn't return details. Try re-sharing from the Maps app.",
+      lookup_failed: "Google Maps returned no details. The Maps API key may be restricted.",
     };
+    return { ok: false, error: errorByKind[resolveResult.kind] };
   }
+  const details = resolveResult.place;
 
   try {
     const result = await withAuditContext(staff.id, async (tx) => {

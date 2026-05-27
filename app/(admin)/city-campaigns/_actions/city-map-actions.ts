@@ -548,15 +548,43 @@ export async function addVenueFromMapsUrl(opts: {
   const cityId = cityList[0]?.city_id;
   if (!cityId) return { ok: false, error: "City campaign not found." };
 
-  // Resolve the URL → PlaceDetails
-  const place = await resolveMapsUrlToPlace(url);
-  if (!place) {
+  // Resolve the URL → discriminated result; specific error per shape.
+  const result = await resolveMapsUrlToPlace(url);
+
+  if (result.kind === "not_a_maps_url") {
+    return { ok: false, error: "That doesn't look like a Google Maps URL." };
+  }
+  if (result.kind === "search_url") {
+    return {
+      ok: false,
+      error: `That's a Google Maps SEARCH ("${result.query}"), not a specific venue. Either (a) tap a venue tile in the search results and re-share, or (b) use the city map below — it can pan-and-search the same area without needing a URL.`,
+    };
+  }
+  if (result.kind === "coord_only") {
     return {
       ok: false,
       error:
-        "Couldn't resolve that URL. If it's a coord-only link, tap the specific venue on the map first, then share again.",
+        "That URL only contains map coordinates, not a venue. In the Maps app, tap the specific venue tile first, then share — the new link will include the venue's identity.",
     };
   }
+  if (result.kind === "cid_unresolved") {
+    return {
+      ok: false,
+      error:
+        result.lat != null && result.lng != null
+          ? "We recognized the venue ID but couldn't fetch its details from Google. Try the city map's 'Search this area' feature instead — your venue should show up in the pins."
+          : "We recognized the venue ID but couldn't fetch its details from Google. Try sharing again from the Maps app.",
+    };
+  }
+  if (result.kind === "lookup_failed") {
+    return {
+      ok: false,
+      error:
+        "Google Maps returned no details for that venue. The Maps API key may be restricted; check Cloud Console.",
+    };
+  }
+
+  const place = result.place;
   if (place.lat == null || place.lng == null) {
     return {
       ok: false,
