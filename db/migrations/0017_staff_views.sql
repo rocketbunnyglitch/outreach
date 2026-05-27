@@ -56,4 +56,4 @@ CREATE INDEX IF NOT EXISTS staff_views_lookup_idx
 DROP TRIGGER IF EXISTS staff_views_audit ON staff_views;
 CREATE TRIGGER staff_views_audit
   AFTER INSERT OR UPDATE OR DELETE ON staff_views
-  FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+  FOR EACH ROW EXECUTE FUNCTION audit_trigger_func();
