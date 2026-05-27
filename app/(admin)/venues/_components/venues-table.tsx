@@ -31,15 +31,15 @@ import {
   FilterChipSet,
   FilterRow,
   FilterTextInput,
+  PresenceAvatarStack,
   SortableHeader,
   applyColumnFilters,
+  formatRealtimeAgo,
   useColumnFilter,
   useColumnSort,
-} from "@/components/ui/data-table";
-import {
-  formatRealtimeAgo,
+  usePresenceHeartbeat,
   useRealtimeChannel,
-} from "@/components/ui/data-table/use-realtime-channel";
+} from "@/components/ui/data-table";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { cn } from "@/lib/cn";
 import type { OutreachPhase } from "@/lib/outreach-phase";
@@ -105,6 +105,15 @@ export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentSt
     channel: "realtime:venues",
     currentStaffId,
     onEvent: () => router.refresh(),
+  });
+
+  // -----------------------------------------------------------------
+  // Presence: who else is viewing this page? Shows an avatar stack in
+  // the header strip. The meeting-room feature.
+  // -----------------------------------------------------------------
+  const presence = usePresenceHeartbeat({
+    route: "/venues",
+    currentStaffId,
   });
 
   // -----------------------------------------------------------------
@@ -344,8 +353,9 @@ export function VenuesTable({ rows, bulkAction, cityOptions, bulkSend, currentSt
             </>
           )}
         </p>
-        {/* Realtime indicator + last-edit chip */}
-        <div className="flex items-center gap-2">
+        {/* Realtime indicator + last-edit chip + presence avatars */}
+        <div className="flex items-center gap-3">
+          <PresenceAvatarStack people={presence.others} />
           {realtime.lastEvent && (
             <span
               className="font-mono text-[10px] text-zinc-500 dark:text-zinc-400"

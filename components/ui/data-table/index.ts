@@ -51,3 +51,21 @@ export {
 
 export { InlineEditSelect, type SelectOption } from "./inline-edit-select";
 export { InlineEditDate } from "./inline-edit-date";
+
+export {
+  useRealtimeChannel,
+  useRealtimeSubscription,
+  formatRealtimeAgo,
+  type RealtimeEvent,
+  type UseRealtimeChannelOptions,
+  type UseRealtimeChannelReturn,
+} from "./use-realtime-channel";
+
+export {
+  usePresenceHeartbeat,
+  type PresenceViewer,
+  type UsePresenceHeartbeatOptions,
+  type UsePresenceHeartbeatReturn,
+} from "./use-presence-heartbeat";
+
+export { PresenceAvatarStack, colorForStaff } from "./presence-avatar-stack";
