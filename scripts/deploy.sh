@@ -41,10 +41,12 @@ NODE_MAX_OLD_SPACE="1536"
 # === Parse flags ===
 SKIP_BUILD=0
 ROLLBACK=0
+FORCE=0
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
     --rollback) ROLLBACK=1 ;;
+    --force) FORCE=1 ;;
     *) echo "Unknown flag: $arg"; exit 1 ;;
   esac
 done
@@ -79,12 +81,24 @@ else
   log "fetching origin/main from GitHub..."
   git fetch origin main 2>&1 | tee -a "$LOG_FILE"
   TARGET_COMMIT=$(git rev-parse origin/main)
-  if [ "$PREV_COMMIT" = "$TARGET_COMMIT" ]; then
-    log "no new commits — nothing to deploy"
+  DEPLOYED_COMMIT=""
+  if [ -f .next/.deployed-commit ]; then
+    DEPLOYED_COMMIT=$(tr -d '[:space:]' < .next/.deployed-commit)
+  fi
+  log "target: $TARGET_COMMIT"
+  log "last deployed: ${DEPLOYED_COMMIT:-<unknown>}"
+  if [ "$FORCE" != "1" ] && [ -n "$DEPLOYED_COMMIT" ] && [ "$DEPLOYED_COMMIT" = "$TARGET_COMMIT" ]; then
+    log "deployed commit matches target — nothing to deploy (pass --force to rebuild anyway)"
     exit 0
   fi
-  log "deploying $PREV_COMMIT → $TARGET_COMMIT"
+  log "deploying ${DEPLOYED_COMMIT:-<unknown>} → $TARGET_COMMIT"
   git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
+  # Keep /root/deploy.sh in sync with the repo's canonical script.
+  if [ -f /root/deploy.sh ] && ! cmp -s scripts/deploy.sh /root/deploy.sh; then
+    log "syncing /root/deploy.sh from scripts/deploy.sh"
+    cp scripts/deploy.sh /root/deploy.sh
+    chmod +x /root/deploy.sh
+  fi
 fi
 
 # === Step 2: npm ci ===
@@ -198,6 +212,11 @@ else
 fi
 
 # === Done ===
+# Record the successfully-deployed commit so the next run's guard works.
+mkdir -p .next
+echo "$TARGET_COMMIT" > .next/.deployed-commit
+log "stamped .next/.deployed-commit = $TARGET_COMMIT"
+
 log ""
 log "=========================================="
 log "DEPLOY SUCCESSFUL"
