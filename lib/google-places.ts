@@ -412,3 +412,115 @@ export async function nearbyVenueSearch(opts: {
     return [];
   }
 }
+
+// =========================================================================
+// Text Search — used by the city map's auto-center logic. Asks Google
+// "where are the bars in {city}?" and lets us drop the initial map pin
+// at the geometric center of the top results, NOT at the city's
+// recorded centroid (which is usually a town hall or post office).
+//
+// Returns up to `maxResults` places matching the query. We then average
+// their coords to produce a single "best center" point.
+// =========================================================================
+
+export interface TextSearchPlace {
+  placeId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  rating: number | null;
+  userRatingCount: number | null;
+}
+
+export async function textSearchPlaces(opts: {
+  query: string;
+  /** Anchor the search inside a bounding circle. Optional but recommended
+      so "bars Toronto" doesn't pull in matches in Toronto, Ohio. */
+  bias?: { lat: number; lng: number; radiusM: number };
+  maxResults?: number;
+}): Promise<TextSearchPlace[]> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const body: Record<string, unknown> = {
+      textQuery: opts.query,
+      maxResultCount: Math.min(opts.maxResults ?? 10, 20),
+    };
+    if (opts.bias) {
+      body.locationBias = {
+        circle: {
+          center: { latitude: opts.bias.lat, longitude: opts.bias.lng },
+          radius: opts.bias.radiusM,
+        },
+      };
+    }
+
+    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask":
+          "places.id,places.displayName,places.location,places.rating,places.userRatingCount",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) {
+      logger.warn({ status: response.status }, "places text search non-200");
+      return [];
+    }
+
+    const json = (await response.json()) as {
+      places?: Array<{
+        id: string;
+        displayName?: { text?: string };
+        location?: { latitude?: number; longitude?: number };
+        rating?: number;
+        userRatingCount?: number;
+      }>;
+    };
+
+    return (json.places ?? [])
+      .filter((p) => p.location?.latitude != null && p.location?.longitude != null)
+      .map((p) => ({
+        placeId: p.id,
+        name: p.displayName?.text ?? "(no name)",
+        lat: p.location?.latitude as number,
+        lng: p.location?.longitude as number,
+        rating: p.rating ?? null,
+        userRatingCount: p.userRatingCount ?? null,
+      }));
+  } catch (err) {
+    logger.warn({ err }, "places text search fetch failed");
+    return [];
+  }
+}
+
+/**
+ * Compute the geometric center of a set of points. Used to pick the
+ * starting pan target for the city map. Weighted by userRatingCount
+ * (popular places anchor harder) so a single tiny review-less bar in
+ * the suburbs doesn't pull the map toward it.
+ */
+export function weightedCenter(
+  places: Array<{ lat: number; lng: number; userRatingCount: number | null }>,
+): { lat: number; lng: number } | null {
+  if (places.length === 0) return null;
+  let sumLat = 0;
+  let sumLng = 0;
+  let sumW = 0;
+  for (const p of places) {
+    // log-weight to soften extremes — a 10,000-review bar shouldn't be
+    // 100x the weight of a 100-review one
+    const w = Math.log1p(Math.max(0, p.userRatingCount ?? 1));
+    sumLat += p.lat * w;
+    sumLng += p.lng * w;
+    sumW += w;
+  }
+  if (sumW === 0) return null;
+  return { lat: sumLat / sumW, lng: sumLng / sumW };
+}

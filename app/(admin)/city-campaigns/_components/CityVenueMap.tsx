@@ -1,13 +1,14 @@
 "use client";
 import { cn } from "@/lib/cn";
 import { GoogleMap, InfoWindow, Marker, useJsApiLoader } from "@react-google-maps/api";
-import { ExternalLink, Loader2, MapPin, Plus, Star } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, Plus, Search, Star } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   type CityMapPlace,
   type CityMapResult,
   addPlaceToCampaign,
+  fetchCityMapBestCenter,
   fetchCityMapPlaces,
 } from "../_actions/city-map-actions";
 
@@ -40,27 +41,79 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
   const [addPending, startAddTx] = useTransition();
   const [addError, setAddError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await fetchCityMapPlaces({ cityCampaignId });
-      setData(result);
-    } catch (_err) {
-      setData({
-        ok: false,
-        center: null,
-        radiusKm: 0,
-        places: [],
-        reason: "unknown",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [cityCampaignId]);
+  // Holds the map's current visible center. Updated on dragend so we know
+  // where to send the "Search this area" override coords. The mapRef holds
+  // a reference to the Google Map instance so we can read .getCenter().
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const [hasPanned, setHasPanned] = useState(false);
+  // Set true on first load so we don't re-pan to best-center every refresh
+  const initialCenterAppliedRef = useRef(false);
 
+  // The center the LAST search used. We compare to the current map center
+  // to know whether the user has panned enough to warrant a re-search.
+  const [lastSearchedCenter, setLastSearchedCenter] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
+
+  /**
+   * Search for places at a given center. If null, uses the city's recorded
+   * center (the original behavior).
+   */
+  const load = useCallback(
+    async (override?: { lat: number; lng: number }) => {
+      setLoading(true);
+      try {
+        const result = await fetchCityMapPlaces({
+          cityCampaignId,
+          centerLat: override?.lat,
+          centerLng: override?.lng,
+        });
+        setData(result);
+        if (result.center) {
+          setLastSearchedCenter(result.center);
+        }
+      } catch (_err) {
+        setData({
+          ok: false,
+          center: null,
+          radiusKm: 0,
+          places: [],
+          reason: "unknown",
+        });
+      } finally {
+        setLoading(false);
+        setHasPanned(false);
+      }
+    },
+    [cityCampaignId],
+  );
+
+  /**
+   * First-load orchestration:
+   *   1. Ask the server for the "best center" via Text Search ("bars in {city}")
+   *   2. If found, search around THAT center instead of the city's centroid
+   *   3. If not, fall through to the default fetchCityMapPlaces behavior
+   *
+   * Runs exactly once on mount. Subsequent loads (refresh, search-this-area)
+   * skip the best-center query.
+   */
   useEffect(() => {
-    load();
-  }, [load]);
+    if (initialCenterAppliedRef.current) return;
+    initialCenterAppliedRef.current = true;
+
+    (async () => {
+      try {
+        const bc = await fetchCityMapBestCenter({ cityCampaignId });
+        if (bc.center) {
+          await load(bc.center);
+          return;
+        }
+      } catch {
+        // fall through to default load
+      }
+      await load();
+    })();
+  }, [cityCampaignId, load]);
 
   function handleAdd(place: CityMapPlace) {
     setAddError(null);
@@ -165,7 +218,7 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
           ? `${newCount} new · ${inDirectoryCount} in directory · within ${data.radiusKm}km`
           : `searched within ${data.radiusKm}km`
       }
-      onRefresh={load}
+      onRefresh={() => load()}
       refreshing={loading}
       cached={data.cached}
     >
@@ -186,8 +239,34 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
             mapTypeControl: false,
             streetViewControl: false,
             fullscreenControl: true,
-            // A muted style would be nicer but requires a Map ID + the
-            // Cloud Console-based styling. Default styling is fine.
+          }}
+          onLoad={(map) => {
+            mapRef.current = map;
+          }}
+          onUnmount={() => {
+            mapRef.current = null;
+          }}
+          onDragEnd={() => {
+            // Mark that the user moved the viewport. The 'Search this area'
+            // button only appears after this, so we don't clutter the UI
+            // on initial load.
+            if (!mapRef.current) return;
+            const c = mapRef.current.getCenter();
+            if (!c) return;
+            const newLat = c.lat();
+            const newLng = c.lng();
+            // Only show the button if they panned a meaningful distance
+            // (~500m as a rough heuristic against accidental drags).
+            if (lastSearchedCenter) {
+              const dLat = newLat - lastSearchedCenter.lat;
+              const dLng = newLng - lastSearchedCenter.lng;
+              const approxKm = Math.sqrt(dLat * dLat + dLng * dLng) * 111;
+              if (approxKm < 0.5) {
+                setHasPanned(false);
+                return;
+              }
+            }
+            setHasPanned(true);
           }}
         >
           {data.places.map((p) => (
@@ -275,6 +354,32 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
             </InfoWindow>
           )}
         </GoogleMap>
+        {/* Floating "Search this area" button — appears after the operator
+            pans the map a meaningful distance from the last-searched center.
+            Disappears on click (load resets hasPanned). */}
+        {hasPanned && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!mapRef.current) return;
+              const c = mapRef.current.getCenter();
+              if (!c) return;
+              load({ lat: c.lat(), lng: c.lng() });
+            }}
+            disabled={loading}
+            className={cn(
+              "-translate-x-1/2 absolute bottom-4 left-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3 py-1.5 text-white text-xs shadow-lg",
+              "hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200",
+            )}
+          >
+            {loading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Search className="h-3 w-3" />
+            )}
+            Search this area
+          </button>
+        )}
       </div>
     </MapShell>
   );

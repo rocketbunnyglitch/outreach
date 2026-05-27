@@ -27,7 +27,12 @@
 import { venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { isGoogleMapsConfigured, nearbyVenueSearch } from "@/lib/google-places";
+import {
+  isGoogleMapsConfigured,
+  nearbyVenueSearch,
+  textSearchPlaces,
+  weightedCenter,
+} from "@/lib/google-places";
 import { logger } from "@/lib/logger";
 import { getRedis } from "@/lib/redis";
 import { sql } from "drizzle-orm";
@@ -73,6 +78,10 @@ export async function fetchCityMapPlaces(opts: {
   cityCampaignId: string;
   /** Override the default 8km if the operator zooms wider. */
   radiusKm?: number;
+  /** Override the city's recorded center — used by "Search this area" after
+      the operator pans the map. If unset, falls back to the city's lat/lng. */
+  centerLat?: number;
+  centerLng?: number;
 }): Promise<CityMapResult> {
   await requireStaff();
 
@@ -81,8 +90,9 @@ export async function fetchCityMapPlaces(opts: {
   }
 
   const radiusKm = clamp(opts.radiusKm ?? 8, 1, 25);
+  const hasOverride = opts.centerLat != null && opts.centerLng != null;
 
-  // Resolve city coords. The same query the suggester uses.
+  // Resolve city coords. Always needed (we key the dedup join on cityId).
   const cityRows = await db.execute<{
     city_id: string;
     lat: number | null;
@@ -105,29 +115,37 @@ export async function fetchCityMapPlaces(opts: {
           }
         ).rows ?? []);
   const cityRow = cityList[0];
-  if (!cityRow || !cityRow.lat || !cityRow.lng) {
+  if (!cityRow) {
+    return { ok: true, center: null, radiusKm, places: [], reason: "no_city_coords" };
+  }
+  // If no override AND no city coords, we can't search at all
+  if (!hasOverride && (!cityRow.lat || !cityRow.lng)) {
     return { ok: true, center: null, radiusKm, places: [], reason: "no_city_coords" };
   }
   const cityId = cityRow.city_id;
-  const lat = cityRow.lat;
-  const lng = cityRow.lng;
+  const lat = hasOverride ? (opts.centerLat as number) : (cityRow.lat as number);
+  const lng = hasOverride ? (opts.centerLng as number) : (cityRow.lng as number);
 
-  // Try cache
-  const cacheKey = `city-map:${cityId}:${radiusKm}`;
-  try {
-    const cachedRaw = await getRedis().get(cacheKey);
-    if (cachedRaw) {
-      const cached = JSON.parse(cachedRaw) as { places: CityMapPlace[] };
-      return {
-        ok: true,
-        center: { lat, lng },
-        radiusKm,
-        places: await reflagInDirectory(cached.places, cityId),
-        cached: true,
-      };
+  // Cache key includes whether this is a manual pan; pan-results bypass the
+  // 24h city-center cache (operator wants live results when they explicitly
+  // search a new area).
+  const cacheKey = hasOverride ? null : `city-map:${cityId}:${radiusKm}`;
+  if (cacheKey) {
+    try {
+      const cachedRaw = await getRedis().get(cacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as { places: CityMapPlace[] };
+        return {
+          ok: true,
+          center: { lat, lng },
+          radiusKm,
+          places: await reflagInDirectory(cached.places, cityId),
+          cached: true,
+        };
+      }
+    } catch (err) {
+      logger.warn({ err, cacheKey }, "city-map cache read failed; continuing without cache");
     }
-  } catch (err) {
-    logger.warn({ err, cacheKey }, "city-map cache read failed; continuing without cache");
   }
 
   // Fresh search
@@ -184,13 +202,16 @@ export async function fetchCityMapPlaces(opts: {
       venueId: directoryMap.get(c.placeId) ?? null,
     }));
 
-  // Cache for 24h (without the inDirectory flag — we re-flag on read so
-  // newly added venues immediately appear gray)
-  try {
-    const cachable = places.map(({ inDirectory: _i, venueId: _v, ...rest }) => rest);
-    await getRedis().set(cacheKey, JSON.stringify({ places: cachable }), "EX", CACHE_TTL_SECONDS);
-  } catch (err) {
-    logger.warn({ err, cacheKey }, "city-map cache write failed");
+  // Cache for 24h ONLY for city-center searches; pan-and-search-this-area
+  // results aren't cached because operators want fresh results when they
+  // explicitly target a new area.
+  if (cacheKey) {
+    try {
+      const cachable = places.map(({ inDirectory: _i, venueId: _v, ...rest }) => rest);
+      await getRedis().set(cacheKey, JSON.stringify({ places: cachable }), "EX", CACHE_TTL_SECONDS);
+    } catch (err) {
+      logger.warn({ err, cacheKey }, "city-map cache write failed");
+    }
   }
 
   return { ok: true, center: { lat, lng }, radiusKm, places };
@@ -323,4 +344,145 @@ export async function addPlaceToCampaign(opts: {
   });
 
   return { ok: true, venueId };
+}
+
+// =========================================================================
+// fetchCityMapBestCenter — finds the densest nightlife area in a city
+// using Google Places Text Search, then returns the weighted center of
+// the top results. The map uses this on first load instead of the city's
+// recorded centroid (which is typically a town hall or post office).
+//
+// Strategy:
+//   1. Run "bars in {city}" via Text Search with a 25km bias around the
+//      city center (so we don't pull in matches from another country).
+//   2. If <3 results, retry with "nightlife in {city}".
+//   3. Compute the log-weighted center (log(userRatingCount) so a single
+//      tiny review-less bar doesn't pull the map toward it).
+//   4. Cache 7 days in Redis — the "where the bars are" doesn't shift.
+//
+// Cost: 1 Text Search call = $32/1k. 7-day cache → effectively free.
+// =========================================================================
+
+export interface BestCenterResult {
+  ok: boolean;
+  center: { lat: number; lng: number } | null;
+  /** What we found — populated even on success so UI can show "found 12
+      bars in this area" or similar. */
+  candidatesCount: number;
+  reason?: "not_configured" | "no_city_coords" | "no_results" | "google_error";
+}
+
+const BEST_CENTER_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
+
+export async function fetchCityMapBestCenter(opts: {
+  cityCampaignId: string;
+}): Promise<BestCenterResult> {
+  await requireStaff();
+
+  if (!isGoogleMapsConfigured()) {
+    return { ok: true, center: null, candidatesCount: 0, reason: "not_configured" };
+  }
+
+  // Resolve the city's name + center coords. Name drives the Text Search
+  // query; coords drive the locationBias so we don't get Toronto, OH.
+  const cityRows = await db.execute<{
+    city_id: string;
+    name: string;
+    lat: number | null;
+    lng: number | null;
+  }>(sql`
+    SELECT c.id AS city_id,
+           c.name,
+           ST_Y(c.location::geometry) AS lat,
+           ST_X(c.location::geometry) AS lng
+    FROM city_campaigns cc
+    JOIN cities c ON c.id = cc.city_id
+    WHERE cc.id = ${opts.cityCampaignId}
+    LIMIT 1
+  `);
+  const cityList: Array<{ city_id: string; name: string; lat: number | null; lng: number | null }> =
+    Array.isArray(cityRows)
+      ? (cityRows as unknown as Array<{
+          city_id: string;
+          name: string;
+          lat: number | null;
+          lng: number | null;
+        }>)
+      : ((
+          cityRows as unknown as {
+            rows: Array<{
+              city_id: string;
+              name: string;
+              lat: number | null;
+              lng: number | null;
+            }>;
+          }
+        ).rows ?? []);
+  const cityRow = cityList[0];
+  if (!cityRow || !cityRow.lat || !cityRow.lng) {
+    return { ok: true, center: null, candidatesCount: 0, reason: "no_city_coords" };
+  }
+
+  // Cache check
+  const cacheKey = `city-map-best-center:${cityRow.city_id}`;
+  try {
+    const cachedRaw = await getRedis().get(cacheKey);
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw) as BestCenterResult;
+      return { ...cached, ok: true };
+    }
+  } catch (err) {
+    logger.warn({ err, cacheKey }, "best-center cache read failed");
+  }
+
+  const bias = {
+    lat: cityRow.lat,
+    lng: cityRow.lng,
+    radiusM: 25_000,
+  };
+
+  // Try "bars in {city}" first; fall back to "nightlife"
+  const results = await textSearchPlaces({
+    query: `bars in ${cityRow.name}`,
+    bias,
+    maxResults: 15,
+  });
+  if (results.length < 3) {
+    const fallback = await textSearchPlaces({
+      query: `nightlife in ${cityRow.name}`,
+      bias,
+      maxResults: 15,
+    });
+    // Merge unique by placeId
+    const seen = new Set(results.map((r) => r.placeId));
+    for (const p of fallback) {
+      if (!seen.has(p.placeId)) {
+        results.push(p);
+        seen.add(p.placeId);
+      }
+    }
+  }
+
+  if (results.length === 0) {
+    return { ok: true, center: null, candidatesCount: 0, reason: "no_results" };
+  }
+
+  const center = weightedCenter(results);
+  if (!center) {
+    return { ok: true, center: null, candidatesCount: results.length, reason: "no_results" };
+  }
+
+  const result: BestCenterResult = {
+    ok: true,
+    center,
+    candidatesCount: results.length,
+  };
+
+  try {
+    await getRedis().set(cacheKey, JSON.stringify(result), "EX", BEST_CENTER_CACHE_TTL);
+  } catch (err) {
+    logger.warn({ err, cacheKey }, "best-center cache write failed");
+  }
+
+  return result;
 }
