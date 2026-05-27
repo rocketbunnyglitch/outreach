@@ -20,6 +20,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
+import { publishRealtime } from "@/lib/realtime-publish";
 import { asc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -221,6 +222,12 @@ export async function syncEventbriteSales(
         .where(eq(events.id, parsed.data.eventId));
     });
     revalidatePath("/all-crawls");
+    publishRealtime({
+      table: "all-crawls",
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
     return { ok: true, data: { sold: summary.sold, capacity: summary.capacity } };
   } catch (err) {
     logger.error({ err }, "save EB sales failed");
@@ -241,7 +248,7 @@ export async function pushEventbriteDescription(
   _prev: unknown,
   formData: FormData,
 ): Promise<ActionResult<{ pushed: true } | { notConfigured: true }>> {
-  await requireStaff();
+  const { staff } = await requireStaff();
   const parsed = pushSchema.safeParse({ eventId: formData.get("eventId") });
   if (!parsed.success) return { ok: false, error: "Invalid input." };
 
@@ -288,6 +295,12 @@ export async function pushEventbriteDescription(
   const ok = await updateEventbriteDescription(ebRow.ebId, block);
   if (!ok) return { ok: false, error: "Couldn't push to Eventbrite." };
 
+  publishRealtime({
+    table: "all-crawls",
+    type: "update",
+    byStaffId: staff.id,
+    byStaffName: staff.displayName ?? null,
+  });
   return { ok: true, data: { pushed: true } };
 }
 
@@ -453,6 +466,16 @@ export async function bulkSyncEventbriteSales(
   }
 
   revalidatePath("/all-crawls");
+
+  publishRealtime({
+    table: "all-crawls",
+
+    type: "update",
+
+    byStaffId: staff.id,
+
+    byStaffName: staff.displayName ?? null,
+  });
   return {
     ok: true,
     data: { synced, failed, totalLinked: linked.length, ticketsTotal },
@@ -478,7 +501,7 @@ export async function bulkPushEventbriteDescriptions(
 ): Promise<
   ActionResult<{ pushed: number; failed: number; skipped: number } | { notConfigured: true }>
 > {
-  await requireStaff();
+  const { staff } = await requireStaff();
   const parsed = bulkPushSchema.safeParse({
     campaignId: formData.get("campaignId"),
     eventIds: formData.get("eventIds"),
@@ -550,6 +573,16 @@ export async function bulkPushEventbriteDescriptions(
   }
 
   revalidatePath("/all-crawls");
+
+  publishRealtime({
+    table: "all-crawls",
+
+    type: "update",
+
+    byStaffId: staff.id,
+
+    byStaffName: staff.displayName ?? null,
+  });
   return { ok: true, data: { pushed, failed, skipped } };
 }
 
@@ -596,6 +629,12 @@ export async function bulkUnlinkEventbrite(
       return rows.length;
     });
     revalidatePath("/all-crawls");
+    publishRealtime({
+      table: "all-crawls",
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
     return { ok: true, data: { unlinked } };
   } catch (err) {
     logger.error({ err }, "bulkUnlinkEventbrite failed");

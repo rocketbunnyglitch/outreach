@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  * editable table with per-row EB sync controls.
  */
 export default async function AllCrawlsPage() {
-  await requireStaff();
+  const { staff } = await requireStaff();
   const currentCampaign = await getCurrentCampaign();
 
   if (!currentCampaign) {
@@ -85,7 +85,11 @@ export default async function AllCrawlsPage() {
         />
       )}
 
-      <AllCrawlsTable campaignId={currentCampaign.campaign.id} rows={rows} />
+      <AllCrawlsTable
+        campaignId={currentCampaign.campaign.id}
+        rows={rows}
+        currentStaffId={staff.id}
+      />
     </main>
   );
 }

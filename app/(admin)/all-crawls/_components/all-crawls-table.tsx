@@ -1,10 +1,26 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import {
+  PresenceAvatarStack,
+  formatRealtimeAgo,
+  usePresenceHeartbeat,
+  useRealtimeChannel,
+} from "@/components/ui/data-table";
 import type { AllCrawlsRow } from "@/lib/all-crawls-data";
 import { cn } from "@/lib/cn";
-import { Calendar, ChevronDown, Loader2, RefreshCw, Search, Send, Unlink } from "lucide-react";
+import {
+  Calendar,
+  ChevronDown,
+  Loader2,
+  RefreshCw,
+  Search,
+  Send,
+  Unlink,
+  Wifi,
+} from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   bulkPushEventbriteDescriptions,
@@ -16,6 +32,8 @@ import { EventbriteCell } from "./eventbrite-cell";
 interface Props {
   campaignId: string;
   rows: AllCrawlsRow[];
+  /** Current logged-in staff id — used by realtime + presence hooks. */
+  currentStaffId: string;
 }
 
 const DAY_LABEL: Record<string, string> = {
@@ -71,12 +89,26 @@ function matchesFilter(row: AllCrawlsRow, filter: FilterKey): boolean {
  * (Outreach / Need 1 / Need 2 / Need 3+ / Ready / Cancelled) so the
  * operator's mental model stays consistent across surfaces.
  */
-export function AllCrawlsTable({ campaignId, rows }: Props) {
+export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sortKey, setSortKey] = useState<SortKey>("city");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const router = useRouter();
+
+  // Realtime: refresh when teammates touch any all-crawls data
+  const realtime = useRealtimeChannel({
+    channel: "realtime:all-crawls",
+    currentStaffId,
+    onEvent: () => router.refresh(),
+  });
+
+  // Presence: who else is on /all-crawls
+  const presence = usePresenceHeartbeat({
+    route: "/all-crawls",
+    currentStaffId,
+  });
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -162,14 +194,44 @@ export function AllCrawlsTable({ campaignId, rows }: Props) {
             {new Set(rows.map((r) => r.cityId)).size === 1 ? "y" : "ies"}
           </p>
         </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 text-zinc-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search city, region, EB ID…"
-            className="h-8 w-full rounded-md border border-zinc-200 bg-white pr-2 pl-7 text-xs transition-colors focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900"
-          />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex items-center gap-3">
+            <PresenceAvatarStack people={presence.others} size={22} />
+            {realtime.lastEvent && (
+              <span
+                className="font-mono text-[10px] text-zinc-500 dark:text-zinc-400"
+                title={`last update from another operator at ${realtime.lastEvent.at}`}
+              >
+                {realtime.lastEvent.byStaffName ?? "Someone"} edited{" "}
+                {formatRealtimeAgo(realtime.lastEvent.at)}
+              </span>
+            )}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em]",
+                realtime.connected
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-zinc-400 dark:text-zinc-600",
+              )}
+              title={
+                realtime.connected
+                  ? "Live — changes from teammates appear automatically"
+                  : "Realtime disconnected"
+              }
+            >
+              <Wifi className="h-2.5 w-2.5" />
+              {realtime.connected ? "live" : "offline"}
+            </span>
+          </div>
+          <div className="relative w-full sm:w-72">
+            <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 text-zinc-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search city, region, EB ID…"
+              className="h-8 w-full rounded-md border border-zinc-200 bg-white pr-2 pl-7 text-xs transition-colors focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-900"
+            />
+          </div>
         </div>
       </header>
 
