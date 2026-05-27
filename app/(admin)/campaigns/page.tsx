@@ -7,6 +7,7 @@ import { desc, isNull } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { EditCampaignButton } from "./_components/edit-campaign-button";
 
 // Live DB state — never prerender.
 export const dynamic = "force-dynamic";
@@ -50,9 +51,30 @@ export default async function CampaignsListPage() {
       ) : (
         <div className="grid gap-3">
           {rows.map(({ campaign, outreachBrand, crawlBrand }) => (
-            <Link key={campaign.id} href={`/campaigns/${campaign.id}`} className="group">
-              <Card className="flex flex-col gap-3 p-5 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
-                <div className="flex items-center justify-between gap-3">
+            <Card
+              key={campaign.id}
+              className="relative flex flex-col gap-3 p-5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
+            >
+              {/* Edit button — anchored top-right, stops Link navigation on click */}
+              <div className="absolute top-3 right-3 z-10">
+                <EditCampaignButton
+                  campaign={{
+                    id: campaign.id,
+                    name: campaign.name,
+                    status: campaign.status as "planning" | "active" | "completed" | "archived",
+                    holidayType: campaign.holidayType as
+                      | "stpaddys"
+                      | "halloween"
+                      | "newyears"
+                      | "custom",
+                    startDate: campaign.startDate ?? null,
+                    endDate: campaign.endDate ?? null,
+                    publicSubdomain: campaign.publicSubdomain ?? null,
+                  }}
+                />
+              </div>
+              <Link href={`/campaigns/${campaign.id}`} className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3 pr-10">
                   <div className="flex items-baseline gap-3">
                     <h2 className="font-semibold text-2xl tracking-tight ">{campaign.name}</h2>
                     <span className="font-mono text-xs text-zinc-400 uppercase tracking-wider">
@@ -86,8 +108,8 @@ export default async function CampaignsListPage() {
                     </>
                   )}
                 </div>
-              </Card>
-            </Link>
+              </Link>
+            </Card>
           ))}
         </div>
       )}
