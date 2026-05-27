@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { staffMembers, tasks } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/db";
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
@@ -59,6 +60,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     : undefined;
 
   const where = and(statusFilter, assigneeFilter, dueFilter, defaultStatusFilter);
+
+  // Resolve current user — we use the ID to mark "(you)" in the assignee
+  // dropdowns so operators can find themselves at a glance (session 11:
+  // "Tasks should be able to be assigned to anyone, even me").
+  const { staff: currentStaff } = await requireStaff();
 
   // Parallel fetch: rows + count + staff list for filter dropdown
   const [rows, [countRow], staffList] = await Promise.all([
@@ -204,7 +210,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               </p>
             </div>
           </div>
-          <AddTaskRow staffList={staffList} />
+          <AddTaskRow staffList={staffList} currentUserId={currentStaff.id} />
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
@@ -279,7 +285,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           </div>
           {/* Sheets-style "+ Add row" — type a task, press Enter. No
               bouncing to /tasks/new for the common case. */}
-          <AddTaskRow staffList={staffList} />
+          <AddTaskRow staffList={staffList} currentUserId={currentStaff.id} />
         </div>
       )}
 

@@ -15,7 +15,32 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ActionResult } from "@/lib/form-utils";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
+
+/**
+ * Return `yyyy-MM-ddTHH:mm` for a Date in LOCAL time. Matches the
+ * format the <input type="datetime-local"> control accepts.
+ */
+function localDateTimeString(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
+/**
+ * yyyy-MM-ddTHH:mm string for noon, `daysFromNow` days in the future.
+ * Noon (rather than midnight) so the task doesn't read as "overdue"
+ * the moment the target date arrives.
+ */
+function dueOffsetString(daysFromNow: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  d.setHours(12, 0, 0, 0);
+  return localDateTimeString(d);
+}
 
 interface StaffOption {
   id: string;
@@ -25,6 +50,13 @@ interface StaffOption {
 interface TaskFormProps {
   mode: "create" | "edit";
   staffList: StaffOption[];
+  /**
+   * Signed-in operator's staff ID. Used to mark "(you)" in the
+   * assignee dropdown and sort the operator first so they can find
+   * themselves at a glance (session 11: "assign to anyone, even me").
+   * Optional so callers without auth context can still render.
+   */
+  currentUserId?: string;
   /** Initial values for edit mode. */
   initial?: {
     id?: string;
@@ -41,13 +73,29 @@ interface TaskFormProps {
   action: (prev: unknown, formData: FormData) => Promise<ActionResult<{ id: string }>>;
 }
 
-export function TaskForm({ mode, staffList, initial, action }: TaskFormProps) {
+export function TaskForm({ mode, staffList, currentUserId, initial, action }: TaskFormProps) {
   const [state, formAction, pending] = useActionState<
     ActionResult<{ id: string }> | null,
     FormData
   >(action, null);
 
   const fieldErrors = state && !state.ok && state.fieldErrors ? state.fieldErrors : {};
+
+  // Sort staff so the signed-in operator appears first (with "(you)"
+  // suffix) and everyone else follows alphabetically. Mirrors the
+  // pattern used in AddTaskRow so both surfaces feel consistent.
+  const sortedStaff = [...staffList]
+    .map((s) => ({ ...s, isSelf: s.id === currentUserId }))
+    .sort((a, b) => {
+      if (a.isSelf && !b.isSelf) return -1;
+      if (b.isSelf && !a.isSelf) return 1;
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+  // Controlled state for the due-at input so the quick-pill row below
+  // can update it programmatically. We seed from the initial prop on
+  // edit so the value reads correctly on first paint.
+  const [dueAt, setDueAt] = useState<string>(initial?.dueAt ?? "");
 
   return (
     <form action={formAction} className="flex max-w-2xl flex-col gap-6">
@@ -132,9 +180,10 @@ export function TaskForm({ mode, staffList, initial, action }: TaskFormProps) {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="_none">Unassigned</SelectItem>
-            {staffList.map((s) => (
+            {sortedStaff.map((s) => (
               <SelectItem key={s.id} value={s.id}>
                 {s.displayName}
+                {s.isSelf && " (you)"}
               </SelectItem>
             ))}
           </SelectContent>
@@ -147,7 +196,36 @@ export function TaskForm({ mode, staffList, initial, action }: TaskFormProps) {
         error={fieldErrors.dueAt?.[0]}
         hint="Optional. Tasks with a due date in the past show as overdue."
       >
-        <Input id="dueAt" name="dueAt" type="datetime-local" defaultValue={initial?.dueAt ?? ""} />
+        <div className="flex flex-col gap-2">
+          <Input
+            id="dueAt"
+            name="dueAt"
+            type="datetime-local"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+          />
+          {/* Quick due-date pills — operator session 11 ask. One click
+              fills the input above with the appropriate ISO datetime
+              for noon local time on that day. */}
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-[9px] text-zinc-400 uppercase tracking-[0.14em]">
+              Quick
+            </span>
+            <DuePill label="Tomorrow" offsetDays={1} current={dueAt} onSet={setDueAt} />
+            <DuePill label="3 days" offsetDays={3} current={dueAt} onSet={setDueAt} />
+            <DuePill label="1 week" offsetDays={7} current={dueAt} onSet={setDueAt} />
+            <DuePill label="2 weeks" offsetDays={14} current={dueAt} onSet={setDueAt} />
+            {dueAt && (
+              <button
+                type="button"
+                onClick={() => setDueAt("")}
+                className="ml-auto rounded-md px-2 py-0.5 font-mono text-[9px] text-zinc-400 uppercase tracking-widest hover:text-zinc-700 dark:hover:text-zinc-300"
+              >
+                clear
+              </button>
+            )}
+          </div>
+        </div>
       </FieldShell>
 
       <FieldShell
@@ -183,5 +261,44 @@ export function TaskForm({ mode, staffList, initial, action }: TaskFormProps) {
         </Link>
       </div>
     </form>
+  );
+}
+
+/**
+ * Quick due-date pill. Highlights when current === the value this pill
+ * would set, so the operator can see which preset they picked.
+ *
+ * Shared shape with AddTaskRow's DuePill but lives here to avoid an
+ * extra component file; both forms use distinct datetime formats (the
+ * inline list uses date-only, this form uses datetime-local).
+ */
+function DuePill({
+  label,
+  offsetDays,
+  current,
+  onSet,
+}: {
+  label: string;
+  offsetDays: number;
+  current: string;
+  onSet: (value: string) => void;
+}) {
+  // Recompute on every render so 11:59 PM → 12:00 AM flips the pill
+  // to the next-day equivalent. Cheap (1 Date allocation per pill).
+  const targetValue = dueOffsetString(offsetDays);
+  const matches = current === targetValue;
+  return (
+    <button
+      type="button"
+      onClick={() => onSet(targetValue)}
+      className={
+        matches
+          ? "rounded-md border border-blue-400 bg-blue-100 px-2 py-0.5 font-medium text-[10px] text-blue-900 transition-colors dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100"
+          : "rounded-md border border-zinc-200 px-2 py-0.5 text-[10px] text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      }
+      aria-pressed={matches}
+    >
+      {label}
+    </button>
   );
 }

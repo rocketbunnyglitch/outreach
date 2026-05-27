@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { staffMembers, tasks } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -18,6 +19,7 @@ interface PageProps {
 
 export default async function TaskDetailPage({ params }: PageProps) {
   const { id } = await params;
+  const { staff: currentStaff } = await requireStaff();
 
   const [task, staffList] = await Promise.all([
     db
@@ -89,6 +91,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
       <TaskForm
         mode="edit"
         staffList={staffList}
+        currentUserId={currentStaff.id}
         initial={{
           id: task.id,
           title: task.title,

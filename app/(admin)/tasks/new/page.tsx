@@ -1,4 +1,5 @@
 import { staffMembers } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -10,6 +11,7 @@ export const metadata = { title: "New task · Crawl Engine" };
 export const dynamic = "force-dynamic";
 
 export default async function NewTaskPage() {
+  const { staff: currentStaff } = await requireStaff();
   const staffList = await db
     .select({
       id: staffMembers.id,
@@ -30,7 +32,12 @@ export default async function NewTaskPage() {
         </Link>
         <h1 className="mt-3 font-semibold text-4xl tracking-tight">New task</h1>
       </header>
-      <TaskForm mode="create" staffList={staffList} action={createTask} />
+      <TaskForm
+        mode="create"
+        staffList={staffList}
+        currentUserId={currentStaff.id}
+        action={createTask}
+      />
     </div>
   );
 }
