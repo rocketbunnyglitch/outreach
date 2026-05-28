@@ -1,7 +1,12 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import type { CrawlCard, SlotRole, SlotRow } from "@/lib/city-sheet-data";
+import {
+  type CrawlCard,
+  SLOT_ROLE_ORDER,
+  type SlotRole,
+  type SlotRow,
+} from "@/lib/city-sheet-data";
 import { cn } from "@/lib/cn";
 import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
@@ -249,14 +254,19 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   >([]);
   const [adding, startAdd] = useTransition();
 
-  // Merge real slots with extras (UI placeholders for newly-added rows)
+  // Merge real slots with extras (UI placeholders for newly-added rows),
+  // then sort by canonical role order so a just-added Middle 3 lands
+  // among the middles rather than appended at the very end (after the
+  // final / alt-finals). Mirrors the data-layer ordering.
   const realKeys = new Set(crawl.slots.map((s) => `${s.role}:${s.slotPosition}`));
   const allSlots: SlotRow[] = [
     ...crawl.slots,
     ...extraSlots
       .filter((e) => !realKeys.has(`${e.role}:${e.slotPosition}`))
       .map((e) => emptySlot(e.role, e.slotPosition)),
-  ];
+  ].sort(
+    (a, b) => SLOT_ROLE_ORDER[a.role] - SLOT_ROLE_ORDER[b.role] || a.slotPosition - b.slotPosition,
+  );
 
   function handleAddSlot(role: "middle" | "alt_final") {
     const fd = new FormData();

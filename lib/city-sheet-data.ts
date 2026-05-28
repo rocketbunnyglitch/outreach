@@ -32,6 +32,20 @@ import { asc, eq, inArray } from "drizzle-orm";
 
 export type SlotRole = "wristband" | "middle" | "final" | "alt_final";
 
+/**
+ * Canonical display order of slot roles within a crawl: the night runs
+ * wristband (entry) → middles → final → alt-finals. Used to sort slot
+ * rows so an added Middle 3 sits among the middles, not after the
+ * final. (Keep in sync with the venueRole enum — these are the 4
+ * values.)
+ */
+export const SLOT_ROLE_ORDER: Record<SlotRole, number> = {
+  wristband: 0,
+  middle: 1,
+  final: 2,
+  alt_final: 3,
+};
+
 export interface SlotRow {
   /** venue_event id; null when the slot is empty (placeholder rendered by UI) */
   venueEventId: string | null;
@@ -259,20 +273,24 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       );
     });
 
-    // Stable order: defaults first, then extras grouped by role
-    const slots: SlotRow[] = [
-      ...defaultSlots.map((d) => {
-        const filled = ves.find(
-          (v) => v.role === d.role && (v.slotPosition ?? 1) === d.slotPosition,
-        );
-        return slotRowFrom(filled, d.role, d.slotPosition);
-      }),
-      ...extras
-        .sort(
-          (a, b) => a.role.localeCompare(b.role) || (a.slotPosition ?? 0) - (b.slotPosition ?? 0),
-        )
-        .map((v) => slotRowFrom(v, v.role as SlotRole, v.slotPosition ?? 1)),
-    ];
+    // Stable order: the crawl runs wristband → middles → final →
+    // alt_finals. Sort ALL slots (defaults + extras) by this canonical
+    // role order, then slot_position. Previously extras were sorted by
+    // role.localeCompare and appended AFTER the defaults, which dropped
+    // a Middle 3 below the Final + Alt Final (operator session-12 bug:
+    // "adding a middle slot puts it after final, it should be between
+    // the middles").
+    const orderedDefaults: SlotRow[] = defaultSlots.map((d) => {
+      const filled = ves.find((v) => v.role === d.role && (v.slotPosition ?? 1) === d.slotPosition);
+      return slotRowFrom(filled, d.role, d.slotPosition);
+    });
+    const orderedExtras: SlotRow[] = extras.map((v) =>
+      slotRowFrom(v, v.role as SlotRole, v.slotPosition ?? 1),
+    );
+    const slots: SlotRow[] = [...orderedDefaults, ...orderedExtras].sort(
+      (a, b) =>
+        SLOT_ROLE_ORDER[a.role] - SLOT_ROLE_ORDER[b.role] || a.slotPosition - b.slotPosition,
+    );
 
     // Sharing — list other events using the same group, with display labels
     const sharedWith: Array<{ eventId: string; label: string }> = hasGroup
