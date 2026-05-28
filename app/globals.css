@@ -165,3 +165,123 @@ h1 {
     border-width: 0.5px;
   }
 }
+
+/* =========================================================================
+ * inbox-prose — minimal email body rendering
+ * =========================================================================
+ *
+ * Lightweight typography helpers for the inbox thread pane. We don't use
+ * @tailwindcss/typography here because it's not installed and email HTML
+ * needs only a fraction of what `prose` covers. Goals:
+ *   - Constrain table/img width so newsletters don't explode the column
+ *   - Style links + quoted text consistently with the rest of the admin
+ *   - Match dark mode without per-element overrides
+ *
+ * Applied via the .inbox-prose class wrapper around dangerouslySetInnerHTML
+ * output in ThreadPane.tsx.
+ */
+.inbox-prose {
+  line-height: 1.55;
+}
+
+.inbox-prose p,
+.inbox-prose ul,
+.inbox-prose ol,
+.inbox-prose blockquote {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.inbox-prose p:first-child,
+.inbox-prose ul:first-child,
+.inbox-prose ol:first-child {
+  margin-top: 0;
+}
+
+.inbox-prose ul {
+  list-style: disc;
+  padding-left: 1.5em;
+}
+
+.inbox-prose ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+
+.inbox-prose a {
+  color: rgb(37 99 235); /* blue-600 */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dark .inbox-prose a {
+  color: rgb(96 165 250); /* blue-400 */
+}
+
+.inbox-prose blockquote {
+  border-left: 2px solid rgb(228 228 231); /* zinc-200 */
+  padding-left: 0.75em;
+  margin-left: 0.25em;
+  color: rgb(82 82 91); /* zinc-600 */
+}
+
+.dark .inbox-prose blockquote {
+  border-left-color: rgb(63 63 70); /* zinc-700 */
+  color: rgb(161 161 170); /* zinc-400 */
+}
+
+.inbox-prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.inbox-prose table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  max-width: 100%;
+}
+
+.inbox-prose td,
+.inbox-prose th {
+  padding: 0.25em 0.5em;
+  vertical-align: top;
+}
+
+.inbox-prose pre {
+  background: rgb(244 244 245); /* zinc-100 */
+  padding: 0.5em 0.75em;
+  border-radius: 0.25em;
+  overflow-x: auto;
+  font-size: 0.875em;
+}
+
+.dark .inbox-prose pre {
+  background: rgb(24 24 27); /* zinc-900 */
+}
+
+.inbox-prose code {
+  background: rgb(244 244 245);
+  padding: 0.1em 0.3em;
+  border-radius: 0.2em;
+  font-size: 0.875em;
+}
+
+.dark .inbox-prose code {
+  background: rgb(24 24 27);
+}
+
+/* Gmail quoted-reply styling — Gmail wraps replies in
+   <div class="gmail_quote"> when a user replies inline. Treat it like
+   a blockquote so the boundary between the new content and the quoted
+   thread is visually obvious. */
+.inbox-prose .gmail_quote {
+  border-left: 2px solid rgb(228 228 231);
+  padding-left: 0.75em;
+  margin-top: 1em;
+  color: rgb(82 82 91);
+}
+
+.dark .inbox-prose .gmail_quote {
+  border-left-color: rgb(63 63 70);
+  color: rgb(161 161 170);
+}

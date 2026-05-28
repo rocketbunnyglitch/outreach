@@ -27,6 +27,7 @@ import {
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
+import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 // =========================================================================
@@ -290,6 +291,15 @@ export interface InboxThreadDetail {
     subject: string;
     bodyText: string | null;
     bodyHtml: string | null;
+    /**
+     * Server-sanitized version of bodyHtml, safe to render via
+     * dangerouslySetInnerHTML. NULL when the source was empty or
+     * stripped to nothing by the sanitizer. See lib/email-sanitize.ts
+     * for the strip list. The raw bodyHtml is kept on the type for
+     * future use (e.g. download-raw debugging) but should not be
+     * rendered in the UI.
+     */
+    bodySafeHtml: string | null;
     sentAt: Date;
     readAt: Date | null;
     sentByStaffName: string | null;
@@ -356,7 +366,13 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
 
   return {
     thread: threadRow as InboxThreadDetail["thread"],
-    messages: messageRows as InboxThreadDetail["messages"],
+    messages: messageRows.map((m) => ({
+      ...m,
+      // Server-sanitize the HTML body before we let the client touch
+      // it. The raw bodyHtml stays on the response too, but the UI
+      // should render bodySafeHtml instead.
+      bodySafeHtml: sanitizeEmailHtml(m.bodyHtml),
+    })) as InboxThreadDetail["messages"],
   };
 }
 

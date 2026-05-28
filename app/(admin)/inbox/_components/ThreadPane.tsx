@@ -137,15 +137,32 @@ function MessageCard({
 
       <div className="mt-3">
         {/*
-          v1: render bodyText only. bodyHtml from Gmail is user-controlled
-          content and would need a sanitizer (DOMPurify on a parsed DOM, or
-          a server-side allow-list). The polling worker should populate
-          bodyText with the converted plain-text version; if it doesn't,
-          this collapses to "(empty body)".
-          TODO when the Gmail polling worker ships + we have a sanitizer:
-            render bodyHtml inside a styled prose container.
+          Render priority:
+            1. bodySafeHtml — server-sanitized inbound HTML. Newsletters,
+               replies with formatting, threaded-quote markup all render
+               correctly here. The sanitizer in lib/email-sanitize.ts
+               strips scripts/iframes/event-handlers; what reaches the
+               client is safe to inject via dangerouslySetInnerHTML.
+            2. bodyText — plain-text fallback when HTML is absent or
+               stripped to nothing.
+            3. "(empty body)" — both null.
+
+          The wrapper applies inbox-prose styles (a minimal hand-rolled
+          alternative to @tailwindcss/typography since the plugin isn't
+          installed in this project). Constraints:
+            - max-width on the body so newsletter tables don't explode
+              the right column
+            - links inherit our accent colour and underline
+            - quoted text (Gmail-style "On ... wrote:") gets a left
+              border so the operator can see the boundary
         */}
-        {message.bodyText ? (
+        {message.bodySafeHtml ? (
+          <div
+            className="inbox-prose max-w-prose text-sm text-zinc-800 dark:text-zinc-200"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized server-side via DOMPurify; see lib/email-sanitize.ts
+            dangerouslySetInnerHTML={{ __html: message.bodySafeHtml }}
+          />
+        ) : message.bodyText ? (
           <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-800 dark:text-zinc-200">
             {message.bodyText}
           </pre>
