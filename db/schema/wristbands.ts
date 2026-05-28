@@ -31,6 +31,11 @@ export const wristbands = pgTable(
     quantity: integer("quantity").notNull().default(0),
     status: wristbandStatus("status").notNull().default("pending"),
 
+    /** Recipient name for the mailing label (session-12 P3). */
+    recipientName: text("recipient_name"),
+    /** Recipient phone (courier contact). */
+    recipientPhone: text("recipient_phone"),
+
     shippingAddress: text("shipping_address"),
     carrier: text("carrier"), // "USPS", "Canada Post", "UPS", etc.
     trackingNumber: text("tracking_number"),

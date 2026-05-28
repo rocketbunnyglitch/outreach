@@ -11,39 +11,12 @@ import { cn } from "@/lib/cn";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { AlertTriangle, CheckCircle2, Package, Truck } from "lucide-react";
+import { Package } from "lucide-react";
 import Link from "next/link";
+import { WristbandShippingRow } from "./_components/wristband-shipping-row";
 
 export const metadata = { title: "Wristbands" };
 export const dynamic = "force-dynamic";
-
-const STATUS_CONFIG: Record<string, { label: string; tone: string; icon: React.ReactNode }> = {
-  pending: {
-    label: "Pending",
-    tone: "text-amber-500 bg-amber-500/10 ring-amber-500/20",
-    icon: <Package className="h-3 w-3" />,
-  },
-  ready_to_ship: {
-    label: "Ready to ship",
-    tone: "text-blue-500 bg-blue-500/10 ring-blue-500/20",
-    icon: <Package className="h-3 w-3" />,
-  },
-  shipped: {
-    label: "Shipped",
-    tone: "text-violet-500 bg-violet-500/10 ring-violet-500/20",
-    icon: <Truck className="h-3 w-3" />,
-  },
-  delivered: {
-    label: "Delivered",
-    tone: "text-emerald-500 bg-emerald-500/10 ring-emerald-500/20",
-    icon: <CheckCircle2 className="h-3 w-3" />,
-  },
-  issue: {
-    label: "Issue",
-    tone: "text-rose-500 bg-rose-500/10 ring-rose-500/20",
-    icon: <AlertTriangle className="h-3 w-3" />,
-  },
-};
 
 interface Props {
   searchParams: Promise<{ scope?: string; status?: string }>;
@@ -72,6 +45,8 @@ export default async function WristbandsPage({ searchParams }: Props) {
       wristbandId: wristbands.id,
       quantity: wristbands.quantity,
       status: wristbands.status,
+      recipientName: wristbands.recipientName,
+      recipientPhone: wristbands.recipientPhone,
       shippingAddress: wristbands.shippingAddress,
       carrier: wristbands.carrier,
       trackingNumber: wristbands.trackingNumber,
@@ -197,123 +172,22 @@ export default async function WristbandsPage({ searchParams }: Props) {
             <thead>
               <tr className="border-zinc-200 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800/60">
                 <th className="px-4 py-2.5">Venue</th>
-                <th className="px-4 py-2.5">Event</th>
-                <th className="px-4 py-2.5 text-right">Quantity</th>
+                <th className="px-4 py-2.5">Recipient</th>
                 <th className="px-4 py-2.5">Shipping</th>
                 <th className="px-4 py-2.5">Tracking</th>
                 <th className="px-4 py-2.5">Status</th>
+                <th className="w-10 px-2 py-2.5" />
               </tr>
             </thead>
             <tbody>
               {filtered.map((r, i) => (
-                <WristbandRow key={r.venueEventId} row={r} striped={i % 2 === 1} />
+                <WristbandShippingRow key={r.venueEventId} row={r} striped={i % 2 === 1} />
               ))}
             </tbody>
           </table>
         </div>
       )}
     </div>
-  );
-}
-
-interface WristbandRowData {
-  venueEventId: string;
-  venueId: string;
-  venueName: string;
-  cityName: string;
-  campaignName: string;
-  eventDate: string;
-  veStatus: string;
-  wristbandId: string | null;
-  quantity: number | null;
-  status: string | null;
-  shippingAddress: string | null;
-  carrier: string | null;
-  trackingNumber: string | null;
-  shippedAt: Date | null;
-  deliveredAt: Date | null;
-  expectedDeliveryDate: string | null;
-}
-
-function WristbandRow({
-  row,
-  striped,
-}: {
-  row: WristbandRowData;
-  striped: boolean;
-}) {
-  const noSetup = !row.wristbandId;
-  return (
-    <tr className={striped ? "dark:bg-white/[0.015]" : ""}>
-      <td className="px-4 py-2.5">
-        <Link href={`/venues/${row.venueId}`} className="font-medium hover:underline">
-          {row.venueName}
-        </Link>
-        <p className="font-mono text-[10px] text-zinc-500">{row.cityName}</p>
-      </td>
-      <td className="px-4 py-2.5 font-mono text-xs text-zinc-500 tabular-nums">
-        {new Date(`${row.eventDate}T00:00:00Z`).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          timeZone: "UTC",
-        })}
-        <p className="mt-0.5 normal-case tracking-normal">{row.campaignName}</p>
-      </td>
-      <td className="px-4 py-2.5 text-right font-mono tabular-nums">
-        {row.quantity ? row.quantity.toLocaleString() : <span className="text-zinc-500">—</span>}
-      </td>
-      <td className="px-4 py-2.5">
-        {row.shippingAddress ? (
-          <span className="text-xs">{truncate(row.shippingAddress, 40)}</span>
-        ) : (
-          <span className="font-mono text-[10px] text-rose-500 uppercase tracking-widest">
-            <AlertTriangle className="mr-1 inline h-3 w-3" />
-            missing
-          </span>
-        )}
-      </td>
-      <td className="px-4 py-2.5">
-        {row.trackingNumber ? (
-          <span className="font-mono text-xs">
-            {row.carrier && <span className="text-zinc-500">{row.carrier} </span>}
-            {row.trackingNumber}
-          </span>
-        ) : row.status === "shipped" ? (
-          <span className="font-mono text-[10px] text-rose-500 uppercase tracking-widest">
-            <AlertTriangle className="mr-1 inline h-3 w-3" />
-            missing
-          </span>
-        ) : (
-          <span className="text-zinc-500">—</span>
-        )}
-      </td>
-      <td className="px-4 py-2.5">
-        {noSetup ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] text-amber-500 uppercase tracking-widest ring-1 ring-amber-500/20 ring-inset">
-            <Package className="h-3 w-3" />
-            Needs setup
-          </span>
-        ) : (
-          <StatusBadge status={row.status ?? "pending"} />
-        )}
-      </td>
-    </tr>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
-  if (!cfg) return null;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ring-1 ring-inset",
-        cfg.tone,
-      )}
-    >
-      {cfg.icon}
-      {cfg.label}
-    </span>
   );
 }
 
@@ -350,8 +224,4 @@ function StatCard({
     </div>
   );
   return href ? <Link href={href}>{Body}</Link> : Body;
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
