@@ -66,11 +66,9 @@ import {
   LayoutGrid,
   Map as MapIcon,
   Send,
-  Settings,
   ShieldCheck,
   Tag,
   Target,
-  Upload,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -113,20 +111,19 @@ const SECTIONS: Section[] = [
   {
     label: "Data",
     items: [
-      { href: "/brands", label: "Brands", icon: <Briefcase className="h-3 w-3" /> },
-      { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3 w-3" /> },
       { href: "/cities", label: "Cities", icon: <Globe className="h-3 w-3" /> },
       { href: "/venues", label: "Venues", icon: <Building2 className="h-3 w-3" /> },
       { href: "/cluster-builder", label: "Clusters", icon: <Boxes className="h-3 w-3" /> },
       { href: "/middle-groups", label: "Middles", icon: <Users className="h-3 w-3" /> },
-      { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
       { href: "/templates", label: "Templates", icon: <FileCode className="h-3 w-3" /> },
-      { href: "/import", label: "Import", icon: <Upload className="h-3 w-3" /> },
-      {
-        href: "/settings/inboxes",
-        label: "Email Connection",
-        icon: <Settings className="h-3 w-3" />,
-      },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      { href: "/brands", label: "Brands", icon: <Briefcase className="h-3 w-3" /> },
+      { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3 w-3" /> },
+      { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
     ],
   },
 ];

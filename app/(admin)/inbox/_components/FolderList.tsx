@@ -7,6 +7,7 @@ import {
   Inbox as InboxIcon,
   MailOpen,
   RotateCcw,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -36,9 +37,24 @@ export function FolderList({
 }) {
   return (
     <nav aria-label="Inbox folders" className="flex flex-col gap-4">
-      <header className="px-2">
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">Operations</p>
-        <h2 className="mt-0.5 font-semibold text-lg tracking-tight">Inbox</h2>
+      <header className="flex items-start justify-between gap-2 px-2">
+        <div>
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            Operations
+          </p>
+          <h2 className="mt-0.5 font-semibold text-lg tracking-tight">Inbox</h2>
+        </div>
+        {/* Email connection settings — moved off the left nav (session-12
+            P2 declutter) to a gear here, where email config naturally
+            belongs. Links to the inbox/OAuth setup page. */}
+        <Link
+          href="/settings/inboxes"
+          title="Email settings — connect & manage inboxes"
+          aria-label="Email settings"
+          className="mt-0.5 rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
       </header>
 
       <ul className="flex flex-col gap-0.5">

@@ -6,7 +6,7 @@ import { listOutreachBrands } from "@/lib/brand-context";
 import { loadComposerData } from "@/lib/composer-data";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import Link from "next/link";
 import { queueBulkSend } from "./../send-queue/_actions";
 import { bulkUpdateVenues } from "./_actions";
@@ -109,11 +109,21 @@ export default async function VenuesListPage() {
             for a quick narrow. Inline-edit name, capacity, and DNC on any row.
           </p>
         </div>
-        <Button asChild>
-          <Link href="/venues/new">
-            <Plus className="h-4 w-4" /> New venue
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* CSV import — moved off the left nav (session-12 P2
+              declutter) to a button here, next to the venue data it
+              feeds. */}
+          <Button asChild variant="outline">
+            <Link href="/import">
+              <Upload className="h-4 w-4" /> Import
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/venues/new">
+              <Plus className="h-4 w-4" /> New venue
+            </Link>
+          </Button>
+        </div>
       </header>
 
       {rows.length === 0 ? (

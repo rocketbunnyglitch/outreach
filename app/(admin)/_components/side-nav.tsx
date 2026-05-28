@@ -6,9 +6,14 @@
  *
  * Grouping decisions:
  *   • Inbox + Tasks: 'Today' — what you live in
- *   • Brands → Calendar: 'Operate' — daily campaign work
- *   • Venues → Templates: 'Manage' — data setup, less frequent
+ *   • All Crawls → Discover: 'Operate' — daily campaign work
+ *   • Cities → Templates: 'Data' — operational data setup
+ *   • Brands + Campaigns + Goals: 'Settings' — campaign configuration
  *   • Admin → Audit: admin-only, gated below
+ *
+ * Off-nav entry points (operator session-12 P2 declutter):
+ *   • Email connection lives behind a gear on /inbox (its natural home)
+ *   • CSV import lives behind a button on /venues
  *
  * Active route: highlighted with a left accent bar in the staffer's
  * brand color. The current section's group label is also tinted so
@@ -36,11 +41,9 @@ import {
   LayoutGrid,
   Map as MapIcon,
   Send,
-  Settings,
   ShieldCheck,
   Tag,
   Target,
-  Upload,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -79,20 +82,19 @@ const SECTIONS: Array<{
   {
     label: "Data",
     items: [
-      { href: "/brands", label: "Brands", icon: <Briefcase className="h-3.5 w-3.5" /> },
-      { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3.5 w-3.5" /> },
       { href: "/cities", label: "Cities", icon: <Globe className="h-3.5 w-3.5" /> },
       { href: "/venues", label: "Venues", icon: <Building2 className="h-3.5 w-3.5" /> },
       { href: "/cluster-builder", label: "Clusters", icon: <Boxes className="h-3.5 w-3.5" /> },
       { href: "/middle-groups", label: "Middles", icon: <Users className="h-3.5 w-3.5" /> },
-      { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
       { href: "/templates", label: "Templates", icon: <FileCode className="h-3.5 w-3.5" /> },
-      { href: "/import", label: "Import", icon: <Upload className="h-3.5 w-3.5" /> },
-      {
-        href: "/settings/inboxes",
-        label: "Email Connection",
-        icon: <Settings className="h-3.5 w-3.5" />,
-      },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      { href: "/brands", label: "Brands", icon: <Briefcase className="h-3.5 w-3.5" /> },
+      { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3.5 w-3.5" /> },
+      { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
     ],
   },
 ];
