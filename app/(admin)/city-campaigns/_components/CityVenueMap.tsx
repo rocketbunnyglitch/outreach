@@ -40,6 +40,23 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
   const [selectedPlace, setSelectedPlace] = useState<CityMapPlace | null>(null);
   const [addPending, startAddTx] = useTransition();
   const [addError, setAddError] = useState<string | null>(null);
+  // Google calls window.gm_authFailure when the Maps JS API rejects the
+  // browser key at auth time (RefererNotAllowedMapError,
+  // ApiNotActivatedMapError, BillingNotEnabledMapError, InvalidKeyMapError).
+  // useJsApiLoader's loadError does NOT catch these because the script DID
+  // load successfully; Google overlays its own 'Oops!' message instead. We
+  // wire up the global so failures become a clear in-app error instead.
+  const [authFailed, setAuthFailed] = useState(false);
+  useEffect(() => {
+    const win = window as unknown as { gm_authFailure?: () => void };
+    const prev = win.gm_authFailure;
+    win.gm_authFailure = () => {
+      setAuthFailed(true);
+    };
+    return () => {
+      win.gm_authFailure = prev;
+    };
+  }, []);
 
   // Holds the map's current visible center. Updated on dragend so we know
   // where to send the "Search this area" override coords. The mapRef holds
@@ -155,6 +172,18 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
       setSelectedPlace(null);
       router.refresh();
     });
+  }
+
+  if (authFailed) {
+    return (
+      <MapShell title="City venue map">
+        <ErrorBanner>
+          Google rejected the map key. Check that the Maps JavaScript API is enabled on
+          GOOGLE_MAPS_BROWSER_KEY and that this domain is in the key's HTTP-referrer restrictions
+          (e.g. https://outreach.barcrawlconnect.com/*).
+        </ErrorBanner>
+      </MapShell>
+    );
   }
 
   if (loadError) {
