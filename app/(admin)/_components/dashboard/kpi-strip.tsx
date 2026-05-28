@@ -1,7 +1,7 @@
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Sparkline } from "./sparkline";
 
-interface Kpi {
+export interface Kpi {
   label: string;
   value: string;
   /** Trailing tiny indicator e.g. "+12%" or "8/12". */
@@ -35,7 +35,7 @@ export function KpiStrip({ kpis }: Props) {
   );
 }
 
-function KpiCard({ kpi }: { kpi: Kpi }) {
+export function KpiCard({ kpi }: { kpi: Kpi }) {
   const sparkColor = kpi.trend === "down" ? "text-rose-500" : "text-emerald-500";
 
   return (

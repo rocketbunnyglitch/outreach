@@ -6,17 +6,15 @@ import { useState, useTransition } from "react";
 import { updateCampaignCitiesGoal } from "../../_actions-cities-goal";
 
 /**
- * "Cities completed of X" KPI card. Dotted-gradient semicircle inspired by
- * the Apple Activity / status displays — a wide arc of green dots glowing
- * from a brighter apex, with the completed count and the goal-in-label
- * rendered in the negative space inside the arc.
+ * "Cities completed of X" KPI card. Glass-style dark surface with a
+ * dotted-gradient semicircle of green dots, count + goal-in-label centered
+ * in the negative space — Apple Activity / status-display style.
  *
- * The number of LIT dots scales with progress (completed/goal), with all
- * dots fully lit at the goal. Unlit dots still render as faint outlines so
- * the arc shape is always visible.
+ * Sized as a single-column card meant to sit alongside other KPI tiles in
+ * a 3-col grid on the dashboard. Square-ish aspect so the arc reads.
  *
- * Admin-only inline edit on the goal — pencil icon in the label. Non-admin
- * staff see a static label.
+ * Lit dots scale with completed/goal; all dots glow when at goal. Admin-only
+ * inline edit on the goal — pencil opens an input with Enter/Esc shortcuts.
  */
 export function CitiesCompletedKpi({
   completed,
@@ -26,8 +24,8 @@ export function CitiesCompletedKpi({
 }: {
   completed: number;
   goal: number;
-  /** Active campaign id for the edit action; null when the dashboard is in
-   *  "all campaigns" mode (we still show the visual but hide the edit). */
+  /** Active campaign id; null when the dashboard is "all campaigns" — we
+   *  still show the visual but hide the edit. */
   campaignId: string | null;
   isAdmin: boolean;
 }) {
@@ -61,94 +59,110 @@ export function CitiesCompletedKpi({
   }
 
   return (
-    <section className="relative overflow-hidden rounded-2xl bg-zinc-950 px-6 py-8 shadow-sm shadow-zinc-900/20 dark:shadow-none">
-      {/* Subtle ambient gradient behind the dots for the "lit-from-within" feel */}
+    <section
+      // Glass look: dark semi-transparent gradient, thin pale border, soft
+      // emerald outer glow + an inset top highlight to catch the eye. The
+      // backdrop-blur is a no-op on opaque surfaces but kicks in if any
+      // content sits behind.
+      className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900/85 via-zinc-950/95 to-zinc-900/70 backdrop-blur-xl"
+      style={{
+        boxShadow:
+          "inset 0 1px 0 0 rgba(255,255,255,0.06), 0 20px 50px -20px rgba(16,185,129,0.18)",
+      }}
+    >
+      {/* Soft radial wash behind the dots — the "lit from within" feel */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 70% 60% at 50% 80%, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0) 60%)",
+            "radial-gradient(ellipse 65% 55% at 50% 78%, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0) 60%)",
         }}
       />
-      <div className="relative flex flex-col items-center">
+
+      {/* Square-ish wrapper so the arc reads cleanly regardless of grid */}
+      <div className="relative aspect-square min-h-[300px] w-full p-5">
         <DottedArc ratio={ratio} />
-        <div className="-mt-44 sm:-mt-52 flex flex-col items-center">
-          <p className="flex items-center gap-2 font-mono text-[10px] text-zinc-300 uppercase tracking-[0.18em]">
-            <span>Cities completed of</span>
-            {editing ? (
-              <span className="inline-flex items-center gap-1">
-                <input
-                  // biome-ignore lint/a11y/noAutofocus: explicit edit affordance
-                  autoFocus
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") save();
-                    if (e.key === "Escape") {
+
+        {/* Centered overlay text — sits in the hollow of the semicircle */}
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end pb-[18%]">
+          <div className="pointer-events-auto flex flex-col items-center">
+            <p className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-300 uppercase tracking-[0.18em]">
+              <span>Cities completed of</span>
+              {editing ? (
+                <span className="inline-flex items-center gap-1">
+                  <input
+                    // biome-ignore lint/a11y/noAutofocus: explicit edit affordance
+                    autoFocus
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") save();
+                      if (e.key === "Escape") {
+                        setDraft(String(goal));
+                        setEditing(false);
+                        setError(null);
+                      }
+                    }}
+                    disabled={pending}
+                    className="w-12 rounded border border-emerald-500/40 bg-zinc-900 px-1 py-0.5 text-center text-emerald-200 text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    aria-label="Cities goal"
+                  />
+                  <button
+                    type="button"
+                    onClick={save}
+                    disabled={pending}
+                    className="text-emerald-400 hover:text-emerald-300"
+                    aria-label="Save goal"
+                  >
+                    <Check className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
                       setDraft(String(goal));
                       setEditing(false);
                       setError(null);
-                    }
-                  }}
-                  disabled={pending}
-                  className="w-12 rounded border border-emerald-500/40 bg-zinc-900 px-1 py-0.5 text-center text-emerald-200 text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  aria-label="Cities goal"
-                />
-                <button
-                  type="button"
-                  onClick={save}
-                  disabled={pending}
-                  className="text-emerald-400 hover:text-emerald-300"
-                  aria-label="Save goal"
-                >
-                  <Check className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraft(String(goal));
-                    setEditing(false);
-                    setError(null);
-                  }}
-                  disabled={pending}
-                  className="text-zinc-500 hover:text-zinc-300"
-                  aria-label="Cancel"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="tabular-nums">{goal}</span>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    title="Edit goal (admin)"
-                    className="text-zinc-500 transition-colors hover:text-emerald-400"
-                    aria-label="Edit cities goal"
+                    }}
+                    disabled={pending}
+                    className="text-zinc-500 hover:text-zinc-300"
+                    aria-label="Cancel"
                   >
-                    <Pencil className="h-2.5 w-2.5" />
+                    <X className="h-3 w-3" />
                   </button>
-                )}
-              </span>
-            )}
-          </p>
-          <p
-            className="mt-3 font-semibold text-7xl text-white tabular-nums sm:text-8xl"
-            style={{ fontFeatureSettings: '"tnum"' }}
-          >
-            {completed.toLocaleString()}
-          </p>
-          {error && (
-            <p className="mt-2 text-rose-400 text-xs" role="alert">
-              {error}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="tabular-nums">{goal}</span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing(true)}
+                      title="Edit goal (admin)"
+                      className="text-zinc-500 transition-colors hover:text-emerald-400"
+                      aria-label="Edit cities goal"
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </span>
+              )}
             </p>
-          )}
+            <p
+              className="mt-2 font-semibold text-5xl text-white tabular-nums sm:text-6xl"
+              style={{ fontFeatureSettings: '"tnum"' }}
+            >
+              {completed.toLocaleString()}
+            </p>
+            {error && (
+              <p className="mt-2 text-rose-400 text-xs" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </section>
@@ -156,46 +170,42 @@ export function CitiesCompletedKpi({
 }
 
 // -----------------------------------------------------------------
-// DottedArc — the semicircle of dots
+// DottedArc — concentric semicircle rings of dots
 // -----------------------------------------------------------------
 
-const TOTAL_DOTS = 30; // per ring
+const TOTAL_DOTS = 24; // per ring
 const RINGS = 3;
-const RING_GAP = 14; // px between ring radii
+const RING_GAP = 16; // px between ring radii
 
-/** SVG semicircle made of concentric rings of dots. ratio in [0,1] —
- *  dots are sequentially "lit" from one end of the arc to the other,
- *  proportional to progress. Lit dots glow green; unlit dots are faint
- *  outlines so the arc shape is always visible. */
 function DottedArc({ ratio }: { ratio: number }) {
-  const width = 520;
-  const height = 280;
+  // ViewBox sized so the half-circle sits along the bottom of the SVG and
+  // the arc's negative space (below the apex) is what fills the card body.
+  // Pinned with preserveAspectRatio so the arc scales with the card width.
+  const width = 360;
+  const height = 220;
   const cx = width / 2;
-  const cy = height - 20; // baseline of the arc near bottom
-  const baseRadius = 200;
-  const ringRadii = Array.from({ length: RINGS }, (_, i) => baseRadius + i * RING_GAP);
+  const cy = height - 8;
+  // Outer radius (innermost +2*GAP) sized to leave a margin inside the card.
+  const innerRadius = cx - 40 - (RINGS - 1) * RING_GAP;
+  const ringRadii = Array.from({ length: RINGS }, (_, i) => innerRadius + i * RING_GAP);
 
-  // Each ring has its own dot positions, all spanning the same arc (180°).
-  // We light dots in left-to-right order across the whole arc — i.e. the
-  // first lit dot is the leftmost on the outer ring, the next is the
-  // leftmost on the middle ring, etc., creating a "sweep" effect.
   const totalAcrossRings = TOTAL_DOTS * RINGS;
   const litCount = Math.round(totalAcrossRings * ratio);
 
-  // Build a global ordering of dots (ring-by-ring at each angular step),
-  // so progress sweeps the arc evenly.
-  type Dot = { x: number; y: number; angle: number; ring: number };
+  type Dot = { x: number; y: number; angle: number; ring: number; order: number };
   const dots: Dot[] = [];
+  let order = 0;
   for (let i = 0; i < TOTAL_DOTS; i++) {
-    // 180° arc from π (left, angle=180°) to 0 (right, angle=0°)
+    // 180° arc: π (leftmost) → 0 (rightmost)
     const angle = Math.PI - (i / (TOTAL_DOTS - 1)) * Math.PI;
     for (let ring = 0; ring < RINGS; ring++) {
-      const radius = ringRadii[ring] ?? baseRadius;
+      const radius = ringRadii[ring] ?? innerRadius;
       dots.push({
         x: cx + radius * Math.cos(angle),
         y: cy - radius * Math.sin(angle),
         angle,
         ring,
+        order: order++,
       });
     }
   }
@@ -205,18 +215,17 @@ function DottedArc({ ratio }: { ratio: number }) {
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={`Progress arc: ${Math.round(ratio * 100)} percent`}
-      className="h-auto w-full max-w-[520px]"
+      className="absolute inset-x-0 top-[8%] h-auto w-full"
+      preserveAspectRatio="xMidYMin meet"
     >
       <defs>
-        {/* Radial gradient for the "lit" dots — brighter near the top apex */}
-        <radialGradient id="dot-lit" cx="50%" cy="100%" r="80%">
-          <stop offset="0%" stopColor="#34d399" stopOpacity="1" />
-          <stop offset="60%" stopColor="#10b981" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#059669" stopOpacity="0.55" />
+        <radialGradient id="dot-lit" cx="50%" cy="0%" r="100%">
+          <stop offset="0%" stopColor="#6ee7b7" stopOpacity="1" />
+          <stop offset="55%" stopColor="#34d399" stopOpacity="1" />
+          <stop offset="100%" stopColor="#059669" stopOpacity="0.65" />
         </radialGradient>
-        {/* Glow filter for the lit dots */}
         <filter id="dot-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.2" result="blur" />
+          <feGaussianBlur stdDeviation="2" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -224,16 +233,14 @@ function DottedArc({ ratio }: { ratio: number }) {
         </filter>
       </defs>
 
-      {dots.map((d, idx) => {
-        const lit = idx < litCount;
-        // Slight per-ring size variation for depth
-        const r = d.ring === 1 ? 5.5 : 5;
+      {dots.map((d) => {
+        const lit = d.order < litCount;
+        const r = d.ring === 2 ? 5.5 : d.ring === 1 ? 5 : 4.5;
         const key = `${d.ring}-${d.angle.toFixed(4)}`;
         if (lit) {
-          // Soft outer halo + bright core
           return (
             <g key={key} filter="url(#dot-glow)">
-              <circle cx={d.x} cy={d.y} r={r + 1.8} fill="#10b981" opacity={0.22} />
+              <circle cx={d.x} cy={d.y} r={r + 2} fill="#10b981" opacity={0.25} />
               <circle cx={d.x} cy={d.y} r={r} fill="url(#dot-lit)" />
             </g>
           );

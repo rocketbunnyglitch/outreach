@@ -10,7 +10,7 @@ import Link from "next/link";
 import { CitiesCompletedKpi } from "./_components/dashboard/cities-completed-kpi";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
-import { KpiStrip } from "./_components/dashboard/kpi-strip";
+import { KpiCard } from "./_components/dashboard/kpi-strip";
 import { MeetingMode } from "./_components/dashboard/meeting-mode";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
@@ -178,14 +178,19 @@ export default async function DashboardHome({
         </div>
       </header>
 
-      <CitiesCompletedKpi
-        completed={data.kpis.citiesCompleted}
-        goal={data.kpis.citiesGoal}
-        campaignId={campaignId}
-        isAdmin={staff.role === "admin"}
-      />
-
-      <KpiStrip kpis={kpis} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <CitiesCompletedKpi
+          completed={data.kpis.citiesCompleted}
+          goal={data.kpis.citiesGoal}
+          campaignId={campaignId}
+          isAdmin={staff.role === "admin"}
+        />
+        <div className="card-surface grid grid-cols-1 gap-px overflow-hidden bg-zinc-200 sm:grid-cols-2 lg:col-span-2 dark:bg-zinc-800/40">
+          {kpis.map((kpi) => (
+            <KpiCard key={kpi.label} kpi={kpi} />
+          ))}
+        </div>
+      </div>
 
       <WhosOnline currentStaffId={staff.id} />
 
