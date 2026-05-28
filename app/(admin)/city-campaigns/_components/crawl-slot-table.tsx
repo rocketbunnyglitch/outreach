@@ -14,6 +14,7 @@ import { Check, ExternalLink, Loader2, MessageSquare, Pencil, Plus, Trash2, X } 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { notifyDataChanged } from "../../_components/live-refresh";
 import {
   type HostOption,
   assignCrawlHost,
@@ -85,6 +86,7 @@ function CrawlHeader({
         }
         setEditing(false);
         router.refresh();
+        notifyDataChanged();
       } catch (err) {
         console.error("[crawl-header] updateCrawl failed", err);
         setError("Couldn't save — try again.");
@@ -109,6 +111,7 @@ function CrawlHeader({
           return;
         }
         router.refresh();
+        notifyDataChanged();
       } catch (err) {
         console.error("[crawl-header] deleteCrawl failed", err);
         setError("Couldn't delete — try again.");
@@ -327,6 +330,7 @@ function CrawlHostsControl({
         }
         setOpen(false);
         router.refresh();
+        notifyDataChanged();
       } catch (err) {
         console.error("[crawl-hosts] assign failed", err);
         setError("Couldn't assign — try again.");
@@ -343,6 +347,7 @@ function CrawlHostsControl({
           return;
         }
         router.refresh();
+        notifyDataChanged();
       } catch (err) {
         console.error("[crawl-hosts] remove failed", err);
         setError("Couldn't remove — try again.");
@@ -487,6 +492,7 @@ function CrawlNotesControl({
         setError(null);
         setNotes(await loadCrawlNotes({ eventId }));
         router.refresh();
+        notifyDataChanged();
       } catch (err) {
         console.error("[crawl-notes] add failed", err);
         setError("Couldn't save — try again.");
@@ -504,6 +510,7 @@ function CrawlNotesControl({
         }
         setNotes((prev) => (prev ? prev.filter((n) => n.id !== note.id) : prev));
         router.refresh();
+        notifyDataChanged();
       } catch (err) {
         console.error("[crawl-notes] delete failed", err);
         setError("Couldn't delete — try again.");

@@ -30,6 +30,7 @@ import {
   updateDashboardNote,
   updateEventStatus,
 } from "../../_actions-tracker";
+import { notifyDataChanged } from "../live-refresh";
 
 export interface TrackerRow {
   cityCampaignId: string;
@@ -456,6 +457,7 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
       try {
         const result = await updateCityCampaignStatus(null, fd);
         if (result.ok) {
+          notifyDataChanged();
           setSaved(true);
           setOpen(false);
           setTimeout(() => setSaved(false), 1200);
@@ -590,6 +592,7 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
       fd.set("leadStaffId", newValue);
       const result = await reassignCityCampaign(null, fd);
       if (result.ok) {
+        notifyDataChanged();
         setSaved(true);
         setTimeout(() => setSaved(false), 1200);
       }
@@ -652,6 +655,7 @@ function NoteInput({ row }: { row: TrackerRow }) {
       fd.set("note", draft);
       const result = await updateDashboardNote(null, fd);
       if (result.ok) {
+        notifyDataChanged();
         setCommittedValue(draft);
         setSaved(true);
         setTimeout(() => setSaved(false), 1200);
@@ -798,6 +802,7 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
       try {
         const result = await updateEventStatus(null, fd);
         if (result.ok) {
+          notifyDataChanged();
           setSaved(true);
           setOpen(false);
           setTimeout(() => setSaved(false), 1200);
