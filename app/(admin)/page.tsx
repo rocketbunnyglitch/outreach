@@ -50,7 +50,7 @@ export default async function DashboardHome({
   // "all campaigns" via the URL, scope the dashboard to that campaign.
   const campaignId = !allCampaigns && currentCampaign ? currentCampaign.campaign.id : null;
 
-  const data = await loadDashboardData({ campaignId });
+  const data = await loadDashboardData({ campaignId, viewerStaffId: staff.id });
 
   // Premium per-campaign tracker + Today digest — both campaign-scoped,
   // loaded in parallel so the dashboard stays under one DB roundtrip

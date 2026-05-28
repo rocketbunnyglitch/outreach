@@ -88,6 +88,14 @@ export interface LoadDashboardOptions {
    * across every active campaign (the "All campaigns" toggle).
    */
   campaignId: string | null;
+  /**
+   * The staff member viewing the dashboard. The "Upcoming tasks" widget
+   * + the open/overdue task KPI counts are scoped to THIS person's
+   * assigned tasks — operators flagged that task lists shouldn't be
+   * visible to everyone (session 12). When omitted (legacy callers),
+   * tasks fall back to the team-wide view.
+   */
+  viewerStaffId?: string;
 }
 
 export async function loadDashboardData(
@@ -98,6 +106,14 @@ export async function loadDashboardData(
   // switcher); fall back to all-active if explicitly broadened.
   const campaignFilter = options.campaignId
     ? eq(cityCampaigns.campaignId, options.campaignId)
+    : undefined;
+
+  // Task scope — when a viewer is provided, restrict the upcoming-task
+  // list + open/overdue counts to tasks assigned to them. Operators
+  // flagged that the dashboard task list shouldn't expose everyone's
+  // tasks (session 12). undefined viewer = team-wide (legacy).
+  const viewerTaskFilter = options.viewerStaffId
+    ? eq(tasks.assignedStaffId, options.viewerStaffId)
     : undefined;
 
   const cityCampaignRows = await db
@@ -402,6 +418,8 @@ export async function loadDashboardData(
           or(eq(tasks.status, "pending"), eq(tasks.status, "in_progress")),
           // Either has a due date in the next 7 days OR is overdue
           or(sql`${tasks.dueAt} < now() + interval '7 days'`, isNull(tasks.dueAt)),
+          // Scope to the viewer's own tasks when a viewer is set.
+          viewerTaskFilter,
         ),
       )
       .orderBy(sql`${tasks.dueAt} ASC NULLS LAST`, desc(tasks.createdAt))
@@ -411,7 +429,8 @@ export async function loadDashboardData(
         openTaskCount: sql<number>`count(*) filter (where status in ('pending','in_progress'))::int`,
         overdueTaskCount: sql<number>`count(*) filter (where status = 'pending' and due_at < now())::int`,
       })
-      .from(tasks),
+      .from(tasks)
+      .where(viewerTaskFilter),
     // Polymorphic notes feed: latest 10 notes joined with their target's
     // display name via LEFT JOINs gated by target_type. CASE chooses the
     // right name based on which target_type bucket the row belongs to.

@@ -19,7 +19,7 @@ export function TasksWidget({ tasks, totalOpen, overdueCount }: Props) {
       <header className="flex items-baseline justify-between gap-3 border-zinc-200 border-b bg-zinc-100/60 px-4 py-2.5 dark:border-zinc-800/60 dark:bg-zinc-900/30">
         <div className="flex items-baseline gap-2">
           <h2 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-            Upcoming tasks
+            Your upcoming tasks
           </h2>
           {overdueCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2 py-0.5 font-mono text-[10px] text-rose-500 ring-1 ring-rose-500/20 ring-inset">
