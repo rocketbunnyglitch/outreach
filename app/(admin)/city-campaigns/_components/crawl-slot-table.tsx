@@ -1407,7 +1407,15 @@ function SlotStatusSelect({
       )}
     >
       {STATUS_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value}>
+        // The colored tone stays on the closed <select> only. Native option
+        // popups render on an OS-controlled (usually light) surface, so the
+        // dark-mode tones (e.g. text-emerald-400) were unreadable when open.
+        // Force explicit dark-on-white per option so the list is always legible.
+        <option
+          key={o.value}
+          value={o.value}
+          style={{ color: "#18181b", backgroundColor: "#ffffff" }}
+        >
           {o.label}
         </option>
       ))}
