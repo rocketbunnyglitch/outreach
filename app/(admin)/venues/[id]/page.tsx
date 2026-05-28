@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { cities, venues } from "@/db/schema";
+import { events, campaigns, cities, cityCampaigns, venueEvents, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
 import { loadComposerData } from "@/lib/composer-data";
@@ -9,13 +9,14 @@ import { listNotes } from "@/lib/notes";
 import { logManualSend, sendOutreachEmail } from "@/lib/send-outreach";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { archiveVenue, getVenueOutreachLog, logOutreach, updateVenue } from "../_actions";
+import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { SendComposer } from "../_components/send-composer";
 import { VenueForm } from "../_components/venue-form";
@@ -60,6 +61,43 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     typeof suggestionsMap extends Map<string, infer V> ? V : never
   > = {};
   for (const [k, v] of suggestionsMap.entries()) suggestionsByNote[k] = v;
+
+  // Confirmed/scheduled crawl history for this venue. Guarded so a query
+  // failure (e.g. an enum value not yet migrated) degrades to an empty
+  // section instead of 500-ing the whole venue page (CLAUDE.md §12.3/§12.4).
+  // NOTE: 'scheduled' is intentionally omitted from the filter until the
+  // venue_event_status enum migration is deployed — querying for an enum
+  // label the DB doesn't have yet throws. Add it here once migrated.
+  let crawlHistory: CrawlHistoryRow[] = [];
+  try {
+    crawlHistory = await db
+      .select({
+        eventId: events.id,
+        cityCampaignId: cityCampaigns.id,
+        eventDate: events.eventDate,
+        dayPart: events.dayPart,
+        crawlNumber: events.crawlNumber,
+        routeLabel: events.routeLabel,
+        role: venueEvents.role,
+        status: venueEvents.status,
+        cityName: cities.name,
+        campaignName: campaigns.name,
+      })
+      .from(venueEvents)
+      .innerJoin(events, eq(venueEvents.eventId, events.id))
+      .innerJoin(cityCampaigns, eq(events.cityCampaignId, cityCampaigns.id))
+      .innerJoin(campaigns, eq(cityCampaigns.campaignId, campaigns.id))
+      .innerJoin(cities, eq(cityCampaigns.cityId, cities.id))
+      .where(
+        and(
+          eq(venueEvents.venueId, id),
+          inArray(venueEvents.status, ["confirmed", "contract_signed"]),
+        ),
+      )
+      .orderBy(desc(events.eventDate));
+  } catch (err) {
+    console.error("[venue] crawl history query failed", err);
+  }
 
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
@@ -107,6 +145,8 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
           action={boundUpdate}
         />
       </div>
+
+      <CrawlHistorySection rows={crawlHistory} />
 
       <SendComposer
         venueId={id}
