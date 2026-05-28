@@ -49,6 +49,13 @@ export interface CrawlNeed {
   ticketsSold: number;
   /** Sales total for this crawl */
   salesCents: number;
+  /**
+   * Shipping status of THIS crawl's wristband-role venue (from the
+   * wristbands table). null = no wristband row yet. Drives the per-crawl
+   * wristband indicator: red (not shipped: pending/ready_to_ship/issue/null),
+   * yellow (shipped), green (delivered).
+   */
+  wristbandStatus: "pending" | "ready_to_ship" | "shipped" | "delivered" | "issue" | null;
 }
 
 export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {

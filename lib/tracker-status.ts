@@ -24,7 +24,7 @@ import "server-only";
  *   - "outreach"         — all slots filled (default; engine in outreach mode)
  */
 
-import { events, venueEvents } from "@/db/schema";
+import { events, venueEvents, wristbands } from "@/db/schema";
 import { db } from "@/lib/db";
 import { eq, inArray } from "drizzle-orm";
 
@@ -68,9 +68,12 @@ export async function computeCityNeeds(
       eventStatus: events.status,
       ticketsSold: events.ticketSalesCount,
       venueEventStatus: venueEvents.status,
+      venueRole: venueEvents.role,
+      wristbandStatus: wristbands.status,
     })
     .from(events)
     .leftJoin(venueEvents, eq(venueEvents.eventId, events.id))
+    .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
     .where(inArray(events.cityCampaignId, cityCampaignIds));
 
   // Group by (city_campaign, day_part, crawl_number)
@@ -82,6 +85,7 @@ export async function computeCityNeeds(
     status: CrawlNeed["status"];
     confirmedVenueCount: number;
     ticketsSold: number;
+    wristbandStatus: CrawlNeed["wristbandStatus"];
   };
   const bucketKey = (cc: string, d: string, n: number) => `${cc}::${d}::${n}`;
   const buckets = new Map<string, CrawlBucket>();
@@ -99,10 +103,15 @@ export async function computeCityNeeds(
         status: (r.eventStatus as CrawlNeed["status"]) ?? "planned",
         confirmedVenueCount: 0,
         ticketsSold: r.ticketsSold ?? 0,
+        wristbandStatus: null,
       };
       buckets.set(k, b);
     }
     if (r.venueEventStatus === "confirmed") b.confirmedVenueCount++;
+    // Capture the wristband-role venue's shipping status for this crawl.
+    if (r.venueRole === "wristband" && r.wristbandStatus) {
+      b.wristbandStatus = r.wristbandStatus;
+    }
     // Tickets are per event, not per venue_event — only count once
     // (the join may dup; we take the first reasonable value).
     if (b.ticketsSold === 0 && r.ticketsSold) b.ticketsSold = r.ticketsSold;
@@ -128,6 +137,7 @@ export async function computeCityNeeds(
       needsFinal: open >= 1,
       ticketsSold: b.ticketsSold,
       salesCents: 0, // wire from existing dashboard query if needed
+      wristbandStatus: b.wristbandStatus,
     };
     const list = byCC.get(b.cityCampaignId) ?? [];
     list.push(need);

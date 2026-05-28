@@ -53,7 +53,7 @@ interface Props {
   staff: StaffOption[];
 }
 
-type SortKey = "priority" | "city" | "sales" | "status" | "need" | "assign" | "notes";
+type SortKey = "priority" | "city" | "status" | "need" | "assign" | "notes";
 
 const STATUS_PILL_RANK: Record<CityStatusPill, number> = {
   outreach: 0,
@@ -77,8 +77,6 @@ function compareRows(
       return a.priority - b.priority;
     case "city":
       return a.cityName.localeCompare(b.cityName);
-    case "sales":
-      return a.totalSalesCents - b.totalSalesCents;
     case "status":
       return STATUS_PILL_RANK[a.need.statusPill] - STATUS_PILL_RANK[b.need.statusPill];
     case "need":
@@ -205,7 +203,7 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
         />
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] text-sm">
+        <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead>
             <tr className="border-zinc-200/80 border-b bg-zinc-200/60 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
               <th className="w-9 px-2 py-3" />
@@ -218,13 +216,6 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
                 className="w-10 px-2"
               />
               <SortableTh label="City" sortKey="city" sort={sort} onSort={toggleSort} />
-              <SortableTh
-                label="Sales"
-                sortKey="sales"
-                sort={sort}
-                onSort={toggleSort}
-                align="right"
-              />
               <SortableTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
               <SortableTh label="Need" sortKey="need" sort={sort} onSort={toggleSort} />
               <SortableTh
@@ -240,7 +231,7 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center">
+                <td colSpan={7} className="px-4 py-16 text-center">
                   <div className="mx-auto max-w-sm">
                     <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
                       No cities in this campaign yet
@@ -260,7 +251,7 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
                   No cities match that filter.
                 </td>
               </tr>
@@ -310,7 +301,7 @@ function CityRow({
           "hover:bg-blue-500/[0.04] dark:border-zinc-800/40 dark:hover:bg-blue-400/[0.04]",
         )}
       >
-        <td className="px-2 py-2.5 align-middle">
+        <td className="px-2 py-2 align-middle sm:py-2.5">
           {hasBreakdown && (
             <button
               type="button"
@@ -333,7 +324,7 @@ function CityRow({
           <span className="font-mono text-xs text-zinc-500 tabular-nums">{row.priority}</span>
         </td>
 
-        <td className="px-3 py-2.5 align-middle">
+        <td className="px-3 py-2 align-middle sm:py-2.5">
           <Link
             href={`/city-campaigns/${row.cityCampaignId}`}
             className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
@@ -342,25 +333,19 @@ function CityRow({
           </Link>
         </td>
 
-        <td className="px-3 py-2.5 text-right align-middle">
-          <span className="font-mono text-xs text-zinc-700 tabular-nums dark:text-zinc-300">
-            {formatMoney(row.totalSalesCents)}
-          </span>
-        </td>
-
-        <td className="px-3 py-2.5 align-middle">
+        <td className="px-3 py-2 align-middle sm:py-2.5">
           <StatusOverridePill row={row} />
         </td>
 
-        <td className="px-3 py-2.5 align-middle">
+        <td className="px-3 py-2 align-middle sm:py-2.5">
           <SlotPills slots={row.need.slots} />
         </td>
 
-        <td className="px-3 py-2.5 align-middle">
+        <td className="px-3 py-2 align-middle sm:py-2.5">
           <AssignSelect row={row} staff={staff} />
         </td>
 
-        <td className="px-3 py-2.5 align-middle">
+        <td className="px-3 py-2 align-middle sm:py-2.5">
           <NoteInput row={row} />
         </td>
       </tr>
@@ -872,6 +857,38 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
   );
 }
 
+/** Per-crawl wristband shipping indicator. Red = not shipped yet
+    (pending/ready_to_ship/issue/none), amber = shipped, green = received
+    (delivered). Only shown beside individual crawls, never beside a city. */
+function WristbandIcon({ status }: { status: CrawlNeed["wristbandStatus"] }) {
+  const { tone, label } =
+    status === "delivered"
+      ? { tone: "text-green-500 dark:text-green-400", label: "Wristbands received" }
+      : status === "shipped"
+        ? { tone: "text-amber-500 dark:text-amber-400", label: "Wristbands shipped" }
+        : {
+            tone: "text-red-500 dark:text-red-400",
+            label: status === "issue" ? "Wristband issue" : "Wristbands not shipped",
+          };
+  return (
+    <span className={cn("inline-flex shrink-0", tone)} title={label} aria-label={label}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="2.5" y="8.5" width="19" height="7" rx="3.5" fill="currentColor" opacity="0.2" />
+        <rect
+          x="2.5"
+          y="8.5"
+          width="19"
+          height="7"
+          rx="3.5"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
 function CrawlBreakdownRow({
   crawl,
   tone,
@@ -915,17 +932,13 @@ function CrawlBreakdownRow({
       <td className="px-2 py-1.5" />
       <td className="px-3 py-1.5">
         <div className="flex items-center gap-2 pl-6">
+          <WristbandIcon status={crawl.wristbandStatus} />
           <span className="h-1 w-1 rounded-full bg-zinc-400/60" />
           <span className="text-xs text-zinc-600 dark:text-zinc-400">
             {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
           </span>
           <CrawlStatusOverride crawl={crawl} />
         </div>
-      </td>
-      <td className="px-3 py-1.5 text-right">
-        <span className="font-mono text-[11px] text-zinc-500 tabular-nums">
-          {formatMoney(crawl.salesCents)}
-        </span>
       </td>
       <td className="px-3 py-1.5">
         <span
@@ -949,11 +962,6 @@ function CrawlBreakdownRow({
       </td>
     </tr>
   );
-}
-
-function formatMoney(cents: number): string {
-  if (!cents) return "—";
-  return `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 function firstName(name: string): string {
