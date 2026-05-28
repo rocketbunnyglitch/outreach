@@ -116,11 +116,10 @@ export async function loadSupportHours(opts?: {
   const campaignNameByCc = await resolveCampaignNames(rows.map((r) => r.cityCampaignId));
 
   const out: SupportCrawlRow[] = [];
-  const dayTotals: Record<SupportZoneKey, Map<string, number>> = {
-    eastern: new Map(),
-    pht: new Map(),
-  };
-  const zoneTotalHours: Record<SupportZoneKey, number> = { eastern: 0, pht: 0 };
+  // Absolute-time windows of every crawl with both times set; the total
+  // coverage is the UNION of these (overlaps counted once), not the sum of
+  // each crawl's duration.
+  const intervals: Array<[number, number]> = [];
   let missingCount = 0;
 
   for (const r of rows) {
@@ -132,16 +131,12 @@ export async function loadSupportHours(opts?: {
       const start = r.startsAt instanceof Date ? r.startsAt : new Date(r.startsAt);
       const end = r.endsAt instanceof Date ? r.endsAt : new Date(r.endsAt);
       durationHours = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
+      if (end.getTime() > start.getTime()) intervals.push([start.getTime(), end.getTime()]);
 
       for (const z of SUPPORT_ZONES) {
         const s = fmtLocal(z.timeZone, start);
         const e = fmtLocal(z.timeZone, end);
         zones[z.key] = { localStart: s.time, localEnd: e.time, localDay: s.day };
-        // Attribute the crawl's coverage hours to the local start day in
-        // this zone (a crawl is one shift; splitting across midnight adds
-        // complexity without scheduling value).
-        zoneTotalHours[z.key] += durationHours;
-        dayTotals[z.key].set(s.day, (dayTotals[z.key].get(s.day) ?? 0) + durationHours);
       }
     } else {
       missingCount += 1;
@@ -158,17 +153,48 @@ export async function loadSupportHours(opts?: {
     });
   }
 
-  const totals: SupportZoneTotal[] = SUPPORT_ZONES.map((z) => ({
-    key: z.key,
-    label: z.label,
-    timeZone: z.timeZone,
-    totalHours: Math.round(zoneTotalHours[z.key] * 10) / 10,
-    byDay: Array.from(dayTotals[z.key].entries())
-      .map(([day, hours]) => ({ day, hours: Math.round(hours * 10) / 10 }))
-      .sort((a, b) => a.day.localeCompare(b.day)),
-  }));
+  // Total coverage hours = union of all crawl windows. Two crawls running at
+  // the same time need ONE support shift, not two — so e.g. a Sat 4pm-Sun 8am
+  // span is 16h total regardless of how many crawls fall inside it. The hours
+  // are the same in both zones (elapsed time is zone-invariant); only the
+  // per-local-day split differs.
+  const merged = mergeIntervals(intervals);
+  const unionHours = merged.reduce((sum, [s, e]) => sum + (e - s) / 3_600_000, 0);
+
+  const totals: SupportZoneTotal[] = SUPPORT_ZONES.map((z) => {
+    const byDayMap = new Map<string, number>();
+    for (const [s, e] of merged) {
+      // Attribute each merged window to its local START day in this zone.
+      const day = fmtLocal(z.timeZone, new Date(s)).day;
+      byDayMap.set(day, (byDayMap.get(day) ?? 0) + (e - s) / 3_600_000);
+    }
+    return {
+      key: z.key,
+      label: z.label,
+      timeZone: z.timeZone,
+      totalHours: Math.round(unionHours * 10) / 10,
+      byDay: Array.from(byDayMap.entries())
+        .map(([day, hours]) => ({ day, hours: Math.round(hours * 10) / 10 }))
+        .sort((a, b) => a.day.localeCompare(b.day)),
+    };
+  });
 
   return { rows: out, totals, missingCount };
+}
+
+/** Merge overlapping/adjacent [start,end] ms intervals into disjoint windows. */
+function mergeIntervals(intervals: Array<[number, number]>): Array<[number, number]> {
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const cur of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && cur[0] <= last[1]) {
+      last[1] = Math.max(last[1], cur[1]);
+    } else {
+      merged.push([cur[0], cur[1]]);
+    }
+  }
+  return merged;
 }
 
 /**
