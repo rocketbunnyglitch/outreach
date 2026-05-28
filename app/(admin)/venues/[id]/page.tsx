@@ -1,5 +1,13 @@
 import { Button } from "@/components/ui/button";
-import { events, campaigns, cities, cityCampaigns, venueEvents, venues } from "@/db/schema";
+import {
+  events,
+  campaigns,
+  cities,
+  cityCampaigns,
+  venueEvents,
+  venues,
+  wristbands,
+} from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
 import { loadComposerData } from "@/lib/composer-data";
@@ -15,11 +23,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
+import type { WristbandRowData } from "../../wristbands/_components/wristband-shipping-row";
 import { archiveVenue, getVenueOutreachLog, logOutreach, updateVenue } from "../_actions";
 import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { SendComposer } from "../_components/send-composer";
 import { VenueForm } from "../_components/venue-form";
+import { VenueWristbandSection } from "../_components/venue-wristband-section";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +109,49 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     console.error("[venue] crawl history query failed", err);
   }
 
+  // Wristband shipping rows — only the wristband-role venue_events for this
+  // venue. Guarded like crawlHistory so a query failure degrades gracefully.
+  let wristbandRows: WristbandRowData[] = [];
+  try {
+    const rows = await db
+      .select({
+        venueEventId: venueEvents.id,
+        venueId: venues.id,
+        venueName: venues.name,
+        cityName: cities.name,
+        campaignName: campaigns.name,
+        eventDate: events.eventDate,
+        veStatus: venueEvents.status,
+        wristbandId: wristbands.id,
+        quantity: wristbands.quantity,
+        status: wristbands.status,
+        recipientName: wristbands.recipientName,
+        recipientPhone: wristbands.recipientPhone,
+        shippingAddress: wristbands.shippingAddress,
+        carrier: wristbands.carrier,
+        trackingNumber: wristbands.trackingNumber,
+        shippedAt: wristbands.shippedAt,
+        deliveredAt: wristbands.deliveredAt,
+        expectedDeliveryDate: wristbands.expectedDeliveryDate,
+      })
+      .from(venueEvents)
+      .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+      .innerJoin(cities, eq(cities.id, venues.cityId))
+      .innerJoin(events, eq(events.id, venueEvents.eventId))
+      .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+      .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+      .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
+      .where(and(eq(venueEvents.venueId, id), eq(venueEvents.role, "wristband")))
+      .orderBy(desc(events.eventDate));
+    wristbandRows = rows.map((r) => ({
+      ...r,
+      eventDate: String(r.eventDate),
+      expectedDeliveryDate: r.expectedDeliveryDate ? String(r.expectedDeliveryDate) : null,
+    }));
+  } catch (err) {
+    console.error("[venue] wristband shipping query failed", err);
+  }
+
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
     return updateVenue(id, prev, fd);
@@ -147,6 +200,8 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       </div>
 
       <CrawlHistorySection rows={crawlHistory} />
+
+      <VenueWristbandSection rows={wristbandRows} />
 
       <SendComposer
         venueId={id}

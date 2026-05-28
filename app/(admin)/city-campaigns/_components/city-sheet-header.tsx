@@ -7,6 +7,7 @@ import {
 } from "@/lib/tracker-status-types";
 import { MapPin, Printer, User2 } from "lucide-react";
 import Link from "next/link";
+import { PriorityStatCard } from "./priority-stat-card";
 
 interface Props {
   data: CitySheetData;
@@ -60,7 +61,7 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
 
       {/* Stat strip */}
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Priority" value={String(data.priority)} mono tint="zinc" />
+        <PriorityStatCard cityCampaignId={data.cityCampaignId} priority={data.priority} />
         <StatCard
           label="Tickets sold"
           value={totalTicketsSold.toLocaleString()}
