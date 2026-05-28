@@ -10,7 +10,7 @@ import {
 } from "@/lib/city-sheet-shared";
 import { cn } from "@/lib/cn";
 import type { NoteRow } from "@/lib/notes";
-import { Check, Loader2, MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, Loader2, MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -987,13 +987,25 @@ function SlotTableRow({
         </div>
 
         {/* Venue picker — large, the primary control on this card */}
-        <div>
-          <VenueAutocomplete
-            cityId={cityId}
-            selectedName={slot.venueName}
-            onSelect={assignVenue}
-            placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
-          />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <VenueAutocomplete
+              cityId={cityId}
+              selectedName={slot.venueName}
+              onSelect={assignVenue}
+              placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
+            />
+          </div>
+          {slot.venueId && (
+            <Link
+              href={`/venues/${slot.venueId}`}
+              title="Open venue details"
+              aria-label="Open venue details"
+              className="shrink-0 rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          )}
         </div>
 
         {/* Venue metadata — email + capacity, read-only */}
@@ -1056,6 +1068,7 @@ function SlotTableRow({
                 cityCampaignId={cityCampaignId}
                 placeholder="—"
                 disabled={!slot.venueEventId}
+                multiline
               />
             </dd>
           </dl>
@@ -1105,12 +1118,26 @@ function SlotTableRow({
 
         {/* Venue picker */}
         <td className="px-2 py-2 align-middle">
-          <VenueAutocomplete
-            cityId={cityId}
-            selectedName={slot.venueName}
-            onSelect={assignVenue}
-            placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
-          />
+          <div className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <VenueAutocomplete
+                cityId={cityId}
+                selectedName={slot.venueName}
+                onSelect={assignVenue}
+                placeholder={slot.venueEventId ? (slot.venueName ?? "Pick…") : "+ Pick venue"}
+              />
+            </div>
+            {slot.venueId && (
+              <Link
+                href={`/venues/${slot.venueId}`}
+                title="Open venue details"
+                aria-label="Open venue details"
+                className="shrink-0 rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
         </td>
 
         {/* Email — read-only, comes from venues table */}
@@ -1174,6 +1201,7 @@ function SlotTableRow({
             cityCampaignId={cityCampaignId}
             placeholder="—"
             disabled={!slot.venueEventId}
+            multiline
           />
         </td>
 
@@ -1230,18 +1258,52 @@ function SlotTableRow({
   );
 }
 
+/**
+ * Smart-format shorthand crawl hours into the canonical
+ * "H:MMPM-H:MMAM" form used by the map pages + Eventbrite description.
+ *
+ * Rules (from operator spec):
+ *   - Start time is always PM — evening crawls start 9-11pm, and the
+ *     earliest day crawl starts 1pm, so a leading 1 or 2 is still PM.
+ *   - The end rolls into AM once it reaches 12 (midnight) or wraps past
+ *     the start hour (e.g. 10-1 → 1AM, 10-2 → 2AM).
+ *   - "9-10" → "9:00PM-10:00PM", "10-12" → "10:00PM-12:00AM",
+ *     "1-3" (day) → "1:00PM-3:00PM".
+ *
+ * Anything already containing am/pm, or not a simple "H[:MM]-H[:MM]"
+ * range, is returned untouched so deliberately-typed values are never
+ * mangled.
+ */
+function parseTimeRange(input: string): string {
+  const raw = input.trim();
+  if (!raw || /[ap]\.?m/i.test(raw)) return raw;
+  const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*[-–]\s*(\d{1,2})(?::(\d{2}))?$/);
+  if (!m) return raw;
+  const sh = Number(m[1]);
+  const eh = Number(m[3]);
+  if (sh < 1 || sh > 12 || eh < 1 || eh > 12) return raw;
+  const sm = m[2] ?? "00";
+  const em = m[4] ?? "00";
+  // Start is always PM. End is AM at/after midnight: exactly 12, or a
+  // smaller hour than the start (it wrapped past midnight).
+  const endMer = eh === 12 || eh < sh ? "AM" : "PM";
+  return `${sh}:${sm}PM-${eh}:${em}${endMer}`;
+}
+
 function InlineCell({
   field,
   slot,
   cityCampaignId,
   placeholder,
   disabled,
+  multiline,
 }: {
   field: "agreedHoursText" | "drinkSpecials" | "nightOfContactName";
   slot: SlotRow;
   cityCampaignId: string;
   placeholder: string;
   disabled?: boolean;
+  multiline?: boolean;
 }) {
   const initial = String(slot[field] ?? "");
   const [committed, setCommitted] = useState(initial);
@@ -1255,16 +1317,21 @@ function InlineCell({
   }, [initial]);
 
   function commit() {
-    if (draft === committed || !slot.venueEventId) return;
+    if (!slot.venueEventId) return;
+    // Auto-format shorthand hours (e.g. "9-10" → "9:00PM-10:00PM"). Other
+    // fields pass through unchanged.
+    const normalized = field === "agreedHoursText" ? parseTimeRange(draft) : draft;
+    if (normalized !== draft) setDraft(normalized);
+    if (normalized === committed) return;
     const fd = new FormData();
     fd.set("venueEventId", slot.venueEventId);
     fd.set("field", field);
-    fd.set("value", draft);
+    fd.set("value", normalized);
     fd.set("cityCampaignId", cityCampaignId);
     startTx(async () => {
       const result = await updateSlotField(null, fd);
       if (result.ok) {
-        setCommitted(draft);
+        setCommitted(normalized);
         setSaved(true);
         setTimeout(() => setSaved(false), 1200);
       }
@@ -1273,27 +1340,53 @@ function InlineCell({
 
   return (
     <div className="relative">
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") {
-            setDraft(committed);
-            e.currentTarget.blur();
-          }
-        }}
-        disabled={disabled || pending}
-        placeholder={disabled ? "—" : placeholder}
-        className={cn(
-          "h-7 border-transparent bg-transparent pr-5 text-xs transition-colors",
-          "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
-          "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
-          "placeholder:text-zinc-400/60",
-          disabled && "cursor-not-allowed opacity-60 hover:border-transparent",
-        )}
-      />
+      {multiline ? (
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            // Enter / Alt+Enter insert line breaks (drink specials are
+            // often multi-line); commit happens on blur. Esc reverts.
+            if (e.key === "Escape") {
+              setDraft(committed);
+              e.currentTarget.blur();
+            }
+          }}
+          disabled={disabled || pending}
+          placeholder={disabled ? "—" : placeholder}
+          rows={Math.min(8, Math.max(1, draft.split("\n").length))}
+          className={cn(
+            "block w-full resize-y rounded-md border border-transparent bg-transparent px-2 py-1 pr-5 text-xs leading-snug transition-colors",
+            "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none",
+            "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+            "placeholder:text-zinc-400/60",
+            disabled && "cursor-not-allowed opacity-60 hover:border-transparent",
+          )}
+        />
+      ) : (
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              setDraft(committed);
+              e.currentTarget.blur();
+            }
+          }}
+          disabled={disabled || pending}
+          placeholder={disabled ? "—" : placeholder}
+          className={cn(
+            "h-7 border-transparent bg-transparent pr-5 text-xs transition-colors",
+            "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
+            "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+            "placeholder:text-zinc-400/60",
+            disabled && "cursor-not-allowed opacity-60 hover:border-transparent",
+          )}
+        />
+      )}
       {(pending || saved) && (
         <div className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1.5">
           {pending ? (
