@@ -375,7 +375,35 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           </button>
         </div>
       )}
-      <div className="overflow-x-auto lg:overflow-x-visible" ref={gridNavRef}>
+      {/* Mobile (<sm): card-per-city layout. The table view would force
+          horizontal scroll past the frozen city column and shrink every
+          control below comfortable tap target. Cards stack the same
+          editable cells vertically so everything is reachable with a
+          thumb. */}
+      <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60 sm:hidden">
+        {rows.length === 0 ? (
+          <li className="px-4 py-12 text-center text-sm text-zinc-500">
+            No cities in this campaign yet.
+          </li>
+        ) : visibleRows.length === 0 ? (
+          <li className="px-4 py-10 text-center text-sm text-zinc-500">
+            No cities match that filter.
+          </li>
+        ) : (
+          visibleRows.map((row, i) => (
+            <CityCard
+              key={row.cityCampaignId}
+              row={row}
+              staff={staff}
+              gridRow={i}
+              selected={selected.has(row.cityCampaignId)}
+              onToggleSelect={() => toggleSelect(row.cityCampaignId)}
+            />
+          ))
+        )}
+      </ul>
+
+      <div className="hidden overflow-x-auto sm:block lg:overflow-x-visible" ref={gridNavRef}>
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead className="sticky top-14 z-20">
             <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-500">
@@ -545,6 +573,102 @@ function PriorityCell({ row }: { row: TrackerRow }) {
         className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1 h-2.5 w-2.5 text-zinc-400/60 transition-opacity duration-150 group-hover/cell:text-zinc-500 dark:text-zinc-500/60 dark:group-hover/cell:text-zinc-400"
       />
     </div>
+  );
+}
+
+/**
+ * Mobile (<sm) variant of CityRow — one card per city. Same editable
+ * controls as the table cells, stacked vertically. Tap targets sized
+ * up (checkbox is h-5 w-5 inside a p-2 hit area; chevron is h-9 w-9).
+ * The crawl breakdown expands inline as a flat list of mini-cards
+ * rather than fake table rows.
+ */
+function CityCard({
+  row,
+  staff,
+  gridRow,
+  selected,
+  onToggleSelect,
+}: {
+  row: TrackerRow;
+  staff: StaffOption[];
+  gridRow: number;
+  selected: boolean;
+  onToggleSelect: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasBreakdown = row.need.crawlBreakdown.length > 0;
+  return (
+    <li
+      className={cn(
+        "bg-white px-3 py-3 dark:bg-zinc-950",
+        selected && "bg-blue-50/40 dark:bg-blue-950/15",
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <label
+          aria-label={`Select ${row.cityName}`}
+          className="-m-1 inline-flex shrink-0 cursor-pointer p-1"
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-5 w-5 cursor-pointer rounded border-zinc-300 accent-zinc-700 dark:border-zinc-600"
+          />
+        </label>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <PriorityCell row={row} />
+            <Link
+              href={`/city-campaigns/${row.cityCampaignId}`}
+              className="min-w-0 flex-1 truncate font-medium text-base text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
+            >
+              {row.cityName}
+            </Link>
+            <span className="font-mono text-xs text-zinc-500 tabular-nums">
+              {formatSales(row.totalSalesCents)}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <StatusOverridePill row={row} />
+            <SlotPills slots={row.need.slots} />
+          </div>
+          <div className="mt-2 grid grid-cols-[minmax(0,9rem)_1fr] gap-2">
+            <AssignSelect row={row} staff={staff} />
+            <NoteInput row={row} gridRow={gridRow} />
+          </div>
+          {hasBreakdown && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              aria-expanded={expanded}
+              className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] text-zinc-500 uppercase tracking-wider transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+            >
+              <ChevronRight
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-200 ease-out",
+                  expanded && "rotate-90",
+                )}
+              />
+              {expanded ? "Hide crawls" : `${row.need.crawlBreakdown.length} crawls`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <ul className="mt-3 ml-8 space-y-2 border-zinc-200/60 border-l pl-3 dark:border-zinc-800/60">
+          {row.need.crawlBreakdown.map((crawl) => (
+            <CrawlBreakdownCard
+              key={`${row.cityCampaignId}-${crawl.dayPart}-${crawl.crawlNumber}`}
+              crawl={crawl}
+              cityCampaignId={row.cityCampaignId}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -1183,6 +1307,39 @@ function WristbandIcon({ status }: { status: CrawlNeed["wristbandStatus"] }) {
         <circle cx="12" cy="12" r="1.7" fill="currentColor" />
       </svg>
     </span>
+  );
+}
+
+/** Mobile (<sm) breakdown — flat list inside the parent CityCard. */
+function CrawlBreakdownCard({
+  crawl,
+  cityCampaignId,
+}: {
+  crawl: CrawlNeed;
+  cityCampaignId: string;
+}) {
+  const slots: SlotKind[] = [];
+  if (crawl.needsWristband) slots.push("wristband");
+  if (crawl.needsMiddle1 && crawl.needsMiddle2) slots.push("middle_pair");
+  else if (crawl.needsMiddle1) slots.push("middle_1");
+  else if (crawl.needsMiddle2) slots.push("middle_2");
+  if (crawl.needsFinal) slots.push("final");
+
+  return (
+    <li className="flex flex-wrap items-center gap-2 py-1">
+      <WristbandIcon status={crawl.wristbandStatus} />
+      <Link
+        href={`/city-campaigns/${cityCampaignId}#crawl-${crawl.eventId}`}
+        title="Open this crawl on the city sheet"
+        className="text-xs text-zinc-600 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+      >
+        {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
+      </Link>
+      <CrawlStatusOverride crawl={crawl} />
+      <div className="ml-auto">
+        <SlotPills slots={slots} />
+      </div>
+    </li>
   );
 }
 
