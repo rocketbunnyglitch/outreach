@@ -872,6 +872,15 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
      * incomplete.
      */
     venueType: string[];
+    /**
+     * IANA timezone of the venue's city (from cities.timezone).
+     * Used by the call-window suggester so the "currently open" check
+     * reflects the VENUE's local time, not the browser's. Critical
+     * when operators in PH (UTC+8) look at venues in Toronto
+     * (Eastern); without this they'd see "open now" for a venue
+     * that's actually closed.
+     */
+    venueTimezone: string;
     cityName: string | null;
     venueUpdatedAt: string;
     zeroBounceStatus: string | null;
@@ -903,6 +912,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueHours: venues.hours,
       venueType: venues.venueType,
       cityName: cities.name,
+      venueTimezone: cities.timezone,
       venueUpdatedAt: venues.updatedAt,
       status: coldOutreachEntries.status,
       assignedStaffId: coldOutreachEntries.assignedStaffId,
@@ -973,6 +983,10 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueHours: r.venueHours,
     venueType: r.venueType,
     cityName: r.cityName,
+    // cities.timezone is NOT NULL in schema, but LEFT JOIN means r could
+    // have a null cities row (a venue without a city — edge case). Fall
+    // back to Toronto since 95% of the team's venues are Eastern.
+    venueTimezone: r.venueTimezone ?? "America/Toronto",
     venueUpdatedAt: r.venueUpdatedAt.toISOString(),
     zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
     status: r.status as string,

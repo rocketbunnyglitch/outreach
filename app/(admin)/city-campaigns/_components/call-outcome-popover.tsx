@@ -158,6 +158,10 @@ interface Props {
    *  recording time. */
   venueHours?: string | null;
   venueType?: readonly string[];
+  /** IANA timezone of the venue's city. Used by suggestCallWindow
+   *  to render the suggestion in the VENUE'S local time, not the
+   *  operator's browser time. */
+  venueTimezone?: string;
   onClose: () => void;
 }
 
@@ -170,6 +174,7 @@ export function CallOutcomePopover({
   coldEntryId,
   venueHours,
   venueType,
+  venueTimezone,
   onClose,
 }: Props) {
   const [selected, setSelected] = useState<Outcome | null>(null);
@@ -184,8 +189,8 @@ export function CallOutcomePopover({
   const suggestion = useMemo(() => {
     if (!venueHours && (!venueType || venueType.length === 0)) return null;
     const parsed = parseVenueHours(venueHours ?? null);
-    return suggestCallWindow(parsed, new Date(), venueType);
-  }, [venueHours, venueType]);
+    return suggestCallWindow(parsed, new Date(), venueType, venueTimezone);
+  }, [venueHours, venueType, venueTimezone]);
 
   // Close on outside click (only if no outcome selected — avoid losing
   // a half-typed note from a stray click)

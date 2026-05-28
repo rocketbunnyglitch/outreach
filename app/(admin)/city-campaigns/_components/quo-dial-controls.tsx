@@ -20,6 +20,10 @@ interface Props {
    *  cold-outreach row so this is just pass-through. */
   venueHours?: string | null;
   venueType?: readonly string[];
+  /** IANA timezone for the venue's city (e.g. "America/Toronto").
+   *  Pass-through to the popover so its "currently open?" check
+   *  reflects the venue's local time, not the browser's. */
+  venueTimezone?: string;
 }
 
 /**
@@ -47,6 +51,7 @@ export function QuoDialControls({
   coldEntryId,
   venueHours,
   venueType,
+  venueTimezone,
 }: Props) {
   const [calling, startCall] = useTransition();
   const [smsOpen, setSmsOpen] = useState(false);
@@ -154,6 +159,7 @@ export function QuoDialControls({
           coldEntryId={coldEntryId}
           venueHours={venueHours}
           venueType={venueType}
+          venueTimezone={venueTimezone}
           onClose={() => {
             setOutcomeOpen(false);
             setPendingCallLogId(null);

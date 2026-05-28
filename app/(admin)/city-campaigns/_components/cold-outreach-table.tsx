@@ -68,6 +68,14 @@ interface ColdEntry {
   /** Tag array (["bar", "club", ...]) — fallback signal for the
    *  call-window heuristic when hours can't be parsed. */
   venueType: string[];
+  /**
+   * IANA timezone of the venue's city. The call-window suggester
+   * uses this to compute "currently open?" against the venue's
+   * local time rather than the browser's. cities.timezone is NOT
+   * NULL so this is always defined; the data layer defaults to
+   * "America/Toronto" if a venue somehow has no city.
+   */
+  venueTimezone: string;
   cityName: string | null;
   venueUpdatedAt: string;
   zeroBounceStatus: string | null;
@@ -1207,9 +1215,14 @@ function PhoneCell({
         coldEntryId={entry.entryId}
         venueHours={entry.venueHours}
         venueType={entry.venueType}
+        venueTimezone={entry.venueTimezone}
       />
       <CallAttemptBadge count={entry.callAttempts} />
-      <CallWindowHint venueHours={entry.venueHours} venueType={entry.venueType} />
+      <CallWindowHint
+        venueHours={entry.venueHours}
+        venueType={entry.venueType}
+        venueTimezone={entry.venueTimezone}
+      />
       <button
         type="button"
         onClick={() => setEditing(true)}
@@ -2192,15 +2205,17 @@ function CallAttemptBadge({ count }: { count: number }) {
 function CallWindowHint({
   venueHours,
   venueType,
+  venueTimezone,
 }: {
   venueHours: string | null;
   venueType: readonly string[];
+  venueTimezone?: string;
 }) {
   const suggestion = useMemo(() => {
     if (!venueHours && (!venueType || venueType.length === 0)) return null;
     const parsed = parseVenueHours(venueHours);
-    return suggestCallWindow(parsed, new Date(), venueType);
-  }, [venueHours, venueType]);
+    return suggestCallWindow(parsed, new Date(), venueType, venueTimezone);
+  }, [venueHours, venueType, venueTimezone]);
 
   if (!suggestion) return null;
 

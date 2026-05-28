@@ -279,6 +279,20 @@ export function suggestCallWindow(
   parsed: ParsedVenueHours | null,
   now: Date = new Date(),
   venueType?: readonly string[] | null,
+  /**
+   * IANA timezone of the venue's city (e.g. "America/Toronto",
+   * "Asia/Manila"). When provided, day-of-week and hour-of-day are
+   * derived in this zone instead of the JS runtime's local zone. This
+   * matters when the operator and the venue are in different
+   * timezones — e.g. Bryle (Manila, UTC+8) looking at a Toronto
+   * venue (Eastern, UTC-5) needs to see the suggestion in Toronto
+   * time, not Manila time.
+   *
+   * When omitted, falls back to the JS runtime's local timezone
+   * (preserves the v1 behavior for tests + callers that haven't
+   * been updated yet).
+   */
+  timezone?: string | null,
 ): CallWindowSuggestion | null {
   if (!parsed) return null;
 
@@ -290,14 +304,54 @@ export function suggestCallWindow(
     };
   }
 
-  // Find today's hours. JS day-of-week 0=Sun, 1=Mon, ..., 6=Sat.
-  const todayKey = DAY_KEYS[(now.getDay() + 6) % 7];
+  // Day-of-week + hour-of-day in the venue's local timezone. Falls
+  // back to the runtime's local zone when no timezone is supplied.
+  // Wrapped in a try/catch so an unknown/typo'd zone string ("Atlantic/Toronto")
+  // doesn't crash the suggester — just degrade to runtime-local.
+  let nowDow: number; // 0=Sun, 1=Mon, ..., 6=Sat
+  let nowHour: number;
+  let nowMinute: number;
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        weekday: "short",
+        hour: "numeric",
+        minute: "numeric",
+        hour12: false,
+      }).formatToParts(now);
+      const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+      nowDow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+      const hourPart = parts.find((p) => p.type === "hour")?.value ?? "";
+      const minutePart = parts.find((p) => p.type === "minute")?.value ?? "";
+      // Intl emits "24" for midnight under hourCycle h23 in some
+      // locales; normalize to 0.
+      nowHour = Number.parseInt(hourPart, 10) % 24;
+      nowMinute = Number.parseInt(minutePart, 10);
+      if (nowDow === -1 || Number.isNaN(nowHour) || Number.isNaN(nowMinute)) {
+        throw new Error("Intl parts incomplete");
+      }
+    } catch {
+      // Bad timezone string or Intl returned junk — degrade
+      nowDow = now.getDay();
+      nowHour = now.getHours();
+      nowMinute = now.getMinutes();
+    }
+  } else {
+    nowDow = now.getDay();
+    nowHour = now.getHours();
+    nowMinute = now.getMinutes();
+  }
+
+  // Find today's hours. JS day-of-week 0=Sun, 1=Mon, ..., 6=Sat → our
+  // mon-first DAY_KEYS by (dow + 6) % 7.
+  const todayKey = DAY_KEYS[(nowDow + 6) % 7];
   if (!todayKey) return null;
   const today = parsed[todayKey];
 
   // Currently open?
   if (today && today !== "closed") {
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const nowMinutes = nowHour * 60 + nowMinute;
     const openMinutes = hhmmToMinutes(today.open);
     const closeMinutes = hhmmToMinutes(today.close);
     if (openMinutes !== null && closeMinutes !== null) {
