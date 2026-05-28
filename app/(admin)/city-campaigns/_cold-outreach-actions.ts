@@ -14,9 +14,17 @@
  *     (gracefully degrades when Google Places key isn't configured)
  */
 
-import { cities, coldOutreachEntries, staffMembers, venues } from "@/db/schema";
+import {
+  cities,
+  cityCampaigns,
+  coldOutreachEntries,
+  staffMembers,
+  tasks,
+  venues,
+} from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
+import { detectRemarkFollowUp } from "@/lib/detect-remark-followup";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
@@ -108,7 +116,18 @@ const updateSchema = z.object({
 export async function updateColdOutreachField(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<
+  ActionResult<{
+    id: string;
+    /**
+     * Present only when field=remarks AND a future-dated time phrase
+     * was detected in the text (e.g. "wants a call at 7pm Tue"). The
+     * UI renders a "Schedule follow-up" chip from this; clicking it
+     * calls createFollowUpFromRemark. null/absent = no date found.
+     */
+    followUp?: { dueAtIso: string; label: string; matchedText: string } | null;
+  }>
+> {
   const { staff } = await requireStaff();
   const parsed = updateSchema.safeParse({
     entryId: formData.get("entryId"),
@@ -158,7 +177,31 @@ export async function updateColdOutreachField(
         byStaffName: staff.displayName ?? null,
       });
     }
-    return { ok: true, data: { id: entryId } };
+
+    // Smart follow-up detection (operator session-12 "smart like
+    // Fantastical" ask). Only for remarks with content. We look up the
+    // venue's timezone so "3pm" is interpreted in the venue's local
+    // time, then run the chrono-based detector. Any future-dated time
+    // phrase produces a suggestion the UI surfaces as a chip.
+    let followUp: { dueAtIso: string; label: string; matchedText: string } | null = null;
+    if (field === "remarks" && value.trim().length >= 3) {
+      try {
+        const [tzRow] = await db
+          .select({ timezone: cities.timezone })
+          .from(coldOutreachEntries)
+          .innerJoin(cityCampaigns, eq(cityCampaigns.id, coldOutreachEntries.cityCampaignId))
+          .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+          .where(eq(coldOutreachEntries.id, entryId))
+          .limit(1);
+        const tz = tzRow?.timezone ?? "America/Toronto";
+        followUp = detectRemarkFollowUp(value, tz);
+      } catch (err) {
+        // Detection is best-effort — never block the save.
+        logger.error({ err, entryId }, "remark follow-up detection failed");
+      }
+    }
+
+    return { ok: true, data: { id: entryId, followUp } };
   } catch (err) {
     logger.error({ err }, "updateColdOutreachField failed");
     return { ok: false, error: "Save failed." };
@@ -1183,5 +1226,93 @@ export async function commitVenueField(
     }
     logger.error({ err, venueId, field }, "commitVenueField failed");
     return { ok: false, error: "Couldn't save. Try again." };
+  }
+}
+
+// =========================================================================
+// createFollowUpFromRemark — turn a detected remark date into a real task
+// =========================================================================
+//
+// Called when the operator clicks the "Schedule follow-up: <when>" chip
+// that appears after detectRemarkFollowUp finds a time phrase in their
+// remark. Creates a task assigned to the entry's current assignee (or
+// the acting operator if unassigned), due at the parsed time, and bumps
+// the entry status to follow_up_due so the pipeline reflects it.
+
+const createFollowUpSchema = z.object({
+  entryId: uuid,
+  dueAtIso: z.string().datetime(),
+  /** The remark text — becomes the task description for context. */
+  note: z.string().max(2000).optional(),
+});
+
+export async function createFollowUpFromRemark(
+  input: z.infer<typeof createFollowUpSchema>,
+): Promise<ActionResult<{ taskId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = createFollowUpSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid follow-up payload." };
+  const { entryId, dueAtIso, note } = parsed.data;
+
+  // Pull venue + city + current assignee context for the task.
+  const [ctx] = await db
+    .select({
+      cityCampaignId: coldOutreachEntries.cityCampaignId,
+      assignedStaffId: coldOutreachEntries.assignedStaffId,
+      venueId: venues.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      cityRegion: cities.region,
+    })
+    .from(coldOutreachEntries)
+    .innerJoin(venues, eq(venues.id, coldOutreachEntries.venueId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, coldOutreachEntries.cityCampaignId))
+    .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+    .where(eq(coldOutreachEntries.id, entryId))
+    .limit(1);
+
+  if (!ctx) return { ok: false, error: "Entry not found." };
+
+  const cityLabel = ctx.cityRegion ? `${ctx.cityName}, ${ctx.cityRegion}` : ctx.cityName;
+  const assignee = ctx.assignedStaffId ?? staff.id;
+
+  try {
+    const taskId = await withAuditContext(staff.id, async (tx) => {
+      const [row] = await tx
+        .insert(tasks)
+        .values({
+          title: `Follow up: ${ctx.venueName} (${cityLabel})`,
+          description: note?.trim()
+            ? `From remark: "${note.trim()}"`
+            : `Follow-up for ${ctx.venueName}`,
+          source: "smart_note",
+          status: "pending",
+          targetType: "venue",
+          targetId: ctx.venueId,
+          assignedStaffId: assignee,
+          dueAt: new Date(dueAtIso),
+          createdBy: staff.id,
+          updatedBy: staff.id,
+        })
+        .returning({ id: tasks.id });
+
+      // Bump status to follow_up_due so the pipeline reflects the
+      // scheduled follow-up (no-op if already there).
+      await tx
+        .update(coldOutreachEntries)
+        .set({ status: "follow_up_due", updatedBy: staff.id, lastTouchAt: new Date() })
+        .where(eq(coldOutreachEntries.id, entryId));
+
+      return row?.id ?? "";
+    });
+
+    if (!taskId) throw new Error("task insert returned no id");
+
+    revalidatePath(`/city-campaigns/${ctx.cityCampaignId}`);
+    revalidatePath("/tasks");
+    return { ok: true, data: { taskId } };
+  } catch (err) {
+    logger.error({ err, entryId }, "createFollowUpFromRemark failed");
+    return { ok: false, error: "Couldn't create follow-up task." };
   }
 }

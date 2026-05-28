@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/data-table";
 import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
-import { Input } from "@/components/ui/input";
 import { useShortcut } from "@/components/ui/shortcut-provider";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -19,6 +18,7 @@ import { parseVenueHours, suggestCallWindow } from "@/lib/parse-venue-hours";
 import { useDraft } from "@/lib/use-draft";
 import {
   AlertTriangle,
+  CalendarClock,
   Check,
   ClipboardPaste,
   ExternalLink,
@@ -42,6 +42,7 @@ import {
   bulkUnarchiveColdOutreach,
   bulkUpdateColdOutreachStatus,
   commitVenueField,
+  createFollowUpFromRemark,
   generateVenueLeads,
   unarchiveColdOutreachEntry,
   updateColdOutreachField,
@@ -814,6 +815,13 @@ function ColdRow({
 }) {
   const [pending, startTx] = useTransition();
   const [escalationOpen, setEscalationOpen] = useState(false);
+  // Smart-remark follow-up suggestion. Set when a remark commit
+  // detects a future-dated time phrase; cleared on schedule/dismiss.
+  const [followUp, setFollowUp] = useState<{
+    dueAtIso: string;
+    label: string;
+    matchedText: string;
+  } | null>(null);
   const toast = useToast();
   const router = useRouter();
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
@@ -842,6 +850,13 @@ function ColdRow({
         return;
       }
 
+      // Smart follow-up: if the remark contained a future-dated time
+      // phrase, the action returns a suggestion. Stash it so the
+      // RemarksInput renders a "Schedule follow-up" chip.
+      if (field === "remarks") {
+        setFollowUp(result.ok && result.data ? (result.data.followUp ?? null) : null);
+      }
+
       // Friendly message per field
       const verb =
         field === "status"
@@ -864,6 +879,30 @@ function ColdRow({
           await updateColdOutreachField(null, undoFd);
         },
       });
+    });
+  }
+
+  // Click handler for the "Schedule follow-up" chip. Turns the
+  // detected remark date into a real task + bumps status.
+  function scheduleFollowUp() {
+    if (!followUp) return;
+    const captured = followUp;
+    startTx(async () => {
+      const result = await createFollowUpFromRemark({
+        entryId: entry.entryId,
+        dueAtIso: captured.dueAtIso,
+        note: entry.remarks ?? undefined,
+      });
+      if (!result.ok) {
+        toast.show({ kind: "error", message: result.error ?? "Couldn't schedule." });
+        return;
+      }
+      setFollowUp(null);
+      toast.show({
+        kind: "success",
+        message: `Follow-up scheduled · ${captured.label}`,
+      });
+      router.refresh();
     });
   }
 
@@ -1069,6 +1108,9 @@ function ColdRow({
               pending={pending}
               onCommit={(v) => commitField("remarks", v)}
               draftKey={`remarks:${entry.entryId}`}
+              followUp={followUp}
+              onSchedule={scheduleFollowUp}
+              onDismissFollowUp={() => setFollowUp(null)}
             />
           </div>
 
@@ -1271,6 +1313,9 @@ function ColdRow({
           pending={pending}
           onCommit={(v) => commitField("remarks", v)}
           draftKey={`remarks:${entry.entryId}`}
+          followUp={followUp}
+          onSchedule={scheduleFollowUp}
+          onDismissFollowUp={() => setFollowUp(null)}
         />
         {/* Escalation pill — renders only when this entry IS currently
             escalated. Surfaces "with X since DATE" so every staffer can
@@ -1505,6 +1550,9 @@ function RemarksInput({
   pending,
   onCommit,
   draftKey,
+  followUp,
+  onSchedule,
+  onDismissFollowUp,
 }: {
   initial: string;
   pending: boolean;
@@ -1512,9 +1560,16 @@ function RemarksInput({
   /** Stable key for localStorage persistence. Pass to enable
       'never lose what I typed' behavior. */
   draftKey?: string;
+  /** Smart follow-up suggestion detected on the last remark commit. */
+  followUp?: { dueAtIso: string; label: string; matchedText: string } | null;
+  /** Create the follow-up task from the suggestion. */
+  onSchedule?: () => void;
+  /** Dismiss the suggestion chip without scheduling. */
+  onDismissFollowUp?: () => void;
 }) {
   const [committed, setCommitted] = useState(initial);
   const [saved, setSaved] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     value: draft,
     setValue: setDraft,
@@ -1530,6 +1585,18 @@ function RemarksInput({
     setCommitted(initial);
   }, [initial]);
 
+  // Auto-grow the textarea to fit its content so the full remark is
+  // always visible (operator session-12: "remarks can't be cut off,
+  // we need to see the whole remark"). Reset height to auto first so
+  // it can shrink when text is deleted, then grow to scrollHeight.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on draft change to resize
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
   function commit() {
     if (draft === committed) return;
     onCommit(draft);
@@ -1541,12 +1608,18 @@ function RemarksInput({
 
   return (
     <div className="relative">
-      <Input
+      <textarea
+        ref={textareaRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
+          // Enter commits (Sheets-like); Shift+Enter inserts a newline
+          // for multi-line remarks.
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
           if (e.key === "Escape") {
             setDraft(committed);
             clearDraft();
@@ -1554,10 +1627,12 @@ function RemarksInput({
           }
         }}
         disabled={pending}
+        rows={1}
         placeholder={recovered ? "Restored draft — Enter to save" : "Add remarks…"}
         className={cn(
-          "h-7 border-transparent bg-transparent pr-6 text-xs transition-colors",
-          "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
+          "block w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1 pr-6 text-xs leading-snug transition-colors",
+          "whitespace-pre-wrap break-words",
+          "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none",
           "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
           "placeholder:text-zinc-400/60",
           recovered &&
@@ -1565,12 +1640,38 @@ function RemarksInput({
         )}
       />
       {(pending || saved) && (
-        <div className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1.5">
+        <div className="pointer-events-none absolute top-1.5 right-1.5">
           {pending ? (
             <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
           ) : (
             <Check className="h-3 w-3 text-emerald-500" />
           )}
+        </div>
+      )}
+
+      {/* Smart follow-up chip — appears when a remark commit detected a
+          future-dated time phrase. "Fantastical-style" quick-schedule.
+          (operator session-12 ask) */}
+      {followUp && (
+        <div className="mt-1 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onSchedule}
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-full bg-blue-500/[0.10] px-2 py-0.5 font-medium text-[10px] text-blue-700 ring-1 ring-blue-500/30 ring-inset transition-colors hover:bg-blue-500/[0.18] disabled:opacity-50 dark:text-blue-300"
+            title={`Detected "${followUp.matchedText}" — create a follow-up task`}
+          >
+            <CalendarClock className="h-2.5 w-2.5" />
+            Schedule follow-up: {followUp.label}
+          </button>
+          <button
+            type="button"
+            onClick={onDismissFollowUp}
+            className="rounded p-0.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+            aria-label="Dismiss suggestion"
+          >
+            <X className="h-2.5 w-2.5" />
+          </button>
         </div>
       )}
     </div>
