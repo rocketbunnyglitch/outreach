@@ -867,6 +867,14 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     assignedStaffName: string | null;
     remarks: string | null;
     lastTouchAt: Date | null;
+    /**
+     * Count of unanswered call attempts (no_answer + voicemail +
+     * wrong_number) for this venue in the past 60 days. Used to render
+     * a "Calls: N/5" badge so operators see how close they are to the
+     * 5-attempt cap that auto-flips status to 'unreachable'. See
+     * migration 0024 + the cap logic in quo-actions.ts.
+     */
+    callAttempts: number;
   }>
 > {
   await requireStaff();
@@ -916,6 +924,29 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     zbMap = new Map(list.map((v) => [v.email, v.status]));
   }
 
+  // Call-attempt counts per venue (60-day window). Pulled in a single
+  // aggregate query so we don't fan-out N+1 selects against
+  // outreach_log. Mapped to a Map<venueId, count> for O(1) lookup
+  // during the return mapping.
+  const venueIds = rows.map((r) => r.venueId);
+  const callCountMap = new Map<string, number>();
+  if (venueIds.length > 0) {
+    const cutoff = new Date(Date.now() - 60 * 86_400_000);
+    const callCountRows = await db.execute<{ venue_id: string; n: number }>(sql`
+      SELECT venue_id::text AS venue_id, COUNT(*)::int AS n
+      FROM outreach_log
+      WHERE channel = 'call'
+        AND outcome IN ('no_answer', 'voicemail', 'wrong_number')
+        AND created_at >= ${cutoff.toISOString()}
+        AND venue_id IN ${venueIds}
+      GROUP BY venue_id
+    `);
+    const callList: Array<{ venue_id: string; n: number }> = Array.isArray(callCountRows)
+      ? (callCountRows as unknown as Array<{ venue_id: string; n: number }>)
+      : ((callCountRows as unknown as { rows: Array<{ venue_id: string; n: number }> }).rows ?? []);
+    for (const row of callList) callCountMap.set(row.venue_id, row.n);
+  }
+
   return rows.map((r) => ({
     entryId: r.entryId,
     venueId: r.venueId,
@@ -932,6 +963,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     assignedStaffName: r.assignedStaffName,
     remarks: r.remarks,
     lastTouchAt: r.lastTouchAt,
+    callAttempts: callCountMap.get(r.venueId) ?? 0,
   }));
 }
 

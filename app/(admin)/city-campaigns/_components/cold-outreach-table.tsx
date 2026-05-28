@@ -70,6 +70,13 @@ interface ColdEntry {
   assignedStaffName: string | null;
   remarks: string | null;
   lastTouchAt: Date | null;
+  /**
+   * Unanswered call attempts (60-day window) for this venue. Used to
+   * render a "Calls: N/5" badge next to the dial controls so the
+   * operator sees how close they are to the auto-cap at 5. Migration
+   * 0024 + the cap logic in quo-actions.ts back this.
+   */
+  callAttempts: number;
 }
 
 interface Props {
@@ -96,6 +103,9 @@ const STATUS_OPTIONS: Array<{ value: string; label: string; tone: string }> = [
   { value: "bad_email", label: "Bad email", tone: "text-rose-600 dark:text-rose-400" },
   { value: "wrong_number", label: "Wrong number", tone: "text-rose-600 dark:text-rose-400" },
   { value: "do_not_contact", label: "Do not contact", tone: "text-zinc-500 line-through" },
+  // Migration 0024 — auto-set after 5+ unanswered calls in 60 days.
+  // Distinct from do_not_contact (operator-set after explicit opt-out).
+  { value: "unreachable", label: "Unreachable", tone: "text-zinc-500 italic" },
 ];
 
 const ZB_TONE: Record<string, string> = {
@@ -1165,6 +1175,7 @@ function PhoneCell({
         cityCampaignId={cityCampaignId}
         coldEntryId={entry.entryId}
       />
+      <CallAttemptBadge count={entry.callAttempts} />
       <button
         type="button"
         onClick={() => setEditing(true)}
@@ -2063,5 +2074,38 @@ function FilterChipStrip({
         pathname={pathname}
       />
     </div>
+  );
+}
+
+/**
+ * CallAttemptBadge — small "Calls: N/5" pill that surfaces the 60-day
+ * unanswered-call count so operators see how close they are to the
+ * 5-attempt cap that auto-flips status to 'unreachable'.
+ *
+ * Tone scale:
+ *   0     → hidden (no badge — don't add chrome for a venue we've
+ *           never called)
+ *   1-2   → zinc (informational)
+ *   3-4   → amber (approaching cap)
+ *   5+    → rose (cap hit; status should already be 'unreachable')
+ *
+ * Hidden at 0 because the badge would add visual noise to every row
+ * on a fresh campaign where nothing's been called yet.
+ */
+function CallAttemptBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  const tone =
+    count >= 5
+      ? "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300"
+      : count >= 3
+        ? "bg-amber-400/15 text-amber-700 ring-amber-400/25 dark:text-amber-300"
+        : "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-400";
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1 py-px font-mono text-[9px] ring-1 ring-inset ${tone}`}
+      title={`${count} unanswered call ${count === 1 ? "attempt" : "attempts"} in the last 60 days. 5+ auto-flips status to 'unreachable'.`}
+    >
+      {count}/5
+    </span>
   );
 }
