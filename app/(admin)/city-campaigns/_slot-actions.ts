@@ -15,7 +15,7 @@
  *   4. Operator clears the venue → clearSlot deletes the venue_event
  */
 
-import { events, venueEvents, venues } from "@/db/schema";
+import { events, coldOutreachEntries, venueEvents, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -290,6 +290,70 @@ export async function clearSlot(
   } catch (err) {
     logger.error({ err }, "clearSlot failed");
     return { ok: false, error: "Clear failed." };
+  }
+}
+
+const demoteSchema = z.object({
+  venueEventId: uuid,
+  cityCampaignId: uuid,
+  destination: z.enum(["warm", "cold"]),
+});
+
+/**
+ * Remove a venue from a crawl slot ("demote it"). Two destinations:
+ *   - "warm": just deletes the venue_event row. The venue's prior interest +
+ *     outreach history remain, so it still surfaces in warm leads.
+ *   - "cold": deletes the venue_event AND inserts (or restores) a
+ *     cold_outreach_entries row with status="interested" — the venue moves
+ *     back into the cold-outreach table for active follow-up.
+ *
+ * Both run in one transaction so a failed re-list doesn't leave the slot
+ * in a half-removed state.
+ */
+export async function demoteVenueFromCrawl(input: {
+  venueEventId: string;
+  cityCampaignId: string;
+  destination: "warm" | "cold";
+}): Promise<ActionResult<{ destination: "warm" | "cold" }>> {
+  const { staff } = await requireStaff();
+  const parsed = demoteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid demote." };
+  const { venueEventId, cityCampaignId, destination } = parsed.data;
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      // Grab the venueId before we delete the row (we need it for the cold
+      // restore branch; harmless to fetch on the warm branch too).
+      const row = await tx
+        .select({ venueId: venueEvents.venueId })
+        .from(venueEvents)
+        .where(eq(venueEvents.id, venueEventId))
+        .limit(1);
+      const venueId = row[0]?.venueId;
+
+      await tx.delete(venueEvents).where(eq(venueEvents.id, venueEventId));
+
+      if (destination === "cold" && venueId) {
+        await tx
+          .insert(coldOutreachEntries)
+          .values({
+            cityCampaignId,
+            venueId,
+            status: "interested",
+            assignedStaffId: staff.id,
+          })
+          .onConflictDoUpdate({
+            target: [coldOutreachEntries.cityCampaignId, coldOutreachEntries.venueId],
+            set: { status: "interested", updatedBy: staff.id },
+          });
+      }
+    });
+
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { destination } };
+  } catch (err) {
+    logger.error({ err, venueEventId, destination }, "demoteVenueFromCrawl failed");
+    return { ok: false, error: "Couldn't demote venue." };
   }
 }
 

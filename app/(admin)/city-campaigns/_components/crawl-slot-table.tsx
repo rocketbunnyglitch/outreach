@@ -12,12 +12,13 @@ import type { NoteRow } from "@/lib/notes";
 import { Check, ExternalLink, Loader2, MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { addCrawlNote, deleteCrawlNote, loadCrawlNotes } from "../_note-actions";
 import {
   assignSlotVenue,
   clearSlot,
   deleteCrawl,
+  demoteVenueFromCrawl,
   updateCrawl,
   updateSlotField,
 } from "../_slot-actions";
@@ -737,15 +738,27 @@ function SlotTableRow({
     });
   }
 
+  // Demote = remove from this slot AND choose where the venue lands next:
+  //   "warm" (default; just clear; venue stays warm via history)
+  //   "cold" (restore as cold_outreach_entries with status="interested" so
+  //          it surfaces for active follow-up again).
+  const [demoteOpen, setDemoteOpen] = useState(false);
+
+  function demote(destination: "warm" | "cold") {
+    if (!slot.venueEventId) return;
+    setDemoteOpen(false);
+    startTx(async () => {
+      await demoteVenueFromCrawl({
+        venueEventId: slot.venueEventId!,
+        cityCampaignId,
+        destination,
+      });
+    });
+  }
+
   function clearVenue() {
     if (!slot.venueEventId) return;
-    if (!confirm(`Clear ${slot.venueName ?? "this venue"} from this slot?`)) return;
-    const fd = new FormData();
-    fd.set("venueEventId", slot.venueEventId);
-    fd.set("cityCampaignId", cityCampaignId);
-    startTx(async () => {
-      await clearSlot(null, fd);
-    });
+    setDemoteOpen(true);
   }
 
   const slotLabel =
@@ -806,15 +819,21 @@ function SlotTableRow({
               </button>
             ) : (
               slot.venueEventId && (
-                <button
-                  type="button"
-                  onClick={clearVenue}
-                  className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
-                  aria-label="Clear slot"
-                  disabled={pending}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={clearVenue}
+                    className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+                    aria-label="Demote venue"
+                    title="Remove from this slot — choose where it lands"
+                    disabled={pending}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                  {demoteOpen && (
+                    <DemoteMenu onPick={demote} onClose={() => setDemoteOpen(false)} />
+                  )}
+                </div>
               )
             )}
           </div>
@@ -1058,15 +1077,19 @@ function SlotTableRow({
             </button>
           ) : (
             slot.venueEventId && (
-              <button
-                type="button"
-                onClick={clearVenue}
-                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
-                aria-label="Clear slot"
-                disabled={pending}
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={clearVenue}
+                  className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+                  aria-label="Demote venue"
+                  title="Remove from this slot — choose where it lands"
+                  disabled={pending}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+                {demoteOpen && <DemoteMenu onPick={demote} onClose={() => setDemoteOpen(false)} />}
+              </div>
             )
           )}
         </td>
@@ -1368,4 +1391,62 @@ function emptySlot(role: "middle" | "alt_final", slotPosition: number): SlotRow 
     scheduledByStaffId: null,
     scheduledByStaffName: null,
   };
+}
+
+/**
+ * Small inline popover that pops up when the operator clicks the slot's
+ * remove (trash) button. Two destinations: "warm" (just clear; venue stays
+ * warm via its outreach history) or "cold" (also re-list as cold outreach
+ * with status="interested" so it surfaces for active follow-up again).
+ */
+function DemoteMenu({
+  onPick,
+  onClose,
+}: {
+  onPick: (destination: "warm" | "cold") => void;
+  onClose: () => void;
+}) {
+  // Click-outside to dismiss without selecting.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) onClose();
+    }
+    // Defer to the next tick so the click that opened us doesn't immediately close us.
+    const id = window.setTimeout(() => document.addEventListener("mousedown", handle), 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handle);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-full right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+    >
+      <p className="border-zinc-200/60 border-b px-3 py-1.5 font-mono text-[9px] text-zinc-500 uppercase tracking-[0.14em] dark:border-zinc-800/60">
+        Demote to
+      </p>
+      <button
+        type="button"
+        onClick={() => onPick("warm")}
+        className="block w-full px-3 py-2 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
+        title="Just clear this slot. The venue's interest + history are preserved, so it still appears in warm leads."
+      >
+        <span className="font-medium">Warm leads</span>
+        <span className="block text-[10px] text-zinc-500">Clear, keep prior interest</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onPick("cold")}
+        className="block w-full border-zinc-200/60 border-t px-3 py-2 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-900"
+        title="Clear and re-list in cold outreach with status='interested' for active follow-up."
+      >
+        <span className="font-medium">Cold outreach</span>
+        <span className="block text-[10px] text-zinc-500">Re-list for follow-up</span>
+      </button>
+    </div>
+  );
 }
