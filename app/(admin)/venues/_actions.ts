@@ -1,7 +1,8 @@
 "use server";
 
-import { outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
+import { cities, outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
 import { requireStaff, requireSuperUser } from "@/lib/auth";
+import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
@@ -210,6 +211,174 @@ export async function hardDeleteVenue(id: string): Promise<{ ok: boolean; error?
         "Couldn't permanently delete this venue — it's still referenced by other records (a crawl, outreach history, etc.). Archive it instead, or clear those references first.",
     };
   }
+}
+
+/**
+ * Backfill a venue's address / phone / website / Google place id from
+ * Google. Two strategies, in order:
+ *   1) If the venue already has a googlePlaceId, fetch fresh details (handy
+ *      for refreshing a stale phone or address after a venue moves).
+ *   2) Otherwise, Text Search for "{venueName} {cityName}" and take the top
+ *      match — this is the common case when an operator just bulk-imported
+ *      a list of names + cities and needs to enrich them.
+ *
+ * Only fills BLANKS by default — never overwrites operator-edited data. If
+ * `overwriteName` is true and Google returns a more canonical name, the venue
+ * name is also normalized (e.g. "the foundry" -> "The Foundry").
+ *
+ * Returns the set of fields that were actually updated so the UI can show
+ * "Filled in address + phone" instead of a generic "Updated."
+ */
+export async function backfillVenueFromGoogle(input: {
+  venueId: string;
+  overwriteName?: boolean;
+}): Promise<
+  | { ok: true; updated: string[] }
+  | { ok: false; error: string; reason?: "not_configured" | "no_match" | "api_error" }
+> {
+  const { staff } = await requireStaff();
+  if (!isGoogleMapsConfigured()) {
+    return { ok: false, error: "Google Maps API is not configured.", reason: "not_configured" };
+  }
+
+  // Pull the venue + its city name in one query for the text-search fallback
+  const row = await db
+    .select({
+      id: venues.id,
+      name: venues.name,
+      googlePlaceId: venues.googlePlaceId,
+      address: venues.address,
+      phoneE164: venues.phoneE164,
+      websiteUrl: venues.websiteUrl,
+      location: venues.location,
+      cityName: cities.name,
+    })
+    .from(venues)
+    .innerJoin(cities, eq(cities.id, venues.cityId))
+    .where(eq(venues.id, input.venueId))
+    .limit(1);
+  const venue = row[0];
+  if (!venue) return { ok: false, error: "Venue not found." };
+
+  // Resolve a place — by id if we have one, else by text search.
+  let placeId = venue.googlePlaceId ?? null;
+  if (!placeId) {
+    try {
+      const matches = await textSearchPlaces({
+        query: `${venue.name} ${venue.cityName}`,
+        maxResults: 1,
+      });
+      placeId = matches[0]?.placeId ?? null;
+    } catch (err) {
+      console.error("[backfillVenue] textSearch failed", { err, venueId: venue.id });
+      return { ok: false, error: "Google Text Search failed.", reason: "api_error" };
+    }
+    if (!placeId) {
+      return {
+        ok: false,
+        error: `No Google match for "${venue.name}" in ${venue.cityName}.`,
+        reason: "no_match",
+      };
+    }
+  }
+
+  let details: Awaited<ReturnType<typeof fetchPlaceDetails>>;
+  try {
+    details = await fetchPlaceDetails(placeId);
+  } catch (err) {
+    console.error("[backfillVenue] fetchPlaceDetails failed", { err, placeId });
+    return { ok: false, error: "Google Place Details failed.", reason: "api_error" };
+  }
+  if (!details) return { ok: false, error: "Place details unavailable.", reason: "no_match" };
+
+  // Build the patch — only fill blanks; record which fields actually change.
+  const updated: string[] = [];
+  const patch: Record<string, unknown> = { updatedBy: staff.id };
+
+  if (!venue.googlePlaceId && placeId) {
+    patch.googlePlaceId = placeId;
+    updated.push("googlePlaceId");
+  }
+  if (!venue.address && details.address) {
+    patch.address = details.address;
+    updated.push("address");
+  }
+  if (!venue.phoneE164 && details.phone) {
+    patch.phoneE164 = details.phone.replace(/\s+/g, "");
+    updated.push("phone");
+  }
+  if (!venue.websiteUrl && details.website) {
+    patch.websiteUrl = details.website;
+    updated.push("website");
+  }
+  if (!venue.location && details.lat != null && details.lng != null) {
+    patch.location = { lng: details.lng, lat: details.lat };
+    updated.push("location");
+  }
+  if (input.overwriteName && details.name && details.name !== venue.name) {
+    patch.name = details.name;
+    updated.push("name");
+  }
+
+  if (updated.length === 0) return { ok: true, updated };
+
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx.update(venues).set(patch).where(eq(venues.id, venue.id)),
+    );
+  } catch (err) {
+    console.error("[backfillVenue] update failed", { err, venueId: venue.id, patch });
+    return { ok: false, error: "Couldn't write the venue update.", reason: "api_error" };
+  }
+  return { ok: true, updated };
+}
+
+/**
+ * Batched backfill — runs backfillVenueFromGoogle for each id with limited
+ * concurrency (3 in flight) so we don't blow through the Places quota in one
+ * burst. Returns per-id results so the UI can show a count + which ones
+ * couldn't be matched.
+ */
+export async function bulkBackfillVenuesFromGoogle(input: {
+  venueIds: string[];
+  overwriteName?: boolean;
+}): Promise<{
+  ok: boolean;
+  updatedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  /** Per-venue outcomes; UI uses this to render a short summary. */
+  results: Array<{ venueId: string; updated: string[]; error?: string }>;
+}> {
+  const ids = Array.from(new Set(input.venueIds)).slice(0, 200);
+  const out: Array<{ venueId: string; updated: string[]; error?: string }> = [];
+  const CONCURRENCY = 3;
+  for (let i = 0; i < ids.length; i += CONCURRENCY) {
+    const batch = ids.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(
+      batch.map((venueId) =>
+        backfillVenueFromGoogle({ venueId, overwriteName: input.overwriteName }),
+      ),
+    );
+    settled.forEach((r, idx) => {
+      const venueId = batch[idx];
+      if (!venueId) return;
+      if (r.status === "fulfilled") {
+        if (r.value.ok) {
+          out.push({ venueId, updated: r.value.updated });
+        } else {
+          out.push({ venueId, updated: [], error: r.value.error });
+        }
+      } else {
+        out.push({ venueId, updated: [], error: String(r.reason) });
+      }
+    });
+  }
+  revalidatePath("/venues");
+  const updatedCount = out.filter((r) => r.updated.length > 0).length;
+  const skippedCount = out.filter((r) => !r.error && r.updated.length === 0).length;
+  const errorCount = out.filter((r) => r.error).length;
+  return { ok: true, updatedCount, skippedCount, errorCount, results: out };
 }
 
 // =========================================================================

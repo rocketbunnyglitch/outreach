@@ -48,12 +48,25 @@ import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { cn } from "@/lib/cn";
 import type { OutreachPhase } from "@/lib/outreach-phase";
-import { AlertTriangle, Archive, Loader2, Send, Shield, ShieldOff, Wifi } from "lucide-react";
+import {
+  AlertTriangle,
+  Archive,
+  Loader2,
+  Send,
+  Shield,
+  ShieldOff,
+  Sparkles,
+  Wifi,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { bulkUpdateVenues } from "../_actions";
-import { commitVenueListField, createVenueFromRow } from "../_actions";
+import {
+  bulkBackfillVenuesFromGoogle,
+  commitVenueListField,
+  createVenueFromRow,
+} from "../_actions";
 import { BulkSendDialog } from "./bulk-send-dialog";
 
 interface VenueRow {
@@ -363,6 +376,22 @@ export function VenuesTable({
     });
   }
 
+  // Bulk backfill venues from Google Places. Calls the action with the
+  // selection, then renders a per-result summary so the operator sees what
+  // actually changed (e.g. "Filled 7 venues. 2 had no Google match.").
+  function applyBackfill() {
+    setFeedback(null);
+    startTransition(async () => {
+      const result = await bulkBackfillVenuesFromGoogle({ venueIds: Array.from(selected) });
+      const parts: string[] = [];
+      if (result.updatedCount > 0) parts.push(`Filled ${result.updatedCount}`);
+      if (result.skippedCount > 0) parts.push(`${result.skippedCount} already complete`);
+      if (result.errorCount > 0) parts.push(`${result.errorCount} no match / error`);
+      setFeedback(parts.join(" · ") || "Nothing to update.");
+      setSelected(new Set());
+    });
+  }
+
   // -----------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------
@@ -404,6 +433,15 @@ export function VenuesTable({
                   <Send className="h-3 w-3" /> Queue bulk send
                 </Button>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={applyBackfill}
+                disabled={isPending}
+                title="Use Google to fill missing address, phone, website, location, and Google Place ID"
+              >
+                <Sparkles className="h-3 w-3" /> Backfill from Google
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
