@@ -8,7 +8,8 @@
  *   • Inbox + Tasks: 'Today' — what you live in
  *   • All Crawls → Discover: 'Operate' — daily campaign work
  *   • Cities → Templates: 'Data' — operational data setup
- *   • Brands + Campaigns + Goals: 'Settings' — campaign configuration
+ *   • Brands + Campaigns + Hosts: 'Settings' — campaign configuration
+ *   • Goals: under 'Admin' (admin-only — it's a management view)
  *   • Admin → Audit: admin-only, gated below
  *
  * Off-nav entry points (operator session-12 P2 declutter):
@@ -102,7 +103,6 @@ const SECTIONS: Array<{
     items: [
       { href: "/brands", label: "Brands", icon: <Briefcase className="h-3.5 w-3.5" /> },
       { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3.5 w-3.5" /> },
-      { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
       { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3.5 w-3.5" /> },
       { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3.5 w-3.5" /> },
     ],
@@ -113,6 +113,7 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
   label: "Admin",
   items: [
     { href: "/admin", label: "Admin", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+    { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3.5 w-3.5" /> },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3.5 w-3.5" /> },
   ],

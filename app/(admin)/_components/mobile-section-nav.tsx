@@ -131,7 +131,6 @@ const SECTIONS: Section[] = [
     items: [
       { href: "/brands", label: "Brands", icon: <Briefcase className="h-3 w-3" /> },
       { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3 w-3" /> },
-      { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
       { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3 w-3" /> },
       { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3 w-3" /> },
     ],
@@ -142,6 +141,7 @@ const ADMIN_SECTION: Section = {
   label: "Admin",
   items: [
     { href: "/admin", label: "Admin", icon: <ShieldCheck className="h-3 w-3" /> },
+    { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3 w-3" /> },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3 w-3" /> },
   ],
