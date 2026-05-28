@@ -75,6 +75,7 @@ export const venueEventStatus = pgEnum("venue_event_status", [
   "interested",
   "negotiating",
   "confirmed",
+  "scheduled",
   "contract_signed",
   "declined",
   "cancelled",

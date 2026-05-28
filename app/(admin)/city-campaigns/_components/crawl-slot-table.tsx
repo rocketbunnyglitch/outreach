@@ -1362,6 +1362,7 @@ const STATUS_OPTIONS = [
   { value: "interested", label: "Interested", tone: "text-amber-600 dark:text-amber-400" },
   { value: "negotiating", label: "Negotiating", tone: "text-orange-600 dark:text-orange-400" },
   { value: "confirmed", label: "Confirmed", tone: "text-emerald-600 dark:text-emerald-400" },
+  { value: "scheduled", label: "Scheduled", tone: "text-sky-600 dark:text-sky-400" },
   { value: "declined", label: "Declined", tone: "text-rose-600 dark:text-rose-400" },
   { value: "cancelled", label: "Cancelled", tone: "text-zinc-500 line-through" },
 ];
