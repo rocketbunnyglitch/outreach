@@ -15,6 +15,11 @@ interface Props {
   outreachBrandId: string | null;
   cityCampaignId: string;
   coldEntryId: string;
+  /** Optional — used to surface the "Best call window" hint inside
+   *  the post-call outcome popover. Both fields come from the
+   *  cold-outreach row so this is just pass-through. */
+  venueHours?: string | null;
+  venueType?: readonly string[];
 }
 
 /**
@@ -40,6 +45,8 @@ export function QuoDialControls({
   outreachBrandId,
   cityCampaignId,
   coldEntryId,
+  venueHours,
+  venueType,
 }: Props) {
   const [calling, startCall] = useTransition();
   const [smsOpen, setSmsOpen] = useState(false);
@@ -145,6 +152,8 @@ export function QuoDialControls({
           outreachBrandId={outreachBrandId}
           cityCampaignId={cityCampaignId}
           coldEntryId={coldEntryId}
+          venueHours={venueHours}
+          venueType={venueType}
           onClose={() => {
             setOutcomeOpen(false);
             setPendingCallLogId(null);

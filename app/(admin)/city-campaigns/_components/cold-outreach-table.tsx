@@ -1205,6 +1205,8 @@ function PhoneCell({
         outreachBrandId={outreachBrandId}
         cityCampaignId={cityCampaignId}
         coldEntryId={entry.entryId}
+        venueHours={entry.venueHours}
+        venueType={entry.venueType}
       />
       <CallAttemptBadge count={entry.callAttempts} />
       <CallWindowHint venueHours={entry.venueHours} venueType={entry.venueType} />

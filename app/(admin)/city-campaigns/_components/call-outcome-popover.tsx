@@ -33,6 +33,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { parseVenueHours, suggestCallWindow } from "@/lib/parse-venue-hours";
 import {
   Check,
   Clock,
@@ -47,7 +48,7 @@ import {
   Voicemail,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { recordCallOutcome } from "../../_actions/quo-actions";
 
 type Outcome =
@@ -151,6 +152,12 @@ interface Props {
   outreachBrandId: string;
   cityCampaignId?: string;
   coldEntryId?: string;
+  /** Pass-through from the cold-outreach row so the popover can
+   *  surface the "Best call window" hint inline. Helps operators
+   *  decide between callback_requested vs voicemail at outcome
+   *  recording time. */
+  venueHours?: string | null;
+  venueType?: readonly string[];
   onClose: () => void;
 }
 
@@ -161,6 +168,8 @@ export function CallOutcomePopover({
   outreachBrandId,
   cityCampaignId,
   coldEntryId,
+  venueHours,
+  venueType,
   onClose,
 }: Props) {
   const [selected, setSelected] = useState<Outcome | null>(null);
@@ -168,6 +177,15 @@ export function CallOutcomePopover({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTx] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
+
+  // Compute the suggested call window for the inline hint at the
+  // top of the popover. Memoized — the parse cost is small but the
+  // popover may re-render on every keystroke in the notes field.
+  const suggestion = useMemo(() => {
+    if (!venueHours && (!venueType || venueType.length === 0)) return null;
+    const parsed = parseVenueHours(venueHours ?? null);
+    return suggestCallWindow(parsed, new Date(), venueType);
+  }, [venueHours, venueType]);
 
   // Close on outside click (only if no outcome selected — avoid losing
   // a half-typed note from a stray click)
@@ -244,6 +262,30 @@ export function CallOutcomePopover({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Suggested call window banner — appears above the outcome
+            picker when we have venue.hours signal. The detail line
+            ("Manager is on-site doing prep 1-2h before opening") gives
+            the operator one more data point when choosing between
+            callback_requested vs voicemail vs declined. */}
+        {suggestion && (
+          <div
+            className={cn(
+              "mt-3 rounded-md border px-3 py-2 text-xs",
+              suggestion.tone === "now"
+                ? "border-emerald-200 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                : suggestion.tone === "later"
+                  ? "border-blue-200 bg-blue-50/70 text-blue-800 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-200"
+                  : "border-zinc-200 bg-zinc-50/70 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300",
+            )}
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.1em] opacity-70">
+              Call window
+            </p>
+            <p className="mt-0.5 font-medium">{suggestion.label}</p>
+            <p className="mt-0.5 text-[11px] opacity-80">{suggestion.detail}</p>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-col gap-3">
           {sections.map((section) => (
