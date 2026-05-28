@@ -47,6 +47,7 @@ export function AddCrawlRow({ cityCampaignId, cityName, suggestedDate }: Props) 
   const [expanded, setExpanded] = useState(false);
   const [eventDate, setEventDate] = useState(suggestedDate ?? "");
   const [dayPart, setDayPart] = useState<string>("saturday_night");
+  const [crawlNumber, setCrawlNumber] = useState<string>(""); // blank = auto-assign
   const [startsAt, setStartsAt] = useState(""); // datetime-local
   const [endsAt, setEndsAt] = useState("");
   const [extendedMiddle, setExtendedMiddle] = useState(false);
@@ -68,6 +69,7 @@ export function AddCrawlRow({ cityCampaignId, cityName, suggestedDate }: Props) 
     if (startsAt) fd.set("tentativeStart", new Date(startsAt).toISOString());
     if (endsAt) fd.set("tentativeEnd", new Date(endsAt).toISOString());
     if (routeLabel) fd.set("routeLabel", routeLabel);
+    if (crawlNumber.trim()) fd.set("crawlNumber", crawlNumber.trim());
     if (extendedMiddle) fd.set("extendedMiddle", "on");
 
     startTx(async () => {
@@ -79,6 +81,7 @@ export function AddCrawlRow({ cityCampaignId, cityName, suggestedDate }: Props) 
       // Reset + collapse
       setExpanded(false);
       setRouteLabel("");
+      setCrawlNumber("");
       setStartsAt("");
       setEndsAt("");
       setExtendedMiddle(false);
@@ -144,6 +147,28 @@ export function AddCrawlRow({ cityCampaignId, cityName, suggestedDate }: Props) 
             </SelectContent>
           </Select>
         </div>
+        <label className="flex flex-col gap-1">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            Crawl number
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={99}
+            value={crawlNumber}
+            onChange={(e) => setCrawlNumber(e.target.value)}
+            disabled={pending}
+            placeholder="Auto"
+            className={cn(
+              "rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm",
+              "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+              "dark:border-zinc-700 dark:bg-zinc-900",
+            )}
+          />
+          <span className="text-[10px] text-zinc-400">
+            Leave blank to auto-number within this day part.
+          </span>
+        </label>
         <label className="flex flex-col gap-1">
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             Tentative start

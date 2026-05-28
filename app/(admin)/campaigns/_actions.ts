@@ -390,6 +390,26 @@ export async function addCrawlToCityCampaign(
   const maxSlot = existing.reduce((m, r) => Math.max(m, r.slot), 0);
   const nextSlot = maxSlot + 1;
 
+  // Resolve the human-facing crawl number. If the operator supplied
+  // one, use it. Otherwise auto-assign the next number for this
+  // (city_campaign, day_part) — "1, 2, 3 within a daypart". Falls
+  // back to nextSlot when no daypart (can't bucket by daypart then).
+  let crawlNumber = input.crawlNumber ?? null;
+  if (crawlNumber == null) {
+    if (input.dayPart) {
+      const sameDaypart = await db
+        .select({ n: events.crawlNumber })
+        .from(events)
+        .where(
+          and(eq(events.cityCampaignId, input.cityCampaignId), eq(events.dayPart, input.dayPart)),
+        );
+      const maxCrawl = sameDaypart.reduce((m, r) => Math.max(m, r.n ?? 0), 0);
+      crawlNumber = maxCrawl + 1;
+    } else {
+      crawlNumber = nextSlot;
+    }
+  }
+
   // Compute the venue mix from the shape choice
   const isExtended = input.extendedMiddle === true;
   const totalRequired = isExtended ? 5 : 4;
@@ -408,6 +428,7 @@ export async function addCrawlToCityCampaign(
           cityCampaignId: input.cityCampaignId,
           eventDate: input.eventDate,
           slotNumber: nextSlot,
+          crawlNumber,
           dayPart: input.dayPart ?? null,
           startsAt,
           endsAt,
@@ -450,6 +471,13 @@ const addCrawlSchema = z.object({
   tentativeStart: z.string().optional(),
   tentativeEnd: z.string().optional(),
   routeLabel: z.string().max(120).optional(),
+  /**
+   * Human-facing crawl number ("Crawl 1/2/3" within a daypart).
+   * Optional: when omitted, the action auto-assigns the next number
+   * for this (city_campaign, day_part). Operators flagged (session
+   * 12) that they want to set this on creation.
+   */
+  crawlNumber: z.coerce.number().int().min(1).max(99).optional(),
   /** 3 middles instead of 2; total = 5 venues. */
   extendedMiddle: z
     .union([
