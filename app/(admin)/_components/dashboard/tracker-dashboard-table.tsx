@@ -487,6 +487,7 @@ function CityRow({
                 : "bg-zinc-50/40 dark:bg-zinc-900/40"
             }
             zebra={idx % 2 === 1}
+            cityCampaignId={row.cityCampaignId}
           />
         ))}
     </>
@@ -978,10 +979,12 @@ function CrawlBreakdownRow({
   crawl,
   tone,
   zebra,
+  cityCampaignId,
 }: {
   crawl: CrawlNeed;
   tone: string;
   zebra: boolean;
+  cityCampaignId: string;
 }) {
   const open =
     (crawl.needsWristband ? 1 : 0) +
@@ -1019,9 +1022,13 @@ function CrawlBreakdownRow({
         <div className="flex items-center gap-2 pl-6">
           <WristbandIcon status={crawl.wristbandStatus} />
           <span className="h-1 w-1 rounded-full bg-zinc-400/60" />
-          <span className="text-xs text-zinc-600 dark:text-zinc-400">
+          <Link
+            href={`/city-campaigns/${cityCampaignId}#crawl-${crawl.eventId}`}
+            title="Open this crawl on the city sheet"
+            className="text-xs text-zinc-600 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
             {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
-          </span>
+          </Link>
           <CrawlStatusOverride crawl={crawl} />
         </div>
       </td>

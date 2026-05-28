@@ -191,13 +191,14 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
             <CityPresence cityCampaignId={id} viewerName={currentStaff.displayName} />
           </header>
           {sheetData.crawls.map((crawl) => (
-            <CrawlSlotTable
-              key={crawl.eventId}
-              crawl={crawl}
-              cityId={sheetData.cityId}
-              cityCampaignId={sheetData.cityCampaignId}
-              staff={sheetData.staff}
-            />
+            <div key={crawl.eventId} id={`crawl-${crawl.eventId}`} className="scroll-mt-24">
+              <CrawlSlotTable
+                crawl={crawl}
+                cityId={sheetData.cityId}
+                cityCampaignId={sheetData.cityCampaignId}
+                staff={sheetData.staff}
+              />
+            </div>
           ))}
           <AddCrawlRow cityCampaignId={id} cityName={cc.city.name} />
         </section>
