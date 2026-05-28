@@ -10,6 +10,7 @@ import {
   MATCH_LABEL,
   RISK_LABEL,
   RISK_TONE,
+  type ReverseSearchResults,
   SEVERITY_LABEL,
   SEVERITY_TONE,
   STATUS_LABEL,
@@ -23,8 +24,8 @@ import {
 import { AlertTriangle, Check, Phone, PhoneMissed, Plus, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useMemo, useState, useTransition } from "react";
-import { assignCrawlIssue, createCrawlIssue, resolveCrawlIssue } from "../_actions";
+import { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
+import { assignCrawlIssue, createCrawlIssue, resolveCrawlIssue, reverseSearch } from "../_actions";
 
 type StaffOpt = { id: string; name: string };
 
@@ -53,6 +54,29 @@ export function CrawlSupportBoard({
   calls: SupportCall[];
 }) {
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ReverseSearchResults | null>(null);
+  const [, startSearch] = useTransition();
+
+  // Debounced cross-entity lookup (venues / cities / recent callers). Filters
+  // the live crawl list instantly client-side AND queries the wider DB.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      startSearch(async () => {
+        const r = await reverseSearch(q);
+        setResults(r);
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const hasResults =
+    results !== null &&
+    (results.venues.length > 0 || results.cities.length > 0 || results.calls.length > 0);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -72,18 +96,19 @@ export function CrawlSupportBoard({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Reverse search — phone/contact/email/venue cross-entity search lands
-          with the call_logs + venue-contact join; for now it filters the live
-          crawl list by city / campaign / crawl. */}
+      {/* Reverse search — cross-entity lookup (venue / city / recent caller) by
+          name, phone, or email; also filters the live crawl list below. */}
       <div className="relative max-w-md">
         <Search className="-translate-y-1/2 absolute top-1/2 left-3 h-4 w-4 text-zinc-400" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search city, campaign, or crawl…"
+          placeholder="Search venue, phone, email, city, or crawl…"
           className="h-10 w-full rounded-lg border border-zinc-200 bg-white pr-3 pl-9 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-600"
         />
       </div>
+
+      {hasResults && results ? <SearchResults results={results} /> : null}
 
       <Section title="Active Crawls" count={active.length} accent="emerald">
         {active.length === 0 ? (
@@ -300,6 +325,97 @@ function Empty({ label }: { label: string }) {
     <div className="rounded-xl border border-zinc-200/60 border-dashed px-4 py-6 text-center text-sm text-zinc-400 dark:border-zinc-800/50">
       {label}
     </div>
+  );
+}
+
+function SearchResults({ results }: { results: ReverseSearchResults }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <div className="flex items-center gap-2 text-zinc-500">
+        <Search className="h-3.5 w-3.5" />
+        <span className="font-mono text-xs uppercase tracking-[0.12em]">Search results</span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <ResultGroup title="Venues" count={results.venues.length}>
+          {results.venues.map((v) => (
+            <ResultLink
+              key={v.id}
+              href={`/venues/${v.id}`}
+              primary={v.name}
+              secondary={v.phoneE164 ?? v.email ?? undefined}
+            />
+          ))}
+        </ResultGroup>
+        <ResultGroup title="Cities" count={results.cities.length}>
+          {results.cities.map((c) => (
+            <ResultLink key={c.id} href={`/cities/${c.id}`} primary={c.name} />
+          ))}
+        </ResultGroup>
+        <ResultGroup title="Recent Callers" count={results.calls.length}>
+          {results.calls.map((c) => (
+            <ResultLink
+              key={c.id}
+              primary={c.callerName ?? c.fromE164 ?? "Unknown"}
+              secondary={c.matchedVenueName ?? "unmatched"}
+            />
+          ))}
+        </ResultGroup>
+      </div>
+    </div>
+  );
+}
+
+function ResultGroup({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">
+          {title}
+        </span>
+        <span className="font-mono text-[10px] text-zinc-400 tabular-nums">{count}</span>
+      </div>
+      {count === 0 ? (
+        <p className="text-[11px] text-zinc-400">—</p>
+      ) : (
+        <div className="flex flex-col gap-1">{children}</div>
+      )}
+    </div>
+  );
+}
+
+function ResultLink({
+  href,
+  primary,
+  secondary,
+}: {
+  href?: string;
+  primary: string;
+  secondary?: string;
+}) {
+  const inner = (
+    <>
+      <span className="truncate text-sm text-zinc-900 dark:text-zinc-100">{primary}</span>
+      {secondary ? <span className="truncate text-[11px] text-zinc-500">{secondary}</span> : null}
+    </>
+  );
+  if (!href) {
+    return <div className="flex flex-col rounded-lg px-2 py-1">{inner}</div>;
+  }
+  return (
+    <Link
+      href={href}
+      className="flex flex-col rounded-lg px-2 py-1 hover:bg-white dark:hover:bg-zinc-800/60"
+    >
+      {inner}
+    </Link>
   );
 }
 

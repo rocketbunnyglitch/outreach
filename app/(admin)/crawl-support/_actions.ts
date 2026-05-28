@@ -1,10 +1,11 @@
 "use server";
 
-import { events, crawlIssues } from "@/db/schema";
+import { events, callLogs, cities, crawlIssues, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
+import type { ReverseSearchResults } from "@/lib/crawl-support-types";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { eq } from "drizzle-orm";
+import { desc, eq, ilike, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -124,5 +125,85 @@ export async function assignCrawlIssue(
   } catch (err) {
     logger.error({ err }, "assignCrawlIssue failed");
     return { ok: false, error: "Couldn't assign the issue." };
+  }
+}
+
+/**
+ * Cross-entity reverse lookup for the support tab — find a venue/city/recent
+ * caller by name, phone (partial), or email. Read-only; guarded so a missing
+ * call_logs table degrades gracefully instead of nuking venue/city results.
+ */
+export async function reverseSearch(query: string): Promise<ReverseSearchResults> {
+  await requireStaff();
+  const empty: ReverseSearchResults = { venues: [], cities: [], calls: [] };
+  const q = query.trim();
+  if (q.length < 2) return empty;
+  const like = `%${q}%`;
+  const digits = q.replace(/\D/g, "");
+
+  try {
+    const venueRows = await db
+      .select({
+        id: venues.id,
+        name: venues.name,
+        phoneE164: venues.phoneE164,
+        email: venues.email,
+      })
+      .from(venues)
+      .where(or(ilike(venues.name, like), ilike(venues.phoneE164, like), ilike(venues.email, like)))
+      .limit(8);
+
+    const cityRows = await db
+      .select({ id: cities.id, name: cities.name })
+      .from(cities)
+      .where(ilike(cities.name, like))
+      .limit(5);
+
+    // Recent callers — own try/catch so a pre-migration call_logs table doesn't
+    // drop the venue/city results above.
+    let calls: ReverseSearchResults["calls"] = [];
+    if (digits.length >= 3) {
+      try {
+        const callRows = await db
+          .select({
+            id: callLogs.id,
+            fromE164: callLogs.fromE164,
+            callerName: callLogs.callerName,
+            venueName: venues.name,
+            occurredAt: callLogs.occurredAt,
+          })
+          .from(callLogs)
+          .leftJoin(venues, eq(venues.id, callLogs.matchedVenueId))
+          .where(ilike(callLogs.fromE164, `%${digits}%`))
+          .orderBy(desc(callLogs.occurredAt))
+          .limit(5);
+        calls = callRows.map((r) => ({
+          id: r.id,
+          fromE164: r.fromE164 ?? null,
+          callerName: r.callerName ?? null,
+          matchedVenueName: r.venueName ?? null,
+          occurredAtIso: (r.occurredAt instanceof Date
+            ? r.occurredAt
+            : new Date(r.occurredAt)
+          ).toISOString(),
+        }));
+      } catch (err) {
+        logger.warn({ err }, "reverseSearch calls lookup failed (call_logs not migrated?)");
+      }
+    }
+
+    return {
+      venues: venueRows.map((v) => ({
+        id: v.id,
+        name: v.name,
+        phoneE164: v.phoneE164 ?? null,
+        email: v.email ?? null,
+      })),
+      cities: cityRows,
+      calls,
+    };
+  } catch (err) {
+    logger.warn({ err }, "reverseSearch failed");
+    return empty;
   }
 }

@@ -315,3 +315,19 @@ export const MATCH_LABEL: Record<CallMatchType, string> = {
   area_code: "Area-code guess",
   none: "Unmatched",
 };
+
+// =========================================================================
+// Reverse search (cross-entity lookup) — client-safe types
+// =========================================================================
+
+export interface ReverseSearchResults {
+  venues: Array<{ id: string; name: string; phoneE164: string | null; email: string | null }>;
+  cities: Array<{ id: string; name: string }>;
+  calls: Array<{
+    id: string;
+    fromE164: string | null;
+    callerName: string | null;
+    matchedVenueName: string | null;
+    occurredAtIso: string;
+  }>;
+}
