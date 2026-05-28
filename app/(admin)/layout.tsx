@@ -9,6 +9,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
+import { LiveRefresh } from "./_components/live-refresh";
 import { MobileSectionNav } from "./_components/mobile-section-nav";
 import { MountCommandPalette } from "./_components/mount-command-palette";
 import { NotificationsBell } from "./_components/notifications-bell";
@@ -61,6 +62,10 @@ export default async function AdminLayout({
           <GlobalShortcuts />
           <MountCommandPalette />
           <StaleDataIndicator />
+          {/* Live updates across every admin page: any edit anywhere nudges
+              all open clients to soft-refresh (instant via the presence WS
+              `edit` relay, with a ~20s visible-only poll fallback). */}
+          <LiveRefresh room="admin" />
         </div>
       </ShortcutProvider>
     </ToastProvider>

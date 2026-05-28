@@ -12,7 +12,6 @@ import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { goToCampaignDashboard } from "../../_actions";
-import { LiveRefresh } from "../../_components/live-refresh";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
@@ -140,7 +139,6 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
 
   return (
     <div className="mx-auto flex max-w-6xl animate-[fade-in_300ms_ease-out] flex-col gap-8">
-      <LiveRefresh room={`city:${id}`} />
       {/* Back link — returns to THIS campaign's operations dashboard
           (sets the current-campaign cookie + redirects to /). Operators
           flagged that this previously went to the campaign SETUP page;

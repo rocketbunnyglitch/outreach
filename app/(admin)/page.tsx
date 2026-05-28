@@ -16,7 +16,6 @@ import { TasksWidget } from "./_components/dashboard/tasks-widget";
 import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
 import { TodayWidget } from "./_components/dashboard/today-widget";
 import { TrackerDashboardTable } from "./_components/dashboard/tracker-dashboard-table";
-import { LiveRefresh } from "./_components/live-refresh";
 
 // Always render at request time — dashboard shows live counts from DB.
 export const dynamic = "force-dynamic";
@@ -189,7 +188,6 @@ export default async function DashboardHome({
 
   return (
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
-      <LiveRefresh room={`dashboard:${campaignId ?? "global"}`} />
       <header className="flex items-baseline justify-between gap-4">
         <div>
           <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Operations</p>
