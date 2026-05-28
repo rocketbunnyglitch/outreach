@@ -1,10 +1,10 @@
 /**
  * Notes validation.
  *
- * Notes are polymorphic — they attach to a venue, city_campaign, or
- * campaign. Author is the current staff member (server-derived, not
- * user-supplied). The body is plain text; future iterations can add
- * @mention parsing.
+ * Notes are polymorphic — they attach to a venue, city_campaign,
+ * campaign, or event (a single crawl). Author is the current staff
+ * member (server-derived, not user-supplied). The body is plain text;
+ * future iterations can add @mention parsing.
  *
  * No version column — notes are short-lived and rarely concurrent-edited.
  * Soft-delete via the auditColumns archived_at field.
@@ -16,7 +16,7 @@ const uuidSchema = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "Must be a valid UUID");
 
-export const noteTargetTypeEnum = z.enum(["city_campaign", "venue", "campaign"]);
+export const noteTargetTypeEnum = z.enum(["city_campaign", "venue", "campaign", "event"]);
 
 export const noteCreateSchema = z.object({
   targetType: noteTargetTypeEnum,

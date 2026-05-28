@@ -9,7 +9,8 @@ import {
   type SlotRow,
 } from "@/lib/city-sheet-shared";
 import { cn } from "@/lib/cn";
-import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import type { NoteRow } from "@/lib/notes";
+import { Check, Loader2, MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
@@ -19,6 +20,7 @@ import {
   loadHostOptions,
   removeCrawlHost,
 } from "../_host-actions";
+import { addCrawlNote, deleteCrawlNote, loadCrawlNotes } from "../_note-actions";
 import {
   addExtraSlot,
   assignSlotVenue,
@@ -226,6 +228,7 @@ function CrawlHeader({
         cityCampaignId={cityCampaignId}
         hosts={crawl.hosts}
       />
+      <CrawlNotesControl eventId={crawl.eventId} cityCampaignId={cityCampaignId} />
     </div>
   );
 }
@@ -433,6 +436,179 @@ function CrawlHostsControl({
       {error && <span className="text-[10px] text-rose-600">{error}</span>}
     </div>
   );
+}
+
+/**
+ * Collapsible per-crawl notes. Notes attach to the event via the
+ * polymorphic notes table (target_type='event'). Lazy-loads on first
+ * open (same pattern as the host picker) so the city sheet stays light.
+ * Author-only delete (enforced server-side; surfaced via isOwnNote).
+ */
+function CrawlNotesControl({
+  eventId,
+  cityCampaignId,
+}: {
+  eventId: string;
+  cityCampaignId: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState<NoteRow[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTx] = useTransition();
+
+  function toggle() {
+    setError(null);
+    const next = !open;
+    setOpen(next);
+    if (next && notes === null) {
+      startTx(async () => {
+        try {
+          setNotes(await loadCrawlNotes({ eventId }));
+        } catch (err) {
+          console.error("[crawl-notes] load failed", err);
+          setError("Couldn't load notes.");
+        }
+      });
+    }
+  }
+
+  function add() {
+    const body = draft.trim();
+    if (!body) return;
+    startTx(async () => {
+      try {
+        const result = await addCrawlNote({ eventId, cityCampaignId, body });
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't save.");
+          return;
+        }
+        setDraft("");
+        setError(null);
+        setNotes(await loadCrawlNotes({ eventId }));
+        router.refresh();
+      } catch (err) {
+        console.error("[crawl-notes] add failed", err);
+        setError("Couldn't save — try again.");
+      }
+    });
+  }
+
+  function remove(note: NoteRow) {
+    startTx(async () => {
+      try {
+        const result = await deleteCrawlNote({ id: note.id, cityCampaignId });
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't delete.");
+          return;
+        }
+        setNotes((prev) => (prev ? prev.filter((n) => n.id !== note.id) : prev));
+        router.refresh();
+      } catch (err) {
+        console.error("[crawl-notes] delete failed", err);
+        setError("Couldn't delete — try again.");
+      }
+    });
+  }
+
+  const count = notes?.length ?? 0;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={toggle}
+        className="inline-flex w-fit items-center gap-1 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.14em] hover:text-zinc-600 dark:hover:text-zinc-300"
+      >
+        <MessageSquare className="h-3 w-3" />
+        Notes
+        {notes !== null && count > 0 && <span className="text-zinc-500">({count})</span>}
+      </button>
+
+      {open && (
+        <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 border-dashed p-2 dark:border-zinc-700/60">
+          {notes === null ? (
+            <span className="text-[11px] text-zinc-500">
+              <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+              Loading…
+            </span>
+          ) : notes.length === 0 ? (
+            <span className="text-[11px] text-zinc-500">No notes yet.</span>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {notes.map((n) => (
+                <li key={n.id} className="group/note flex items-start gap-2 text-xs">
+                  <div className="flex-1">
+                    <p className="whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{n.body}</p>
+                    <p className="mt-0.5 font-mono text-[10px] text-zinc-400">
+                      {n.authorName} · {formatNoteTime(n.createdAt)}
+                    </p>
+                  </div>
+                  {n.isOwnNote && (
+                    <button
+                      type="button"
+                      onClick={() => remove(n)}
+                      disabled={pending}
+                      className="rounded p-0.5 text-zinc-400 opacity-0 transition-opacity hover:bg-rose-500/[0.08] hover:text-rose-600 group-hover/note:opacity-100"
+                      aria-label="Delete note"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex items-end gap-1.5">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  add();
+                }
+              }}
+              rows={1}
+              placeholder="Add a note… (Enter to save, Shift+Enter for newline)"
+              disabled={pending}
+              className="min-h-[2rem] flex-1 resize-y rounded-md border border-zinc-300 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+            <button
+              type="button"
+              onClick={add}
+              disabled={pending || !draft.trim()}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 font-medium text-[11px] text-white hover:bg-blue-700 disabled:opacity-40"
+            >
+              {pending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )}
+              Save
+            </button>
+          </div>
+          {error && <span className="text-[10px] text-rose-600">{error}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Compact relative time for note timestamps (e.g. "3h ago", "May 2"). */
+function formatNoteTime(d: Date): string {
+  const date = d instanceof Date ? d : new Date(d);
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 const ROLE_LABEL: Record<SlotRole, string> = {

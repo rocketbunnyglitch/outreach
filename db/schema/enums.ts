@@ -156,7 +156,12 @@ export const taskTargetType = pgEnum("task_target_type", [
 // Notes
 // =========================================================================
 
-export const noteTargetType = pgEnum("note_target_type", ["city_campaign", "venue", "campaign"]);
+export const noteTargetType = pgEnum("note_target_type", [
+  "city_campaign",
+  "venue",
+  "campaign",
+  "event",
+]);
 
 // =========================================================================
 // Halloween-aware event model (Phase 8b)

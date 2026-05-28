@@ -12,7 +12,7 @@
  * audit trail clean.
  */
 
-import { campaigns, cityCampaigns, notes, venues } from "@/db/schema";
+import { events, campaigns, cityCampaigns, notes, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
@@ -60,6 +60,14 @@ async function targetExists(
       .select({ id: campaigns.id })
       .from(campaigns)
       .where(eq(campaigns.id, targetId))
+      .limit(1);
+    return rows.length === 1;
+  }
+  if (targetType === "event") {
+    const rows = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(eq(events.id, targetId))
       .limit(1);
     return rows.length === 1;
   }
@@ -148,6 +156,16 @@ export async function createNote(
     if (input.targetType === "venue") revalidatePath(`/venues/${input.targetId}`);
     if (input.targetType === "city_campaign") revalidatePath(`/city-campaigns/${input.targetId}`);
     if (input.targetType === "campaign") revalidatePath(`/campaigns/${input.targetId}`);
+    if (input.targetType === "event") {
+      // Per-crawl notes render on the city sheet, keyed by the event's
+      // city_campaign. Look it up to revalidate the right path.
+      const [ev] = await db
+        .select({ cityCampaignId: events.cityCampaignId })
+        .from(events)
+        .where(eq(events.id, input.targetId))
+        .limit(1);
+      if (ev?.cityCampaignId) revalidatePath(`/city-campaigns/${ev.cityCampaignId}`);
+    }
 
     return { ok: true, data: { id } };
   } catch (err) {
@@ -192,6 +210,14 @@ export async function deleteNote(
     if (result.targetType === "venue") revalidatePath(`/venues/${result.targetId}`);
     if (result.targetType === "city_campaign") revalidatePath(`/city-campaigns/${result.targetId}`);
     if (result.targetType === "campaign") revalidatePath(`/campaigns/${result.targetId}`);
+    if (result.targetType === "event") {
+      const [ev] = await db
+        .select({ cityCampaignId: events.cityCampaignId })
+        .from(events)
+        .where(eq(events.id, result.targetId))
+        .limit(1);
+      if (ev?.cityCampaignId) revalidatePath(`/city-campaigns/${ev.cityCampaignId}`);
+    }
 
     return { ok: true, data: { id: input.id } };
   } catch (err) {

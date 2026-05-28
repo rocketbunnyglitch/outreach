@@ -11,7 +11,7 @@ import { useActionState, useRef, useState } from "react";
 import { NoteSuggestions } from "./note-suggestions";
 
 interface NotesSectionProps {
-  targetType: "venue" | "city_campaign" | "campaign";
+  targetType: "venue" | "city_campaign" | "campaign" | "event";
   targetId: string;
   notes: NoteRow[];
   /**
