@@ -133,7 +133,13 @@ export function SideNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <aside
       className={cn(
-        "hidden h-[calc(100vh-3.5rem)] w-[200px] shrink-0 overflow-y-auto",
+        // Pin under the sticky 3.5rem top bar (top-14). Without `sticky`
+        // the rail sat in normal flow, so on long pages it scrolled up
+        // and out of view and its bottom items (e.g. Audit) clipped.
+        // overflow-y-auto then only scrolls the rail itself in the rare
+        // case the item list is taller than the viewport.
+        "hidden h-[calc(100vh-3.5rem)] w-[200px] shrink-0 self-start overflow-y-auto",
+        "sticky top-14",
         "border-zinc-200/80 border-r bg-zinc-50/40 dark:border-zinc-800/60 dark:bg-zinc-950/40",
         "lg:block",
       )}
