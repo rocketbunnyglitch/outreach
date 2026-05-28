@@ -10,6 +10,7 @@ import Link from "next/link";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
+import { MeetingMode } from "./_components/dashboard/meeting-mode";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
 import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
@@ -192,9 +193,15 @@ export default async function DashboardHome({
           <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Operations</p>
           <h1 className="mt-1 font-semibold text-4xl tracking-tight ">Dashboard</h1>
         </div>
-        <p className="font-mono text-xs text-zinc-500 tabular-nums">
-          live · {new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-        </p>
+        <div className="flex items-center gap-3">
+          <MeetingMode
+            room={`dashboard:${campaignId ?? "global"}`}
+            viewerName={staff.displayName}
+          />
+          <p className="font-mono text-xs text-zinc-500 tabular-nums">
+            live · {new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+          </p>
+        </div>
       </header>
 
       {/* Scope banner — communicates exactly what the dashboard is showing */}

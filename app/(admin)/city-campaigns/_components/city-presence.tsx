@@ -6,7 +6,12 @@
  * fixed-overlay cursor layer. Dormant-safe until the /ws sidecar is live.
  */
 
-import { PresenceAvatars, PresenceCursors, usePresence } from "../../_components/presence";
+import {
+  PresenceAvatars,
+  PresenceCursors,
+  useMeetingMode,
+  usePresence,
+} from "../../_components/presence";
 
 export function CityPresence({
   cityCampaignId,
@@ -16,10 +21,11 @@ export function CityPresence({
   viewerName: string;
 }) {
   const { peers } = usePresence(`city:${cityCampaignId}`, viewerName);
+  const [meetingMode] = useMeetingMode();
   return (
     <>
       <PresenceAvatars peers={peers} />
-      <PresenceCursors peers={peers} />
+      {meetingMode && <PresenceCursors peers={peers} />}
     </>
   );
 }

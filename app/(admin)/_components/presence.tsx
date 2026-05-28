@@ -232,3 +232,45 @@ export function PresenceAvatars({ peers }: { peers: Peer[] }) {
     </div>
   );
 }
+
+const MEETING_MODE_KEY = "perse:meeting-mode";
+const MEETING_MODE_EVENT = "perse:meeting-mode-change";
+
+/**
+ * Global "meeting mode" flag, persisted to localStorage and synced across
+ * components and tabs. When ON, live cursors are shown; when OFF they are
+ * hidden everywhere. The dashboard toggle writes it; presence layers read it.
+ */
+export function useMeetingMode(): [boolean, (on: boolean) => void] {
+  const [on, setOnState] = useState(false);
+
+  useEffect(() => {
+    const read = () => {
+      try {
+        setOnState(window.localStorage.getItem(MEETING_MODE_KEY) === "1");
+      } catch {
+        /* localStorage unavailable — stay off */
+      }
+    };
+    read();
+    window.addEventListener("storage", read);
+    window.addEventListener(MEETING_MODE_EVENT, read);
+    return () => {
+      window.removeEventListener("storage", read);
+      window.removeEventListener(MEETING_MODE_EVENT, read);
+    };
+  }, []);
+
+  const setOn = useCallback((next: boolean) => {
+    try {
+      window.localStorage.setItem(MEETING_MODE_KEY, next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    setOnState(next);
+    // storage events only fire in OTHER tabs; notify this tab explicitly.
+    window.dispatchEvent(new Event(MEETING_MODE_EVENT));
+  }, []);
+
+  return [on, setOn];
+}
