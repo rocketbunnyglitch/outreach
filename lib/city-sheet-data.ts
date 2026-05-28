@@ -87,28 +87,49 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
 
   // Crawl hosts (≤2 per event), joined to whichever roster they point
   // at so we have the display name. host_type discriminates.
-  const hostRows =
-    eventIds.length > 0
-      ? await db
-          .select({
-            id: crawlHosts.id,
-            eventId: crawlHosts.eventId,
-            slot: crawlHosts.slot,
-            hostType: crawlHosts.hostType,
-            internalHostId: crawlHosts.internalHostId,
-            externalHostId: crawlHosts.externalHostId,
-            internalName: internalHosts.name,
-            externalName: externalHosts.fullName,
-            internalHostName: crawlHosts.internalHostName,
-            internalHostHours: crawlHosts.internalHostHours,
-            internalHostRateCents: crawlHosts.internalHostRateCents,
-          })
-          .from(crawlHosts)
-          .leftJoin(internalHosts, eq(internalHosts.id, crawlHosts.internalHostId))
-          .leftJoin(externalHosts, eq(externalHosts.id, crawlHosts.externalHostId))
-          .where(inArray(crawlHosts.eventId, eventIds))
-          .orderBy(asc(crawlHosts.slot))
-      : [];
+  // Guarded: the internal_host_* columns ship in migration 0035, so if code is
+  // deployed ahead of the migration this degrades to "no hosts" rather than
+  // 500-ing the whole city sheet.
+  type HostRow = {
+    id: string;
+    eventId: string;
+    slot: number;
+    hostType: "internal" | "external";
+    internalHostId: string | null;
+    externalHostId: string | null;
+    internalName: string | null;
+    externalName: string | null;
+    internalHostName: string | null;
+    internalHostHours: string | null;
+    internalHostRateCents: number | null;
+  };
+  let hostRows: HostRow[] = [];
+  if (eventIds.length > 0) {
+    try {
+      hostRows = await db
+        .select({
+          id: crawlHosts.id,
+          eventId: crawlHosts.eventId,
+          slot: crawlHosts.slot,
+          hostType: crawlHosts.hostType,
+          internalHostId: crawlHosts.internalHostId,
+          externalHostId: crawlHosts.externalHostId,
+          internalName: internalHosts.name,
+          externalName: externalHosts.fullName,
+          internalHostName: crawlHosts.internalHostName,
+          internalHostHours: crawlHosts.internalHostHours,
+          internalHostRateCents: crawlHosts.internalHostRateCents,
+        })
+        .from(crawlHosts)
+        .leftJoin(internalHosts, eq(internalHosts.id, crawlHosts.internalHostId))
+        .leftJoin(externalHosts, eq(externalHosts.id, crawlHosts.externalHostId))
+        .where(inArray(crawlHosts.eventId, eventIds))
+        .orderBy(asc(crawlHosts.slot));
+    } catch (err) {
+      console.error("[city-sheet] crawl hosts query failed (run migration 0035?)", err);
+      hostRows = [];
+    }
+  }
 
   const hostsByEvent = new Map<string, CrawlHostRef[]>();
   for (const h of hostRows) {
