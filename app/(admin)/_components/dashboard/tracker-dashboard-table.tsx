@@ -384,7 +384,7 @@ function SlotPills({ slots }: { slots: SlotKind[] }) {
   // wristband → middle (or pair) → final
   const ordered = [...slots].sort((a, b) => slotOrder(a) - slotOrder(b));
   return (
-    <div className="inline-flex items-center gap-[3px]">
+    <div className="flex flex-wrap items-center gap-x-[3px] gap-y-1">
       {ordered.map((slot) => (
         <span
           key={slot}
