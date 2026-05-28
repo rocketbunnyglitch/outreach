@@ -3,7 +3,7 @@
 # Enforces Conventional Commits via commitlint.
 # Uses npm (matches the package-lock.json in this repo).
 
-npm exec commitlint --edit "$1" || {
+npm exec -- commitlint --edit "$1" || {
   echo ""
   echo "X Commit message does not follow Conventional Commits."
   echo ""
