@@ -9,6 +9,7 @@ import {
   usePresenceHeartbeat,
   useRealtimeChannel,
 } from "@/components/ui/data-table";
+import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
 import { useShortcut } from "@/components/ui/shortcut-provider";
@@ -448,8 +449,21 @@ export function ColdOutreachTable({
   const allSelected = selected.size > 0 && selected.size === displayed.length;
   const someSelected = selected.size > 0 && selected.size < displayed.length;
 
+  // Sheets-style arrow-key cell-to-cell navigation. The hook attaches a
+  // keydown listener to gridNavRef and moves focus between InlineCell
+  // buttons that carry a data-grid-cell attribute (we pass gridRow +
+  // gridCol on each editable cell below). Cells without grid coords
+  // (StatusSelect, AssignedSelect, RemarksInput's textarea) are
+  // unaffected — they participate in normal Tab order as before.
+  const gridNavRef = useRef<HTMLElement>(null);
+
+  useGridArrowNav(gridNavRef);
+
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <section
+      ref={gridNavRef}
+      className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none"
+    >
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-4 dark:border-zinc-800/40">
         <div className="flex items-baseline gap-2">
           <Mail className="h-4 w-4 text-zinc-500" />
@@ -614,6 +628,7 @@ export function ColdOutreachTable({
                 selected={selected.has(e.entryId)}
                 onToggleSelect={() => toggleOne(e.entryId)}
                 zebra={i % 2 === 1}
+                rowIndex={i}
                 layout="table"
               />
             ))}
@@ -715,6 +730,7 @@ function ColdRow({
   selected,
   onToggleSelect,
   zebra,
+  rowIndex,
   layout,
 }: {
   entry: ColdEntry;
@@ -724,6 +740,14 @@ function ColdRow({
   selected: boolean;
   onToggleSelect: () => void;
   zebra: boolean;
+  /**
+   * Position in the displayed list — feeds the gridRow coord on each
+   * editable InlineCell so the table-level arrow-nav can compute
+   * adjacent cells. Optional because the mobile card layout doesn't
+   * use the grid (each card is independent; arrow-nav within a single
+   * card adds confusion, so we leave it off there).
+   */
+  rowIndex?: number;
   layout: "table" | "card";
 }) {
   const [pending, startTx] = useTransition();
@@ -1042,6 +1066,8 @@ function ColdRow({
             value={entry.venueName}
             variant="default"
             maxWidth={220}
+            gridRow={rowIndex}
+            gridCol={0}
             onCommit={editVenueField("name")}
           />
           <Link
@@ -1066,6 +1092,8 @@ function ColdRow({
             variant="mono"
             inputType="email"
             maxWidth={150}
+            gridRow={rowIndex}
+            gridCol={1}
             onCommit={editVenueField("email")}
           />
           {entry.venueEmail && (
@@ -1135,6 +1163,7 @@ function ColdRow({
           cityCampaignId={cityCampaignId}
           outreachBrandId={outreachBrandId}
           editVenueField={editVenueField}
+          rowIndex={rowIndex}
         />
       </td>
 
@@ -1204,6 +1233,7 @@ function PhoneCell({
   cityCampaignId,
   outreachBrandId,
   editVenueField,
+  rowIndex,
 }: {
   entry: ColdEntry;
   cityCampaignId: string;
@@ -1211,6 +1241,8 @@ function PhoneCell({
   editVenueField: (
     field: "name" | "email" | "phoneE164",
   ) => (next: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Forward to the inner InlineCell for grid arrow-nav (col=2). */
+  rowIndex?: number;
 }) {
   const [editing, setEditing] = useState(false);
   const phoneCommit = editVenueField("phoneE164");
@@ -1227,6 +1259,8 @@ function PhoneCell({
           variant="mono"
           inputType="tel"
           maxWidth={140}
+          gridRow={rowIndex}
+          gridCol={2}
           onCommit={async (next) => {
             const result = await phoneCommit(next);
             if (result.ok) setEditing(false);
