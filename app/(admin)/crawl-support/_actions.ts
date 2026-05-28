@@ -1,11 +1,11 @@
 "use server";
 
-import { events, callLogs, cities, crawlIssues, venues } from "@/db/schema";
+import { events, callLogs, cities, crawlIssues, venueEvents, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import type { ReverseSearchResults } from "@/lib/crawl-support-types";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { desc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -159,6 +159,55 @@ export async function reverseSearch(query: string): Promise<ReverseSearchResults
       .where(ilike(cities.name, like))
       .limit(5);
 
+    // Enrich venue matches with their nearest crawl role + whether it's live now
+    // (so a rep who searches a calling venue instantly sees "final venue, tonight").
+    const enrich = new Map<
+      string,
+      { role: string | null; activeNow: boolean; upcomingCrawlIso: string | null }
+    >();
+    if (venueRows.length > 0) {
+      try {
+        const now = new Date();
+        const windowStart = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        const veRows = await db
+          .select({
+            venueId: venueEvents.venueId,
+            role: venueEvents.role,
+            startsAt: events.startsAt,
+            endsAt: events.endsAt,
+          })
+          .from(venueEvents)
+          .innerJoin(events, eq(events.id, venueEvents.eventId))
+          .where(
+            and(
+              inArray(
+                venueEvents.venueId,
+                venueRows.map((v) => v.id),
+              ),
+              gte(events.endsAt, windowStart),
+            ),
+          )
+          .orderBy(asc(events.startsAt));
+        for (const r of veRows) {
+          // Earliest in-window crawl wins (active or soonest upcoming).
+          if (!r.venueId || enrich.has(r.venueId)) continue;
+          const starts = r.startsAt
+            ? r.startsAt instanceof Date
+              ? r.startsAt
+              : new Date(r.startsAt)
+            : null;
+          const ends = r.endsAt ? (r.endsAt instanceof Date ? r.endsAt : new Date(r.endsAt)) : null;
+          enrich.set(r.venueId, {
+            role: r.role ?? null,
+            activeNow: !!(starts && ends && starts <= now && now <= ends),
+            upcomingCrawlIso: starts ? starts.toISOString() : null,
+          });
+        }
+      } catch (err) {
+        logger.warn({ err }, "reverseSearch venue enrichment failed");
+      }
+    }
+
     // Recent callers — own try/catch so a pre-migration call_logs table doesn't
     // drop the venue/city results above.
     let calls: ReverseSearchResults["calls"] = [];
@@ -193,12 +242,18 @@ export async function reverseSearch(query: string): Promise<ReverseSearchResults
     }
 
     return {
-      venues: venueRows.map((v) => ({
-        id: v.id,
-        name: v.name,
-        phoneE164: v.phoneE164 ?? null,
-        email: v.email ?? null,
-      })),
+      venues: venueRows.map((v) => {
+        const e = enrich.get(v.id);
+        return {
+          id: v.id,
+          name: v.name,
+          phoneE164: v.phoneE164 ?? null,
+          email: v.email ?? null,
+          role: e?.role ?? null,
+          activeNow: e?.activeNow ?? false,
+          upcomingCrawlIso: e?.upcomingCrawlIso ?? null,
+        };
+      }),
       cities: cityRows,
       calls,
     };

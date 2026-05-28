@@ -343,6 +343,8 @@ function SearchResults({ results }: { results: ReverseSearchResults }) {
               href={`/venues/${v.id}`}
               primary={v.name}
               secondary={v.phoneE164 ?? v.email ?? undefined}
+              tag={v.activeNow ? "live now" : roleLabel(v.role)}
+              live={v.activeNow}
             />
           ))}
         </ResultGroup>
@@ -391,18 +393,47 @@ function ResultGroup({
   );
 }
 
+function roleLabel(role: string | null): string | undefined {
+  if (!role) return undefined;
+  const m: Record<string, string> = {
+    wristband: "wristband",
+    middle: "middle",
+    final: "final",
+    alt_final: "alt final",
+  };
+  return m[role] ?? role;
+}
+
 function ResultLink({
   href,
   primary,
   secondary,
+  tag,
+  live,
 }: {
   href?: string;
   primary: string;
   secondary?: string;
+  tag?: string;
+  live?: boolean;
 }) {
   const inner = (
     <>
-      <span className="truncate text-sm text-zinc-900 dark:text-zinc-100">{primary}</span>
+      <span className="flex items-center gap-1.5">
+        <span className="truncate text-sm text-zinc-900 dark:text-zinc-100">{primary}</span>
+        {tag ? (
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.08em] ring-1 ring-inset",
+              live
+                ? "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300"
+                : "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20",
+            )}
+          >
+            {tag}
+          </span>
+        ) : null}
+      </span>
       {secondary ? <span className="truncate text-[11px] text-zinc-500">{secondary}</span> : null}
     </>
   );

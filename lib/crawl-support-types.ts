@@ -321,7 +321,15 @@ export const MATCH_LABEL: Record<CallMatchType, string> = {
 // =========================================================================
 
 export interface ReverseSearchResults {
-  venues: Array<{ id: string; name: string; phoneE164: string | null; email: string | null }>;
+  venues: Array<{
+    id: string;
+    name: string;
+    phoneE164: string | null;
+    email: string | null;
+    role: string | null;
+    activeNow: boolean;
+    upcomingCrawlIso: string | null;
+  }>;
   cities: Array<{ id: string; name: string }>;
   calls: Array<{
     id: string;
