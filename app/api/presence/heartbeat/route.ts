@@ -48,6 +48,7 @@ export async function POST(req: Request) {
     route?: string;
     focusedRowId?: string;
     focusedCellId?: string;
+    lastActiveAt?: string;
   };
   try {
     body = await req.json();
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
     displayName: ctx.staff.displayName,
     focusedRowId: body.focusedRowId,
     focusedCellId: body.focusedCellId,
+    lastActiveAt: typeof body.lastActiveAt === "string" ? body.lastActiveAt : undefined,
   });
 
   const viewers = await listViewers(route);

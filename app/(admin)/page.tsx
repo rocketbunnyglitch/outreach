@@ -16,6 +16,7 @@ import { TasksWidget } from "./_components/dashboard/tasks-widget";
 import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
 import { TodayWidget } from "./_components/dashboard/today-widget";
 import { TrackerDashboardTable } from "./_components/dashboard/tracker-dashboard-table";
+import { WhosOnline } from "./_components/dashboard/whos-online";
 
 // Always render at request time — dashboard shows live counts from DB.
 export const dynamic = "force-dynamic";
@@ -196,6 +197,8 @@ export default async function DashboardHome({
       </header>
 
       <KpiStrip kpis={kpis} />
+
+      <WhosOnline currentStaffId={staff.id} />
 
       {/* Escalations widget — only renders when this staffer actually
           has pending escalations parked with them. Empty array = hide

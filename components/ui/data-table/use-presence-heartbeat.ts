@@ -36,6 +36,7 @@ export interface PresenceViewer {
   focusedRowId?: string;
   focusedCellId?: string;
   at: string;
+  lastActiveAt?: string;
 }
 
 export interface UsePresenceHeartbeatOptions {
@@ -82,6 +83,27 @@ export function usePresenceHeartbeat({
     latestFocus.current = { focusedRowId, focusedCellId };
   }, [focusedRowId, focusedCellId]);
 
+  // Last real user interaction (mouse/keyboard) — distinct from the keep-alive
+  // beat, so peers can tell "open but idle" from "actively working".
+  const lastActiveRef = useRef(Date.now());
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") return;
+    const mark = () => {
+      lastActiveRef.current = Date.now();
+    };
+    const opts = { passive: true } as const;
+    window.addEventListener("pointerdown", mark, opts);
+    window.addEventListener("keydown", mark, opts);
+    window.addEventListener("pointermove", mark, opts);
+    window.addEventListener("scroll", mark, opts);
+    return () => {
+      window.removeEventListener("pointerdown", mark);
+      window.removeEventListener("keydown", mark);
+      window.removeEventListener("pointermove", mark);
+      window.removeEventListener("scroll", mark);
+    };
+  }, [enabled]);
+
   // -----------------------------------------------------------------
   // The heartbeat call
   // -----------------------------------------------------------------
@@ -97,6 +119,7 @@ export function usePresenceHeartbeat({
           route: latestRoute.current,
           focusedRowId: latestFocus.current.focusedRowId,
           focusedCellId: latestFocus.current.focusedCellId,
+          lastActiveAt: new Date(lastActiveRef.current).toISOString(),
         }),
         keepalive: true,
       });

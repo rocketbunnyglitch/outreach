@@ -8,6 +8,7 @@ import { ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
+import { GlobalPresence } from "./_components/global-presence";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
 import { MobileSectionNav } from "./_components/mobile-section-nav";
 import { MountCommandPalette } from "./_components/mount-command-palette";
@@ -47,6 +48,7 @@ export default async function AdminLayout({
   return (
     <ToastProvider>
       <ShortcutProvider>
+        <GlobalPresence staffId={staff.id} />
         <div className="flex min-h-screen flex-col">
           {isDevImpersonation && <DevModeBanner />}
           <TopBar staff={staff} provider={provider} sendCap={sendCap} />
