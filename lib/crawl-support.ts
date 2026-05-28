@@ -15,15 +15,27 @@ import "server-only";
  * data.
  */
 
-import { events, campaigns, cities, cityCampaigns } from "@/db/schema";
+import {
+  events,
+  campaigns,
+  cities,
+  cityCampaigns,
+  crawlHosts,
+  externalHosts,
+  internalHosts,
+  venueEvents,
+  venues,
+  wristbands,
+} from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import {
   type CrawlSupportData,
   type SupportBucket,
   type SupportCrawl,
   bucketFor,
   computeCrawlStatus,
+  computeSupportRisk,
 } from "./crawl-support-types";
 
 export type {
@@ -90,6 +102,70 @@ export async function loadCrawlSupport(opts?: {
     )
     .orderBy(events.startsAt);
 
+  // --- Enrichment (batched by eventId; avoids row-fan-out on the main query) ---
+  const eventIds = rows.map((r) => r.eventId);
+  type RoleAgg = {
+    wristbandVenue: string | null;
+    middleVenues: string[];
+    finalVenue: string | null;
+    wristbandStatus: SupportCrawl["wristbandStatus"];
+  };
+  const roleByEvent = new Map<string, RoleAgg>();
+  const hostsByEvent = new Map<string, SupportCrawl["hosts"]>();
+
+  if (eventIds.length > 0) {
+    const CONFIRMED = ["confirmed", "contract_signed"];
+    const veRows = await db
+      .select({
+        eventId: venueEvents.eventId,
+        role: venueEvents.role,
+        status: venueEvents.status,
+        venueName: venues.name,
+        wristbandStatus: wristbands.status,
+      })
+      .from(venueEvents)
+      .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+      .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
+      .where(inArray(venueEvents.eventId, eventIds));
+
+    for (const v of veRows) {
+      let agg = roleByEvent.get(v.eventId);
+      if (!agg) {
+        agg = { wristbandVenue: null, middleVenues: [], finalVenue: null, wristbandStatus: null };
+        roleByEvent.set(v.eventId, agg);
+      }
+      // Wristband shipping status rides on the wristband-role venue_event.
+      if (v.role === "wristband" && v.wristbandStatus) agg.wristbandStatus = v.wristbandStatus;
+      if (!CONFIRMED.includes(v.status)) continue;
+      if (v.role === "wristband") agg.wristbandVenue ??= v.venueName;
+      else if (v.role === "middle") agg.middleVenues.push(v.venueName);
+      else if (v.role === "final" || v.role === "alt_final") agg.finalVenue ??= v.venueName;
+    }
+
+    const hostRows = await db
+      .select({
+        eventId: crawlHosts.eventId,
+        hostType: crawlHosts.hostType,
+        slot: crawlHosts.slot,
+        internalName: internalHosts.name,
+        externalName: externalHosts.fullName,
+      })
+      .from(crawlHosts)
+      .leftJoin(internalHosts, eq(internalHosts.id, crawlHosts.internalHostId))
+      .leftJoin(externalHosts, eq(externalHosts.id, crawlHosts.externalHostId))
+      .where(inArray(crawlHosts.eventId, eventIds));
+
+    for (const h of hostRows) {
+      const list = hostsByEvent.get(h.eventId) ?? [];
+      list.push({
+        type: h.hostType,
+        name: h.internalName ?? h.externalName ?? "Unnamed host",
+        slot: h.slot ?? 1,
+      });
+      hostsByEvent.set(h.eventId, list);
+    }
+  }
+
   const counts: Record<SupportBucket, number> = {
     active: 0,
     starting_soon: 0,
@@ -104,6 +180,13 @@ export async function loadCrawlSupport(opts?: {
     const bucket = bucketFor(status, now, endsAt);
     counts[bucket] += 1;
     const tz = r.timezone || "America/New_York";
+    const timesMissing = !startsAt || !endsAt;
+    const role = roleByEvent.get(r.eventId);
+    const hosts = (hostsByEvent.get(r.eventId) ?? []).sort((a, b) => a.slot - b.slot);
+    const wristbandVenue = role?.wristbandVenue ?? null;
+    const middleVenues = role?.middleVenues ?? [];
+    const finalVenue = role?.finalVenue ?? null;
+    const wristbandStatus = role?.wristbandStatus ?? null;
     return {
       eventId: r.eventId,
       campaignName: r.campaignName,
@@ -119,7 +202,20 @@ export async function loadCrawlSupport(opts?: {
       startLocal: startsAt ? localClock(tz, startsAt) : null,
       endLocal: endsAt ? localClock(tz, endsAt) : null,
       ticketSalesCount: r.ticketSalesCount ?? 0,
-      timesMissing: !startsAt || !endsAt,
+      timesMissing,
+      wristbandVenue,
+      middleVenues,
+      finalVenue,
+      wristbandStatus,
+      hosts,
+      supportRisk: computeSupportRisk({
+        status,
+        timesMissing,
+        wristbandVenue,
+        finalVenue,
+        hosts,
+        wristbandStatus,
+      }),
     };
   });
 

@@ -34,6 +34,59 @@ export interface SupportCrawl {
   ticketSalesCount: number;
   /** True when starts_at/ends_at aren't both set (status falls back). */
   timesMissing: boolean;
+  /** Confirmed venue per role (null when none confirmed yet). */
+  wristbandVenue: string | null;
+  middleVenues: string[];
+  finalVenue: string | null;
+  /** Shipping status of the wristband-role venue's wristbands row. */
+  wristbandStatus: "pending" | "ready_to_ship" | "shipped" | "delivered" | "issue" | null;
+  /** Assigned hosts (internal = 1 expected; external = 2 expected). */
+  hosts: Array<{ type: "internal" | "external"; name: string; slot: number }>;
+  /** Derived event-night readiness risk. */
+  supportRisk: SupportRisk;
+}
+
+export type SupportRisk = "low" | "medium" | "high";
+
+export const RISK_LABEL: Record<SupportRisk, string> = {
+  low: "Low risk",
+  medium: "At risk",
+  high: "High risk",
+};
+
+export const RISK_TONE: Record<SupportRisk, string> = {
+  low: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-400",
+  medium: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
+  high: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
+};
+
+/**
+ * Derive event-night readiness risk from the gaps that actually bite during
+ * live support: no confirmed wristband/final venue, no host assigned,
+ * wristbands not yet shipped, or missing times. Heuristic + tunable.
+ */
+export function computeSupportRisk(c: {
+  status: CrawlSupportStatus;
+  timesMissing: boolean;
+  wristbandVenue: string | null;
+  finalVenue: string | null;
+  hosts: Array<{ type: "internal" | "external"; name: string; slot: number }>;
+  wristbandStatus: SupportCrawl["wristbandStatus"];
+}): SupportRisk {
+  let factors = 0;
+  if (!c.wristbandVenue) factors++;
+  if (!c.finalVenue) factors++;
+  if (c.hosts.length === 0) factors++;
+  if (c.wristbandStatus !== "shipped" && c.wristbandStatus !== "delivered") factors++;
+  if (c.timesMissing) factors++;
+  // Past/far-future crawls de-emphasised — gaps matter less once it's over or
+  // still days out.
+  if (c.status === "completed" || c.status === "scheduled") {
+    return factors >= 3 ? "medium" : "low";
+  }
+  if (factors >= 2) return "high";
+  if (factors === 1) return "medium";
+  return "low";
 }
 
 export interface CrawlSupportData {

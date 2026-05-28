@@ -3,6 +3,8 @@
 import { cn } from "@/lib/cn";
 import {
   type CrawlSupportData,
+  RISK_LABEL,
+  RISK_TONE,
   STATUS_LABEL,
   STATUS_TONE,
   type SupportBucket,
@@ -181,16 +183,88 @@ function CrawlCard({ crawl }: { crawl: SupportCrawl }) {
         </span>
       </div>
 
-      <div className="flex items-center justify-between border-zinc-100 border-t pt-2 text-[11px] dark:border-zinc-800/60">
-        <span className="font-mono text-zinc-400 uppercase tracking-wider">
-          {tzAbbrev(crawl.timezone)} · {crawl.eventDate}
+      <div className="flex flex-col gap-1 border-zinc-100 border-t pt-2 text-[11px] dark:border-zinc-800/60">
+        <VenueRow
+          label="Wristband"
+          value={crawl.wristbandVenue}
+          extra={<WristbandDot status={crawl.wristbandStatus} />}
+        />
+        <VenueRow
+          label="Middle"
+          value={crawl.middleVenues.length ? crawl.middleVenues.join(", ") : null}
+        />
+        <VenueRow label="Final" value={crawl.finalVenue} />
+        <VenueRow
+          label="Hosts"
+          missing="no host"
+          value={
+            crawl.hosts.length
+              ? crawl.hosts
+                  .map((h) => `${h.name}${h.type === "external" ? " (ext)" : ""}`)
+                  .join(", ")
+              : null
+          }
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-2 border-zinc-100 border-t pt-2 text-[11px] dark:border-zinc-800/60">
+        <span className="truncate font-mono text-zinc-400 uppercase tracking-wider">
+          {tzAbbrev(crawl.timezone)} · {crawl.eventDate} · {crawl.ticketSalesCount} sold
         </span>
-        <span className="font-mono text-zinc-600 tabular-nums dark:text-zinc-300">
-          {crawl.ticketSalesCount} sold
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] ring-1 ring-inset",
+            RISK_TONE[crawl.supportRisk],
+          )}
+        >
+          {RISK_LABEL[crawl.supportRisk]}
         </span>
       </div>
     </Link>
   );
+}
+
+function VenueRow({
+  label,
+  value,
+  extra,
+  missing = "needs venue",
+}: {
+  label: string;
+  value: string | null;
+  extra?: ReactNode;
+  missing?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="shrink-0 font-mono text-zinc-400 uppercase tracking-wider">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">
+        {extra}
+        <span
+          className={cn(
+            "truncate",
+            value ? "text-zinc-700 dark:text-zinc-300" : "text-zinc-400 italic",
+          )}
+        >
+          {value ?? missing}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function WristbandDot({ status }: { status: SupportCrawl["wristbandStatus"] }) {
+  const tone =
+    status === "delivered" ? "bg-green-500" : status === "shipped" ? "bg-amber-500" : "bg-red-500";
+  const label =
+    status === "delivered"
+      ? "Wristbands received"
+      : status === "shipped"
+        ? "Wristbands shipped"
+        : status === "issue"
+          ? "Wristband issue"
+          : "Wristbands not shipped";
+  return <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone)} title={label} />;
 }
 
 function tzAbbrev(tz: string): string {
