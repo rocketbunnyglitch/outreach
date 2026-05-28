@@ -13,7 +13,8 @@ import {
 } from "@/lib/tracker-status-types";
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import {
   reassignCityCampaign,
   updateCityCampaignStatus,
@@ -223,13 +224,51 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
   const [pending, startTx] = useTransition();
   const [saved, setSaved] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Portaled menu ref — the menu renders into document.body to escape
+  // the tracker table's overflow clipping (the operator's "override
+  // gets cut off, limited to the table" bug, session 12). Outside-
+  // click must check this ref too, otherwise clicking a menu option
+  // (which lives in document.body) closes the menu before the option's
+  // onClick runs — same class of bug as the venue picker (51ea440).
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const MENU_WIDTH = 192; // w-48
+
+  const recomputePos = useCallback(() => {
+    const el = buttonRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    // Anchor below-left of the pill, but clamp so the menu never
+    // overflows the right edge (8px gutter).
+    const maxLeft = window.innerWidth - MENU_WIDTH - 8;
+    const left = Math.max(8, Math.min(rect.left, maxLeft));
+    setPos({ top: rect.bottom + 4, left });
+  }, []);
+
+  // Recompute on open + keep glued on scroll/resize.
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePos();
+    function onScrollOrResize() {
+      recomputePos();
+    }
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, recomputePos]);
 
   useEffect(() => {
     if (!open) return;
     function onPointer(e: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      const inContainer = containerRef.current?.contains(target) ?? false;
+      const inMenu = menuRef.current?.contains(target) ?? false;
+      if (!inContainer && !inMenu) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -251,11 +290,15 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
     fd.set("cityCampaignId", row.cityCampaignId);
     fd.set("status", status);
     startTx(async () => {
-      const result = await updateCityCampaignStatus(null, fd);
-      if (result.ok) {
-        setSaved(true);
-        setOpen(false);
-        setTimeout(() => setSaved(false), 1200);
+      try {
+        const result = await updateCityCampaignStatus(null, fd);
+        if (result.ok) {
+          setSaved(true);
+          setOpen(false);
+          setTimeout(() => setSaved(false), 1200);
+        }
+      } catch (err) {
+        console.error("[status-override] updateCityCampaignStatus failed", err);
       }
     });
   }
@@ -263,6 +306,7 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
   return (
     <div ref={containerRef} className="relative inline-block">
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={pending}
@@ -284,34 +328,45 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
         {STATUS_PILL_LABEL[row.need.statusPill]}
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="absolute top-full left-0 z-50 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
-        >
-          <p className="px-2.5 pt-1 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-            Override status
-          </p>
-          {(["planning", "active", "confirmed", "cancelled"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatus(s)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
-                "hover:bg-zinc-100 dark:hover:bg-zinc-800",
-                s === row.status && "bg-zinc-50 dark:bg-zinc-800/60",
-              )}
-            >
-              <span className="capitalize">{s}</span>
-              {s === row.status && <Check className="h-3 w-3 text-zinc-700 dark:text-zinc-300" />}
-            </button>
-          ))}
-          <p className="border-zinc-200 border-t px-2.5 pt-2 pb-1 text-[10px] text-zinc-500 leading-relaxed dark:border-zinc-800">
-            Auto-suggests from open slot count — override sticks until you change it.
-          </p>
-        </div>
-      )}
+      {open &&
+        pos != null &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={{
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+            }}
+            className="z-[60] rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <p className="px-2.5 pt-1 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+              Override status
+            </p>
+            {(["planning", "active", "confirmed", "cancelled"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+                  "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                  s === row.status && "bg-zinc-50 dark:bg-zinc-800/60",
+                )}
+              >
+                <span className="capitalize">{s}</span>
+                {s === row.status && <Check className="h-3 w-3 text-zinc-700 dark:text-zinc-300" />}
+              </button>
+            ))}
+            <p className="border-zinc-200 border-t px-2.5 pt-2 pb-1 text-[10px] text-zinc-500 leading-relaxed dark:border-zinc-800">
+              Auto-suggests from open slot count — override sticks until you change it.
+            </p>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
