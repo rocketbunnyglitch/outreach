@@ -36,6 +36,7 @@ import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { SendComposer } from "../_components/send-composer";
 import { VenueForm } from "../_components/venue-form";
+import { VenueQuickLinks, VenueSummaryStrip } from "../_components/venue-summary-strip";
 import { VenueWristbandSection } from "../_components/venue-wristband-section";
 
 export const dynamic = "force-dynamic";
@@ -170,46 +171,63 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="flex flex-col gap-12">
-      <div className="flex flex-col gap-8">
-        <header>
-          <Link
-            href="/venues"
-            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-          >
-            <ChevronLeft className="h-3 w-3" /> All venues
-          </Link>
-          <h1 className="mt-3 font-semibold text-4xl tracking-tight ">{venue.name}</h1>
-        </header>
-
-        <VenueForm
-          mode="edit"
-          initial={{
-            id: venue.id,
-            cityId: venue.cityId,
-            name: venue.name,
-            googlePlaceId: venue.googlePlaceId,
-            address: venue.address,
-            location: venue.location,
-            phoneE164: venue.phoneE164,
-            email: venue.email,
-            websiteUrl: venue.websiteUrl,
-            instagramHandle: venue.instagramHandle,
-            capacity: venue.capacity,
-            servesAlcohol: venue.servesAlcohol,
-            hours: venue.hours,
-            internalNotes: venue.internalNotes,
-            doNotContact: venue.doNotContact,
-            doNotContactReason: venue.doNotContactReason,
-          }}
-          cities={citiesList}
-          action={boundUpdate}
+    <div className="flex flex-col gap-10">
+      {/* Header — name, breadcrumb, at-a-glance summary, quick links */}
+      <header className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Link
+              href="/venues"
+              className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+            >
+              <ChevronLeft className="h-3 w-3" /> All venues
+            </Link>
+            <h1 className="mt-3 truncate font-semibold text-4xl tracking-tight">{venue.name}</h1>
+            {venue.address && <p className="mt-1 text-sm text-zinc-500">{venue.address}</p>}
+          </div>
+          <VenueQuickLinks
+            phoneE164={venue.phoneE164}
+            email={venue.email}
+            websiteUrl={venue.websiteUrl}
+            instagramHandle={venue.instagramHandle}
+            googlePlaceId={venue.googlePlaceId}
+            address={venue.address}
+            venueName={venue.name}
+          />
+        </div>
+        <VenueSummaryStrip
+          lastTouchAt={outreachEntries[0]?.createdAt ?? null}
+          lastTouchChannel={outreachEntries[0]?.channel ?? null}
+          touchCount={outreachEntries.length}
+          crawlsCount={crawlHistory.length}
+          doNotContact={venue.doNotContact}
+          doNotContactReason={venue.doNotContactReason}
+          archivedAt={venue.archivedAt}
         />
-      </div>
+      </header>
 
-      <CrawlHistorySection rows={crawlHistory} />
+      {/* Activity-first: what staffers reach for the moment they open the page */}
+      <NotesSection
+        targetType="venue"
+        targetId={id}
+        notes={notesList}
+        suggestionsByNote={suggestionsByNote}
+        acceptSuggestionAction={acceptSuggestion}
+        dismissSuggestionAction={dismissSuggestion}
+        createAction={createNote}
+        deleteAction={deleteNote}
+      />
 
-      <VenueWristbandSection rows={wristbandRows} />
+      <OutreachLogSection
+        venueId={id}
+        outreachBrands={outreachBrandsList.map((b) => ({
+          id: b.id,
+          displayName: b.displayName,
+        }))}
+        entries={outreachEntries}
+        action={logOutreach}
+        defaultOutreachBrandId={currentCampaign?.outreachBrand.id}
+      />
 
       <SendComposer
         venueId={id}
@@ -233,26 +251,34 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         manualLogAction={logManualSend}
       />
 
-      <OutreachLogSection
-        venueId={id}
-        outreachBrands={outreachBrandsList.map((b) => ({
-          id: b.id,
-          displayName: b.displayName,
-        }))}
-        entries={outreachEntries}
-        action={logOutreach}
-        defaultOutreachBrandId={currentCampaign?.outreachBrand.id}
-      />
+      <CrawlHistorySection rows={crawlHistory} />
 
-      <NotesSection
-        targetType="venue"
-        targetId={id}
-        notes={notesList}
-        suggestionsByNote={suggestionsByNote}
-        acceptSuggestionAction={acceptSuggestion}
-        dismissSuggestionAction={dismissSuggestion}
-        createAction={createNote}
-        deleteAction={deleteNote}
+      <VenueWristbandSection rows={wristbandRows} />
+
+      {/* Edit form is moved below activity — staffers see/change the record's
+          fields when they need to, but the journal is the primary surface. */}
+      <VenueForm
+        mode="edit"
+        initial={{
+          id: venue.id,
+          cityId: venue.cityId,
+          name: venue.name,
+          googlePlaceId: venue.googlePlaceId,
+          address: venue.address,
+          location: venue.location,
+          phoneE164: venue.phoneE164,
+          email: venue.email,
+          websiteUrl: venue.websiteUrl,
+          instagramHandle: venue.instagramHandle,
+          capacity: venue.capacity,
+          servesAlcohol: venue.servesAlcohol,
+          hours: venue.hours,
+          internalNotes: venue.internalNotes,
+          doNotContact: venue.doNotContact,
+          doNotContactReason: venue.doNotContactReason,
+        }}
+        cities={citiesList}
+        action={boundUpdate}
       />
 
       <form
