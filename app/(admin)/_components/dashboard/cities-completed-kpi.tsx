@@ -85,7 +85,18 @@ export function CitiesCompletedKpi({
         <DottedArc ratio={ratio} />
 
         {/* Centered overlay text — sits in the hollow of the semicircle */}
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-end pb-[18%]">
+        {/* Big number — pinned inside the arc's hollow, near its apex */}
+        <div className="pointer-events-none absolute inset-x-0 top-[34%] flex justify-center">
+          <p
+            className="font-semibold text-6xl text-white tabular-nums sm:text-7xl"
+            style={{ fontFeatureSettings: '"tnum"' }}
+          >
+            {completed.toLocaleString()}
+          </p>
+        </div>
+
+        {/* Label — sits just below the arc's baseline */}
+        <div className="pointer-events-none absolute inset-x-0 top-[64%] flex justify-center">
           <div className="pointer-events-auto flex flex-col items-center">
             <p className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-300 uppercase tracking-[0.18em]">
               <span>Cities completed of</span>
@@ -151,14 +162,8 @@ export function CitiesCompletedKpi({
                 </span>
               )}
             </p>
-            <p
-              className="mt-2 font-semibold text-5xl text-white tabular-nums sm:text-6xl"
-              style={{ fontFeatureSettings: '"tnum"' }}
-            >
-              {completed.toLocaleString()}
-            </p>
             {error && (
-              <p className="mt-2 text-rose-400 text-xs" role="alert">
+              <p className="mt-1.5 text-rose-400 text-xs" role="alert">
                 {error}
               </p>
             )}
