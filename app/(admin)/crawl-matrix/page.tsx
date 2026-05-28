@@ -1,8 +1,15 @@
 import { cn } from "@/lib/cn";
-import { type CrawlMatrixRow, type CrawlStatus, buildCrawlMatrix } from "@/lib/crawl-matrix";
+import {
+  type CrawlMatrixRow,
+  type CrawlStatus,
+  type HostShipmentRow,
+  buildCrawlMatrix,
+  loadExternalHostShipments,
+} from "@/lib/crawl-matrix";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Grid3X3, XCircle } from "lucide-react";
 import Link from "next/link";
+import { HostShipmentControl } from "./_components/host-shipment-control";
 
 export const metadata = { title: "Crawl Matrix" };
 export const dynamic = "force-dynamic";
@@ -10,15 +17,23 @@ export const dynamic = "force-dynamic";
 export default async function CrawlMatrixPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string }>;
+  searchParams: Promise<{ scope?: string; view?: string }>;
 }) {
   const params = await searchParams;
   const allCampaigns = params.scope === "all";
+  const view = params.view === "hosts" ? "hosts" : "coverage";
 
   const currentCampaign = await getCurrentCampaign();
   const campaignId = !allCampaigns && currentCampaign ? currentCampaign.campaign.id : null;
 
   const rows = await buildCrawlMatrix({ campaignId });
+  const shipments =
+    view === "hosts"
+      ? await loadExternalHostShipments([...new Set(rows.map((r) => r.cityCampaignId))])
+      : [];
+  const shipmentByKey = new Map<string, HostShipmentRow>(
+    shipments.map((s) => [`${s.externalHostId}:${s.cityCampaignId}`, s]),
+  );
 
   // Group by city for the matrix layout
   const byCity = new Map<string, { cityName: string; rows: CrawlMatrixRow[] }>();
@@ -103,8 +118,11 @@ export default async function CrawlMatrixPage({
         ) : null}
       </div>
 
+      {/* View tabs */}
+      <TabStrip view={view} allCampaigns={allCampaigns} />
+
       {/* Stats strip */}
-      {rows.length > 0 && (
+      {view === "coverage" && rows.length > 0 && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatCard label="Crawls" value={stats.total} />
           <StatCard label="Complete" value={stats.complete} tone="emerald" />
@@ -114,7 +132,9 @@ export default async function CrawlMatrixPage({
         </div>
       )}
 
-      {rows.length === 0 ? (
+      {view === "hosts" ? (
+        <HostMatrixView byCity={byCity} shipmentByKey={shipmentByKey} />
+      ) : rows.length === 0 ? (
         <div className="card-surface border-dashed p-12 text-center">
           <Grid3X3 className="mx-auto h-8 w-8 text-zinc-400" />
           <h3 className="mt-4 font-semibold text-2xl tracking-tight">No crawls in this scope</h3>
@@ -374,4 +394,173 @@ function formatDate(iso: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
+}
+
+function TabStrip({
+  view,
+  allCampaigns,
+}: {
+  view: "coverage" | "hosts";
+  allCampaigns: boolean;
+}) {
+  const tabs: Array<{ key: "coverage" | "hosts"; label: string; href: string }> = [
+    {
+      key: "coverage",
+      label: "Coverage",
+      href: `/crawl-matrix${allCampaigns ? "?scope=all" : ""}`,
+    },
+    {
+      key: "hosts",
+      label: "Hosts & Wristbands",
+      href: `/crawl-matrix?view=hosts${allCampaigns ? "&scope=all" : ""}`,
+    },
+  ];
+  return (
+    <div className="flex gap-1 border-zinc-200 border-b dark:border-zinc-800">
+      {tabs.map((t) => (
+        <Link
+          key={t.key}
+          href={t.href}
+          className={cn(
+            "border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-widest",
+            view === t.key
+              ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100"
+              : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200",
+          )}
+        >
+          {t.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function HostMatrixView({
+  byCity,
+  shipmentByKey,
+}: {
+  byCity: Map<string, { cityName: string; rows: CrawlMatrixRow[] }>;
+  shipmentByKey: Map<string, HostShipmentRow>;
+}) {
+  const cities = Array.from(byCity.entries());
+  if (cities.length === 0) {
+    return (
+      <div className="card-surface border-dashed p-12 text-center">
+        <Grid3X3 className="mx-auto h-8 w-8 text-zinc-400" />
+        <h3 className="mt-4 font-semibold text-2xl tracking-tight">No crawls in this scope</h3>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          Assign hosts to crawls to track their wristband shipments here.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-8">
+      {cities.map(([cityId, bucket]) => (
+        <section key={cityId} className="flex flex-col gap-3">
+          <header className="flex items-baseline justify-between">
+            <h2 className="font-semibold text-2xl tracking-tight">{bucket.cityName}</h2>
+            <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              {bucket.rows.length} crawl{bucket.rows.length === 1 ? "" : "s"}
+            </p>
+          </header>
+          <div className="card-surface overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-zinc-200 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800/60">
+                  <th className="px-3 py-2.5">Crawl</th>
+                  <th className="px-3 py-2.5">Date</th>
+                  <th className="px-3 py-2.5">Hosts</th>
+                  <th className="px-3 py-2.5">External-host wristband shipment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bucket.rows.map((r, i) => (
+                  <HostMatrixRow
+                    key={r.eventId}
+                    row={r}
+                    striped={i % 2 === 1}
+                    shipmentByKey={shipmentByKey}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function HostMatrixRow({
+  row,
+  striped,
+  shipmentByKey,
+}: {
+  row: CrawlMatrixRow;
+  striped: boolean;
+  shipmentByKey: Map<string, HostShipmentRow>;
+}) {
+  const externalHostList = row.hosts.filter((h) => h.type === "external" && h.externalHostId);
+  return (
+    <tr className={striped ? "dark:bg-white/[0.015]" : ""}>
+      <td className="px-3 py-2.5 align-top">
+        <Link href={`/events/${row.eventId}`} className="font-medium hover:underline">
+          {row.crawlLabel}
+        </Link>
+      </td>
+      <td className="px-3 py-2.5 align-top font-mono text-zinc-500 tabular-nums">
+        {formatDate(row.eventDate)}
+      </td>
+      <td className="px-3 py-2.5 align-top">
+        {row.hosts.length === 0 ? (
+          <span className="text-zinc-500">No host</span>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {row.hosts.map((h, idx) => (
+              <span
+                key={`${h.name}-${idx}`}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset",
+                  h.type === "external"
+                    ? "bg-violet-500/10 text-violet-700 ring-violet-500/25 dark:text-violet-300"
+                    : "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-300",
+                )}
+              >
+                {h.name}
+                <span className="font-mono text-[8px] uppercase opacity-70">
+                  {h.type === "external" ? "ext" : "int"}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-2.5 align-top">
+        {externalHostList.length === 0 ? (
+          <span className="text-zinc-500">
+            {row.hosts.length === 0 ? "—" : "Internal only (paid via venue)"}
+          </span>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {externalHostList.map((h) => {
+              const ship = shipmentByKey.get(`${h.externalHostId}:${row.cityCampaignId}`);
+              return (
+                <div key={h.externalHostId} className="flex items-center gap-2">
+                  <span className="text-zinc-500">{h.name}:</span>
+                  <HostShipmentControl
+                    externalHostId={h.externalHostId ?? ""}
+                    cityCampaignId={row.cityCampaignId}
+                    status={ship?.status ?? "pending"}
+                    trackingNumber={ship?.trackingNumber ?? null}
+                    wristbandCount={ship?.wristbandCount ?? null}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
 }

@@ -35,6 +35,7 @@ export * from "./campaigns";
 export * from "./city-campaigns";
 export * from "./middle-venue-groups";
 export * from "./internal-hosts";
+export * from "./external-host-shipments";
 export * from "./external-hosts";
 export * from "./crawl-hosts";
 export * from "./crawl-issues";

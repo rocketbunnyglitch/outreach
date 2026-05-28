@@ -27,6 +27,7 @@ import {
   cities,
   cityCampaigns,
   crawlHosts,
+  externalHostShipments,
   externalHosts,
   internalHosts,
   middleVenueGroupMembers,
@@ -35,6 +36,7 @@ import {
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 export type CrawlStatus =
@@ -73,6 +75,8 @@ export interface CrawlMatrixRow {
   hostClass: "internal" | "external" | "mixed" | "none";
   /** Assigned host display names (0–2). */
   hostNames: string[];
+  /** Per-host detail incl. externalHostId for shipment lookups (0–2). */
+  hosts: Array<{ name: string; type: "internal" | "external"; externalHostId: string | null }>;
   status: CrawlStatus;
   /** True when no outreach activity for this city in the past 5 days. */
   stale: boolean;
@@ -182,6 +186,7 @@ export async function buildCrawlMatrix(opts: {
     .select({
       eventId: crawlHosts.eventId,
       hostType: crawlHosts.hostType,
+      externalHostId: crawlHosts.externalHostId,
       internalName: internalHosts.name,
       externalName: externalHosts.fullName,
     })
@@ -190,25 +195,37 @@ export async function buildCrawlMatrix(opts: {
     .leftJoin(externalHosts, eq(externalHosts.id, crawlHosts.externalHostId))
     .where(inArray(crawlHosts.eventId, eventIds));
 
-  const hostsByEvent = new Map<string, { types: Set<string>; names: string[] }>();
+  const hostsByEvent = new Map<
+    string,
+    { types: Set<string>; names: string[]; hosts: CrawlMatrixRow["hosts"] }
+  >();
   for (const h of hostRows) {
-    const bucket = hostsByEvent.get(h.eventId) ?? { types: new Set<string>(), names: [] };
+    const bucket = hostsByEvent.get(h.eventId) ?? {
+      types: new Set<string>(),
+      names: [],
+      hosts: [],
+    };
     bucket.types.add(h.hostType);
-    bucket.names.push(
-      (h.hostType === "internal" ? h.internalName : h.externalName) ?? "(removed host)",
-    );
+    const name = (h.hostType === "internal" ? h.internalName : h.externalName) ?? "(removed host)";
+    bucket.names.push(name);
+    bucket.hosts.push({
+      name,
+      type: h.hostType === "internal" ? "internal" : "external",
+      externalHostId: h.hostType === "external" ? h.externalHostId : null,
+    });
     hostsByEvent.set(h.eventId, bucket);
   }
 
   function classifyHosts(eventId: string): {
     hostClass: CrawlMatrixRow["hostClass"];
     hostNames: string[];
+    hosts: CrawlMatrixRow["hosts"];
   } {
     const b = hostsByEvent.get(eventId);
-    if (!b || b.names.length === 0) return { hostClass: "none", hostNames: [] };
+    if (!b || b.names.length === 0) return { hostClass: "none", hostNames: [], hosts: [] };
     const hostClass =
       b.types.size > 1 ? "mixed" : b.types.has("internal") ? "internal" : "external";
-    return { hostClass, hostNames: b.names };
+    return { hostClass, hostNames: b.names, hosts: b.hosts };
   }
 
   // 6. Assemble rows
@@ -275,7 +292,7 @@ export async function buildCrawlMatrix(opts: {
       ? `${formatDayPart(er.dayPart)}${er.crawlNumber ? ` #${er.crawlNumber}` : ""}`
       : `Slot ${er.crawlNumber ?? "—"}`;
 
-    const { hostClass, hostNames } = classifyHosts(er.eventId);
+    const { hostClass, hostNames, hosts } = classifyHosts(er.eventId);
 
     return {
       eventId: er.eventId,
@@ -298,6 +315,7 @@ export async function buildCrawlMatrix(opts: {
       finalStatus,
       hostClass,
       hostNames,
+      hosts,
       status,
       stale,
     };
@@ -320,5 +338,51 @@ function formatDayPart(dp: string): string {
       return "Sun Night";
     default:
       return dp;
+  }
+}
+
+export interface HostShipmentRow {
+  externalHostId: string;
+  cityCampaignId: string;
+  status: "pending" | "ready_to_ship" | "shipped" | "delivered" | "issue";
+  wristbandCount: number | null;
+  trackingNumber: string | null;
+  shippedAtIso: string | null;
+}
+
+/**
+ * External-host wristband shipments for a set of city-campaigns, keyed by
+ * (externalHostId, cityCampaignId). Guarded: returns [] if the table isn't
+ * migrated yet so the Hosts matrix still renders.
+ */
+export async function loadExternalHostShipments(
+  cityCampaignIds: string[],
+): Promise<HostShipmentRow[]> {
+  if (cityCampaignIds.length === 0) return [];
+  try {
+    const rows = await db
+      .select({
+        externalHostId: externalHostShipments.externalHostId,
+        cityCampaignId: externalHostShipments.cityCampaignId,
+        status: externalHostShipments.status,
+        wristbandCount: externalHostShipments.wristbandCount,
+        trackingNumber: externalHostShipments.trackingNumber,
+        shippedAt: externalHostShipments.shippedAt,
+      })
+      .from(externalHostShipments)
+      .where(inArray(externalHostShipments.cityCampaignId, cityCampaignIds));
+    return rows.map((r) => ({
+      externalHostId: r.externalHostId,
+      cityCampaignId: r.cityCampaignId,
+      status: r.status,
+      wristbandCount: r.wristbandCount ?? null,
+      trackingNumber: r.trackingNumber ?? null,
+      shippedAtIso: r.shippedAt
+        ? (r.shippedAt instanceof Date ? r.shippedAt : new Date(r.shippedAt)).toISOString()
+        : null,
+    }));
+  } catch (err) {
+    logger.warn({ err }, "loadExternalHostShipments failed (table may not be migrated yet)");
+    return [];
   }
 }
