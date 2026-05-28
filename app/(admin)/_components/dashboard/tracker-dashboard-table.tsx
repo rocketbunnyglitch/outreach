@@ -52,6 +52,9 @@ export interface StaffOption {
 interface Props {
   rows: TrackerRow[];
   staff: StaffOption[];
+  /** Initial priority chip — dashboard defaults to top (1-4); the dedicated
+   *  /tracker page passes "all" to show every city by default. */
+  defaultPriorityFilter?: "top" | "all";
 }
 
 type SortKey = "priority" | "city" | "status" | "need" | "sales" | "assign" | "notes";
@@ -161,9 +164,9 @@ function SortableTh({
  * to mark the active row without flashing. Accordion expansion uses a
  * smooth max-height transition (200ms ease-out).
  */
-export function TrackerDashboardTable({ rows, staff }: Props) {
+export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "top" }: Props) {
   const [query, setQuery] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState<"top" | "all">("top");
+  const [priorityFilter, setPriorityFilter] = useState<"top" | "all">(defaultPriorityFilter);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "priority",
     dir: "asc",

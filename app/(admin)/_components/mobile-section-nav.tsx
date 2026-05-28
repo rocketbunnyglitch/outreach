@@ -69,6 +69,7 @@ import {
   Map as MapIcon,
   Send,
   ShieldCheck,
+  Table2,
   Tag,
   Target,
   Upload,
@@ -96,6 +97,7 @@ const SECTIONS: Section[] = [
     label: "Current Crawl",
     items: [
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3 w-3" /> },
+      { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3 w-3" /> },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3 w-3" /> },
       { href: "/tasks", label: "Tasks", icon: <CheckSquare className="h-3 w-3" /> },
     ],
