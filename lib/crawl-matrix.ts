@@ -26,6 +26,9 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  crawlHosts,
+  externalHosts,
+  internalHosts,
   middleVenueGroupMembers,
   middleVenueGroups,
   venueEvents,
@@ -66,6 +69,10 @@ export interface CrawlMatrixRow {
   /** Final venue name (confirmed only), or null. */
   finalVenueName: string | null;
   finalStatus: "confirmed" | "missing" | "pending";
+  /** Host classification from crawl_hosts (≤2 hosts/crawl). */
+  hostClass: "internal" | "external" | "mixed" | "none";
+  /** Assigned host display names (0–2). */
+  hostNames: string[];
   status: CrawlStatus;
   /** True when no outreach activity for this city in the past 5 days. */
   stale: boolean;
@@ -170,6 +177,40 @@ export async function buildCrawlMatrix(opts: {
     veByEvent.set(v.eventId, list);
   }
 
+  // 5b. Crawl hosts → per-event classification (internal/external/mixed/none).
+  const hostRows = await db
+    .select({
+      eventId: crawlHosts.eventId,
+      hostType: crawlHosts.hostType,
+      internalName: internalHosts.name,
+      externalName: externalHosts.fullName,
+    })
+    .from(crawlHosts)
+    .leftJoin(internalHosts, eq(internalHosts.id, crawlHosts.internalHostId))
+    .leftJoin(externalHosts, eq(externalHosts.id, crawlHosts.externalHostId))
+    .where(inArray(crawlHosts.eventId, eventIds));
+
+  const hostsByEvent = new Map<string, { types: Set<string>; names: string[] }>();
+  for (const h of hostRows) {
+    const bucket = hostsByEvent.get(h.eventId) ?? { types: new Set<string>(), names: [] };
+    bucket.types.add(h.hostType);
+    bucket.names.push(
+      (h.hostType === "internal" ? h.internalName : h.externalName) ?? "(removed host)",
+    );
+    hostsByEvent.set(h.eventId, bucket);
+  }
+
+  function classifyHosts(eventId: string): {
+    hostClass: CrawlMatrixRow["hostClass"];
+    hostNames: string[];
+  } {
+    const b = hostsByEvent.get(eventId);
+    if (!b || b.names.length === 0) return { hostClass: "none", hostNames: [] };
+    const hostClass =
+      b.types.size > 1 ? "mixed" : b.types.has("internal") ? "internal" : "external";
+    return { hostClass, hostNames: b.names };
+  }
+
   // 6. Assemble rows
   return eventRows.map((er) => {
     const ves = veByEvent.get(er.eventId) ?? [];
@@ -234,6 +275,8 @@ export async function buildCrawlMatrix(opts: {
       ? `${formatDayPart(er.dayPart)}${er.crawlNumber ? ` #${er.crawlNumber}` : ""}`
       : `Slot ${er.crawlNumber ?? "—"}`;
 
+    const { hostClass, hostNames } = classifyHosts(er.eventId);
+
     return {
       eventId: er.eventId,
       cityCampaignId: er.cityCampaignId,
@@ -253,6 +296,8 @@ export async function buildCrawlMatrix(opts: {
       middleStatus,
       finalVenueName: final?.venueName ?? null,
       finalStatus,
+      hostClass,
+      hostNames,
       status,
       stale,
     };

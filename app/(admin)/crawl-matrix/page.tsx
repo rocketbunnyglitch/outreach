@@ -144,6 +144,7 @@ export default async function CrawlMatrixPage({
                       <th className="px-3 py-2.5">Wristband</th>
                       <th className="px-3 py-2.5">Middle</th>
                       <th className="px-3 py-2.5">Final</th>
+                      <th className="px-3 py-2.5">Host</th>
                       <th className="px-3 py-2.5">Status</th>
                       <th className="px-3 py-2.5" />
                     </tr>
@@ -204,6 +205,9 @@ function CrawlRow({ row, striped }: { row: CrawlMatrixRow; striped: boolean }) {
         <RoleCell name={row.finalVenueName} status={row.finalStatus} />
       </td>
       <td className="px-3 py-2.5">
+        <HostCell hostClass={row.hostClass} hostNames={row.hostNames} />
+      </td>
+      <td className="px-3 py-2.5">
         <StatusBadge status={row.status} />
       </td>
       <td className="px-3 py-2.5 text-right">
@@ -212,6 +216,43 @@ function CrawlRow({ row, striped }: { row: CrawlMatrixRow; striped: boolean }) {
         </Link>
       </td>
     </tr>
+  );
+}
+
+function HostCell({
+  hostClass,
+  hostNames,
+}: {
+  hostClass: "internal" | "external" | "mixed" | "none";
+  hostNames: string[];
+}) {
+  if (hostClass === "none") {
+    return (
+      <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">none</span>
+    );
+  }
+  const tone =
+    hostClass === "internal"
+      ? "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300"
+      : hostClass === "external"
+        ? "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:text-violet-300"
+        : "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:text-amber-300";
+  const label =
+    hostClass === "internal" ? "Internal" : hostClass === "external" ? "External" : "Mixed";
+  return (
+    <span className="inline-flex flex-col gap-0.5">
+      <span
+        className={cn(
+          "inline-flex w-fit items-center rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ring-1 ring-inset",
+          tone,
+        )}
+      >
+        {label}
+      </span>
+      {hostNames.length > 0 && (
+        <span className="text-[11px] text-zinc-500">{hostNames.join(", ")}</span>
+      )}
+    </span>
   );
 }
 
