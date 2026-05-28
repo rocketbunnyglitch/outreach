@@ -3,7 +3,7 @@
 import { cn } from "@/lib/cn";
 import { Calendar, ChevronRight, ExternalLink, Target } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Sparkline } from "./sparkline";
 
 /** Aggregated data for one city. */
@@ -86,6 +86,72 @@ interface Props {
   currentCampaign?: { id: string; name: string } | null;
 }
 
+type SortKey = "name" | "status" | "sales" | "venues" | "events" | "outreach";
+
+const STATUS_SORT_ORDER: Record<CityRow["rollupStatus"], number> = {
+  active: 0,
+  confirmed: 1,
+  planning: 2,
+  cancelled: 3,
+};
+
+function cityEventCount(c: CityRow): number {
+  return c.campaigns.reduce((sum, camp) => sum + camp.events.length, 0);
+}
+
+function compareCities(a: CityRow, b: CityRow, key: SortKey): number {
+  switch (key) {
+    case "name":
+      return a.cityName.localeCompare(b.cityName);
+    case "status":
+      return STATUS_SORT_ORDER[a.rollupStatus] - STATUS_SORT_ORDER[b.rollupStatus];
+    case "sales":
+      return a.totalSalesCents - b.totalSalesCents;
+    case "venues":
+      return a.venuesConfirmed - b.venuesConfirmed;
+    case "events":
+      return cityEventCount(a) - cityEventCount(b);
+    case "outreach":
+      return a.outreach30d.reduce((s, n) => s + n, 0) - b.outreach30d.reduce((s, n) => s + n, 0);
+  }
+}
+
+function SortTh({
+  label,
+  sortKey,
+  active,
+  dir,
+  onSort,
+  span,
+  align = "left",
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: boolean;
+  dir: "asc" | "desc";
+  onSort: (k: SortKey) => void;
+  span: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={cn(
+        span,
+        "flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest transition-colors hover:text-zinc-800 dark:hover:text-zinc-200",
+        active ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-500",
+        align === "right" && "justify-end",
+      )}
+    >
+      <span>{label}</span>
+      <span aria-hidden className={cn("text-[9px]", !active && "opacity-30")}>
+        {active ? (dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
+    </button>
+  );
+}
+
 /**
  * Main dashboard table. Each row = one city. Click a row to expand and see
  * the campaigns + events running there.
@@ -108,6 +174,34 @@ export function CitiesTable({ cities, currentCampaign }: Props) {
       return next;
     });
   }
+
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
+    key: "name",
+    dir: "asc",
+  });
+
+  function toggleSort(key: SortKey) {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: key === "name" ? "asc" : "desc" },
+    );
+  }
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? cities.filter(
+          (c) =>
+            c.cityName.toLowerCase().includes(q) ||
+            (c.cityRegion ?? "").toLowerCase().includes(q) ||
+            c.countryName.toLowerCase().includes(q),
+        )
+      : cities;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => compareCities(a, b, sort.key) * dir);
+  }, [cities, query, sort]);
 
   if (cities.length === 0) {
     // Distinguish "no campaigns at all" from "this campaign has no
@@ -153,31 +247,105 @@ export function CitiesTable({ cities, currentCampaign }: Props) {
 
   return (
     <div className="card-surface overflow-hidden">
-      {/* Column header */}
-      <div className="grid grid-cols-12 gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="col-span-3">City</div>
-        <div className="col-span-2">Status</div>
-        <div className="col-span-2 text-right">Sales</div>
-        <div className="col-span-2 text-right">Venues</div>
-        <div className="col-span-1 text-right">Events</div>
-        <div className="col-span-2 text-right">Last 30d</div>
+      {/* Filter */}
+      <div className="flex items-center gap-3 border-zinc-200 border-b px-4 py-2.5 dark:border-zinc-800">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter cities…"
+          className="w-full max-w-xs rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        />
+        {query && (
+          <span className="font-mono text-[11px] text-zinc-500 tabular-nums">
+            {visible.length} {visible.length === 1 ? "match" : "matches"}
+          </span>
+        )}
       </div>
 
-      {/* Rows */}
-      <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-        {cities.map((city, idx) => (
-          <div key={city.cityId}>
-            <CityHeaderRow
-              city={city}
-              isExpanded={expanded.has(city.cityId)}
-              onClick={() => toggle(city.cityId)}
-              striped={idx % 2 === 1}
+      {/* Horizontal scroll on mobile so all columns stay readable instead of
+          crushing — the min-width keeps the grid from collapsing. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[680px]">
+          {/* Column header — click to sort */}
+          <div className="grid grid-cols-12 gap-3 border-zinc-200 border-b bg-zinc-100 px-4 py-2.5 dark:border-zinc-800 dark:bg-zinc-900">
+            <SortTh
+              label="City"
+              sortKey="name"
+              span="col-span-3"
+              active={sort.key === "name"}
+              dir={sort.dir}
+              onSort={toggleSort}
             />
-            {expanded.has(city.cityId) && (
-              <CityExpandedContent city={city} striped={idx % 2 === 1} />
+            <SortTh
+              label="Status"
+              sortKey="status"
+              span="col-span-2"
+              active={sort.key === "status"}
+              dir={sort.dir}
+              onSort={toggleSort}
+            />
+            <SortTh
+              label="Sales"
+              sortKey="sales"
+              span="col-span-2"
+              align="right"
+              active={sort.key === "sales"}
+              dir={sort.dir}
+              onSort={toggleSort}
+            />
+            <SortTh
+              label="Venues"
+              sortKey="venues"
+              span="col-span-2"
+              align="right"
+              active={sort.key === "venues"}
+              dir={sort.dir}
+              onSort={toggleSort}
+            />
+            <SortTh
+              label="Events"
+              sortKey="events"
+              span="col-span-1"
+              align="right"
+              active={sort.key === "events"}
+              dir={sort.dir}
+              onSort={toggleSort}
+            />
+            <SortTh
+              label="Last 30d"
+              sortKey="outreach"
+              span="col-span-2"
+              align="right"
+              active={sort.key === "outreach"}
+              dir={sort.dir}
+              onSort={toggleSort}
+            />
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            {visible.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-zinc-500">
+                No cities match “{query}”.
+              </p>
+            ) : (
+              visible.map((city, idx) => (
+                <div key={city.cityId}>
+                  <CityHeaderRow
+                    city={city}
+                    isExpanded={expanded.has(city.cityId)}
+                    onClick={() => toggle(city.cityId)}
+                    striped={idx % 2 === 1}
+                  />
+                  {expanded.has(city.cityId) && (
+                    <CityExpandedContent city={city} striped={idx % 2 === 1} />
+                  )}
+                </div>
+              ))
             )}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
