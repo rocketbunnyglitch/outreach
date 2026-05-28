@@ -94,6 +94,14 @@ export function CrawlSupportBoard({
   const startingSoon = byBucket("starting_soon");
   const completed = byBucket("completed");
 
+  const [issueModal, setIssueModal] = useState<{
+    open: boolean;
+    caller?: string;
+    eventId?: string;
+  }>({ open: false });
+  const openIssue = (prefill?: { caller?: string; eventId?: string }) =>
+    setIssueModal({ open: true, ...prefill });
+
   return (
     <div className="flex flex-col gap-6">
       {/* Reverse search — cross-entity lookup (venue / city / recent caller) by
@@ -134,7 +142,7 @@ export function CrawlSupportBoard({
         )}
       </Section>
 
-      <UrgentIssues issues={issues} staff={staff} crawls={data.crawls} />
+      <UrgentIssues issues={issues} staff={staff} onLogIssue={() => openIssue()} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <CallList
@@ -142,14 +150,26 @@ export function CrawlSupportBoard({
           icon={<Phone className="h-4 w-4 text-zinc-500" />}
           calls={calls}
           emptyLabel="No recent calls."
+          onLogIssue={openIssue}
         />
         <CallList
           title="Unmatched Calls"
           icon={<PhoneMissed className="h-4 w-4 text-amber-500" />}
           calls={calls.filter(isUnmatchedCall)}
           emptyLabel="No unmatched calls."
+          onLogIssue={openIssue}
         />
       </div>
+
+      {issueModal.open ? (
+        <LogIssueModal
+          crawls={data.crawls}
+          staff={staff}
+          prefillCaller={issueModal.caller}
+          prefillEventId={issueModal.eventId}
+          onClose={() => setIssueModal({ open: false })}
+        />
+      ) : null}
     </div>
   );
 }
@@ -455,11 +475,13 @@ function CallList({
   icon,
   calls,
   emptyLabel,
+  onLogIssue,
 }: {
   title: string;
   icon: ReactNode;
   calls: SupportCall[];
   emptyLabel: string;
+  onLogIssue: (prefill?: { caller?: string; eventId?: string }) => void;
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -475,7 +497,7 @@ function CallList({
       ) : (
         <div className="flex flex-col gap-2">
           {calls.map((c) => (
-            <CallRow key={c.id} call={c} />
+            <CallRow key={c.id} call={c} onLogIssue={onLogIssue} />
           ))}
         </div>
       )}
@@ -483,7 +505,13 @@ function CallList({
   );
 }
 
-function CallRow({ call }: { call: SupportCall }) {
+function CallRow({
+  call,
+  onLogIssue,
+}: {
+  call: SupportCall;
+  onLogIssue: (prefill?: { caller?: string; eventId?: string }) => void;
+}) {
   const who =
     call.matchedVenueName ??
     call.matchedStaffName ??
@@ -531,6 +559,14 @@ function CallRow({ call }: { call: SupportCall }) {
             rec
           </a>
         ) : null}
+        <button
+          type="button"
+          onClick={() => onLogIssue({ caller: call.fromE164 ?? undefined })}
+          title="Log an urgent issue from this call"
+          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-1.5 py-1 font-mono text-[9px] text-zinc-500 uppercase tracking-wider hover:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          <Plus className="h-3 w-3" /> issue
+        </button>
       </div>
     </div>
   );
@@ -550,13 +586,12 @@ function formatDuration(s: number): string {
 function UrgentIssues({
   issues,
   staff,
-  crawls,
+  onLogIssue,
 }: {
   issues: SupportIssue[];
   staff: StaffOpt[];
-  crawls: SupportCrawl[];
+  onLogIssue: () => void;
 }) {
-  const [modalOpen, setModalOpen] = useState(false);
   const open = issues.filter((i) => i.status !== "resolved");
 
   return (
@@ -571,7 +606,7 @@ function UrgentIssues({
         </div>
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
+          onClick={onLogIssue}
           className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 font-mono text-[10px] text-zinc-600 uppercase tracking-wider transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
         >
           <Plus className="h-3.5 w-3.5" /> Log issue
@@ -585,9 +620,6 @@ function UrgentIssues({
             <IssueRow key={i.id} issue={i} staff={staff} />
           ))}
         </div>
-      )}
-      {modalOpen && (
-        <LogIssueModal crawls={crawls} staff={staff} onClose={() => setModalOpen(false)} />
       )}
     </section>
   );
@@ -689,18 +721,22 @@ function LogIssueModal({
   crawls,
   staff,
   onClose,
+  prefillCaller,
+  prefillEventId,
 }: {
   crawls: SupportCrawl[];
   staff: StaffOpt[];
   onClose: () => void;
+  prefillCaller?: string;
+  prefillEventId?: string;
 }) {
   const router = useRouter();
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [issueType, setIssueType] = useState<CrawlIssueType>("venue_not_expecting");
   const [severity, setSeverity] = useState<CrawlIssueSeverity>("medium");
-  const [eventId, setEventId] = useState("");
-  const [caller, setCaller] = useState("");
+  const [eventId, setEventId] = useState(prefillEventId ?? "");
+  const [caller, setCaller] = useState(prefillCaller ?? "");
   const [assignee, setAssignee] = useState("");
   const [notes, setNotes] = useState("");
 
