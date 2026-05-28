@@ -1,5 +1,6 @@
 "use client";
 
+import { THEME_INIT_SCRIPT } from "@/lib/theme-init";
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
 import { useEffect } from "react";
@@ -9,10 +10,12 @@ import { useEffect } from "react";
  * across the whole app router. Forwards to Sentry when configured,
  * then renders a clean 500 page so the user has somewhere to go.
  *
- * Pages-router fallback (NextError) provides a basic 'Something went
- * wrong' screen with retry. We could replace this with a richer
- * branded page later, but for the rare case it fires the default is
- * fine.
+ * This component renders its OWN <html>/<body> and replaces the root
+ * layout entirely (that's how Next.js global error boundaries work), so
+ * the root layout's pre-paint theme-init script never runs on this path.
+ * We re-inject THEME_INIT_SCRIPT in <head> so the error page honors the
+ * saved light/dark preference instead of defaulting to light
+ * (session-13: "error boundary loads in light mode despite dark").
  */
 export default function GlobalError({
   error,
@@ -24,8 +27,12 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: inline theme-init must run before paint to avoid a light-mode flash on the error page */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body className="min-h-screen bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
         <NextError statusCode={0} />
       </body>
     </html>
