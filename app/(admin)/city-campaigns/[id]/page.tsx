@@ -16,6 +16,7 @@ import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
+import { loadEscalationTargets } from "../_actions/escalation-actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
 import { CityTime } from "../_components/CityTime";
 import { CityVenueMap } from "../_components/CityVenueMap";
@@ -100,6 +101,11 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
 
   // Cold outreach pipeline for this city_campaign
   const coldOutreach = await loadColdOutreach(id);
+
+  // Escalation target list — eligible non-readonly active staff,
+  // pre-sorted admin → lead → outreach. Passed into ColdOutreachTable
+  // so the EscalationPopover doesn't have to fetch on open.
+  const escalationTargets = await loadEscalationTargets();
 
   // Aggregate sales + compute status pill the same way the dashboard does
   const totalTicketsSold = sheetData?.crawls.reduce((sum, c) => sum + (c.ticketsSold ?? 0), 0) ?? 0;
@@ -222,6 +228,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         entries={coldOutreach}
         staff={sheetData?.staff ?? []}
         currentStaffId={currentStaff.id}
+        escalationTargets={escalationTargets}
       />
 
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}

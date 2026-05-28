@@ -21,6 +21,7 @@ import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -897,9 +898,23 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
      * migration 0024 + the cap logic in quo-actions.ts.
      */
     callAttempts: number;
+    /**
+     * Escalation workflow (#027 / migration 0027). When non-null, this
+     * entry has been flagged for a senior staffer's attention. The
+     * cold-outreach row renders an "Escalated to X" pill + the entry
+     * feeds the dashboard widget for the escalation assignee.
+     */
+    escalatedToStaffId: string | null;
+    escalatedToName: string | null;
+    escalatedAt: string | null;
+    escalationNotes: string | null;
   }>
 > {
   await requireStaff();
+  // Aliased second join to staff_members for the escalation assignee
+  // (the primary join below is for the entry's regular assignedStaffId).
+  // Drizzle alias lets the typed select pull both names cleanly.
+  const escalatedStaff = alias(staffMembers, "escalated_staff");
   const rows = await db
     .select({
       entryId: coldOutreachEntries.id,
@@ -919,11 +934,16 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       assignedStaffName: staffMembers.displayName,
       remarks: coldOutreachEntries.remarks,
       lastTouchAt: coldOutreachEntries.lastTouchAt,
+      escalatedToStaffId: coldOutreachEntries.escalatedToStaffId,
+      escalatedToName: escalatedStaff.displayName,
+      escalatedAt: coldOutreachEntries.escalatedAt,
+      escalationNotes: coldOutreachEntries.escalationNotes,
     })
     .from(coldOutreachEntries)
     .innerJoin(venues, eq(venues.id, coldOutreachEntries.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
     .leftJoin(staffMembers, eq(staffMembers.id, coldOutreachEntries.assignedStaffId))
+    .leftJoin(escalatedStaff, eq(escalatedStaff.id, coldOutreachEntries.escalatedToStaffId))
     .where(
       and(
         eq(coldOutreachEntries.cityCampaignId, cityCampaignId),
@@ -995,6 +1015,10 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     remarks: r.remarks,
     lastTouchAt: r.lastTouchAt,
     callAttempts: callCountMap.get(r.venueId) ?? 0,
+    escalatedToStaffId: r.escalatedToStaffId,
+    escalatedToName: r.escalatedToName,
+    escalatedAt: r.escalatedAt ? r.escalatedAt.toISOString() : null,
+    escalationNotes: r.escalationNotes,
   }));
 }
 

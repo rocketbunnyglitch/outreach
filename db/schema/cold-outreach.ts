@@ -53,6 +53,29 @@ export const coldOutreachEntries = pgTable(
 
     lastTouchAt: timestamp("last_touch_at", { withTimezone: true }),
 
+    /**
+     * Escalation workflow (migration 0027). When an outreach staffer
+     * decides a conversation needs a more senior person — typically
+     * Brandon — they escalate the entry. The three columns below mark
+     * the cold-outreach row as "needs <staff>'s attention" and feed:
+     *   - an auto-created task assigned to that staff member
+     *   - an email notification to that staffer's email on file
+     *   - a dashboard widget showing pending escalations
+     *   - a filter chip on the cold-outreach table so any staffer can
+     *     see what's currently with the escalation owner
+     *
+     * Cleared by un-escalating (action sets all three to NULL) or by
+     * the task being completed (handled in app, not DB-cascaded — the
+     * historical record stays on the entry so engineers can audit
+     * "this was escalated, then completed, then escalated again").
+     */
+    escalatedToStaffId: uuid("escalated_to_staff_id").references(() => staffMembers.id, {
+      onDelete: "set null",
+    }),
+    escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+    /** Free-text context: "wants a call at 7pm Tue, asking about insurance" */
+    escalationNotes: text("escalation_notes"),
+
     ...archivedAt,
     ...auditColumns,
   },
@@ -63,6 +86,12 @@ export const coldOutreachEntries = pgTable(
     ),
     statusIdx: index("cold_outreach_entries_status_idx").on(table.cityCampaignId, table.status),
     assignedIdx: index("cold_outreach_entries_assigned_idx").on(table.assignedStaffId),
+    // Partial index from migration 0027 — only escalated rows. Cheap
+    // because escalations are sparse (<5% of all entries at any time).
+    escalatedToIdx: index("cold_outreach_entries_escalated_to_idx").on(
+      table.escalatedToStaffId,
+      table.escalatedAt,
+    ),
   }),
 );
 

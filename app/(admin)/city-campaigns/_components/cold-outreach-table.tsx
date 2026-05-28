@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { parseVenueHours, suggestCallWindow } from "@/lib/parse-venue-hours";
 import { useDraft } from "@/lib/use-draft";
 import {
+  AlertTriangle,
   Check,
   ClipboardPaste,
   ExternalLink,
@@ -50,6 +51,7 @@ import { AiDraftButton } from "./ai-draft-button";
 import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { BulkPasteModal } from "./bulk-paste-modal";
+import { EscalationPopover } from "./escalation-popover";
 import { FindEmailButton } from "./find-email-button";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
@@ -92,6 +94,15 @@ interface ColdEntry {
    * 0024 + the cap logic in quo-actions.ts back this.
    */
   callAttempts: number;
+  /**
+   * Escalation workflow (#027 / migration 0027). NULL when not
+   * escalated. When set, the row shows an "Escalated to X" pill +
+   * feeds the dashboard widget for the assignee.
+   */
+  escalatedToStaffId: string | null;
+  escalatedToName: string | null;
+  escalatedAt: string | null;
+  escalationNotes: string | null;
 }
 
 interface Props {
@@ -104,6 +115,17 @@ interface Props {
   staff: Array<{ id: string; displayName: string }>;
   /** Current logged-in staff id — used by realtime + presence hooks. */
   currentStaffId: string;
+  /**
+   * Staff eligible to receive an escalation (admin/lead/outreach,
+   * not readonly). Loaded server-side and passed through so the
+   * EscalationPopover doesn't need its own fetch on open.
+   */
+  escalationTargets: Array<{
+    id: string;
+    displayName: string;
+    role: string;
+    primaryEmail: string;
+  }>;
 }
 
 const STATUS_OPTIONS: Array<{ value: string; label: string; tone: string }> = [
@@ -163,6 +185,7 @@ export function ColdOutreachTable({
   entries,
   staff,
   currentStaffId,
+  escalationTargets,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -630,6 +653,7 @@ export function ColdOutreachTable({
                 zebra={i % 2 === 1}
                 rowIndex={i}
                 layout="table"
+                escalationTargets={escalationTargets}
               />
             ))}
           </tbody>
@@ -671,6 +695,7 @@ export function ColdOutreachTable({
                 onToggleSelect={() => toggleOne(e.entryId)}
                 zebra={false}
                 layout="card"
+                escalationTargets={escalationTargets}
               />
             </li>
           ))}
@@ -732,6 +757,7 @@ function ColdRow({
   zebra,
   rowIndex,
   layout,
+  escalationTargets,
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
@@ -749,8 +775,16 @@ function ColdRow({
    */
   rowIndex?: number;
   layout: "table" | "card";
+  /** Escalation targets list — passed through to the popover. */
+  escalationTargets: Array<{
+    id: string;
+    displayName: string;
+    role: string;
+    primaryEmail: string;
+  }>;
 }) {
   const [pending, startTx] = useTransition();
+  const [escalationOpen, setEscalationOpen] = useState(false);
   const toast = useToast();
   const router = useRouter();
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
@@ -869,166 +903,181 @@ function ColdRow({
   // ---------------------------------------------------------------
   if (layout === "card") {
     return (
-      <article
-        className={cn(
-          "flex flex-col gap-2.5 px-4 py-3 transition-colors",
-          pending && "opacity-60",
-          selected && "bg-blue-500/[0.06] dark:bg-blue-400/[0.06]",
-        )}
-      >
-        {/* Header row: checkbox + name + status pill + open link */}
-        <div className="flex items-start gap-2.5">
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggleSelect}
-            className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
-            aria-label={`Select ${entry.venueName}`}
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <InlineCell
-                  label="Venue name"
-                  value={entry.venueName}
-                  onCommit={editVenueField("name")}
-                />
-              </div>
-              <Link
-                href={`/venues/${entry.venueId}`}
-                className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-                title="Open venue detail"
-                aria-label="Open venue detail"
-              >
-                <ExternalLink className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <StatusSelect
-                current={entry.status}
-                pending={pending}
-                onChange={(v) => commitField("status", v)}
-              />
-              <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
-                ·
-              </span>
-              <AssignedSelect
-                current={entry.assignedStaffId ?? ""}
-                staff={staff}
-                pending={pending}
-                onChange={(v) => commitField("assignedStaffId", v)}
-              />
-              {entry.zeroBounceStatus && (
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ring-1 ring-inset",
-                    ZB_TONE[entry.zeroBounceStatus] ??
-                      "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20",
-                  )}
-                >
-                  {entry.zeroBounceStatus.replace("_", " ")}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Email + AI draft */}
-        <div className="flex items-center gap-1.5 pl-6">
-          <Mail className="h-3 w-3 shrink-0 text-zinc-400" />
-          <div className="min-w-0 flex-1">
-            <InlineCell
-              label="Venue email"
-              value={entry.venueEmail ?? ""}
-              placeholder="add email"
-              variant="mono"
-              inputType="email"
-              onCommit={editVenueField("email")}
+      <>
+        <article
+          className={cn(
+            "flex flex-col gap-2.5 px-4 py-3 transition-colors",
+            pending && "opacity-60",
+            selected && "bg-blue-500/[0.06] dark:bg-blue-400/[0.06]",
+          )}
+        >
+          {/* Header row: checkbox + name + status pill + open link */}
+          <div className="flex items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              className="mt-1 h-4 w-4 shrink-0 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+              aria-label={`Select ${entry.venueName}`}
             />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <InlineCell
+                    label="Venue name"
+                    value={entry.venueName}
+                    onCommit={editVenueField("name")}
+                  />
+                </div>
+                <Link
+                  href={`/venues/${entry.venueId}`}
+                  className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                  title="Open venue detail"
+                  aria-label="Open venue detail"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <StatusSelect
+                  current={entry.status}
+                  pending={pending}
+                  onChange={(v) => commitField("status", v)}
+                />
+                <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
+                  ·
+                </span>
+                <AssignedSelect
+                  current={entry.assignedStaffId ?? ""}
+                  staff={staff}
+                  pending={pending}
+                  onChange={(v) => commitField("assignedStaffId", v)}
+                />
+                {entry.zeroBounceStatus && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ring-1 ring-inset",
+                      ZB_TONE[entry.zeroBounceStatus] ??
+                        "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20",
+                    )}
+                  >
+                    {entry.zeroBounceStatus.replace("_", " ")}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          {entry.venueEmail && (
-            <>
-              <a
-                href={`mailto:${entry.venueEmail}`}
-                className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-                aria-label="Open in email client"
-              >
-                <ExternalLink className="h-3 w-3" />
-              </a>
-              <AiDraftButton
+
+          {/* Email + AI draft */}
+          <div className="flex items-center gap-1.5 pl-6">
+            <Mail className="h-3 w-3 shrink-0 text-zinc-400" />
+            <div className="min-w-0 flex-1">
+              <InlineCell
+                label="Venue email"
+                value={entry.venueEmail ?? ""}
+                placeholder="add email"
+                variant="mono"
+                inputType="email"
+                onCommit={editVenueField("email")}
+              />
+            </div>
+            {entry.venueEmail && (
+              <>
+                <a
+                  href={`mailto:${entry.venueEmail}`}
+                  className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                  aria-label="Open in email client"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+                <AiDraftButton
+                  venueId={entry.venueId}
+                  venueName={entry.venueName}
+                  cityCampaignId={cityCampaignId}
+                  onUseDraft={(draft) => {
+                    const subject = encodeURIComponent(draft.subject);
+                    const body = encodeURIComponent(draft.body);
+                    window.open(
+                      `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
+                      "_self",
+                    );
+                  }}
+                />
+              </>
+            )}
+            {!entry.venueEmail && (
+              <FindEmailButton
                 venueId={entry.venueId}
                 venueName={entry.venueName}
+                venueWebsite={entry.venueWebsite ?? null}
+                venueInstagramHandle={entry.venueInstagramHandle ?? null}
+                venueCity={entry.cityName ?? null}
+                existingEmail={null}
+                outreachBrandId={outreachBrandId}
                 cityCampaignId={cityCampaignId}
-                onUseDraft={(draft) => {
-                  const subject = encodeURIComponent(draft.subject);
-                  const body = encodeURIComponent(draft.body);
-                  window.open(
-                    `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
-                    "_self",
-                  );
-                }}
+                variant="icon"
               />
-            </>
-          )}
-          {!entry.venueEmail && (
-            <FindEmailButton
-              venueId={entry.venueId}
-              venueName={entry.venueName}
-              venueWebsite={entry.venueWebsite ?? null}
-              venueInstagramHandle={entry.venueInstagramHandle ?? null}
-              venueCity={entry.cityName ?? null}
-              existingEmail={null}
-              outreachBrandId={outreachBrandId}
+            )}
+          </div>
+
+          {/* Phone with Quo controls */}
+          <div className="pl-6">
+            <PhoneCell
+              entry={entry}
               cityCampaignId={cityCampaignId}
-              variant="icon"
+              outreachBrandId={outreachBrandId}
+              editVenueField={editVenueField}
             />
-          )}
-        </div>
+          </div>
 
-        {/* Phone with Quo controls */}
-        <div className="pl-6">
-          <PhoneCell
-            entry={entry}
-            cityCampaignId={cityCampaignId}
-            outreachBrandId={outreachBrandId}
-            editVenueField={editVenueField}
-          />
-        </div>
+          {/* Remarks — full width inline edit */}
+          <div className="rounded-md bg-zinc-50/60 px-2 py-1.5 dark:bg-zinc-900/40">
+            <p className="mb-0.5 font-mono text-[9px] text-zinc-500 uppercase tracking-[0.08em]">
+              Remarks
+            </p>
+            <RemarksInput
+              initial={entry.remarks ?? ""}
+              pending={pending}
+              onCommit={(v) => commitField("remarks", v)}
+              draftKey={`remarks:${entry.entryId}`}
+            />
+          </div>
 
-        {/* Remarks — full width inline edit */}
-        <div className="rounded-md bg-zinc-50/60 px-2 py-1.5 dark:bg-zinc-900/40">
-          <p className="mb-0.5 font-mono text-[9px] text-zinc-500 uppercase tracking-[0.08em]">
-            Remarks
-          </p>
-          <RemarksInput
-            initial={entry.remarks ?? ""}
-            pending={pending}
-            onCommit={(v) => commitField("remarks", v)}
-            draftKey={`remarks:${entry.entryId}`}
+          {/* History + Archive */}
+          <div className="flex items-center justify-between">
+            <ActivityHistoryButton
+              table="cold_outreach_entries"
+              recordId={entry.entryId}
+              alsoTable="venues"
+              alsoRecordId={entry.venueId}
+              compact
+            />
+            <button
+              type="button"
+              onClick={archive}
+              disabled={pending}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+              aria-label="Archive"
+            >
+              <Trash2 className="h-3 w-3" />
+              Archive
+            </button>
+          </div>
+        </article>
+        {/* EscalationPopover renders OUTSIDE the article via fragment so
+            its full-screen backdrop overlays the entire viewport rather
+            than being constrained to the card. */}
+        {escalationOpen && (
+          <EscalationPopover
+            entryId={entry.entryId}
+            venueName={entry.venueName}
+            initialNotes={entry.remarks ?? ""}
+            targets={escalationTargets}
+            onClose={() => setEscalationOpen(false)}
+            onEscalated={() => router.refresh()}
           />
-        </div>
-
-        {/* History + Archive */}
-        <div className="flex items-center justify-between">
-          <ActivityHistoryButton
-            table="cold_outreach_entries"
-            recordId={entry.entryId}
-            alsoTable="venues"
-            alsoRecordId={entry.venueId}
-            compact
-          />
-          <button
-            type="button"
-            onClick={archive}
-            disabled={pending}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
-            aria-label="Archive"
-          >
-            <Trash2 className="h-3 w-3" />
-            Archive
-          </button>
-        </div>
-      </article>
+        )}
+      </>
     );
   }
 
@@ -1194,9 +1243,22 @@ function ColdRow({
           onCommit={(v) => commitField("remarks", v)}
           draftKey={`remarks:${entry.entryId}`}
         />
+        {/* Escalation pill — renders only when this entry IS currently
+            escalated. Surfaces "with X since DATE" so every staffer can
+            see what's parked with whom. Click to view + un-escalate
+            (TODO: future iteration; popover currently fire-and-forget). */}
+        {entry.escalatedToName && (
+          <div
+            className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/[0.10] px-2 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] ring-1 ring-amber-500/30 ring-inset dark:text-amber-300"
+            title={entry.escalationNotes ?? undefined}
+          >
+            <AlertTriangle className="h-2.5 w-2.5" />
+            Escalated to {entry.escalatedToName}
+          </div>
+        )}
       </td>
 
-      {/* History + Archive — both row-hover affordances so the row
+      {/* History + Archive + Escalate — row-hover affordances so the row
           itself reads calm when not interacting. */}
       <td className="px-1 py-2 align-middle">
         <div className="flex items-center gap-0.5">
@@ -1209,6 +1271,22 @@ function ColdRow({
               compact
             />
           </div>
+          {/* Escalate button — only shows when NOT yet escalated. Once
+              escalated, the pill in the Remarks cell is the visible
+              affordance + clicking it could open the same popover
+              (un-escalate). Future iteration. */}
+          {!entry.escalatedToName && (
+            <button
+              type="button"
+              onClick={() => setEscalationOpen(true)}
+              disabled={pending}
+              className="rounded-md p-1 text-zinc-400 opacity-0 transition-all duration-150 hover:bg-amber-500/[0.08] hover:text-amber-600 group-hover:opacity-100"
+              aria-label="Escalate to senior staff"
+              title="Escalate to senior staff (e.g. Brandon)"
+            >
+              <AlertTriangle className="h-3 w-3" />
+            </button>
+          )}
           <button
             type="button"
             onClick={archive}
@@ -1219,6 +1297,20 @@ function ColdRow({
             <Trash2 className="h-3 w-3" />
           </button>
         </div>
+        {/* Popover rendered inside the last <td> but uses createPortal
+            internally — so the actual DOM lands at document.body and
+            doesn't violate the tbody>tr>td hierarchy. The component
+            returns null until mounted, so SSR is happy. */}
+        {escalationOpen && (
+          <EscalationPopover
+            entryId={entry.entryId}
+            venueName={entry.venueName}
+            initialNotes={entry.remarks ?? ""}
+            targets={escalationTargets}
+            onClose={() => setEscalationOpen(false)}
+            onEscalated={() => router.refresh()}
+          />
+        )}
       </td>
     </tr>
   );
