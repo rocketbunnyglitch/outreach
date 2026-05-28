@@ -1,12 +1,16 @@
 import { requireStaff } from "@/lib/auth";
-import { loadCrawlSupport } from "@/lib/crawl-support";
+import { loadCrawlIssues, loadCrawlSupport, loadSupportStaff } from "@/lib/crawl-support";
 import { CrawlSupportBoard } from "./_components/crawl-support-board";
 
 export const dynamic = "force-dynamic";
 
 export default async function CrawlSupportPage() {
   await requireStaff();
-  const data = await loadCrawlSupport({ now: new Date() });
+  const [data, issues, staff] = await Promise.all([
+    loadCrawlSupport({ now: new Date() }),
+    loadCrawlIssues(),
+    loadSupportStaff(),
+  ]);
 
   return (
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-6">
@@ -19,7 +23,7 @@ export default async function CrawlSupportPage() {
         </p>
       </header>
 
-      <CrawlSupportBoard data={data} />
+      <CrawlSupportBoard data={data} issues={issues} staff={staff} />
     </div>
   );
 }

@@ -200,3 +200,81 @@ export const STATUS_TONE: Record<CrawlSupportStatus, string> = {
   completed: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-400",
   scheduled: "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20 dark:text-zinc-400",
 };
+
+// =========================================================================
+// Crawl issues (live-support issue logging) — client-safe types + labels
+// =========================================================================
+
+export type CrawlIssueType =
+  | "venue_not_expecting"
+  | "capacity"
+  | "door_line"
+  | "wristband_checkin"
+  | "final_venue"
+  | "wrong_address"
+  | "manager_unavailable"
+  | "schedule_confusion"
+  | "attendee_complaint"
+  | "staff_no_show"
+  | "other";
+
+export type CrawlIssueSeverity = "low" | "medium" | "high" | "critical";
+export type CrawlIssueStatus = "open" | "in_progress" | "resolved";
+
+export interface SupportIssue {
+  id: string;
+  issueType: CrawlIssueType;
+  severity: CrawlIssueSeverity;
+  status: CrawlIssueStatus;
+  cityName: string | null;
+  campaignName: string | null;
+  crawlLabel: string | null;
+  venueName: string | null;
+  callerContact: string | null;
+  assignedStaffName: string | null;
+  notes: string | null;
+  createdAtIso: string;
+  resolvedAtIso: string | null;
+}
+
+export const ISSUE_TYPE_LABEL: Record<CrawlIssueType, string> = {
+  venue_not_expecting: "Venue not expecting us",
+  capacity: "Capacity issue",
+  door_line: "Door / line issue",
+  wristband_checkin: "Wristband / check-in",
+  final_venue: "Final venue issue",
+  wrong_address: "Wrong address",
+  manager_unavailable: "Manager unavailable",
+  schedule_confusion: "Schedule confusion",
+  attendee_complaint: "Attendee complaint",
+  staff_no_show: "Staff / no-show",
+  other: "Other",
+};
+
+export const ISSUE_TYPE_ORDER: CrawlIssueType[] = [
+  "venue_not_expecting",
+  "capacity",
+  "door_line",
+  "wristband_checkin",
+  "final_venue",
+  "wrong_address",
+  "manager_unavailable",
+  "schedule_confusion",
+  "attendee_complaint",
+  "staff_no_show",
+  "other",
+];
+
+export const SEVERITY_LABEL: Record<CrawlIssueSeverity, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  critical: "Critical",
+};
+
+export const SEVERITY_TONE: Record<CrawlIssueSeverity, string> = {
+  low: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-400",
+  medium: "bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-300",
+  high: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
+  critical: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
+};

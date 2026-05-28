@@ -296,6 +296,33 @@ export const paymentMethod = pgEnum("payment_method", [
 export const hostKind = pgEnum("host_kind", ["internal", "external"]);
 
 // =========================================================================
+// Crawl issues (live-support issue logging)
+// =========================================================================
+
+export const crawlIssueType = pgEnum("crawl_issue_type", [
+  "venue_not_expecting",
+  "capacity",
+  "door_line",
+  "wristband_checkin",
+  "final_venue",
+  "wrong_address",
+  "manager_unavailable",
+  "schedule_confusion",
+  "attendee_complaint",
+  "staff_no_show",
+  "other",
+]);
+
+export const crawlIssueSeverity = pgEnum("crawl_issue_severity", [
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
+
+export const crawlIssueStatus = pgEnum("crawl_issue_status", ["open", "in_progress", "resolved"]);
+
+// =========================================================================
 // Audit
 // =========================================================================
 

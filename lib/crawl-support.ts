@@ -21,18 +21,25 @@ import {
   cities,
   cityCampaigns,
   crawlHosts,
+  crawlIssues,
   externalHosts,
   internalHosts,
+  staffMembers,
   venueEvents,
   venues,
   wristbands,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import { logger } from "@/lib/logger";
+import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import {
+  type CrawlIssueSeverity,
+  type CrawlIssueStatus,
+  type CrawlIssueType,
   type CrawlSupportData,
   type SupportBucket,
   type SupportCrawl,
+  type SupportIssue,
   bucketFor,
   computeCrawlStatus,
   computeSupportRisk,
@@ -220,4 +227,91 @@ export async function loadCrawlSupport(opts?: {
   });
 
   return { nowIso: now.toISOString(), crawls, counts };
+}
+
+const DAY_SHORT: Record<string, string> = {
+  thursday_night: "Thu Night",
+  friday_night: "Fri Night",
+  saturday_day: "Sat Day",
+  saturday_night: "Sat Night",
+  sunday_night: "Sun Night",
+};
+
+/**
+ * Load recent crawl issues (newest first). Guarded: the crawl_issues table may
+ * not be migrated yet, in which case we log and return [] so /crawl-support
+ * still renders.
+ */
+export async function loadCrawlIssues(opts?: { limit?: number }): Promise<SupportIssue[]> {
+  try {
+    const rows = await db
+      .select({
+        id: crawlIssues.id,
+        issueType: crawlIssues.issueType,
+        severity: crawlIssues.severity,
+        status: crawlIssues.status,
+        callerContact: crawlIssues.callerContact,
+        notes: crawlIssues.notes,
+        createdAt: crawlIssues.createdAt,
+        resolvedAt: crawlIssues.resolvedAt,
+        dayPart: events.dayPart,
+        crawlNumber: events.crawlNumber,
+        cityName: cities.name,
+        campaignName: campaigns.name,
+        venueName: venues.name,
+        assignedName: staffMembers.displayName,
+      })
+      .from(crawlIssues)
+      .leftJoin(events, eq(events.id, crawlIssues.eventId))
+      .leftJoin(cityCampaigns, eq(cityCampaigns.id, crawlIssues.cityCampaignId))
+      .leftJoin(cities, eq(cities.id, cityCampaigns.cityId))
+      .leftJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+      .leftJoin(venues, eq(venues.id, crawlIssues.venueId))
+      .leftJoin(staffMembers, eq(staffMembers.id, crawlIssues.assignedStaffId))
+      .orderBy(desc(crawlIssues.createdAt))
+      .limit(opts?.limit ?? 100);
+
+    return rows.map((r) => ({
+      id: r.id,
+      issueType: r.issueType as CrawlIssueType,
+      severity: r.severity as CrawlIssueSeverity,
+      status: r.status as CrawlIssueStatus,
+      cityName: r.cityName ?? null,
+      campaignName: r.campaignName ?? null,
+      crawlLabel: r.dayPart
+        ? `${DAY_SHORT[r.dayPart] ?? r.dayPart}${r.crawlNumber ? ` #${r.crawlNumber}` : ""}`
+        : null,
+      venueName: r.venueName ?? null,
+      callerContact: r.callerContact ?? null,
+      assignedStaffName: r.assignedName ?? null,
+      notes: r.notes ?? null,
+      createdAtIso: (r.createdAt instanceof Date
+        ? r.createdAt
+        : new Date(r.createdAt)
+      ).toISOString(),
+      resolvedAtIso: r.resolvedAt ? new Date(r.resolvedAt).toISOString() : null,
+    }));
+  } catch (err) {
+    logger.warn({ err }, "loadCrawlIssues failed (crawl_issues table may not be migrated yet)");
+    return [];
+  }
+}
+
+export interface SupportStaffOption {
+  id: string;
+  name: string;
+}
+
+/** Active staff for the assignee picker. Guarded (never crashes the page). */
+export async function loadSupportStaff(): Promise<SupportStaffOption[]> {
+  try {
+    return await db
+      .select({ id: staffMembers.id, name: staffMembers.displayName })
+      .from(staffMembers)
+      .where(eq(staffMembers.status, "active"))
+      .orderBy(staffMembers.displayName);
+  } catch (err) {
+    logger.warn({ err }, "loadSupportStaff failed");
+    return [];
+  }
 }

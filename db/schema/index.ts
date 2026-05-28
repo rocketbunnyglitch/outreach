@@ -36,6 +36,7 @@ export * from "./middle-venue-groups";
 export * from "./internal-hosts";
 export * from "./external-hosts";
 export * from "./crawl-hosts";
+export * from "./crawl-issues";
 export * from "./event-submission-sites";
 export * from "./events";
 export * from "./venues";

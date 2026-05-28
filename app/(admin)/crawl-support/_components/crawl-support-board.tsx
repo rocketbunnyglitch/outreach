@@ -2,17 +2,28 @@
 
 import { cn } from "@/lib/cn";
 import {
+  type CrawlIssueSeverity,
+  type CrawlIssueType,
   type CrawlSupportData,
+  ISSUE_TYPE_LABEL,
+  ISSUE_TYPE_ORDER,
   RISK_LABEL,
   RISK_TONE,
+  SEVERITY_LABEL,
+  SEVERITY_TONE,
   STATUS_LABEL,
   STATUS_TONE,
   type SupportBucket,
   type SupportCrawl,
+  type SupportIssue,
 } from "@/lib/crawl-support-types";
-import { AlertTriangle, Phone, PhoneMissed, Search } from "lucide-react";
+import { AlertTriangle, Check, Phone, PhoneMissed, Plus, Search, X } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { type ReactNode, useMemo, useState, useTransition } from "react";
+import { assignCrawlIssue, createCrawlIssue, resolveCrawlIssue } from "../_actions";
+
+type StaffOpt = { id: string; name: string };
 
 const DAY_LABEL: Record<string, string> = {
   thursday_night: "Thu Night",
@@ -27,7 +38,15 @@ function dayLabel(dp: string | null): string {
   return DAY_LABEL[dp] ?? dp.replace(/_/g, " ");
 }
 
-export function CrawlSupportBoard({ data }: { data: CrawlSupportData }) {
+export function CrawlSupportBoard({
+  data,
+  issues,
+  staff,
+}: {
+  data: CrawlSupportData;
+  issues: SupportIssue[];
+  staff: StaffOpt[];
+}) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -85,8 +104,10 @@ export function CrawlSupportBoard({ data }: { data: CrawlSupportData }) {
         )}
       </Section>
 
-      {/* Staged views — wired once the call_logs + crawl_issues tables exist. */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <UrgentIssues issues={issues} staff={staff} crawls={data.crawls} />
+
+      {/* Calls — wired once call_logs + the Quo/Viber webhooks land. */}
+      <div className="grid gap-4 sm:grid-cols-2">
         <StubPanel
           icon={<Phone className="h-4 w-4" />}
           title="Incoming Calls"
@@ -96,11 +117,6 @@ export function CrawlSupportBoard({ data }: { data: CrawlSupportData }) {
           icon={<PhoneMissed className="h-4 w-4" />}
           title="Unmatched Calls"
           note="Surfaces calls with no contact match during active windows."
-        />
-        <StubPanel
-          icon={<AlertTriangle className="h-4 w-4" />}
-          title="Urgent Issues"
-          note="Create-from-call issue logging — needs the crawl_issues table."
         />
       </div>
     </div>
@@ -297,6 +313,302 @@ function StubPanel({
         <span className="font-mono text-xs uppercase tracking-wider">{title}</span>
       </div>
       <p className="text-[11px] text-zinc-400">{note}</p>
+    </div>
+  );
+}
+
+// =========================================================================
+// Urgent Issues
+// =========================================================================
+
+function UrgentIssues({
+  issues,
+  staff,
+  crawls,
+}: {
+  issues: SupportIssue[];
+  staff: StaffOpt[];
+  crawls: SupportCrawl[];
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const open = issues.filter((i) => i.status !== "resolved");
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-red-500" />
+          <h2 className="font-mono text-xs text-zinc-600 uppercase tracking-[0.12em] dark:text-zinc-400">
+            Urgent Issues
+          </h2>
+          <span className="font-mono text-[10px] text-zinc-400 tabular-nums">{open.length}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 font-mono text-[10px] text-zinc-600 uppercase tracking-wider transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+        >
+          <Plus className="h-3.5 w-3.5" /> Log issue
+        </button>
+      </div>
+      {open.length === 0 ? (
+        <Empty label="No open issues right now." />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {open.map((i) => (
+            <IssueRow key={i.id} issue={i} staff={staff} />
+          ))}
+        </div>
+      )}
+      {modalOpen && (
+        <LogIssueModal crawls={crawls} staff={staff} onClose={() => setModalOpen(false)} />
+      )}
+    </section>
+  );
+}
+
+function IssueRow({ issue, staff }: { issue: SupportIssue; staff: StaffOpt[] }) {
+  const router = useRouter();
+  const [pending, startTx] = useTransition();
+
+  const resolve = () =>
+    startTx(async () => {
+      const res = await resolveCrawlIssue(issue.id);
+      if (res.ok) router.refresh();
+    });
+  const assign = (staffId: string) => {
+    if (!staffId) return;
+    startTx(async () => {
+      const res = await assignCrawlIssue(issue.id, staffId);
+      if (res.ok) router.refresh();
+    });
+  };
+
+  const where =
+    [issue.cityName, issue.crawlLabel].filter(Boolean).join(" · ") ||
+    issue.campaignName ||
+    "Unscoped";
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800/60 dark:bg-zinc-950/60",
+        pending && "opacity-60",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] ring-1 ring-inset",
+            SEVERITY_TONE[issue.severity],
+          )}
+        >
+          {SEVERITY_LABEL[issue.severity]}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-medium text-sm text-zinc-900 dark:text-zinc-100">
+            {ISSUE_TYPE_LABEL[issue.issueType]}
+          </p>
+          <p className="truncate text-[11px] text-zinc-500">
+            {where}
+            {issue.venueName ? ` · ${issue.venueName}` : ""}
+            {issue.callerContact ? ` · ${issue.callerContact}` : ""}
+            {issue.assignedStaffName ? ` · ${issue.assignedStaffName}` : ""}
+          </p>
+          {issue.notes ? (
+            <p className="mt-0.5 truncate text-[11px] text-zinc-400">{issue.notes}</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <select
+          disabled={pending}
+          value=""
+          onChange={(e) => assign(e.target.value)}
+          className="h-7 rounded-md border border-zinc-200 bg-white px-1.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <option value="">Assign…</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={resolve}
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-300 px-2 py-1 font-mono text-[10px] text-emerald-700 uppercase tracking-wider hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+        >
+          <Check className="h-3 w-3" /> Resolve
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const fieldInputCls =
+  "h-9 w-full rounded-md border border-zinc-200 bg-white px-2.5 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-600";
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function LogIssueModal({
+  crawls,
+  staff,
+  onClose,
+}: {
+  crawls: SupportCrawl[];
+  staff: StaffOpt[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTx] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [issueType, setIssueType] = useState<CrawlIssueType>("venue_not_expecting");
+  const [severity, setSeverity] = useState<CrawlIssueSeverity>("medium");
+  const [eventId, setEventId] = useState("");
+  const [caller, setCaller] = useState("");
+  const [assignee, setAssignee] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const submit = () => {
+    setError(null);
+    startTx(async () => {
+      const res = await createCrawlIssue({
+        issueType,
+        severity,
+        eventId: eventId || null,
+        callerContact: caller || null,
+        notes: notes || null,
+        assignedStaffId: assignee || null,
+      });
+      if (res.ok) {
+        onClose();
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4">
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40"
+      />
+      <div className="relative w-full max-w-lg rounded-t-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-lg">Log issue</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-4 flex flex-col gap-3">
+          <Field label="Issue type">
+            <select
+              value={issueType}
+              onChange={(e) => setIssueType(e.target.value as CrawlIssueType)}
+              className={fieldInputCls}
+            >
+              {ISSUE_TYPE_ORDER.map((t) => (
+                <option key={t} value={t}>
+                  {ISSUE_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Severity">
+            <select
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value as CrawlIssueSeverity)}
+              className={fieldInputCls}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </Field>
+          <Field label="Crawl (optional)">
+            <select
+              value={eventId}
+              onChange={(e) => setEventId(e.target.value)}
+              className={fieldInputCls}
+            >
+              <option value="">— none —</option>
+              {crawls.map((c) => (
+                <option key={c.eventId} value={c.eventId}>
+                  {c.cityName} — {c.dayPart ? c.dayPart.replace(/_/g, " ") : "crawl"}
+                  {c.crawlNumber ? ` #${c.crawlNumber}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Caller / contact (optional)">
+            <input
+              value={caller}
+              onChange={(e) => setCaller(e.target.value)}
+              className={fieldInputCls}
+              placeholder="Name or number"
+            />
+          </Field>
+          <Field label="Assign to (optional)">
+            <select
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+              className={fieldInputCls}
+            >
+              <option value="">— unassigned —</option>
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Notes">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="min-h-[72px] w-full rounded-md border border-zinc-200 bg-white px-2.5 py-2 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:focus:border-zinc-600"
+              placeholder="What's happening?"
+            />
+          </Field>
+          {error ? <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p> : null}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-2 text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={submit}
+            className="rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          >
+            {pending ? "Logging…" : "Log issue"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
