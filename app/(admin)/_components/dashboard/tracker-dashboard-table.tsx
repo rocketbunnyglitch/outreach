@@ -74,6 +74,42 @@ const STATUS_PILL_RANK: Record<CityStatusPill, number> = {
 /** Columns that read most naturally ascending (text); the rest default desc. */
 const ASC_DEFAULT: ReadonlySet<SortKey> = new Set(["priority", "city", "assign", "notes"]);
 
+/**
+ * Frozen-left column classes. During horizontal scroll on narrow viewports
+ * (below lg, where overflow-x-auto kicks in), the leading cells stay locked
+ * to the left edge so the row identifier (checkbox, expand, #, city) is
+ * always visible. Each frozen cell carries its own OPAQUE background so the
+ * scrolling cells underneath can't bleed through. Header cells layer on
+ * z-30 (top-left corner of the sticky thead/sticky-left intersection),
+ * body cells on z-10 (above scrolling siblings, below the sticky header).
+ *
+ * left offsets:
+ *   col 1 checkbox  = w-8  (32px) -> left-0
+ *   col 2 expander  = w-9  (36px) -> left-8
+ *   col 3 priority  = w-10 (40px) -> left-[68px]
+ *   col 4 city                    -> left-[108px]
+ *
+ * Background opacity is raised vs the row default (dark-mode zebras are
+ * 30/70 alpha so the canvas blur shows; sticky cells need solid).
+ */
+const FROZEN_BASE = "lg:static lg:bg-transparent lg:dark:bg-transparent";
+const FROZEN_LEFT_OFFSETS = ["left-0", "left-8", "left-[68px]", "left-[108px]"] as const;
+const FROZEN_HEAD_BG = "sticky z-30 bg-zinc-200 dark:bg-zinc-900";
+function frozenBodyBg(stripeIndex: number): string {
+  // Mirror rowTone but force full opacity so the column is opaque.
+  return stripeIndex % 2 === 0
+    ? "sticky z-10 bg-zinc-50 dark:bg-zinc-900"
+    : "sticky z-10 bg-zinc-100 dark:bg-zinc-800";
+}
+function frozenBreakdownBg(zebra: boolean, evenParent: boolean): string {
+  // Crawl breakdown rows use lighter toners. Keep them opaque enough to
+  // hide scrolling cells underneath without breaking the parent visual.
+  if (zebra) return "sticky z-10 bg-zinc-200 dark:bg-zinc-800";
+  return evenParent
+    ? "sticky z-10 bg-zinc-50/95 dark:bg-zinc-900"
+    : "sticky z-10 bg-zinc-100/95 dark:bg-zinc-900";
+}
+
 function compareRows(
   a: TrackerRow,
   b: TrackerRow,
@@ -343,7 +379,9 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead className="sticky top-14 z-20">
             <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-500">
-              <th className="w-8 px-2 py-3">
+              <th
+                className={cn("w-8 px-2 py-3", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[0], FROZEN_BASE)}
+              >
                 <input
                   type="checkbox"
                   checked={allVisibleSelected}
@@ -353,14 +391,16 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                   className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
                 />
               </th>
-              <th className="w-9 px-2 py-3" />
+              <th
+                className={cn("w-9 px-2 py-3", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[1], FROZEN_BASE)}
+              />
               <SortableTh
                 label="#"
                 sortKey="priority"
                 sort={sort}
                 onSort={toggleSort}
                 align="right"
-                className="w-10 px-2"
+                className={cn("w-10 px-2", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[2], FROZEN_BASE)}
                 tooltip="Priority rank — 1 is highest. Click a number in a row to change it. Sort to bring the most important cities to the top."
               />
               <SortableTh
@@ -368,6 +408,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sortKey="city"
                 sort={sort}
                 onSort={toggleSort}
+                className={cn(FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[3], FROZEN_BASE)}
                 tooltip="The city + campaign. Click the city name to open its full sheet; click the arrow on the left to expand its crawls."
               />
               <SortableTh
@@ -545,7 +586,14 @@ function CityRow({
           "hover:bg-blue-500/[0.04] dark:border-zinc-800/40 dark:hover:bg-blue-400/[0.04]",
         )}
       >
-        <td className="px-2 py-2 align-middle sm:py-2.5">
+        <td
+          className={cn(
+            "px-2 py-2 align-middle sm:py-2.5",
+            frozenBodyBg(stripeIndex),
+            FROZEN_LEFT_OFFSETS[0],
+            FROZEN_BASE,
+          )}
+        >
           <input
             type="checkbox"
             checked={selected}
@@ -554,7 +602,14 @@ function CityRow({
             className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
           />
         </td>
-        <td className="px-2 py-2 align-middle sm:py-2.5">
+        <td
+          className={cn(
+            "px-2 py-2 align-middle sm:py-2.5",
+            frozenBodyBg(stripeIndex),
+            FROZEN_LEFT_OFFSETS[1],
+            FROZEN_BASE,
+          )}
+        >
           {hasBreakdown && (
             <button
               type="button"
@@ -573,11 +628,25 @@ function CityRow({
           )}
         </td>
 
-        <td className="px-2 py-2.5 text-right align-middle">
+        <td
+          className={cn(
+            "px-2 py-2.5 text-right align-middle",
+            frozenBodyBg(stripeIndex),
+            FROZEN_LEFT_OFFSETS[2],
+            FROZEN_BASE,
+          )}
+        >
           <PriorityCell row={row} />
         </td>
 
-        <td className="px-3 py-2 align-middle sm:py-2.5">
+        <td
+          className={cn(
+            "px-3 py-2 align-middle sm:py-2.5",
+            frozenBodyBg(stripeIndex),
+            FROZEN_LEFT_OFFSETS[3],
+            FROZEN_BASE,
+          )}
+        >
           <Link
             href={`/city-campaigns/${row.cityCampaignId}`}
             className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
@@ -620,6 +689,7 @@ function CityRow({
                 : "bg-zinc-50/40 dark:bg-zinc-900/40"
             }
             zebra={idx % 2 === 1}
+            parentEven={stripeIndex % 2 === 0}
             cityCampaignId={row.cityCampaignId}
           />
         ))}
@@ -1120,11 +1190,13 @@ function CrawlBreakdownRow({
   crawl,
   tone,
   zebra,
+  parentEven,
   cityCampaignId,
 }: {
   crawl: CrawlNeed;
   tone: string;
   zebra: boolean;
+  parentEven: boolean;
   cityCampaignId: string;
 }) {
   const open =
@@ -1157,10 +1229,38 @@ function CrawlBreakdownRow({
         "animate-[fade-in_180ms_ease-out]",
       )}
     >
-      <td className="px-2 py-1.5" />
-      <td className="px-2 py-1.5" />
-      <td className="px-2 py-1.5" />
-      <td className="px-3 py-1.5">
+      <td
+        className={cn(
+          "px-2 py-1.5",
+          frozenBreakdownBg(zebra, parentEven),
+          FROZEN_LEFT_OFFSETS[0],
+          FROZEN_BASE,
+        )}
+      />
+      <td
+        className={cn(
+          "px-2 py-1.5",
+          frozenBreakdownBg(zebra, parentEven),
+          FROZEN_LEFT_OFFSETS[1],
+          FROZEN_BASE,
+        )}
+      />
+      <td
+        className={cn(
+          "px-2 py-1.5",
+          frozenBreakdownBg(zebra, parentEven),
+          FROZEN_LEFT_OFFSETS[2],
+          FROZEN_BASE,
+        )}
+      />
+      <td
+        className={cn(
+          "px-3 py-1.5",
+          frozenBreakdownBg(zebra, parentEven),
+          FROZEN_LEFT_OFFSETS[3],
+          FROZEN_BASE,
+        )}
+      >
         <div className="flex items-center gap-2 pl-6">
           <WristbandIcon status={crawl.wristbandStatus} />
           <span className="h-1 w-1 rounded-full bg-zinc-400/60" />
