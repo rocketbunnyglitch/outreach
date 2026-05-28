@@ -51,5 +51,18 @@ module.exports = {
       wait_ready: false,
       listen_timeout: 30000,
     },
+    {
+      name: "outreach-ws",
+      script: "realtime/ws-server.mjs",
+      cwd: "/var/www/outreach",
+      instances: 1,
+      exec_mode: "fork",
+      max_memory_restart: "300M",
+      env: { NODE_ENV: "production", WS_PORT: "3002" },
+      env_file: ".env",
+      error_file: "/var/log/outreach-ws-error.log",
+      out_file: "/var/log/outreach-ws-out.log",
+      time: true,
+    },
   ],
 };
