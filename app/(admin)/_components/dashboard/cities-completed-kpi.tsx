@@ -60,15 +60,11 @@ export function CitiesCompletedKpi({
 
   return (
     <section
-      // Glass look: dark semi-transparent gradient, thin pale border, soft
-      // emerald outer glow + an inset top highlight to catch the eye. The
-      // backdrop-blur is a no-op on opaque surfaces but kicks in if any
-      // content sits behind.
-      className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900/85 via-zinc-950/95 to-zinc-900/70 backdrop-blur-xl"
-      style={{
-        boxShadow:
-          "inset 0 1px 0 0 rgba(255,255,255,0.06), 0 20px 50px -20px rgba(16,185,129,0.18)",
-      }}
+      // Card chrome: use the shared `card-surface` so light/dark theming
+      // comes from globals.css instead of hard-coding the dark gradient.
+      // Then layer the emerald-tinted outer glow + radial wash on top for
+      // the "lit from within" feel we want on this specific card.
+      className="card-surface relative overflow-hidden shadow-[0_20px_50px_-20px_rgba(16,185,129,0.18)]"
     >
       {/* Soft radial wash behind the dots — the "lit from within" feel */}
       <div
@@ -88,7 +84,7 @@ export function CitiesCompletedKpi({
         {/* Big number — pinned inside the arc's hollow, near its apex */}
         <div className="pointer-events-none absolute inset-x-0 top-[34%] flex justify-center">
           <p
-            className="font-semibold text-6xl text-white tabular-nums sm:text-7xl"
+            className="font-semibold text-6xl text-zinc-900 tabular-nums sm:text-7xl dark:text-white"
             style={{ fontFeatureSettings: '"tnum"' }}
           >
             {completed.toLocaleString()}
@@ -98,7 +94,7 @@ export function CitiesCompletedKpi({
         {/* Label — sits just below the arc's baseline */}
         <div className="pointer-events-none absolute inset-x-0 top-[64%] flex justify-center">
           <div className="pointer-events-auto flex flex-col items-center">
-            <p className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-300 uppercase tracking-[0.18em]">
+            <p className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.18em] dark:text-zinc-300">
               <span>Cities completed of</span>
               {editing ? (
                 <span className="inline-flex items-center gap-1">
@@ -250,7 +246,7 @@ function DottedArc({ ratio }: { ratio: number }) {
             </g>
           );
         }
-        return <circle key={key} cx={d.x} cy={d.y} r={r} fill="#10b981" opacity={0.08} />;
+        return <circle key={key} cx={d.x} cy={d.y} r={r} fill="#10b981" opacity={0.18} />;
       })}
     </svg>
   );
