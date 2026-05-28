@@ -212,7 +212,11 @@ import { pipelineHealthFor } from "@/lib/city-progress-shared";
 
 **When to split:** the moment a client component needs a non-type export from a server module, stop and split. Don't try to bend the import.
 
-**Reference fix:** `ce5550e`. Pattern now lives as `lib/city-progress.ts` (server) + `lib/city-progress-shared.ts` (client-safe).
+**Reference fixes:** `ce5550e` (`lib/city-progress.ts` server + `lib/city-progress-shared.ts` client-safe). Then it happened AGAIN: a client component (`crawl-slot-table.tsx`) imported the `SLOT_ROLE_ORDER` *value* from `lib/city-sheet-data.ts` (server-only), broke the deploy build → fix `54bfbe1` split into `lib/city-sheet-shared.ts`. The trap recurs because a value import looks innocent — only a `next build` (not `tsc`) catches it. Existing shared modules: `lib/city-progress-shared.ts`, `lib/city-sheet-shared.ts`, `lib/tracker-status-types.ts`.
+
+**Guardrail (run before every deploy):** `bash scripts/audit-server-only-imports.sh` — flags any `"use client"` file that value-imports (not `import type`) from a module declaring `import "server-only"`. Exits non-zero on a violation so it can gate CI. This is the cheap catch for a bug class that `tsc` is blind to.
+
+**Rule of thumb:** before importing ANYTHING from a `lib/` module into a `"use client"` file, check whether that module (or anything it imports) is server-only. If yes: `import type { … }` for types is fine; for a const/function, move it to the module's `*-shared.ts` (no `server-only`, no db) and import from there.
 
 ### 12.3 SQL errors in admin-shell rendering crash EVERY route
 
