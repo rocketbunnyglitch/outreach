@@ -2144,10 +2144,14 @@ function FilterChipStrip({
 
       {/* Assignee dropdown */}
       <div className="ml-auto flex items-center gap-1.5">
-        <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+        <label
+          htmlFor="cold-outreach-filter-assignee"
+          className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]"
+        >
           Assignee
         </label>
         <select
+          id="cold-outreach-filter-assignee"
           value={filterAssignee}
           onChange={(e) => onChange("assignee", e.target.value || null)}
           className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
@@ -2165,10 +2169,14 @@ function FilterChipStrip({
       {/* ZeroBounce dropdown — only when at least one entry has ZB data */}
       {zbCounts.size > 0 && (
         <div className="flex items-center gap-1.5">
-          <label className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+          <label
+            htmlFor="cold-outreach-filter-zb"
+            className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]"
+          >
             Email
           </label>
           <select
+            id="cold-outreach-filter-zb"
             value={filterZb}
             onChange={(e) => onChange("zb", e.target.value || null)}
             className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
