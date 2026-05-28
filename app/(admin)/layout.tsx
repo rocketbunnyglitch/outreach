@@ -93,8 +93,8 @@ function TopBar({
 }) {
   return (
     <header className="sticky top-0 z-40 border-zinc-200 border-b bg-[color:var(--color-canvas)]/85 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/85">
-      <div className="flex h-14 w-full items-center justify-between gap-4 px-6 sm:px-10">
-        <div className="flex items-center gap-6">
+      <div className="flex h-14 w-full items-center justify-between gap-2 px-4 sm:gap-4 sm:px-10">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-6">
           <Link href="/" className="flex shrink-0 items-center" aria-label="Perse — home">
             {/*
               PERSE wordmark. Single transparent PNG (white pixels on
@@ -121,27 +121,36 @@ function TopBar({
               height={28}
               priority
               className={cn(
-                "h-3.5 w-auto select-none",
+                "h-3 w-auto shrink-0 select-none sm:h-3.5",
                 // Light mode: brightness(0) zeroes RGB → black wordmark.
                 // Dark mode: no filter → original white.
                 "brightness-0 dark:brightness-100",
               )}
             />
           </Link>
-          <CampaignSwitcher />
+          <div className="min-w-0">
+            <CampaignSwitcher />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <PrimeTimePill timezone={staff.timezone ?? "America/Toronto"} />
-          <SendCapPill
-            inboxes={sendCap.inboxes}
-            totalSent={sendCap.totalSent24h}
-            totalCap={sendCap.totalCap}
-            allMaxed={sendCap.allMaxed}
-          />
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Capacity/timing pills carry the most width — show only on wide screens */}
+          <div className="hidden items-center gap-2 lg:flex">
+            <PrimeTimePill timezone={staff.timezone ?? "America/Toronto"} />
+            <SendCapPill
+              inboxes={sendCap.inboxes}
+              totalSent={sendCap.totalSent24h}
+              totalCap={sendCap.totalCap}
+              allMaxed={sendCap.allMaxed}
+            />
+          </div>
           <NotificationsBell />
-          <TimezonePicker currentTimezone={staff.timezone ?? "America/Toronto"} />
+          <div className="hidden sm:block">
+            <TimezonePicker currentTimezone={staff.timezone ?? "America/Toronto"} />
+          </div>
           <ThemeToggle />
-          <ShortcutsHintButton />
+          <div className="hidden sm:block">
+            <ShortcutsHintButton />
+          </div>
           <UserMenu staff={staff} provider={provider} />
         </div>
       </div>

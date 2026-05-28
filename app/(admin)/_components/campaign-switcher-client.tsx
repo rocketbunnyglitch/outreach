@@ -78,12 +78,12 @@ export function CampaignSwitcherClient({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+        className="flex max-w-[52vw] cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm transition-colors hover:border-zinc-300 sm:max-w-none dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
       >
-        <div className="flex flex-col items-start leading-tight">
+        <div className="flex min-w-0 flex-col items-start leading-tight">
           <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Campaign</span>
           {currentLabel ? (
-            <span className="max-w-[200px] truncate font-medium text-zinc-900 dark:text-zinc-100">
+            <span className="max-w-[120px] truncate font-medium text-zinc-900 sm:max-w-[200px] dark:text-zinc-100">
               {currentLabel}
             </span>
           ) : (
