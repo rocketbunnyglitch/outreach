@@ -10,6 +10,8 @@ interface Kpi {
   trend?: "up" | "down" | "flat";
   /** 14-day sparkline data. */
   series?: number[];
+  /** Plain-language explanation shown on hover (for naive users). */
+  tooltip?: string;
 }
 
 interface Props {
@@ -37,9 +39,13 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
   const sparkColor = kpi.trend === "down" ? "text-rose-500" : "text-emerald-500";
 
   return (
-    <div className="flex flex-col gap-3 bg-zinc-50 p-4 dark:bg-transparent">
+    <div className="flex flex-col gap-3 bg-zinc-50 p-4 dark:bg-transparent" title={kpi.tooltip}>
       <div className="flex items-start justify-between gap-2">
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">{kpi.label}</p>
+        <p
+          className={`font-mono text-[10px] text-zinc-500 uppercase tracking-widest${kpi.tooltip ? " cursor-help decoration-dotted underline-offset-2 hover:underline" : ""}`}
+        >
+          {kpi.label}
+        </p>
         {kpi.trend && kpi.trend !== "flat" && <TrendBadge trend={kpi.trend} meta={kpi.meta} />}
       </div>
       <div className="flex items-end justify-between gap-3">

@@ -112,6 +112,8 @@ export default async function DashboardHome({
         data.kpis.venuesTargeted > 0
           ? `${venueProgress}% · target ${data.kpis.venuesTargeted}`
           : "no targets set",
+      tooltip:
+        "Venues that have agreed to host, across all crawls in scope, versus the target. The sparkline shows the 14-day trend.",
       trend:
         venueProgress >= 80
           ? ("up" as const)
@@ -124,12 +126,16 @@ export default async function DashboardHome({
       label: "Events",
       value: (data.kpis.eventsConfirmed + data.kpis.eventsPlanned).toString(),
       meta: `${data.kpis.eventsConfirmed} confirmed · ${data.kpis.eventsPlanned} planned`,
+      tooltip:
+        "Total crawls in scope — confirmed (locked in) plus planned (still being built out).",
       trend: "flat" as const,
     },
     {
       label: "Reply rate 30d",
       value: `${data.kpis.replyRate}%`,
       meta: "of all touchpoints",
+      tooltip:
+        "Share of outreach messages in the last 30 days that got a reply. Higher is better; under ~10% suggests the outreach needs attention.",
       trend:
         data.kpis.replyRate >= 20
           ? ("up" as const)

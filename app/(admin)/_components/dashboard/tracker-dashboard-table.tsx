@@ -112,6 +112,7 @@ function SortableTh({
   onSort,
   align = "left",
   className,
+  tooltip,
 }: {
   label: string;
   sortKey: SortKey;
@@ -119,6 +120,7 @@ function SortableTh({
   onSort: (k: SortKey) => void;
   align?: "left" | "right";
   className?: string;
+  tooltip?: string;
 }) {
   const active = sort.key === sortKey;
   return (
@@ -126,6 +128,7 @@ function SortableTh({
       <button
         type="button"
         onClick={() => onSort(sortKey)}
+        title={tooltip}
         className={cn(
           "inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors hover:text-zinc-900 dark:hover:text-zinc-200",
           active ? "text-zinc-900 dark:text-zinc-100" : "text-inherit",
@@ -244,10 +247,29 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 onSort={toggleSort}
                 align="right"
                 className="w-10 px-2"
+                tooltip="Priority rank — 1 is highest. Click a number in a row to change it. Sort to bring the most important cities to the top."
               />
-              <SortableTh label="City" sortKey="city" sort={sort} onSort={toggleSort} />
-              <SortableTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
-              <SortableTh label="Need" sortKey="need" sort={sort} onSort={toggleSort} />
+              <SortableTh
+                label="City"
+                sortKey="city"
+                sort={sort}
+                onSort={toggleSort}
+                tooltip="The city + campaign. Click the city name to open its full sheet; click the arrow on the left to expand its crawls."
+              />
+              <SortableTh
+                label="Status"
+                sortKey="status"
+                sort={sort}
+                onSort={toggleSort}
+                tooltip="Where this city stands (e.g. on track, behind, at risk). Computed from crawl progress; click the pill to override it."
+              />
+              <SortableTh
+                label="Need"
+                sortKey="need"
+                sort={sort}
+                onSort={toggleSort}
+                tooltip="What's still missing to lock the crawls — open venue slots per crawl. Fewer filled dots means more to book."
+              />
               <SortableTh
                 label="Sales"
                 sortKey="sales"
@@ -255,6 +277,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 onSort={toggleSort}
                 align="right"
                 className="w-24"
+                tooltip="Tickets sold across all of this city's crawls, shown as a dollar/k figure."
               />
               <SortableTh
                 label="Assign"
@@ -262,8 +285,15 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sort={sort}
                 onSort={toggleSort}
                 className="w-32"
+                tooltip="The lead staffer responsible for this city. Click to reassign."
               />
-              <SortableTh label="Notes" sortKey="notes" sort={sort} onSort={toggleSort} />
+              <SortableTh
+                label="Notes"
+                sortKey="notes"
+                sort={sort}
+                onSort={toggleSort}
+                tooltip="A quick dashboard note for this city. Click the cell to edit inline."
+              />
             </tr>
           </thead>
           <tbody>

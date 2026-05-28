@@ -67,14 +67,19 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
           value={totalTicketsSold.toLocaleString()}
           mono
           tint="emerald"
+          tooltip="Total tickets sold across every crawl in this city campaign."
         />
         <StatCard
           label="Assigned"
           value={data.leadStaffName?.split(" ")[0] ?? "—"}
           icon={<User2 className="h-3 w-3" />}
           tint={data.leadStaffName ? "blue" : "zinc"}
+          tooltip="The lead staffer responsible for this city. Set it from the dashboard tracker's Assign column."
         />
-        <div className="flex flex-col justify-between rounded-xl border border-zinc-200/60 bg-zinc-50/40 p-3 dark:border-zinc-800/40 dark:bg-zinc-900/30">
+        <div
+          title="Overall status for this city, computed from crawl progress (same logic as the dashboard tracker)."
+          className="flex flex-col justify-between rounded-xl border border-zinc-200/60 bg-zinc-50/40 p-3 dark:border-zinc-800/40 dark:bg-zinc-900/30"
+        >
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
             Status
           </span>
@@ -104,12 +109,14 @@ function StatCard({
   mono,
   tint,
   icon,
+  tooltip,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   tint: "zinc" | "emerald" | "blue";
   icon?: React.ReactNode;
+  tooltip?: string;
 }) {
   const tintBg = {
     zinc: "bg-zinc-50/40 dark:bg-zinc-900/30",
@@ -118,6 +125,7 @@ function StatCard({
   }[tint];
   return (
     <div
+      title={tooltip}
       className={cn(
         "flex flex-col justify-between rounded-xl border border-zinc-200/60 p-3 dark:border-zinc-800/40",
         tintBg,
