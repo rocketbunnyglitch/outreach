@@ -3,10 +3,18 @@
 import { Input } from "@/components/ui/input";
 import type { CrawlCard, SlotRole, SlotRow } from "@/lib/city-sheet-data";
 import { cn } from "@/lib/cn";
-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { addExtraSlot, assignSlotVenue, clearSlot, updateSlotField } from "../_slot-actions";
+import {
+  addExtraSlot,
+  assignSlotVenue,
+  clearSlot,
+  deleteCrawl,
+  updateCrawl,
+  updateSlotField,
+} from "../_slot-actions";
 import { MiddleGroupPicker } from "./middle-group-picker";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
@@ -22,6 +30,181 @@ const DAY_LABEL: Record<CrawlCard["dayPart"], string> = {
   friday_night: "Friday",
   saturday_night: "Saturday",
 };
+
+/**
+ * Editable crawl header — shows "Friday crawl 2 · Downtown loop" with
+ * an inline editor (pencil) to rename / renumber, and a delete button.
+ * Operators flagged (session 12) they want to manage crawls directly
+ * from the city sheet rather than a separate setup screen.
+ */
+function CrawlHeader({
+  crawl,
+  cityCampaignId,
+}: {
+  crawl: CrawlCard;
+  cityCampaignId: string;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [num, setNum] = useState(String(crawl.crawlNumber));
+  const [label, setLabel] = useState(crawl.routeLabel ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTx] = useTransition();
+
+  function save() {
+    setError(null);
+    const parsedNum = Number(num);
+    if (!Number.isInteger(parsedNum) || parsedNum < 1 || parsedNum > 99) {
+      setError("Crawl number must be 1–99.");
+      return;
+    }
+    startTx(async () => {
+      try {
+        const result = await updateCrawl({
+          eventId: crawl.eventId,
+          cityCampaignId,
+          crawlNumber: parsedNum,
+          routeLabel: label,
+        });
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't save.");
+          return;
+        }
+        setEditing(false);
+        router.refresh();
+      } catch (err) {
+        console.error("[crawl-header] updateCrawl failed", err);
+        setError("Couldn't save — try again.");
+      }
+    });
+  }
+
+  function remove() {
+    const name = `${DAY_LABEL[crawl.dayPart]} crawl ${crawl.crawlNumber}`;
+    if (
+      !confirm(
+        `Delete "${name}"? This removes the crawl and all its venue slot assignments. This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    startTx(async () => {
+      try {
+        const result = await deleteCrawl({ eventId: crawl.eventId, cityCampaignId });
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't delete.");
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        console.error("[crawl-header] deleteCrawl failed", err);
+        setError("Couldn't delete — try again.");
+      }
+    });
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+            {DAY_LABEL[crawl.dayPart]} crawl
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={99}
+            value={num}
+            onChange={(e) => setNum(e.target.value)}
+            disabled={pending}
+            className="w-16 rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+            aria-label="Crawl number"
+          />
+          <input
+            type="text"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            disabled={pending}
+            placeholder="Crawl name (optional)"
+            className="min-w-0 flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+            aria-label="Crawl name"
+          />
+          <button
+            type="button"
+            onClick={save}
+            disabled={pending}
+            className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 font-medium text-[11px] text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(false);
+              setNum(String(crawl.crawlNumber));
+              setLabel(crawl.routeLabel ?? "");
+              setError(null);
+            }}
+            disabled={pending}
+            className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800"
+            aria-label="Cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {error && <span className="text-[11px] text-rose-600">{error}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="group/crawlhdr flex items-baseline gap-3">
+      <h3 className="font-semibold text-base tracking-tight">
+        {DAY_LABEL[crawl.dayPart]} crawl {crawl.crawlNumber}
+        {crawl.routeLabel && (
+          <span className="ml-2 font-normal text-zinc-500">· {crawl.routeLabel}</span>
+        )}
+      </h3>
+      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+        {crawl.eventDate}
+        {crawl.middleGroupSharedWith.length > 0 && (
+          <>
+            {" · "}
+            shared with{" "}
+            <span className="text-zinc-700 dark:text-zinc-300">
+              {crawl.middleGroupSharedWith.map((s) => s.label).join(", ")}
+            </span>
+          </>
+        )}
+      </span>
+      {/* Edit + delete affordances — appear on header hover to keep the
+          calm state clean. */}
+      <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover/crawlhdr:opacity-100">
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          disabled={pending}
+          className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+          aria-label="Edit crawl"
+          title="Rename / renumber crawl"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onClick={remove}
+          disabled={pending}
+          className="rounded p-1 text-zinc-400 hover:bg-rose-500/[0.08] hover:text-rose-600"
+          aria-label="Delete crawl"
+          title="Delete crawl"
+        >
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+        </button>
+      </span>
+    </div>
+  );
+}
 
 const ROLE_LABEL: Record<SlotRole, string> = {
   wristband: "Wristband",
@@ -41,7 +224,7 @@ const ROLE_TONE: Record<SlotRole, string> = {
  * Single crawl's slot table.
  *
  * Layout — 9 columns, spreadsheet feel:
- *   Slot | Venue | Email | Scheduled By | Bar Contact | Hours | Capacity |
+ *   Slot | Venue | Email | Phone | Scheduled By | Bar Contact | Hours | Capacity |
  *     Drink Specials | Status
  *
  * Each cell is inline editable. Cells without a venue assigned dim
@@ -91,23 +274,7 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   return (
     <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
-        <div className="flex items-baseline gap-3">
-          <h3 className="font-semibold text-base tracking-tight">
-            {DAY_LABEL[crawl.dayPart]} crawl {crawl.crawlNumber}
-          </h3>
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-            {crawl.eventDate}
-            {crawl.middleGroupSharedWith.length > 0 && (
-              <>
-                {" · "}
-                shared with{" "}
-                <span className="text-zinc-700 dark:text-zinc-300">
-                  {crawl.middleGroupSharedWith.map((s) => s.label).join(", ")}
-                </span>
-              </>
-            )}
-          </span>
-        </div>
+        <CrawlHeader crawl={crawl} cityCampaignId={cityCampaignId} />
         <div className="flex items-center gap-3">
           {crawl.ticketsSold > 0 && (
             <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
@@ -187,6 +354,7 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
               <th className="w-28 px-3 py-2">Slot</th>
               <th className="w-48 px-2 py-2">Venue</th>
               <th className="w-44 px-2 py-2">Email</th>
+              <th className="w-32 px-2 py-2">Phone</th>
               <th className="w-28 px-2 py-2">Scheduled by</th>
               <th className="w-32 px-2 py-2">Bar contact</th>
               <th className="w-32 px-2 py-2">Hours</th>
@@ -369,6 +537,7 @@ function SlotTableRow({
         {slot.venueEventId && (
           <div className="flex items-center gap-4 font-mono text-[10px] text-zinc-500">
             {slot.venueEmail && <span className="truncate">✉ {slot.venueEmail}</span>}
+            {slot.venuePhone && <span className="whitespace-nowrap">☎ {slot.venuePhone}</span>}
             {slot.venueCapacity != null && <span>Cap {slot.venueCapacity}</span>}
           </div>
         )}
@@ -488,6 +657,13 @@ function SlotTableRow({
           </span>
         </td>
 
+        {/* Phone — read-only from venues */}
+        <td className="px-2 py-2 align-middle">
+          <span className="block whitespace-nowrap font-mono text-[11px] text-zinc-500">
+            {slot.venuePhone ?? "—"}
+          </span>
+        </td>
+
         {/* Scheduled by */}
         <td className="px-2 py-2 align-middle">
           <SlotStaffSelect
@@ -560,7 +736,7 @@ function SlotTableRow({
       </tr>
       {error && (
         <tr className="animate-[fade-in_180ms_ease-out] border-zinc-200/40 border-b bg-rose-50/60 dark:border-zinc-800/30 dark:bg-rose-950/30">
-          <td colSpan={10} className="px-3 py-2">
+          <td colSpan={11} className="px-3 py-2">
             <div className="flex items-start gap-2 text-rose-700 text-xs dark:text-rose-300">
               <span className="font-mono text-[10px] uppercase tracking-[0.1em]">Conflict</span>
               <span className="flex-1">{error}</span>
@@ -773,6 +949,7 @@ function emptySlot(role: "middle" | "alt_final", slotPosition: number): SlotRow 
     venueId: null,
     venueName: null,
     venueEmail: null,
+    venuePhone: null,
     venueCapacity: null,
     agreedHoursText: null,
     drinkSpecials: null,

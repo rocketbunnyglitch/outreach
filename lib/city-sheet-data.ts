@@ -41,6 +41,7 @@ export interface SlotRow {
   venueId: string | null;
   venueName: string | null;
   venueEmail: string | null;
+  venuePhone: string | null;
   venueCapacity: number | null;
   agreedHoursText: string | null;
   drinkSpecials: string | null;
@@ -64,6 +65,8 @@ export interface CrawlCard {
   eventId: string;
   dayPart: "thursday_night" | "friday_night" | "saturday_night";
   crawlNumber: number;
+  /** Free-text crawl name, e.g. "Downtown loop". Null when unnamed. */
+  routeLabel: string | null;
   eventDate: string;
   ticketsSold: number;
   middleVenueGroupId: string | null;
@@ -121,6 +124,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       id: events.id,
       dayPart: events.dayPart,
       crawlNumber: events.crawlNumber,
+      routeLabel: events.routeLabel,
       eventDate: events.eventDate,
       ticketsSold: events.ticketSalesCount,
       middleVenueGroupId: events.middleVenueGroupId,
@@ -148,6 +152,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
             venueId: venues.id,
             venueName: venues.name,
             venueEmail: venues.email,
+            venuePhone: venues.phoneE164,
             venueCapacity: venues.capacity,
             staffName: staffMembers.displayName,
           })
@@ -289,6 +294,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       dayPart:
         (ev.dayPart as "thursday_night" | "friday_night" | "saturday_night") ?? "saturday_night",
       crawlNumber: ev.crawlNumber ?? 1,
+      routeLabel: ev.routeLabel ?? null,
       eventDate: String(ev.eventDate ?? ""),
       ticketsSold: ev.ticketsSold ?? 0,
       middleVenueGroupId: ev.middleVenueGroupId,
@@ -334,6 +340,7 @@ type VenueEventRow = {
   venueId: string;
   venueName: string;
   venueEmail: string | null;
+  venuePhone: string | null;
   venueCapacity: number | null;
   staffName: string | null;
 };
@@ -348,6 +355,7 @@ function slotRowFrom(ve: VenueEventRow | undefined, role: SlotRole, position: nu
       venueId: null,
       venueName: null,
       venueEmail: null,
+      venuePhone: null,
       venueCapacity: null,
       agreedHoursText: null,
       drinkSpecials: null,
@@ -364,6 +372,7 @@ function slotRowFrom(ve: VenueEventRow | undefined, role: SlotRole, position: nu
     venueId: ve.venueId,
     venueName: ve.venueName,
     venueEmail: ve.venueEmail,
+    venuePhone: ve.venuePhone,
     venueCapacity: ve.venueCapacity,
     agreedHoursText: ve.agreedHoursText,
     drinkSpecials: ve.drinkSpecials,

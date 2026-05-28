@@ -15,7 +15,7 @@
  *   4. Operator clears the venue → clearSlot deletes the venue_event
  */
 
-import { venueEvents, venues } from "@/db/schema";
+import { events, venueEvents, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -515,5 +515,80 @@ export async function createVenueFromMapsUrl(
   } catch (err) {
     logger.error({ err }, "createVenueFromMapsUrl failed");
     return { ok: false, error: "Couldn't save the venue." };
+  }
+}
+
+// =========================================================================
+// updateCrawl / deleteCrawl — inline crawl management on the city sheet
+// =========================================================================
+//
+// Operators flagged (session 12) that they want to rename a crawl, change
+// its crawl number, or delete it directly from the city sheet — without
+// going to a separate setup screen.
+
+const updateCrawlSchema = z.object({
+  eventId: uuid,
+  cityCampaignId: uuid,
+  /** New human crawl number (1-99). Optional — only updated when sent. */
+  crawlNumber: z.coerce.number().int().min(1).max(99).optional(),
+  /** New free-text crawl name. Empty string clears it. Optional. */
+  routeLabel: z.string().max(120).optional(),
+});
+
+export async function updateCrawl(
+  input: z.infer<typeof updateCrawlSchema>,
+): Promise<ActionResult<{ eventId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = updateCrawlSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid crawl edit." };
+  const { eventId, cityCampaignId, crawlNumber, routeLabel } = parsed.data;
+
+  // Build the patch from only the provided fields.
+  const patch: Partial<typeof events.$inferInsert> = { updatedBy: staff.id };
+  if (crawlNumber != null) patch.crawlNumber = crawlNumber;
+  if (routeLabel !== undefined) patch.routeLabel = routeLabel.trim() || null;
+
+  // Nothing to change beyond the audit stamp → treat as a no-op success.
+  if (crawlNumber == null && routeLabel === undefined) {
+    return { ok: true, data: { eventId } };
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx.update(events).set(patch).where(eq(events.id, eventId)),
+    );
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { eventId } };
+  } catch (err) {
+    logger.error({ err, eventId }, "updateCrawl failed");
+    return { ok: false, error: "Couldn't update the crawl." };
+  }
+}
+
+const deleteCrawlSchema = z.object({
+  eventId: uuid,
+  cityCampaignId: uuid,
+});
+
+export async function deleteCrawl(
+  input: z.infer<typeof deleteCrawlSchema>,
+): Promise<ActionResult<{ eventId: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = deleteCrawlSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid delete request." };
+  const { eventId, cityCampaignId } = parsed.data;
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      // venue_events FK to events with ON DELETE CASCADE, so removing the
+      // event removes its slot assignments. (Middle group membership is
+      // on the group, not the event, so groups are untouched.)
+      await tx.delete(events).where(eq(events.id, eventId));
+    });
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { eventId } };
+  } catch (err) {
+    logger.error({ err, eventId }, "deleteCrawl failed");
+    return { ok: false, error: "Couldn't delete the crawl." };
   }
 }
