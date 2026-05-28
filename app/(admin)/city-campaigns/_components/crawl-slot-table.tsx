@@ -6,7 +6,7 @@ import {
   SLOT_ROLE_ORDER,
   type SlotRole,
   type SlotRow,
-} from "@/lib/city-sheet-data";
+} from "@/lib/city-sheet-shared";
 import { cn } from "@/lib/cn";
 import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
