@@ -51,6 +51,20 @@ export async function addCityToCampaign(
   }
   const input: CityCampaignCreateInput = parsed.data;
 
+  // Role gate (#025 server-side defense). The UI hides the dollar
+  // field from non-admins, but a malicious or curious operator could
+  // still POST the form with a salesGoalCents value. Silently drop it
+  // here rather than 403 — preserves the rest of the payload (city,
+  // priority, target counts) so the create still works as expected.
+  const isAdmin = staff.role === "admin";
+  if (!isAdmin && input.salesGoalCents !== undefined) {
+    logger.info(
+      { staffId: staff.id, role: staff.role },
+      "non-admin sent salesGoalCents on city-campaign create — dropping",
+    );
+    input.salesGoalCents = undefined;
+  }
+
   try {
     const [row] = await withAuditContext(staff.id, async (tx) =>
       tx
@@ -95,6 +109,19 @@ export async function updateCityCampaign(
     };
   }
   const input: CityCampaignUpdateInput = parsed.data;
+
+  // Role gate (#025 server-side defense). Mirror of the create gate
+  // above — silently drop salesGoalCents writes from non-admins so
+  // the rest of the patch still applies. Logged so engineers can
+  // see if a non-admin form is somehow surfacing the field.
+  const isAdmin = staff.role === "admin";
+  if (!isAdmin && input.salesGoalCents !== undefined) {
+    logger.info(
+      { staffId: staff.id, role: staff.role, cityCampaignId: id },
+      "non-admin sent salesGoalCents on city-campaign update — dropping",
+    );
+    input.salesGoalCents = undefined;
+  }
 
   const patch: Partial<typeof cityCampaigns.$inferInsert> = {
     updatedBy: staff.id,
