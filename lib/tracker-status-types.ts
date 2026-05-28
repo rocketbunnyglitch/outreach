@@ -32,9 +32,15 @@ export interface CityNeedSummary {
 }
 
 export interface CrawlNeed {
+  /** The event id this crawl maps to — target for the per-crawl
+      status override. */
+  eventId: string;
   /** Composite key — same day_part + crawl_number identifies a crawl */
   dayPart: string;
   crawlNumber: number;
+  /** The crawl's own eventStatus (planned/confirmed/…); editable
+      inline from the expanded tracker row. */
+  status: "planned" | "confirmed" | "contract_signed" | "completed" | "cancelled";
   needsWristband: boolean;
   needsMiddle1: boolean;
   needsMiddle2: boolean;

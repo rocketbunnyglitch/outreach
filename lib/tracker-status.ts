@@ -65,6 +65,7 @@ export async function computeCityNeeds(
       cityCampaignId: events.cityCampaignId,
       dayPart: events.dayPart,
       crawlNumber: events.crawlNumber,
+      eventStatus: events.status,
       ticketsSold: events.ticketSalesCount,
       venueEventStatus: venueEvents.status,
     })
@@ -74,9 +75,11 @@ export async function computeCityNeeds(
 
   // Group by (city_campaign, day_part, crawl_number)
   type CrawlBucket = {
+    eventId: string;
     cityCampaignId: string;
     dayPart: string;
     crawlNumber: number;
+    status: CrawlNeed["status"];
     confirmedVenueCount: number;
     ticketsSold: number;
   };
@@ -89,9 +92,11 @@ export async function computeCityNeeds(
     let b = buckets.get(k);
     if (!b) {
       b = {
+        eventId: r.eventId,
         cityCampaignId: r.cityCampaignId,
         dayPart,
         crawlNumber,
+        status: (r.eventStatus as CrawlNeed["status"]) ?? "planned",
         confirmedVenueCount: 0,
         ticketsSold: r.ticketsSold ?? 0,
       };
@@ -113,8 +118,10 @@ export async function computeCityNeeds(
     // Simplified attribution: assume open slots fall in order
     // wristband → middle1 → middle2 → final
     const need: CrawlNeed = {
+      eventId: b.eventId,
       dayPart: b.dayPart,
       crawlNumber: b.crawlNumber,
+      status: b.status,
       needsWristband: open >= 4,
       needsMiddle1: open >= 3,
       needsMiddle2: open >= 2,

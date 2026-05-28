@@ -19,6 +19,7 @@ import {
   reassignCityCampaign,
   updateCityCampaignStatus,
   updateDashboardNote,
+  updateEventStatus,
 } from "../../_actions-tracker";
 
 export interface TrackerRow {
@@ -533,6 +534,182 @@ function NoteInput({ row }: { row: TrackerRow }) {
   );
 }
 
+// Event-status (per-crawl) lifecycle values + display tones. Distinct
+// from the city-campaign status pill — these are the events.status
+// enum (planned → confirmed → contract_signed → completed; cancelled).
+const EVENT_STATUS_OPTIONS = [
+  "planned",
+  "confirmed",
+  "contract_signed",
+  "completed",
+  "cancelled",
+] as const;
+type EventStatus = (typeof EVENT_STATUS_OPTIONS)[number];
+
+const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
+  planned: "Planned",
+  confirmed: "Confirmed",
+  contract_signed: "Signed",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+const EVENT_STATUS_TONE: Record<EventStatus, string> = {
+  planned: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-300",
+  confirmed:
+    "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
+  contract_signed:
+    "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:bg-blue-500/15 dark:text-blue-300",
+  completed:
+    "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:bg-violet-500/15 dark:text-violet-300",
+  cancelled: "bg-zinc-500/8 text-zinc-500 ring-zinc-500/15 line-through dark:text-zinc-500",
+};
+
+/**
+ * Per-crawl status override on the expanded tracker row. Mirrors the
+ * city-level StatusOverridePill (portaled menu, same outside-click +
+ * clamp + glue-on-scroll handling) but targets an event via
+ * updateEventStatus. Operators flagged (session 12) that the override
+ * should apply to each crawl under a city, per day.
+ */
+function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
+  const [open, setOpen] = useState(false);
+  const [pending, startTx] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const MENU_WIDTH = 176;
+
+  const recomputePos = useCallback(() => {
+    const el = buttonRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const maxLeft = window.innerWidth - MENU_WIDTH - 8;
+    const left = Math.max(8, Math.min(rect.left, maxLeft));
+    setPos({ top: rect.bottom + 4, left });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    recomputePos();
+    function onScrollOrResize() {
+      recomputePos();
+    }
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, recomputePos]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(e: PointerEvent) {
+      const t = e.target as Node;
+      const inContainer = containerRef.current?.contains(t) ?? false;
+      const inMenu = menuRef.current?.contains(t) ?? false;
+      if (!inContainer && !inMenu) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function setStatus(status: EventStatus) {
+    if (status === crawl.status) {
+      setOpen(false);
+      return;
+    }
+    const fd = new FormData();
+    fd.set("eventId", crawl.eventId);
+    fd.set("status", status);
+    startTx(async () => {
+      try {
+        const result = await updateEventStatus(null, fd);
+        if (result.ok) {
+          setSaved(true);
+          setOpen(false);
+          setTimeout(() => setSaved(false), 1200);
+        }
+      } catch (err) {
+        console.error("[crawl-status] updateEventStatus failed", err);
+      }
+    });
+  }
+
+  const currentTone = EVENT_STATUS_TONE[crawl.status] ?? EVENT_STATUS_TONE.planned;
+
+  return (
+    <div ref={containerRef} className="relative inline-block">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={pending}
+        title="Override this crawl's status"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
+          "hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-zinc-300/40",
+          currentTone,
+          pending && "opacity-50",
+        )}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {pending ? (
+          <Loader2 className="h-2.5 w-2.5 animate-spin" />
+        ) : saved ? (
+          <Check className="h-2.5 w-2.5" />
+        ) : null}
+        {EVENT_STATUS_LABEL[crawl.status] ?? crawl.status}
+      </button>
+
+      {open &&
+        pos != null &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: MENU_WIDTH }}
+            className="z-[60] rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <p className="px-2.5 pt-1 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+              Crawl status
+            </p>
+            {EVENT_STATUS_OPTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
+                  "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                  s === crawl.status && "bg-zinc-50 dark:bg-zinc-800/60",
+                )}
+              >
+                <span>{EVENT_STATUS_LABEL[s]}</span>
+                {s === crawl.status && (
+                  <Check className="h-3 w-3 text-zinc-700 dark:text-zinc-300" />
+                )}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 function CrawlBreakdownRow({
   crawl,
   tone,
@@ -580,6 +757,7 @@ function CrawlBreakdownRow({
           <span className="text-xs text-zinc-600 dark:text-zinc-400">
             {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
           </span>
+          <CrawlStatusOverride crawl={crawl} />
         </div>
       </td>
       <td className="px-3 py-1.5 text-right">

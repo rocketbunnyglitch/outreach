@@ -12,7 +12,7 @@
  * what on each city × campaign × day.
  */
 
-import { cityCampaigns, staffMembers } from "@/db/schema";
+import { events, cityCampaigns, staffMembers } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -128,6 +128,45 @@ export async function updateCityCampaignStatus(
     return { ok: true, data: { id: parsed.data.cityCampaignId } };
   } catch (err) {
     logger.error({ err }, "updateCityCampaignStatus failed");
+    return { ok: false, error: "Status update failed." };
+  }
+}
+
+// =========================================================================
+// updateEventStatus — per-crawl status override on the tracker
+// =========================================================================
+//
+// Operators flagged (session 12) that the status override should also
+// apply to the expanded crawl rows under a city, not just the city row.
+// Each crawl is an `events` row with its own eventStatus.
+
+const eventStatusSchema = z.object({
+  eventId: uuidSchema,
+  status: z.enum(["planned", "confirmed", "contract_signed", "completed", "cancelled"]),
+});
+
+export async function updateEventStatus(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = eventStatusSchema.safeParse({
+    eventId: String(formData.get("eventId") ?? ""),
+    status: String(formData.get("status") ?? ""),
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid status." };
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(events)
+        .set({ status: parsed.data.status, updatedBy: staff.id })
+        .where(eq(events.id, parsed.data.eventId));
+    });
+    revalidatePath("/");
+    return { ok: true, data: { id: parsed.data.eventId } };
+  } catch (err) {
+    logger.error({ err, eventId: parsed.data.eventId }, "updateEventStatus failed");
     return { ok: false, error: "Status update failed." };
   }
 }
