@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import {
   type CityNeedSummary,
+  type CityStatusPill,
   type CrawlNeed,
   SLOT_PILL_LABEL,
   SLOT_PILL_TONE,
@@ -13,7 +14,15 @@ import {
 } from "@/lib/tracker-status-types";
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   reassignCityCampaign,
@@ -44,6 +53,91 @@ interface Props {
   staff: StaffOption[];
 }
 
+type SortKey = "priority" | "city" | "sales" | "status" | "need" | "assign" | "notes";
+
+const STATUS_PILL_RANK: Record<CityStatusPill, number> = {
+  outreach: 0,
+  need_1_venue: 1,
+  need_2_venues: 2,
+  need_3_venues: 3,
+  cancelled: 4,
+};
+
+/** Columns that read most naturally ascending (text); the rest default desc. */
+const ASC_DEFAULT: ReadonlySet<SortKey> = new Set(["priority", "city", "assign", "notes"]);
+
+function compareRows(
+  a: TrackerRow,
+  b: TrackerRow,
+  key: SortKey,
+  staffNameById: Map<string, string>,
+): number {
+  switch (key) {
+    case "priority":
+      return a.priority - b.priority;
+    case "city":
+      return a.cityName.localeCompare(b.cityName);
+    case "sales":
+      return a.totalSalesCents - b.totalSalesCents;
+    case "status":
+      return STATUS_PILL_RANK[a.need.statusPill] - STATUS_PILL_RANK[b.need.statusPill];
+    case "need":
+      return a.need.openSlotCount - b.need.openSlotCount;
+    case "assign": {
+      const an = a.leadStaffId ? (staffNameById.get(a.leadStaffId) ?? "") : "";
+      const bn = b.leadStaffId ? (staffNameById.get(b.leadStaffId) ?? "") : "";
+      if (!an && bn) return 1; // unassigned sinks to the bottom when ascending
+      if (an && !bn) return -1;
+      return an.localeCompare(bn);
+    }
+    case "notes": {
+      const an = a.dashboardNote ?? "";
+      const bn = b.dashboardNote ?? "";
+      if (!an && bn) return 1;
+      if (an && !bn) return -1;
+      return an.localeCompare(bn);
+    }
+  }
+}
+
+/** Clickable, sort-aware <th>. Preserves per-column width/alignment classes. */
+function SortableTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = "left",
+  className,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: "asc" | "desc" };
+  onSort: (k: SortKey) => void;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th className={cn("px-3 py-3", align === "right" && "text-right", className)}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          "inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors hover:text-zinc-900 dark:hover:text-zinc-200",
+          active ? "text-zinc-900 dark:text-zinc-100" : "text-inherit",
+          align === "right" && "flex-row-reverse",
+        )}
+        aria-label={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <span className="w-2 text-[8px] leading-none">
+          {active ? (sort.dir === "asc" ? "▲" : "▼") : ""}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 /**
  * Tracker dashboard table — the centerpiece per-campaign view.
  *
@@ -67,49 +161,117 @@ interface Props {
  * smooth max-height transition (200ms ease-out).
  */
 export function TrackerDashboardTable({ rows, staff }: Props) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
+    key: "priority",
+    dir: "asc",
+  });
+
+  const staffNameById = useMemo(() => new Map(staff.map((s) => [s.id, s.displayName])), [staff]);
+
+  const toggleSort = useCallback((key: SortKey) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: ASC_DEFAULT.has(key) ? "asc" : "desc" },
+    );
+  }, []);
+
+  const visibleRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((r) => {
+          const assignee = r.leadStaffId ? (staffNameById.get(r.leadStaffId) ?? "") : "";
+          return (
+            r.cityName.toLowerCase().includes(q) ||
+            STATUS_PILL_LABEL[r.need.statusPill].toLowerCase().includes(q) ||
+            assignee.toLowerCase().includes(q) ||
+            (r.dashboardNote ?? "").toLowerCase().includes(q)
+          );
+        })
+      : rows;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => compareRows(a, b, sort.key, staffNameById) * dir);
+  }, [rows, query, sort, staffNameById]);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-zinc-200/80 border-b bg-zinc-200/60 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
-            <th className="w-9 px-2 py-3" />
-            <th className="w-10 px-2 py-3 text-right">#</th>
-            <th className="px-3 py-3">City</th>
-            <th className="px-3 py-3 text-right">Sales</th>
-            <th className="px-3 py-3">Status</th>
-            <th className="px-3 py-3">Need</th>
-            <th className="w-32 px-3 py-3">Assign</th>
-            <th className="px-3 py-3">Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={8} className="px-4 py-16 text-center">
-                <div className="mx-auto max-w-sm">
-                  <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
-                    No cities in this campaign yet
-                  </p>
-                  <p className="mt-1.5 text-xs text-zinc-500">
-                    Add cities from{" "}
-                    <Link
-                      href="/admin"
-                      className="font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
-                    >
-                      Admin
-                    </Link>{" "}
-                    or upload a CSV with priority, city, day, and crawl number.
-                  </p>
-                </div>
-              </td>
+      <div className="border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter by city, status, assignee, or note…"
+          className="h-8 max-w-sm text-sm"
+        />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[680px] text-sm">
+          <thead>
+            <tr className="border-zinc-200/80 border-b bg-zinc-200/60 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
+              <th className="w-9 px-2 py-3" />
+              <SortableTh
+                label="#"
+                sortKey="priority"
+                sort={sort}
+                onSort={toggleSort}
+                align="right"
+                className="w-10 px-2"
+              />
+              <SortableTh label="City" sortKey="city" sort={sort} onSort={toggleSort} />
+              <SortableTh
+                label="Sales"
+                sortKey="sales"
+                sort={sort}
+                onSort={toggleSort}
+                align="right"
+              />
+              <SortableTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Need" sortKey="need" sort={sort} onSort={toggleSort} />
+              <SortableTh
+                label="Assign"
+                sortKey="assign"
+                sort={sort}
+                onSort={toggleSort}
+                className="w-32"
+              />
+              <SortableTh label="Notes" sortKey="notes" sort={sort} onSort={toggleSort} />
             </tr>
-          ) : (
-            rows.map((row, i) => (
-              <CityRow key={row.cityCampaignId} row={row} staff={staff} stripeIndex={i} />
-            ))
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-16 text-center">
+                  <div className="mx-auto max-w-sm">
+                    <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
+                      No cities in this campaign yet
+                    </p>
+                    <p className="mt-1.5 text-xs text-zinc-500">
+                      Add cities from{" "}
+                      <Link
+                        href="/admin"
+                        className="font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
+                      >
+                        Admin
+                      </Link>{" "}
+                      or upload a CSV with priority, city, day, and crawl number.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : visibleRows.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-500">
+                  No cities match that filter.
+                </td>
+              </tr>
+            ) : (
+              visibleRows.map((row, i) => (
+                <CityRow key={row.cityCampaignId} row={row} staff={staff} stripeIndex={i} />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
