@@ -65,6 +65,7 @@ import {
   Globe,
   Inbox,
   LayoutGrid,
+  LifeBuoy,
   Map as MapIcon,
   Send,
   ShieldCheck,
@@ -103,6 +104,7 @@ const SECTIONS: Section[] = [
     label: "Operate",
     items: [
       { href: "/all-crawls", label: "All Crawls", icon: <MapIcon className="h-3 w-3" /> },
+      { href: "/crawl-support", label: "Crawl Support", icon: <LifeBuoy className="h-3 w-3" /> },
       { href: "/crawl-matrix", label: "Crawl Matrix", icon: <Boxes className="h-3 w-3" /> },
       { href: "/calendar", label: "Calendar", icon: <Calendar className="h-3 w-3" /> },
       { href: "/send-queue", label: "Send Queue", icon: <Send className="h-3 w-3" /> },
