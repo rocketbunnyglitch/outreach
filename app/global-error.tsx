@@ -32,7 +32,7 @@ export default function GlobalError({
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: inline theme-init must run before paint to avoid a light-mode flash on the error page */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="min-h-screen bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <body className="min-h-screen bg-zinc-950 text-zinc-100">
         <NextError statusCode={0} />
       </body>
     </html>
