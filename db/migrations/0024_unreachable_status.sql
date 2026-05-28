@@ -1,0 +1,25 @@
+-- Migration 0024 — Add 'unreachable' to cold_outreach_status enum
+--
+-- Operator session 11 carryover:
+--   "Call follow-up engine: 'another time' outcome + venue-hours-aware
+--    suggested call window + 5-attempt cap"
+--
+-- This migration ships the 5-attempt cap half. The 'callback_requested'
+-- outcome already exists in outreach_outcome enum (covers "another time"
+-- as added in migration 0022). The venue-hours-aware suggested window
+-- is a separate ship requiring venue.hours column add.
+--
+-- The new status lets the auto-cap logic in recordCallOutcome (see
+-- app/(admin)/_actions/quo-actions.ts) flip a cold-outreach entry from
+-- 'no_answer' / 'voicemail' / 'wrong_number' to 'unreachable' once the
+-- venue has been called 5+ times without reaching a decision-maker.
+--
+-- Semantics:
+--   unreachable = "5+ attempts hit, no contact made — deprioritize in
+--                  the call queue, but operator can still manually
+--                  click-to-call. Different from do_not_contact which
+--                  is operator-set after the venue explicitly opted out."
+--
+-- Idempotent — IF NOT EXISTS guards a re-run.
+
+ALTER TYPE cold_outreach_status ADD VALUE IF NOT EXISTS 'unreachable';

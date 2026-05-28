@@ -398,7 +398,8 @@ export async function recordCallOutcome(
     | "declined"
     | "wrong_number"
     | "no_answer"
-    | "voicemail";
+    | "voicemail"
+    | "unreachable";
   const statusByOutcome: Record<string, ColdStatus> = {
     interested: "interested",
     email_collected: "interested",
@@ -410,7 +411,29 @@ export async function recordCallOutcome(
     no_answer: "no_answer",
     voicemail: "voicemail",
   };
-  const nextEntryStatus: ColdStatus | null = statusByOutcome[outcome] ?? null;
+  let nextEntryStatus: ColdStatus | null = statusByOutcome[outcome] ?? null;
+
+  /**
+   * 5-attempt cap (operator session 11 — call follow-up engine).
+   *
+   * After recording an unanswered/wrong-number outcome, count how many
+   * total unanswered calls this venue has racked up over the past 60
+   * days. If >= 5, override the status to 'unreachable' so the cold-
+   * outreach queue stops re-surfacing this venue at high priority.
+   *
+   * Counts from outreach_log (the append-only ledger) so we don't have
+   * to maintain a denormalized counter. 60-day window matches the
+   * operator's typical campaign cycle — a venue that's been silent for
+   * 60+ days is effectively unreachable for THIS campaign even if we
+   * tried them years ago.
+   *
+   * The +1 in the comparison accounts for the row we just inserted
+   * being part of the count (we run this AFTER the insert in the
+   * transaction).
+   */
+  const UNANSWERED_OUTCOMES = ["no_answer", "voicemail", "wrong_number"];
+  const ATTEMPT_CAP = 5;
+  const ATTEMPT_WINDOW_DAYS = 60;
 
   try {
     const finalLogId = await withAuditContext(staff.id, async (tx) => {
@@ -452,6 +475,34 @@ export async function recordCallOutcome(
             updatedBy: staff.id,
           })
           .where(eq(venues.id, parsed.data.venueId));
+      }
+
+      // 5-attempt cap: if THIS outcome is unanswered (no_answer / voicemail
+      // / wrong_number) AND the venue has now hit >= 5 such outcomes in
+      // the past 60 days, override the cold-outreach status to
+      // 'unreachable'. The venue still appears in the table but slides to
+      // the bottom of the priority queue.
+      if (UNANSWERED_OUTCOMES.includes(outcome) && coldEntryId) {
+        const cutoff = new Date(Date.now() - ATTEMPT_WINDOW_DAYS * 86_400_000);
+        const countRows = await tx
+          .select({ unansweredCount: sql<number>`count(*)::int` })
+          .from(outreachLog)
+          .where(
+            and(
+              eq(outreachLog.venueId, parsed.data.venueId),
+              eq(outreachLog.channel, "call"),
+              sql`${outreachLog.outcome} IN ('no_answer', 'voicemail', 'wrong_number')`,
+              sql`${outreachLog.createdAt} >= ${cutoff.toISOString()}`,
+            ),
+          );
+        const unansweredCount = countRows[0]?.unansweredCount ?? 0;
+        if (unansweredCount >= ATTEMPT_CAP) {
+          nextEntryStatus = "unreachable";
+          logger.info(
+            { venueId: parsed.data.venueId, coldEntryId, unansweredCount, ATTEMPT_CAP },
+            "cold-outreach 5-attempt cap hit — flipping to unreachable",
+          );
+        }
       }
 
       // Cold outreach status bump

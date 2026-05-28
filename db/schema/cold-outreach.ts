@@ -25,6 +25,10 @@ export const coldOutreachStatus = pgEnum("cold_outreach_status", [
   "bad_email",
   "wrong_number",
   "do_not_contact",
+  // Auto-set when 5+ unanswered call attempts pile up. Distinct from
+  // do_not_contact (operator-set when the venue explicitly opted out).
+  // See migration 0024 + the auto-cap logic in quo-actions.ts.
+  "unreachable",
 ]);
 
 export const coldOutreachEntries = pgTable(
