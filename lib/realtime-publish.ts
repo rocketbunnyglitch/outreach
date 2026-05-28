@@ -113,10 +113,22 @@ export async function subscribeRealtime(
   await sub.subscribe(channel);
 
   return async () => {
+    // If the underlying connection is already gone (client tab closed,
+    // network drop), both unsubscribe() and quit() throw "Connection is
+    // closed." — there's nothing left to clean up server-side, so skip
+    // the noise. disconnect() releases the local socket idempotently.
+    if (sub.status === "end" || sub.status === "close") {
+      sub.disconnect();
+      return;
+    }
     try {
       await sub.unsubscribe(channel);
       await sub.quit();
     } catch (err) {
+      // Filter the expected "already-closed" race that can still happen
+      // between the status check above and the await. Keep real errors.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "Connection is closed.") return;
       logger.warn({ err, channel }, "realtime subscriber cleanup failed");
     }
   };
