@@ -17,6 +17,7 @@ import "server-only";
 
 import {
   events,
+  callLogs,
   campaigns,
   cities,
   cityCampaigns,
@@ -33,11 +34,14 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import {
+  type CallDirection,
+  type CallMatchType,
   type CrawlIssueSeverity,
   type CrawlIssueStatus,
   type CrawlIssueType,
   type CrawlSupportData,
   type SupportBucket,
+  type SupportCall,
   type SupportCrawl,
   type SupportIssue,
   bucketFor,
@@ -312,6 +316,59 @@ export async function loadSupportStaff(): Promise<SupportStaffOption[]> {
       .orderBy(staffMembers.displayName);
   } catch (err) {
     logger.warn({ err }, "loadSupportStaff failed");
+    return [];
+  }
+}
+
+/**
+ * Recent inbound calls for the support tab (matched or not). Guarded: returns
+ * [] if call_logs isn't migrated yet so /crawl-support still renders.
+ */
+export async function loadRecentCalls(opts?: { limit?: number }): Promise<SupportCall[]> {
+  try {
+    const rows = await db
+      .select({
+        id: callLogs.id,
+        direction: callLogs.direction,
+        fromE164: callLogs.fromE164,
+        toE164: callLogs.toE164,
+        callerName: callLogs.callerName,
+        status: callLogs.status,
+        durationSeconds: callLogs.durationSeconds,
+        recordingUrl: callLogs.recordingUrl,
+        occurredAt: callLogs.occurredAt,
+        matchType: callLogs.matchType,
+        areaCode: callLogs.areaCode,
+        venueName: venues.name,
+        staffName: staffMembers.displayName,
+      })
+      .from(callLogs)
+      .leftJoin(venues, eq(venues.id, callLogs.matchedVenueId))
+      .leftJoin(staffMembers, eq(staffMembers.id, callLogs.matchedStaffId))
+      .where(eq(callLogs.direction, "incoming"))
+      .orderBy(desc(callLogs.occurredAt))
+      .limit(opts?.limit ?? 50);
+
+    return rows.map((r) => ({
+      id: r.id,
+      direction: r.direction as CallDirection,
+      fromE164: r.fromE164 ?? null,
+      toE164: r.toE164 ?? null,
+      callerName: r.callerName ?? null,
+      status: r.status ?? null,
+      durationSeconds: r.durationSeconds ?? null,
+      recordingUrl: r.recordingUrl ?? null,
+      occurredAtIso: (r.occurredAt instanceof Date
+        ? r.occurredAt
+        : new Date(r.occurredAt)
+      ).toISOString(),
+      matchType: r.matchType as CallMatchType,
+      matchedVenueName: r.venueName ?? null,
+      matchedStaffName: r.staffName ?? null,
+      areaCode: r.areaCode ?? null,
+    }));
+  } catch (err) {
+    logger.warn({ err }, "loadRecentCalls failed (call_logs table may not be migrated yet)");
     return [];
   }
 }

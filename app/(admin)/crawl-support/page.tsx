@@ -1,15 +1,21 @@
 import { requireStaff } from "@/lib/auth";
-import { loadCrawlIssues, loadCrawlSupport, loadSupportStaff } from "@/lib/crawl-support";
+import {
+  loadCrawlIssues,
+  loadCrawlSupport,
+  loadRecentCalls,
+  loadSupportStaff,
+} from "@/lib/crawl-support";
 import { CrawlSupportBoard } from "./_components/crawl-support-board";
 
 export const dynamic = "force-dynamic";
 
 export default async function CrawlSupportPage() {
   await requireStaff();
-  const [data, issues, staff] = await Promise.all([
+  const [data, issues, staff, calls] = await Promise.all([
     loadCrawlSupport({ now: new Date() }),
     loadCrawlIssues(),
     loadSupportStaff(),
+    loadRecentCalls(),
   ]);
 
   return (
@@ -23,7 +29,7 @@ export default async function CrawlSupportPage() {
         </p>
       </header>
 
-      <CrawlSupportBoard data={data} issues={issues} staff={staff} />
+      <CrawlSupportBoard data={data} issues={issues} staff={staff} calls={calls} />
     </div>
   );
 }

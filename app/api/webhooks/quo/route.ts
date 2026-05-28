@@ -22,7 +22,8 @@
  *     won't tank the webhook delivery.
  */
 
-import { outreachLog, venues } from "@/db/schema";
+import { callLogs, outreachLog, venues } from "@/db/schema";
+import { matchCaller } from "@/lib/call-matching";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { mapQuoCallStatusToOutcome, verifyQuoWebhookSignature } from "@/lib/quo";
@@ -45,6 +46,8 @@ interface QuoWebhookPayload {
       from?: string;
       createdAt?: string;
       body?: string;
+      recordingUrl?: string;
+      callerName?: string;
     };
   };
 }
@@ -111,6 +114,10 @@ async function handleCallEvent(
   const otherEnd = obj.direction === "outgoing" ? obj.to : obj.from;
   const otherE164 = Array.isArray(otherEnd) ? otherEnd[0] : otherEnd;
   if (!otherE164) return;
+
+  // Persist a raw call record for live support BEFORE outreach attribution, so
+  // unmatched calls (no venue) are still surfaced on the Crawl Support tab.
+  await persistCallLog(objId, obj, otherE164);
 
   const venueId = await findVenueByPhone(otherE164);
   if (!venueId) {
@@ -248,6 +255,59 @@ async function handleMessageEvent(
       AND archived_at IS NULL
       AND status NOT IN ('declined','do_not_contact')
   `);
+}
+
+async function persistCallLog(
+  externalId: string,
+  obj: NonNullable<NonNullable<QuoWebhookPayload["data"]>["object"]>,
+  callerE164: string,
+): Promise<void> {
+  try {
+    const direction = obj.direction === "outgoing" ? "outgoing" : "incoming";
+    const objTo = Array.isArray(obj.to) ? obj.to[0] : (obj.to ?? null);
+    const match = await matchCaller(callerE164);
+    const values = {
+      provider: "quo",
+      externalId,
+      direction: direction as "incoming" | "outgoing",
+      fromE164: direction === "incoming" ? callerE164 : (obj.from ?? null),
+      toE164: direction === "incoming" ? objTo : callerE164,
+      callerName: obj.callerName ?? null,
+      status: obj.status ?? null,
+      durationSeconds: typeof obj.duration === "number" ? obj.duration : null,
+      recordingUrl: obj.recordingUrl ?? null,
+      occurredAt: obj.createdAt ? new Date(obj.createdAt) : new Date(),
+      matchType: match.matchType,
+      matchedVenueId: match.venueId,
+      matchedStaffId: match.staffId,
+      areaCode: match.areaCode,
+    };
+
+    const [existing] = await db
+      .select({ id: callLogs.id })
+      .from(callLogs)
+      .where(eq(callLogs.externalId, externalId))
+      .limit(1);
+    if (existing) {
+      await db
+        .update(callLogs)
+        .set({
+          status: values.status,
+          durationSeconds: values.durationSeconds,
+          recordingUrl: values.recordingUrl,
+          callerName: values.callerName,
+          matchType: values.matchType,
+          matchedVenueId: values.matchedVenueId,
+          matchedStaffId: values.matchedStaffId,
+          areaCode: values.areaCode,
+        })
+        .where(eq(callLogs.id, existing.id));
+    } else {
+      await db.insert(callLogs).values(values);
+    }
+  } catch (err) {
+    logger.warn({ err, externalId }, "persistCallLog failed (call_logs may not be migrated)");
+  }
 }
 
 async function findVenueByPhone(e164: string): Promise<string | null> {

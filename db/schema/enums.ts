@@ -323,6 +323,22 @@ export const crawlIssueSeverity = pgEnum("crawl_issue_severity", [
 export const crawlIssueStatus = pgEnum("crawl_issue_status", ["open", "in_progress", "resolved"]);
 
 // =========================================================================
+// Call logs (live-support telephony)
+// =========================================================================
+
+export const callDirection = pgEnum("call_direction", ["incoming", "outgoing"]);
+
+// How confidently an inbound call was attributed. "area_code" is a WEAK hint
+// (never treat as confirmed); "none" = unmatched (surface prominently).
+export const callMatchType = pgEnum("call_match_type", [
+  "venue",
+  "staff",
+  "prior",
+  "area_code",
+  "none",
+]);
+
+// =========================================================================
 // Audit
 // =========================================================================
 

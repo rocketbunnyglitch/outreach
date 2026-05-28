@@ -7,6 +7,7 @@ import {
   type CrawlSupportData,
   ISSUE_TYPE_LABEL,
   ISSUE_TYPE_ORDER,
+  MATCH_LABEL,
   RISK_LABEL,
   RISK_TONE,
   SEVERITY_LABEL,
@@ -14,8 +15,10 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
   type SupportBucket,
+  type SupportCall,
   type SupportCrawl,
   type SupportIssue,
+  isUnmatchedCall,
 } from "@/lib/crawl-support-types";
 import { AlertTriangle, Check, Phone, PhoneMissed, Plus, Search, X } from "lucide-react";
 import Link from "next/link";
@@ -42,10 +45,12 @@ export function CrawlSupportBoard({
   data,
   issues,
   staff,
+  calls,
 }: {
   data: CrawlSupportData;
   issues: SupportIssue[];
   staff: StaffOpt[];
+  calls: SupportCall[];
 }) {
   const [query, setQuery] = useState("");
 
@@ -106,17 +111,18 @@ export function CrawlSupportBoard({
 
       <UrgentIssues issues={issues} staff={staff} crawls={data.crawls} />
 
-      {/* Calls — wired once call_logs + the Quo/Viber webhooks land. */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <StubPanel
-          icon={<Phone className="h-4 w-4" />}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CallList
           title="Incoming Calls"
-          note="Quo/Viber webhook logging + contact matching — next pass."
+          icon={<Phone className="h-4 w-4 text-zinc-500" />}
+          calls={calls}
+          emptyLabel="No recent calls."
         />
-        <StubPanel
-          icon={<PhoneMissed className="h-4 w-4" />}
+        <CallList
           title="Unmatched Calls"
-          note="Surfaces calls with no contact match during active windows."
+          icon={<PhoneMissed className="h-4 w-4 text-amber-500" />}
+          calls={calls.filter(isUnmatchedCall)}
+          emptyLabel="No unmatched calls."
         />
       </div>
     </div>
@@ -297,24 +303,97 @@ function Empty({ label }: { label: string }) {
   );
 }
 
-function StubPanel({
-  icon,
+function CallList({
   title,
-  note,
+  icon,
+  calls,
+  emptyLabel,
 }: {
-  icon: ReactNode;
   title: string;
-  note: string;
+  icon: ReactNode;
+  calls: SupportCall[];
+  emptyLabel: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-zinc-200/60 border-dashed p-3.5 dark:border-zinc-800/50">
-      <div className="flex items-center gap-2 text-zinc-500">
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
         {icon}
-        <span className="font-mono text-xs uppercase tracking-wider">{title}</span>
+        <h2 className="font-mono text-xs text-zinc-600 uppercase tracking-[0.12em] dark:text-zinc-400">
+          {title}
+        </h2>
+        <span className="font-mono text-[10px] text-zinc-400 tabular-nums">{calls.length}</span>
       </div>
-      <p className="text-[11px] text-zinc-400">{note}</p>
+      {calls.length === 0 ? (
+        <Empty label={emptyLabel} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {calls.map((c) => (
+            <CallRow key={c.id} call={c} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CallRow({ call }: { call: SupportCall }) {
+  const who =
+    call.matchedVenueName ??
+    call.matchedStaffName ??
+    (call.matchType === "area_code" && call.areaCode ? `area ${call.areaCode}` : "Unknown caller");
+  const unmatched = isUnmatchedCall(call);
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800/60 dark:bg-zinc-950/60">
+      <div className="min-w-0">
+        <p className="truncate font-medium text-sm text-zinc-900 dark:text-zinc-100">
+          {call.callerName ?? call.fromE164 ?? "Unknown number"}
+        </p>
+        <p className="truncate text-[11px] text-zinc-500">
+          {who}
+          {call.status ? ` · ${call.status}` : ""}
+          {typeof call.durationSeconds === "number"
+            ? ` · ${formatDuration(call.durationSeconds)}`
+            : ""}
+          {" · "}
+          <span suppressHydrationWarning>
+            {new Date(call.occurredAtIso).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] ring-1 ring-inset",
+            unmatched
+              ? "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300"
+              : "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-400",
+          )}
+        >
+          {MATCH_LABEL[call.matchType]}
+        </span>
+        {call.recordingUrl ? (
+          <a
+            href={call.recordingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider underline-offset-2 hover:underline"
+          >
+            rec
+          </a>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function formatDuration(s: number): string {
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}m${sec ? ` ${sec}s` : ""}`;
 }
 
 // =========================================================================

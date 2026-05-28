@@ -278,3 +278,40 @@ export const SEVERITY_TONE: Record<CrawlIssueSeverity, string> = {
   high: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
   critical: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
 };
+
+// =========================================================================
+// Call logs (live-support telephony) — client-safe types
+// =========================================================================
+
+export type CallMatchType = "venue" | "staff" | "prior" | "area_code" | "none";
+export type CallDirection = "incoming" | "outgoing";
+
+export interface SupportCall {
+  id: string;
+  direction: CallDirection;
+  fromE164: string | null;
+  toE164: string | null;
+  callerName: string | null;
+  status: string | null;
+  durationSeconds: number | null;
+  recordingUrl: string | null;
+  occurredAtIso: string;
+  matchType: CallMatchType;
+  matchedVenueName: string | null;
+  matchedStaffName: string | null;
+  areaCode: string | null;
+}
+
+/** A call counts as "unmatched" (surface prominently) when it has no exact
+ *  attribution — none, or only the weak area-code hint. */
+export function isUnmatchedCall(c: { matchType: CallMatchType }): boolean {
+  return c.matchType === "none" || c.matchType === "area_code";
+}
+
+export const MATCH_LABEL: Record<CallMatchType, string> = {
+  venue: "Venue",
+  staff: "Staff",
+  prior: "Prior caller",
+  area_code: "Area-code guess",
+  none: "Unmatched",
+};

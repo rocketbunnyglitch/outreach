@@ -30,6 +30,7 @@ export * from "./enums";
 export * from "./brands";
 export * from "./staff";
 export * from "./geography";
+export * from "./call-logs";
 export * from "./campaigns";
 export * from "./city-campaigns";
 export * from "./middle-venue-groups";
