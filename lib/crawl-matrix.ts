@@ -34,6 +34,7 @@ import {
   middleVenueGroups,
   venueEvents,
   venues,
+  wristbands,
 } from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -383,6 +384,61 @@ export async function loadExternalHostShipments(
     }));
   } catch (err) {
     logger.warn({ err }, "loadExternalHostShipments failed (table may not be migrated yet)");
+    return [];
+  }
+}
+
+export interface VenueWristbandRow {
+  eventId: string;
+  venueEventId: string;
+  venueName: string;
+  status: "pending" | "ready_to_ship" | "shipped" | "delivered" | "issue" | null;
+  trackingNumber: string | null;
+  shippedAtIso: string | null;
+}
+
+/**
+ * Venue wristband shipments for the matrix Wristbands tab — the wristband-role
+ * venue per crawl + its shipment status from the wristbands table (null status
+ * = confirmed venue with no wristbands row yet, i.e. "needs setup"). Editing
+ * lives on /wristbands; this is a read-through with deep links.
+ */
+export async function loadVenueWristbandShipments(
+  eventIds: string[],
+): Promise<VenueWristbandRow[]> {
+  if (eventIds.length === 0) return [];
+  try {
+    const rows = await db
+      .select({
+        eventId: venueEvents.eventId,
+        venueEventId: venueEvents.id,
+        venueName: venues.name,
+        status: wristbands.status,
+        trackingNumber: wristbands.trackingNumber,
+        shippedAt: wristbands.shippedAt,
+      })
+      .from(venueEvents)
+      .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+      .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
+      .where(and(inArray(venueEvents.eventId, eventIds), eq(venueEvents.role, "wristband")));
+
+    const byEvent = new Map<string, VenueWristbandRow>();
+    for (const r of rows) {
+      if (byEvent.has(r.eventId)) continue;
+      byEvent.set(r.eventId, {
+        eventId: r.eventId,
+        venueEventId: r.venueEventId,
+        venueName: r.venueName,
+        status: r.status ?? null,
+        trackingNumber: r.trackingNumber ?? null,
+        shippedAtIso: r.shippedAt
+          ? (r.shippedAt instanceof Date ? r.shippedAt : new Date(r.shippedAt)).toISOString()
+          : null,
+      });
+    }
+    return [...byEvent.values()];
+  } catch (err) {
+    logger.warn({ err }, "loadVenueWristbandShipments failed");
     return [];
   }
 }

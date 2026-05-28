@@ -3,8 +3,10 @@ import {
   type CrawlMatrixRow,
   type CrawlStatus,
   type HostShipmentRow,
+  type VenueWristbandRow,
   buildCrawlMatrix,
   loadExternalHostShipments,
+  loadVenueWristbandShipments,
 } from "@/lib/crawl-matrix";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Grid3X3, XCircle } from "lucide-react";
@@ -21,7 +23,8 @@ export default async function CrawlMatrixPage({
 }) {
   const params = await searchParams;
   const allCampaigns = params.scope === "all";
-  const view = params.view === "hosts" ? "hosts" : "coverage";
+  const view =
+    params.view === "hosts" ? "hosts" : params.view === "wristbands" ? "wristbands" : "coverage";
 
   const currentCampaign = await getCurrentCampaign();
   const campaignId = !allCampaigns && currentCampaign ? currentCampaign.campaign.id : null;
@@ -33,6 +36,11 @@ export default async function CrawlMatrixPage({
       : [];
   const shipmentByKey = new Map<string, HostShipmentRow>(
     shipments.map((s) => [`${s.externalHostId}:${s.cityCampaignId}`, s]),
+  );
+  const venueWristbands =
+    view === "wristbands" ? await loadVenueWristbandShipments(rows.map((r) => r.eventId)) : [];
+  const wristbandByEvent = new Map<string, VenueWristbandRow>(
+    venueWristbands.map((w) => [w.eventId, w]),
   );
 
   // Group by city for the matrix layout
@@ -134,6 +142,8 @@ export default async function CrawlMatrixPage({
 
       {view === "hosts" ? (
         <HostMatrixView byCity={byCity} shipmentByKey={shipmentByKey} />
+      ) : view === "wristbands" ? (
+        <VenueWristbandView byCity={byCity} wristbandByEvent={wristbandByEvent} />
       ) : rows.length === 0 ? (
         <div className="card-surface border-dashed p-12 text-center">
           <Grid3X3 className="mx-auto h-8 w-8 text-zinc-400" />
@@ -400,19 +410,25 @@ function TabStrip({
   view,
   allCampaigns,
 }: {
-  view: "coverage" | "hosts";
+  view: "coverage" | "wristbands" | "hosts";
   allCampaigns: boolean;
 }) {
-  const tabs: Array<{ key: "coverage" | "hosts"; label: string; href: string }> = [
+  const scopeQ = allCampaigns ? "&scope=all" : "";
+  const tabs: Array<{ key: "coverage" | "wristbands" | "hosts"; label: string; href: string }> = [
     {
       key: "coverage",
       label: "Coverage",
       href: `/crawl-matrix${allCampaigns ? "?scope=all" : ""}`,
     },
     {
+      key: "wristbands",
+      label: "Wristbands",
+      href: `/crawl-matrix?view=wristbands${scopeQ}`,
+    },
+    {
       key: "hosts",
-      label: "Hosts & Wristbands",
-      href: `/crawl-matrix?view=hosts${allCampaigns ? "&scope=all" : ""}`,
+      label: "Hosts",
+      href: `/crawl-matrix?view=hosts${scopeQ}`,
     },
   ];
   return (
@@ -562,5 +578,137 @@ function HostMatrixRow({
         )}
       </td>
     </tr>
+  );
+}
+
+function VenueWristbandView({
+  byCity,
+  wristbandByEvent,
+}: {
+  byCity: Map<string, { cityName: string; rows: CrawlMatrixRow[] }>;
+  wristbandByEvent: Map<string, VenueWristbandRow>;
+}) {
+  const cities = Array.from(byCity.entries());
+  if (cities.length === 0) {
+    return (
+      <div className="card-surface border-dashed p-12 text-center">
+        <Grid3X3 className="mx-auto h-8 w-8 text-zinc-400" />
+        <h3 className="mt-4 font-semibold text-2xl tracking-tight">No crawls in this scope</h3>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          Wristband venues + their shipment status show here once crawls exist.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-8">
+      {cities.map(([cityId, bucket]) => (
+        <section key={cityId} className="flex flex-col gap-3">
+          <header className="flex items-baseline justify-between">
+            <h2 className="font-semibold text-2xl tracking-tight">{bucket.cityName}</h2>
+            <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              {bucket.rows.length} crawl{bucket.rows.length === 1 ? "" : "s"}
+            </p>
+          </header>
+          <div className="card-surface overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-zinc-200 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800/60">
+                  <th className="px-3 py-2.5">Crawl</th>
+                  <th className="px-3 py-2.5">Date</th>
+                  <th className="px-3 py-2.5">Wristband venue</th>
+                  <th className="px-3 py-2.5">Shipment</th>
+                  <th className="px-3 py-2.5">Tracking</th>
+                  <th className="px-3 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {bucket.rows.map((r, i) => {
+                  const w = wristbandByEvent.get(r.eventId);
+                  return (
+                    <tr key={r.eventId} className={i % 2 === 1 ? "dark:bg-white/[0.015]" : ""}>
+                      <td className="px-3 py-2.5">
+                        <Link href={`/events/${r.eventId}`} className="font-medium hover:underline">
+                          {r.crawlLabel}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-zinc-500 tabular-nums">
+                        {formatDate(r.eventDate)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {w ? (
+                          w.venueName
+                        ) : (
+                          <span className="text-zinc-500">No wristband venue</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {w ? (
+                          <WbShipPill status={w.status} />
+                        ) : (
+                          <span className="text-zinc-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-zinc-500">
+                        {w?.trackingNumber ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {w ? (
+                          <Link
+                            href={`/wristbands?ve=${w.venueEventId}`}
+                            className="font-mono text-[10px] text-zinc-500 uppercase tracking-wider hover:text-zinc-900 dark:hover:text-zinc-100"
+                          >
+                            manage →
+                          </Link>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function WbShipPill({ status }: { status: VenueWristbandRow["status"] }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    pending: {
+      label: "Pending",
+      cls: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-300",
+    },
+    ready_to_ship: {
+      label: "Ready",
+      cls: "bg-sky-500/10 text-sky-700 ring-sky-500/25 dark:text-sky-300",
+    },
+    shipped: {
+      label: "Shipped",
+      cls: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
+    },
+    delivered: {
+      label: "Delivered",
+      cls: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-400",
+    },
+    issue: {
+      label: "Issue",
+      cls: "bg-rose-500/15 text-rose-700 ring-rose-500/30 dark:text-rose-300",
+    },
+  };
+  const m = (status ? map[status] : undefined) ?? {
+    label: "Needs setup",
+    cls: "bg-rose-500/10 text-rose-600 ring-rose-500/20 dark:text-rose-300",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ring-1 ring-inset",
+        m.cls,
+      )}
+    >
+      {m.label}
+    </span>
   );
 }
