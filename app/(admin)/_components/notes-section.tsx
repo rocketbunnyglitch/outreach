@@ -71,9 +71,16 @@ export function NotesSection({
       <header className="flex items-baseline justify-between">
         <h2 className="inline-flex items-center gap-2 font-semibold text-lg tracking-tight">
           <MessageSquare className="h-4 w-4 text-zinc-500" />
-          Notes
-          <span className="font-mono font-normal text-[11px] text-zinc-500">{notes.length}</span>
+          Activity &amp; notes
+          {notes.length > 0 && (
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-mono font-normal text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+              {notes.length}
+            </span>
+          )}
         </h2>
+        <p className="hidden text-[10px] text-zinc-400 sm:block">
+          Each note is logged with author + time. Append anytime.
+        </p>
       </header>
 
       <form ref={formRef} action={doCreate} className="flex flex-col gap-2">
@@ -81,12 +88,12 @@ export function NotesSection({
         <input type="hidden" name="targetId" value={targetId} />
         <Textarea
           name="body"
-          rows={3}
+          rows={5}
           value={bodyDraft}
           onChange={(e) => setBodyDraft(e.target.value)}
-          placeholder="What happened? Use @name to mention a teammate."
+          placeholder="Add a remark, call summary, follow-up note, or context for the team. Use @name to mention a teammate."
           maxLength={8000}
-          className="resize-none"
+          className="resize-y"
         />
         {createState && !createState.ok && createState.error && (
           <Alert tone="error">{createState.error}</Alert>
@@ -101,9 +108,12 @@ export function NotesSection({
       </form>
 
       {notes.length === 0 ? (
-        <p className="py-6 text-center text-xs text-zinc-500 italic">
-          No notes yet. Add the first one above.
-        </p>
+        <div className="rounded-lg border border-zinc-200 border-dashed bg-zinc-50/50 py-8 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
+          <p className="text-sm text-zinc-500">No notes yet.</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            Notes become the running journal for this record.
+          </p>
+        </div>
       ) : (
         <ul className="flex flex-col gap-3">
           {notes.map((note) => (
@@ -141,12 +151,18 @@ function NoteCard({
   return (
     <li
       className={cn(
-        "flex flex-col gap-2 rounded-md border border-zinc-200 p-3 dark:border-zinc-800",
-        note.isOwnNote ? "bg-zinc-50/50 dark:bg-zinc-900/40" : "bg-zinc-50 dark:bg-zinc-900",
+        "flex flex-col gap-2 rounded-lg border border-zinc-200 p-4 transition-colors dark:border-zinc-800",
+        note.isOwnNote ? "bg-zinc-50/60 dark:bg-zinc-900/40" : "bg-white dark:bg-zinc-900/70",
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 font-mono text-[10px] text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+            aria-hidden
+          >
+            {authorInitials(note.authorName)}
+          </span>
           <span className="truncate font-semibold text-xs">
             {note.authorName}
             {note.isOwnNote && (
@@ -155,7 +171,13 @@ function NoteCard({
               </span>
             )}
           </span>
-          <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+          <span
+            className="font-mono text-[10px] text-zinc-500 tabular-nums"
+            title={note.createdAt.toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          >
             {formatRelative(note.createdAt)}
           </span>
         </div>
@@ -238,6 +260,13 @@ function renderBodyWithMentions(body: string): React.ReactNode {
       p
     ),
   );
+}
+
+function authorInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const a = parts[0]?.[0] ?? "";
+  const b = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
+  return (a + b).toUpperCase() || "?";
 }
 
 function formatRelative(d: Date): string {
