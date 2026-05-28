@@ -4,13 +4,14 @@ import { staffMembers } from "@/db/schema";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { and, eq, isNull } from "drizzle-orm";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { signInAsStaff, signInWithGoogle } from "./_actions";
 import { DevImpersonationForm } from "./_dev-form";
 import { GoogleSignInButton } from "./_google-button";
 
 export const metadata = {
-  title: "Sign in · Crawl Engine",
+  title: "Sign in · Perse",
 };
 
 // The login page reads the seed staff list at request time. Never prerender.
@@ -90,10 +91,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <div className="w-full max-w-md">
         <header className="mb-8 text-center">
-          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
-            Crawl Engine
-          </p>
-          <h1 className="mt-2 font-semibold text-4xl tracking-tight">Sign in.</h1>
+          {/* PERSE wordmark — same brand mark used in the admin top bar.
+              Centered above the "Sign in." heading. Themed via CSS
+              filter: black in light mode, white in dark mode. */}
+          <Image
+            src="/perse-wordmark.png"
+            alt="Perse"
+            width={258}
+            height={28}
+            priority
+            className="mx-auto h-7 w-auto select-none brightness-0 dark:brightness-100"
+          />
+          <h1 className="mt-4 font-semibold text-4xl tracking-tight">Sign in.</h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Pre-provisioned staff only.
           </p>

@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { getStaffSendCapStatus } from "@/lib/send-cap-status";
 import { ShieldAlert } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
@@ -94,12 +95,38 @@ function TopBar({
     <header className="sticky top-0 z-40 border-zinc-200 border-b bg-[color:var(--color-canvas)]/85 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/85">
       <div className="flex h-14 w-full items-center justify-between gap-4 px-6 sm:px-10">
         <div className="flex items-center gap-6">
-          <Link
-            href="/"
-            className="flex items-baseline gap-2 font-semibold text-xl tracking-tight "
-          >
-            <span className="text-zinc-900 dark:text-zinc-100">Crawl</span>
-            <span className="text-zinc-400 dark:text-zinc-500">Engine</span>
+          <Link href="/" className="flex shrink-0 items-center" aria-label="Perse — home">
+            {/*
+              PERSE wordmark. Single transparent PNG (white pixels on
+              transparent alpha) lives at /public/perse-wordmark.png.
+
+              Themed via CSS filter rather than two separate PNGs:
+                light mode: filter:brightness(0) → forces RGB to black
+                            while preserving the alpha channel, so the
+                            wordmark renders as crisp black on the
+                            light canvas
+                dark mode:  no filter → original white shows on the
+                            near-black canvas
+
+              Source is 1421x155 (~9.17:1). 28px tall fits the 56px
+              h-14 top bar with comfortable breathing room; width
+              scales from there. Next/Image handles the responsive
+              srcSet + lazy is off (priority) because this lives in
+              the always-visible header.
+            */}
+            <Image
+              src="/perse-wordmark.png"
+              alt="Perse"
+              width={258}
+              height={28}
+              priority
+              className={cn(
+                "h-7 w-auto select-none",
+                // Light mode: brightness(0) zeroes RGB → black wordmark.
+                // Dark mode: no filter → original white.
+                "brightness-0 dark:brightness-100",
+              )}
+            />
           </Link>
           <CampaignSwitcher />
         </div>
