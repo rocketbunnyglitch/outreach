@@ -166,6 +166,12 @@ export async function createCampaign(
           // per session 11 decisions #024 + #025. The DB columns still
           // exist (drop migration pending) — Drizzle just doesn't write
           // to them.
+          //
+          // NEW outreach-team goals per #025 + migration 0026. Writeable
+          // by all roles; the admin-only ticket-sales target is set
+          // separately on /admin/goals.
+          targetCitiesScheduled: input.targetCitiesScheduled ?? null,
+          maxPriorityForScheduling: input.maxPriorityForScheduling ?? null,
           createdBy: staff.id,
           updatedBy: staff.id,
         })
@@ -224,6 +230,15 @@ export async function updateCampaign(
   // publicSubdomain / revenueGoalCents / venueCountGoal removed from
   // the form per session 11 decisions #024 + #025; columns remain in
   // DB until a follow-up migration drops them.
+  //
+  // NEW outreach-team goals (#025 + migration 0026). All roles can
+  // edit these — they're operational, not financial.
+  if (input.targetCitiesScheduled !== undefined) {
+    patch.targetCitiesScheduled = input.targetCitiesScheduled;
+  }
+  if (input.maxPriorityForScheduling !== undefined) {
+    patch.maxPriorityForScheduling = input.maxPriorityForScheduling;
+  }
 
   try {
     await withAuditContext(staff.id, async (tx) =>

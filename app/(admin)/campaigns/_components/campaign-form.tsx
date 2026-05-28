@@ -17,7 +17,17 @@ import { useFormStatus } from "react-dom";
 
 interface CampaignFormProps {
   mode: "create" | "edit";
-  initial?: Pick<Campaign, "slug" | "name" | "holidayType" | "status" | "startDate" | "endDate">;
+  initial?: Pick<
+    Campaign,
+    | "slug"
+    | "name"
+    | "holidayType"
+    | "status"
+    | "startDate"
+    | "endDate"
+    | "targetCitiesScheduled"
+    | "maxPriorityForScheduling"
+  >;
   action: (
     prev: unknown,
     fd: FormData,
@@ -138,6 +148,46 @@ export function CampaignForm({ mode, initial, action }: CampaignFormProps) {
           </FieldShell>
           <FieldShell label="End date" name="endDate">
             <Input id="endDate" name="endDate" type="date" defaultValue={initial?.endDate ?? ""} />
+          </FieldShell>
+        </FieldRow>
+
+        {/* Outreach-team goals per decision #025 (migration 0026).
+            Visible to ALL roles — operational goals, not financial.
+            Admin-only ticket-sales target lives on /admin/goals. */}
+        <FieldRow>
+          <FieldShell
+            label="Target cities scheduled"
+            name="targetCitiesScheduled"
+            hint="How many cities should have crawls scheduled by end of campaign."
+          >
+            <Input
+              id="targetCitiesScheduled"
+              name="targetCitiesScheduled"
+              type="number"
+              min={0}
+              defaultValue={
+                initial?.targetCitiesScheduled != null ? String(initial.targetCitiesScheduled) : ""
+              }
+              placeholder="e.g. 25"
+            />
+          </FieldShell>
+          <FieldShell
+            label="Max priority to schedule"
+            name="maxPriorityForScheduling"
+            hint="Cities with priority ≤ this number must be scheduled first."
+          >
+            <Input
+              id="maxPriorityForScheduling"
+              name="maxPriorityForScheduling"
+              type="number"
+              min={1}
+              defaultValue={
+                initial?.maxPriorityForScheduling != null
+                  ? String(initial.maxPriorityForScheduling)
+                  : ""
+              }
+              placeholder="e.g. 3"
+            />
           </FieldShell>
         </FieldRow>
       </FormSection>

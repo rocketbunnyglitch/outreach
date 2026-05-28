@@ -52,8 +52,30 @@ export const campaigns = pgTable(
     publicSubdomain: text("public_subdomain"),
 
     // Top-down goals (Section 7.4 of the spec).
+    //
+    // OLD goal columns — kept for backwards compatibility with the
+    // existing UI but deprecated. They will be dropped in a follow-up
+    // migration once decision #025 is fully shipped.
     revenueGoalCents: bigint("revenue_goal_cents", { mode: "bigint" }),
     venueCountGoal: integer("venue_count_goal"),
+
+    // NEW goal columns (DECISIONS.md #025, migration 0026):
+    /**
+     * Outreach-team goal: how many cities should have crawls
+     * scheduled by end of campaign window. Visible to all roles.
+     */
+    targetCitiesScheduled: integer("target_cities_scheduled"),
+    /**
+     * Outreach-team goal: cities with priority <= this number must
+     * be scheduled before lower-priority work. Visible to all roles.
+     */
+    maxPriorityForScheduling: integer("max_priority_for_scheduling"),
+    /**
+     * Admin-only goal: total ticket sales target across all cities
+     * in the campaign. NOT cents — a count of tickets sold.
+     * Editable on /admin/goals.
+     */
+    targetTicketSalesCount: integer("target_ticket_sales_count"),
 
     ...archivedAt,
     ...auditColumns,

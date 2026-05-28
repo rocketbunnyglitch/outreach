@@ -12,6 +12,7 @@ import {
   Plus,
   Settings2,
   Sparkles,
+  Target,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -199,6 +200,27 @@ export default async function AdminPage() {
           </Link>{" "}
           to populate timezone + coordinates once, then reuse across campaigns.
         </div>
+      </section>
+
+      {/* Goals link — admin-only ticket-sales targets per #025. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-start gap-3">
+            <Target className="mt-0.5 h-5 w-5 text-zinc-500" />
+            <div>
+              <h2 className="font-semibold text-lg tracking-tight">Ticket-sales goals</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Set per-campaign ticket-sales targets. Admin-only — outreach staff don't see dollar
+                / count targets per decision #025.
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/goals">
+              Open <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        </header>
       </section>
     </div>
   );

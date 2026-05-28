@@ -65,6 +65,12 @@ export const campaignCreateSchema = z
     // publicSubdomain removed per #024 (public pages live outside this app).
     // revenueGoalCents + venueCountGoal removed per #025 (goals refactored
     // to admin-only ticket-sales count, lives under /admin/goals).
+    //
+    // NEW outreach-team goals per #025 + migration 0026. Visible on the
+    // campaign form to all roles (#025 makes the dollar goal admin-only,
+    // but these two are operational goals every staffer should see).
+    targetCitiesScheduled: z.coerce.number().int().min(0).max(10000).optional(),
+    maxPriorityForScheduling: z.coerce.number().int().min(1).max(100).optional(),
   })
   .refine((data) => !data.startDate || !data.endDate || data.startDate <= data.endDate, {
     message: "End date must be on or after start date",
@@ -83,6 +89,8 @@ export const campaignUpdateSchema = z
     endDate: isoDateSchema,
     // publicSubdomain / revenueGoalCents / venueCountGoal removed per
     // operator session 11 (#024 + #025).
+    targetCitiesScheduled: z.coerce.number().int().min(0).max(10000).optional(),
+    maxPriorityForScheduling: z.coerce.number().int().min(1).max(100).optional(),
   })
   .refine((data) => !data.startDate || !data.endDate || data.startDate <= data.endDate, {
     message: "End date must be on or after start date",
