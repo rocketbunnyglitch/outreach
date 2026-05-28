@@ -79,7 +79,6 @@ export function DeleteCampaignButton({ campaignId, campaignName, isAdmin }: Prop
           onKeyDown={(e) => {
             if (e.key === "Escape" && !pending) setOpen(false);
           }}
-          // biome-ignore lint/a11y/useSemanticElements: native <dialog> doesn't compose with controlled mount; div + role=dialog is the React-modal standard
           role="dialog"
           aria-modal="true"
           tabIndex={-1}

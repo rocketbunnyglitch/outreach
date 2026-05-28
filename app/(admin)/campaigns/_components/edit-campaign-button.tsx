@@ -164,7 +164,6 @@ export function EditCampaignButton({ campaign }: Props) {
             // Allow Esc-on-overlay even when focus is on the backdrop
             if (e.key === "Escape" && !pending) setOpen(false);
           }}
-          // biome-ignore lint/a11y/useSemanticElements: native <dialog> doesn't compose with controlled mount
           role="dialog"
           aria-modal="true"
           aria-label="Edit campaign"

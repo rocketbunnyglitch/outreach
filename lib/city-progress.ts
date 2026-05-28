@@ -34,11 +34,11 @@ import { sql } from "drizzle-orm";
 // ---------------------------------------------------------------------------
 export * from "./city-progress-shared";
 import type {
-  SlotState,
-  CitySlot,
   CityCrawl,
   CityProgressRow,
   CityRisk,
+  CitySlot,
+  SlotState,
 } from "./city-progress-shared";
 
 // =========================================================================

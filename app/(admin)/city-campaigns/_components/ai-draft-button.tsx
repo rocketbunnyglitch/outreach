@@ -52,7 +52,6 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
     if (open && !draft && !pending && !error && !notConfigured) {
       generate();
     }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: only fire on open
   }, [open]);
 
   // Click outside / Escape to close

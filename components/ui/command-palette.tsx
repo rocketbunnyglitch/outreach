@@ -352,7 +352,6 @@ export function CommandPalette({
               focus and drives keyboard nav, the listbox itself is
               announced by screen readers via the label. */}
           {/* biome-ignore lint/a11y/useFocusableInteractive: combobox listbox is announced; input owns focus */}
-          {/* biome-ignore lint/a11y/useSemanticElements: no native element is a listbox */}
           <div
             ref={listRef}
             className="max-h-[60vh] overflow-y-auto py-1"

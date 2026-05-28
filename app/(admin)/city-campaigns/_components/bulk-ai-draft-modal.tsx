@@ -149,7 +149,6 @@ function DraftCard({
   const [pending, startTx] = useTransition();
 
   // Auto-generate on mount
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fire once on mount
   useEffect(() => {
     generate();
   }, []);

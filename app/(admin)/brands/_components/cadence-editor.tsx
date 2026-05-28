@@ -153,7 +153,6 @@ function AddStepForm({
         Adding step {stepNumber}
       </p>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-        {/* biome-ignore lint/a11y/noLabelWithoutControl: wraps controls */}
         <label className="flex flex-col gap-1">
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             Template

@@ -195,7 +195,11 @@ function onConnection(ws, staffId, roomId) {
     } else if (msg.t === "edit") {
       // Phase 2 hook: someone is editing a field; relay so others can
       // show a highlight / "refresh to see changes" nudge.
-      broadcast(roomId, { t: "edit", connId, field: String(msg.field ?? "").slice(0, 120) }, connId);
+      broadcast(
+        roomId,
+        { t: "edit", connId, field: String(msg.field ?? "").slice(0, 120) },
+        connId,
+      );
     }
   });
 

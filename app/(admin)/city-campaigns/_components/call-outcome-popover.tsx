@@ -244,7 +244,6 @@ export function CallOutcomePopover({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4"
-      // biome-ignore lint/a11y/useSemanticElements: native <dialog> doesn't compose with controlled mount
       role="dialog"
       aria-modal="true"
       tabIndex={-1}
