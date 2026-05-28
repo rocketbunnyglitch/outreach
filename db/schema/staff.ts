@@ -145,8 +145,10 @@ export const staffOutreachEmails = pgTable(
     ...versionColumn,
   },
   (table) => ({
-    // One staffer has at most one connected inbox per OutreachBrand.
-    staffBrandUnique: uniqueIndex("staff_outreach_emails_staff_brand_unique").on(
+    // A staffer can connect MULTIPLE inboxes per OutreachBrand (separate
+    // Workspace accounts / alias mailboxes) to spread send volume. Identity
+    // is the email address, which is globally unique below.
+    staffBrandIdx: index("staff_outreach_emails_staff_brand_idx").on(
       table.staffMemberId,
       table.outreachBrandId,
     ),

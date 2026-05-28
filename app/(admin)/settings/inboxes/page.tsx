@@ -64,7 +64,12 @@ export default async function InboxesPage({ searchParams }: Props) {
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.staffMemberId, staff.id));
 
-  const inboxByBrand = new Map(myInboxes.map((i) => [i.outreachBrandId, i]));
+  const inboxesByBrand = new Map<string, typeof myInboxes>();
+  for (const i of myInboxes) {
+    const list = inboxesByBrand.get(i.outreachBrandId) ?? [];
+    list.push(i);
+    inboxesByBrand.set(i.outreachBrandId, list);
+  }
 
   // For each connected inbox, query the rolling 24h send count + cap
   const throttleStatusByInbox = new Map<string, Awaited<ReturnType<typeof canSendNow>>>();
@@ -173,78 +178,23 @@ export default async function InboxesPage({ searchParams }: Props) {
         ) : (
           <ul className="flex flex-col gap-3">
             {brands.map((brand) => {
-              const inbox = inboxByBrand.get(brand.id);
-              const connected = inbox?.status === "connected";
+              const brandInboxes = inboxesByBrand.get(brand.id) ?? [];
+              const connectedInboxes = brandInboxes.filter((i) => i.status === "connected");
               return (
-                <li
-                  key={brand.id}
-                  className="card-surface flex items-center justify-between gap-4 p-4"
-                >
-                  <div className="min-w-0 flex-1">
+                <li key={brand.id} className="card-surface flex flex-col gap-3 p-4">
+                  <div className="flex items-center justify-between gap-4">
                     <p className="font-medium">{brand.displayName}</p>
-                    {connected ? (
-                      <>
-                        <p className="mt-0.5 flex items-center gap-1.5 text-xs">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                          <span className="text-zinc-600 dark:text-zinc-400">
-                            {inbox.emailAddress}
-                          </span>
-                          {inbox.lastSyncedAt && (
-                            <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-                              · synced {inbox.lastSyncedAt.toLocaleString()}
-                            </span>
-                          )}
-                        </p>
-                        <ThrottleBadge
-                          status={throttleStatusByInbox.get(inbox.id)}
-                          warmupPhase={inbox.warmupPhase}
-                          autoPausedAt={inbox.autoPausedAt}
-                          autoPausedReason={inbox.autoPausedReason}
-                          dailySendLimit={inbox.dailySendLimit}
-                        />
-                      </>
-                    ) : (
-                      <p className="mt-0.5 text-xs text-zinc-500">No inbox connected</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {connected ? (
-                      <>
-                        {oauthReady && (
-                          <a
-                            href={`/api/auth/google/start?outreachBrandId=${brand.id}`}
-                            className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                          >
-                            Reconnect
-                          </a>
-                        )}
-                        <form
-                          action={async (fd: FormData) => {
-                            "use server";
-                            await disconnectInbox(null, fd);
-                          }}
-                        >
-                          <input type="hidden" name="id" value={inbox.id} />
-                          <button
-                            type="submit"
-                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 text-xs hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
-                          >
-                            <Unplug className="h-3 w-3" />
-                            Disconnect
-                          </button>
-                        </form>
-                      </>
-                    ) : oauthReady ? (
+                    {oauthReady ? (
                       <a
                         href={`/api/auth/google/start?outreachBrandId=${brand.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-xs text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-xs text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
                       >
                         <Mail className="h-3 w-3" />
-                        Connect Gmail
+                        {connectedInboxes.length > 0 ? "Connect another" : "Connect Gmail"}
                       </a>
                     ) : (
                       <span
-                        className="inline-flex items-center gap-1.5 rounded-md bg-zinc-200 px-3 py-1.5 font-medium text-xs text-zinc-500 dark:bg-zinc-800"
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-200 px-3 py-1.5 font-medium text-xs text-zinc-500 dark:bg-zinc-800"
                         title="GOOGLE_OAUTH_CLIENT_ID not set on server"
                       >
                         <Mail className="h-3 w-3" />
@@ -252,6 +202,65 @@ export default async function InboxesPage({ searchParams }: Props) {
                       </span>
                     )}
                   </div>
+
+                  {connectedInboxes.length === 0 ? (
+                    <p className="text-xs text-zinc-500">No inbox connected</p>
+                  ) : (
+                    <ul className="flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+                      {connectedInboxes.map((inbox) => (
+                        <li
+                          key={inbox.id}
+                          className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="flex items-center gap-1.5 text-xs">
+                              <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" />
+                              <span className="truncate text-zinc-600 dark:text-zinc-400">
+                                {inbox.emailAddress}
+                              </span>
+                              {inbox.lastSyncedAt && (
+                                <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                                  · synced {inbox.lastSyncedAt.toLocaleString()}
+                                </span>
+                              )}
+                            </p>
+                            <ThrottleBadge
+                              status={throttleStatusByInbox.get(inbox.id)}
+                              warmupPhase={inbox.warmupPhase}
+                              autoPausedAt={inbox.autoPausedAt}
+                              autoPausedReason={inbox.autoPausedReason}
+                              dailySendLimit={inbox.dailySendLimit}
+                            />
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {oauthReady && (
+                              <a
+                                href={`/api/auth/google/start?outreachBrandId=${brand.id}`}
+                                className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                              >
+                                Reconnect
+                              </a>
+                            )}
+                            <form
+                              action={async (fd: FormData) => {
+                                "use server";
+                                await disconnectInbox(null, fd);
+                              }}
+                            >
+                              <input type="hidden" name="id" value={inbox.id} />
+                              <button
+                                type="submit"
+                                className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 text-xs hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                              >
+                                <Unplug className="h-3 w-3" />
+                                Disconnect
+                              </button>
+                            </form>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}

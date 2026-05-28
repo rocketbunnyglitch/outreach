@@ -32,7 +32,7 @@ import { isGmailOAuthConfigured, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { enrollOnSend } from "@/lib/outreach-sequences";
 import { canSendNow, maybeGraduateWarmup } from "@/lib/send-throttle";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -56,6 +56,12 @@ const sendEmailSchema = z.object({
    * cascade callers do.
    */
   sendKind: z.union([z.literal("cold"), z.literal("transactional")]).default("cold"),
+  /**
+   * Which connected inbox to send from. Set by the composer when the staffer
+   * has more than one connected account for the brand. Empty/omitted => use
+   * the brand's default (first) connected inbox.
+   */
+  fromInboxId: z.union([z.literal("").transform(() => undefined), uuidSchema]).optional(),
 });
 
 export async function sendOutreachEmail(
@@ -74,17 +80,23 @@ export async function sendOutreachEmail(
   const input = parsed.data;
 
   try {
-    // Look up the connected inbox for THIS staff x THIS brand
+    // Look up the connected inbox for THIS staff x THIS brand. If the composer
+    // passed a specific fromInboxId (staffer has multiple accounts), scope to
+    // it; otherwise pick the brand's default (alphabetically-first) inbox so
+    // the choice is deterministic rather than arbitrary.
+    const inboxConditions = [
+      eq(staffOutreachEmails.staffMemberId, staff.id),
+      eq(staffOutreachEmails.outreachBrandId, input.outreachBrandId),
+      eq(staffOutreachEmails.status, "connected"),
+    ];
+    if (input.fromInboxId) {
+      inboxConditions.push(eq(staffOutreachEmails.id, input.fromInboxId));
+    }
     const inbox = await db
       .select()
       .from(staffOutreachEmails)
-      .where(
-        and(
-          eq(staffOutreachEmails.staffMemberId, staff.id),
-          eq(staffOutreachEmails.outreachBrandId, input.outreachBrandId),
-          eq(staffOutreachEmails.status, "connected"),
-        ),
-      )
+      .where(and(...inboxConditions))
+      .orderBy(asc(staffOutreachEmails.emailAddress))
       .limit(1)
       .then((r) => r[0]);
 

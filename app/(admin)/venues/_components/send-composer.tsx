@@ -65,12 +65,13 @@ interface Props {
     staffFirstName: string;
     staffFullName: string;
   };
-  /** Per-brand: templates + current inbox status for the logged-in staffer */
+  /** Per-brand: templates + connected inbox(es) for the logged-in staffer */
   brandConfig: Record<
     string,
     {
       templates: TemplateOption[];
       inbox: InboxStatus;
+      inboxes: InboxStatus[];
     }
   >;
   sendAction: (
@@ -120,6 +121,7 @@ export function SendComposer({
   manualLogAction,
 }: Props) {
   const [brandId, setBrandId] = useState<string>(defaultBrandId ?? brands[0]?.id ?? "");
+  const [selectedInboxId, setSelectedInboxId] = useState<string>("");
   const [templateId, setTemplateId] = useState<string>("");
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
@@ -151,6 +153,7 @@ export function SendComposer({
     setTemplateId("");
     setSubject("");
     setBodyText("");
+    setSelectedInboxId("");
   }, [brandId]);
 
   if (brands.length === 0) {
@@ -167,7 +170,9 @@ export function SendComposer({
     );
   }
 
-  const inbox = config?.inbox;
+  const inboxes = config?.inboxes ?? [];
+  // Active sending inbox: the staffer's pick, else the brand default (first).
+  const inbox = inboxes.find((i) => i.inboxId === selectedInboxId) ?? config?.inbox;
   const canSend = inbox?.throttleOk ?? false;
   const isLiveMode = inbox?.mode === "live";
 
@@ -207,6 +212,28 @@ export function SendComposer({
         <input type="hidden" name="venueId" value={venueId} />
         <input type="hidden" name="outreachBrandId" value={brandId} />
         <input type="hidden" name="sendKind" value="cold" />
+        <input type="hidden" name="fromInboxId" value={inbox?.inboxId ?? ""} />
+
+        {inboxes.length > 1 && (
+          <div className="flex flex-col gap-1.5">
+            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              Send from
+            </span>
+            <Select value={inbox?.inboxId ?? ""} onValueChange={setSelectedInboxId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {inboxes.map((i) => (
+                  <SelectItem key={i.inboxId ?? ""} value={i.inboxId ?? ""}>
+                    {i.emailAddress}
+                    {i.mode === "dev" ? " (dev)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Brand */}

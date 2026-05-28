@@ -99,14 +99,17 @@ export async function GET(req: NextRequest) {
 
   try {
     await withAuditContext(staff.id, async (tx) => {
-      // Upsert: if (staff, brand) already exists, update the token in place
+      // Upsert keyed on (staff, email address): reconnecting the SAME account
+      // refreshes its token (and re-points it at the brand just chosen); a NEW
+      // address inserts a fresh row that coexists with the staffer's other
+      // inboxes for this brand. Email address is globally unique (see schema).
       const existing = await tx
         .select({ id: staffOutreachEmails.id })
         .from(staffOutreachEmails)
         .where(
           and(
             eq(staffOutreachEmails.staffMemberId, staff.id),
-            eq(staffOutreachEmails.outreachBrandId, state.outreachBrandId),
+            eq(staffOutreachEmails.emailAddress, connectedEmail),
           ),
         )
         .limit(1);
@@ -115,6 +118,7 @@ export async function GET(req: NextRequest) {
         await tx
           .update(staffOutreachEmails)
           .set({
+            outreachBrandId: state.outreachBrandId,
             emailAddress: connectedEmail,
             gmailOauthRefreshToken: encryptedRefresh,
             gmailOauthScopes: scopesGranted,

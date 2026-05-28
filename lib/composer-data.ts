@@ -41,7 +41,10 @@ export interface ComposerInbox {
 
 export interface ComposerBrandConfig {
   templates: ComposerTemplate[];
+  /** Default (first, alphabetical) connected inbox — back-compat single value. */
   inbox: ComposerInbox;
+  /** All connected inboxes for this brand. Empty when none connected. */
+  inboxes: ComposerInbox[];
 }
 
 export async function loadComposerData(opts: {
@@ -102,7 +105,12 @@ export async function loadComposerData(opts: {
       ),
     );
 
-  const inboxByBrand = new Map(inboxes.map((i) => [i.outreachBrandId, i]));
+  const inboxesByBrand = new Map<string, typeof inboxes>();
+  for (const i of inboxes) {
+    const list = inboxesByBrand.get(i.outreachBrandId) ?? [];
+    list.push(i);
+    inboxesByBrand.set(i.outreachBrandId, list);
+  }
 
   // For each connected inbox, query throttle status in parallel
   const throttleByInbox = new Map<string, Awaited<ReturnType<typeof canSendNow>>>();
@@ -121,47 +129,41 @@ export async function loadComposerData(opts: {
 
   const oauthConfigured = isGmailOAuthConfigured();
 
+  // Turn one connected inbox row into the composer's view of it.
+  function toComposerInbox(raw: (typeof inboxes)[number]): ComposerInbox {
+    const throttle = throttleByInbox.get(raw.id);
+    const live = oauthConfigured && !!raw.hasRefreshToken;
+    return {
+      inboxId: raw.id,
+      emailAddress: raw.emailAddress,
+      mode: live ? "live" : "dev",
+      throttleOk: throttle?.ok ?? !live,
+      throttleMessage: throttle?.ok ? undefined : throttle?.reason,
+      effectiveDailyCap: throttle?.ok ? throttle.effectiveDailyCap : undefined,
+      sent24h: throttle?.ok ? throttle.sent24h : undefined,
+      warmupDay: throttle?.ok ? throttle.warmupDay : undefined,
+    };
+  }
+
+  const NO_INBOX: ComposerInbox = {
+    inboxId: null,
+    emailAddress: null,
+    mode: "no_inbox",
+    throttleOk: true, // dev-mode logging — no throttle restriction
+  };
+
   // Assemble result
   const out: Record<string, ComposerBrandConfig> = {};
   for (const brandId of outreachBrandIds) {
-    const inbox = inboxByBrand.get(brandId);
-    const throttle = inbox ? throttleByInbox.get(inbox.id) : undefined;
-
-    let composerInbox: ComposerInbox;
-    if (!inbox || inbox.status !== "connected") {
-      composerInbox = {
-        inboxId: null,
-        emailAddress: null,
-        mode: "no_inbox",
-        throttleOk: true, // dev-mode logging — no throttle restriction
-      };
-    } else if (!oauthConfigured || !inbox.hasRefreshToken) {
-      composerInbox = {
-        inboxId: inbox.id,
-        emailAddress: inbox.emailAddress,
-        mode: "dev",
-        throttleOk: throttle?.ok ?? true,
-        throttleMessage: throttle?.ok ? undefined : throttle?.reason,
-        effectiveDailyCap: throttle?.ok ? throttle.effectiveDailyCap : undefined,
-        sent24h: throttle?.ok ? throttle.sent24h : undefined,
-        warmupDay: throttle?.ok ? throttle.warmupDay : undefined,
-      };
-    } else {
-      composerInbox = {
-        inboxId: inbox.id,
-        emailAddress: inbox.emailAddress,
-        mode: "live",
-        throttleOk: throttle?.ok ?? false,
-        throttleMessage: throttle?.ok ? undefined : throttle?.reason,
-        effectiveDailyCap: throttle?.ok ? throttle.effectiveDailyCap : undefined,
-        sent24h: throttle?.ok ? throttle.sent24h : undefined,
-        warmupDay: throttle?.ok ? throttle.warmupDay : undefined,
-      };
-    }
+    const connectedRaws = (inboxesByBrand.get(brandId) ?? [])
+      .filter((i) => i.status === "connected")
+      .sort((a, b) => a.emailAddress.localeCompare(b.emailAddress));
+    const composerInboxes = connectedRaws.map(toComposerInbox);
 
     out[brandId] = {
       templates: templatesByBrand.get(brandId) ?? [],
-      inbox: composerInbox,
+      inbox: composerInboxes[0] ?? NO_INBOX,
+      inboxes: composerInboxes,
     };
   }
 
