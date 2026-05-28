@@ -17,7 +17,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -200,5 +200,65 @@ export async function updateCityCampaignPriority(
   } catch (err) {
     logger.error({ err }, "updateCityCampaignPriority failed");
     return { ok: false, error: "Priority update failed." };
+  }
+}
+
+const bulkSchema = z.object({
+  ids: z.array(uuidSchema).min(1).max(200),
+  // Provide one or both. priority sets city_campaigns.priority; leadStaffId
+  // reassigns ("" or null = unassign).
+  priority: z.number().int().min(1).max(10).optional(),
+  leadStaffId: z
+    .union([z.literal(""), uuidSchema])
+    .nullable()
+    .optional(),
+});
+
+/**
+ * Bulk-apply a priority and/or lead staffer to many cities at once — the
+ * tracker's "fill-down" equivalent. One transaction, audited. Lets an operator
+ * set 8 cities to priority 2 or assign a batch to one teammate in a single move
+ * instead of editing each row.
+ */
+export async function bulkUpdateCityCampaigns(input: {
+  ids: string[];
+  priority?: number;
+  leadStaffId?: string | null;
+}): Promise<ActionResult<{ count: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid bulk request." };
+  const { ids, priority, leadStaffId } = parsed.data;
+
+  if (priority === undefined && leadStaffId === undefined) {
+    return { ok: false, error: "Nothing to change." };
+  }
+
+  const set: { priority?: number; leadStaffId?: string | null; updatedBy: string } = {
+    updatedBy: staff.id,
+  };
+  if (priority !== undefined) set.priority = priority;
+  if (leadStaffId !== undefined) {
+    const normalized = leadStaffId === "" ? null : leadStaffId;
+    if (normalized) {
+      const exists = await db
+        .select({ id: staffMembers.id })
+        .from(staffMembers)
+        .where(and(eq(staffMembers.id, normalized), eq(staffMembers.status, "active")))
+        .limit(1);
+      if (!exists[0]) return { ok: false, error: "Staffer not found or inactive." };
+    }
+    set.leadStaffId = normalized;
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx.update(cityCampaigns).set(set).where(inArray(cityCampaigns.id, ids));
+    });
+    revalidatePath("/");
+    return { ok: true, data: { count: ids.length } };
+  } catch (err) {
+    logger.error({ err }, "bulkUpdateCityCampaigns failed");
+    return { ok: false, error: "Bulk update failed." };
   }
 }

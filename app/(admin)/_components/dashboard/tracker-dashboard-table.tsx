@@ -16,6 +16,7 @@ import {
 } from "@/lib/tracker-status-types";
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -27,6 +28,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  bulkUpdateCityCampaigns,
   reassignCityCampaign,
   updateCityCampaignPriority,
   updateCityCampaignStatus,
@@ -210,6 +212,45 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
     return [...filtered].sort((a, b) => compareRows(a, b, sort.key, staffNameById) * dir);
   }, [rows, query, sort, staffNameById, priorityFilter]);
 
+  // Multi-row selection for bulk "fill-down" edits (set priority / assign for
+  // many cities at once). We only ever act on currently-visible selected rows.
+  const router = useRouter();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkPending, startBulkTx] = useTransition();
+  const visibleIds = useMemo(() => visibleRows.map((r) => r.cityCampaignId), [visibleRows]);
+  const selectedVisible = useMemo(
+    () => visibleIds.filter((id) => selected.has(id)),
+    [visibleIds, selected],
+  );
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) for (const id of visibleIds) next.delete(id);
+      else for (const id of visibleIds) next.add(id);
+      return next;
+    });
+  }
+  function applyBulk(opts: { priority?: number; leadStaffId?: string | null }) {
+    if (selectedVisible.length === 0) return;
+    startBulkTx(async () => {
+      const res = await bulkUpdateCityCampaigns({ ids: selectedVisible, ...opts });
+      if (res.ok) {
+        setSelected(new Set());
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
       <div className="flex flex-wrap items-center gap-2 border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
@@ -242,10 +283,76 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           className="h-8 max-w-sm text-sm"
         />
       </div>
+      {selectedVisible.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 border-zinc-200/80 border-b bg-blue-50/60 px-3 py-2 dark:border-zinc-800/40 dark:bg-blue-950/20">
+          <span className="font-medium text-sm text-zinc-700 dark:text-zinc-200">
+            {selectedVisible.length} selected
+          </span>
+          <label className="flex items-center gap-1.5 text-xs text-zinc-500">
+            Priority
+            <select
+              value=""
+              disabled={bulkPending}
+              onChange={(e) => {
+                if (e.target.value) applyBulk({ priority: Number(e.target.value) });
+              }}
+              title="Set priority for all selected cities"
+              className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <option value="">Set…</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-zinc-500">
+            Assign
+            <select
+              value=""
+              disabled={bulkPending}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__none__") return;
+                applyBulk({ leadStaffId: v === "__unassign__" ? "" : v });
+              }}
+              title="Assign all selected cities to one staffer"
+              className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <option value="__none__">Set…</option>
+              <option value="__unassign__">Unassigned</option>
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          {bulkPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />}
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="ml-auto text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+          >
+            Clear
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto lg:overflow-x-visible" ref={gridNavRef}>
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead className="sticky top-14 z-20">
             <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-500">
+              <th className="w-8 px-2 py-3">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all visible cities"
+                  title="Select all visible rows for a bulk edit"
+                  className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
+                />
+              </th>
               <th className="w-9 px-2 py-3" />
               <SortableTh
                 label="#"
@@ -306,7 +413,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center">
+                <td colSpan={9} className="px-4 py-16 text-center">
                   <div className="mx-auto max-w-sm">
                     <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
                       No cities in this campaign yet
@@ -326,13 +433,20 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-500">
+                <td colSpan={9} className="px-4 py-12 text-center text-sm text-zinc-500">
                   No cities match that filter.
                 </td>
               </tr>
             ) : (
               visibleRows.map((row, i) => (
-                <CityRow key={row.cityCampaignId} row={row} staff={staff} stripeIndex={i} />
+                <CityRow
+                  key={row.cityCampaignId}
+                  row={row}
+                  staff={staff}
+                  stripeIndex={i}
+                  selected={selected.has(row.cityCampaignId)}
+                  onToggleSelect={() => toggleSelect(row.cityCampaignId)}
+                />
               ))
             )}
           </tbody>
@@ -391,10 +505,14 @@ function CityRow({
   row,
   staff,
   stripeIndex,
+  selected,
+  onToggleSelect,
 }: {
   row: TrackerRow;
   staff: StaffOption[];
   stripeIndex: number;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
@@ -421,6 +539,15 @@ function CityRow({
           "hover:bg-blue-500/[0.04] dark:border-zinc-800/40 dark:hover:bg-blue-400/[0.04]",
         )}
       >
+        <td className="px-2 py-2 align-middle sm:py-2.5">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label={`Select ${row.cityName}`}
+            className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
+          />
+        </td>
         <td className="px-2 py-2 align-middle sm:py-2.5">
           {hasBreakdown && (
             <button
@@ -1016,6 +1143,7 @@ function CrawlBreakdownRow({
         "animate-[fade-in_180ms_ease-out]",
       )}
     >
+      <td className="px-2 py-1.5" />
       <td className="px-2 py-1.5" />
       <td className="px-2 py-1.5" />
       <td className="px-3 py-1.5">
