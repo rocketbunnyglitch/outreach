@@ -218,6 +218,16 @@ export function ColdOutreachTable({
   const filterStatus = searchParams.get("status") ?? "";
   const filterAssignee = searchParams.get("assignee") ?? "";
   const filterZb = searchParams.get("zb") ?? "";
+  /**
+   * Hide-unreachable toggle (session 11 follow-up to the 5-attempt
+   * cap). DEFAULT ON — operators don't want the call queue cluttered
+   * with venues we've already given up on. Stored in the URL as
+   * 'showUnreachable=1' so the off-state is the absent param.
+   *
+   * When status='unreachable' is the explicit filter, this toggle is
+   * a no-op (the operator clearly wants to SEE unreachable rows).
+   */
+  const showUnreachable = searchParams.get("showUnreachable") === "1";
 
   const setParam = useCallback(
     (key: string, value: string | null) => {
@@ -242,6 +252,12 @@ export function ColdOutreachTable({
   // Compute the displayed entry list: filter → sort
   const displayed = useMemo(() => {
     const filtered = entries.filter((e) => {
+      // Hide-unreachable rule. Skipped when the operator explicitly
+      // selected status='unreachable' (they want to see those rows)
+      // or when the showUnreachable URL flag is set.
+      if (e.status === "unreachable" && !showUnreachable && filterStatus !== "unreachable") {
+        return false;
+      }
       if (filterStatus && e.status !== filterStatus) return false;
       if (filterAssignee === "__me__") {
         // 'My venues' chip — filtered by client-only since we don't
@@ -303,7 +319,14 @@ export function ColdOutreachTable({
     });
 
     return sorted;
-  }, [entries, filterStatus, filterAssignee, filterZb, sortKey, sortDir]);
+  }, [entries, filterStatus, filterAssignee, filterZb, sortKey, sortDir, showUnreachable]);
+
+  // Count of unreachable rows currently hidden by the filter — used to
+  // surface a "+ N unreachable" chip operators can click to reveal.
+  const hiddenUnreachableCount = useMemo(() => {
+    if (showUnreachable || filterStatus === "unreachable") return 0;
+    return entries.filter((e) => e.status === "unreachable").length;
+  }, [entries, showUnreachable, filterStatus]);
 
   const hasActiveFilter = !!(filterStatus || filterAssignee || filterZb);
 
@@ -451,6 +474,8 @@ export function ColdOutreachTable({
         filterAssignee={filterAssignee}
         filterZb={filterZb}
         hasActive={hasActiveFilter}
+        showUnreachable={showUnreachable}
+        hiddenUnreachableCount={hiddenUnreachableCount}
         staff={staff}
         cityCampaignId={cityCampaignId}
         pathname={pathname}
@@ -1953,6 +1978,8 @@ function FilterChipStrip({
   filterAssignee,
   filterZb,
   hasActive,
+  showUnreachable,
+  hiddenUnreachableCount,
   staff,
   cityCampaignId,
   pathname,
@@ -1965,6 +1992,11 @@ function FilterChipStrip({
   filterAssignee: string;
   filterZb: string;
   hasActive: boolean;
+  /** Whether unreachable-status rows are currently being shown. */
+  showUnreachable: boolean;
+  /** Number of unreachable rows hidden by the default filter. Drives
+   *  the "+ N unreachable" chip's visibility. */
+  hiddenUnreachableCount: number;
   staff: Array<{ id: string; displayName: string }>;
   cityCampaignId: string;
   pathname: string;
@@ -2014,6 +2046,32 @@ function FilterChipStrip({
             );
           })}
         </div>
+      )}
+
+      {/* Hide-unreachable toggle. Only renders when at least one
+          unreachable row exists in the dataset; otherwise the chip
+          would have no purpose. The default state is "hidden" — no
+          showUnreachable param in the URL — so most operators never
+          see this chip at all. */}
+      {hiddenUnreachableCount > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange("showUnreachable", showUnreachable ? null : "1")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ring-1 ring-inset transition-colors",
+            showUnreachable
+              ? "bg-zinc-100 text-zinc-700 ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-600"
+              : "bg-white text-zinc-500 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-800",
+          )}
+          title={
+            showUnreachable
+              ? "Showing unreachable venues. Click to hide them again."
+              : `${hiddenUnreachableCount} unreachable ${hiddenUnreachableCount === 1 ? "venue is" : "venues are"} hidden. Click to show them.`
+          }
+        >
+          {showUnreachable ? "Hide unreachable" : "+ Show unreachable"}
+          <span className="font-normal tabular-nums opacity-60">{hiddenUnreachableCount}</span>
+        </button>
       )}
 
       {/* Assignee dropdown */}
