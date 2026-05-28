@@ -16,6 +16,8 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { getUnclassifiedCount } from "./_actions-classifier";
+import { ClassifierBackfillPanel } from "./_components/classifier-backfill-panel";
 import { CsvImportWidget } from "./_components/csv-import-widget";
 
 export const metadata = { title: "Admin · Crawl Engine" };
@@ -41,7 +43,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireAdmin();
 
-  const [campaignRows, cityCount, ccCount, staffCount] = await Promise.all([
+  const [campaignRows, cityCount, ccCount, staffCount, unclassifiedCount] = await Promise.all([
     db
       .select({
         id: campaigns.id,
@@ -71,6 +73,9 @@ export default async function AdminPage() {
       .from(staffMembers)
       .where(eq(staffMembers.status, "active"))
       .then((r) => Number(r[0]?.count ?? 0)),
+    // Snapshot for the classifier backfill panel — refreshed via
+    // router.refresh() after each batch click.
+    getUnclassifiedCount(),
   ]);
 
   const activeCampaigns = campaignRows.filter((c) => !c.archivedAt);
@@ -221,6 +226,26 @@ export default async function AdminPage() {
             </Link>
           </Button>
         </header>
+      </section>
+
+      {/* Classifier backfill — admin-only tool to apply the rule-based
+          triage classifier to historical unclassified threads. The
+          classifier runs live on new mail (gmail-poll-worker.ts), but
+          threads from before we shipped triage stay 'unclassified' and
+          need this batch sweep. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-start gap-3 px-6 pt-4 pb-2">
+          <Sparkles className="mt-0.5 h-5 w-5 text-zinc-500" />
+          <div>
+            <h2 className="font-semibold text-lg tracking-tight">Inbox classifier backfill</h2>
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              Re-classify historical inbox threads stuck at "unclassified". Runs the same rule-based
+              engine that fires on incoming mail. Idempotent — safe to re-run; only touches threads
+              currently marked unclassified.
+            </p>
+          </div>
+        </header>
+        <ClassifierBackfillPanel initialUnclassified={unclassifiedCount} />
       </section>
     </div>
   );
