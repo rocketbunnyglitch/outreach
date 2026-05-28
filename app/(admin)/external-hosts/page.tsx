@@ -1,13 +1,17 @@
 import { requireStaff } from "@/lib/auth";
-import { loadExternalHosts } from "./_actions";
+import { loadCrawlsNeedingExternalHost, loadExternalHosts } from "./_actions";
 import { ExternalHostsTable } from "./_components/external-hosts-table";
+import { PendingExternalHostsSection } from "./_components/pending-external-hosts";
 
 export const metadata = { title: "External Hosts" };
 export const dynamic = "force-dynamic";
 
 export default async function ExternalHostsPage() {
   await requireStaff();
-  const hosts = await loadExternalHosts();
+  const [hosts, pendingCrawls] = await Promise.all([
+    loadExternalHosts(),
+    loadCrawlsNeedingExternalHost(),
+  ]);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6">
@@ -19,6 +23,11 @@ export default async function ExternalHostsPage() {
           pay them — including a payment contact when that differs from the host.
         </p>
       </header>
+
+      <PendingExternalHostsSection
+        crawls={pendingCrawls}
+        hosts={hosts.map((h) => ({ id: h.id, fullName: h.fullName }))}
+      />
 
       <ExternalHostsTable hosts={hosts} />
     </div>

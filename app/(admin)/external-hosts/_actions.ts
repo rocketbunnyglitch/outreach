@@ -5,12 +5,12 @@
  * + address + payment-contact than internal hosts. Operator session-12 P3.
  */
 
-import { externalHosts } from "@/db/schema";
+import { events, campaigns, cities, cityCampaigns, crawlHosts, externalHosts } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -131,5 +131,82 @@ export async function archiveExternalHost(input: { id: string }): Promise<
   } catch (err) {
     logger.error({ err }, "archiveExternalHost failed");
     return { ok: false, error: "Couldn't remove the host." };
+  }
+}
+
+export interface PendingExternalCrawl {
+  crawlHostId: string;
+  eventId: string;
+  cityCampaignId: string;
+  cityName: string;
+  campaignName: string;
+  eventDate: string;
+  dayPart: string | null;
+  crawlNumber: number | null;
+}
+
+/**
+ * Crawls whose slot-1 host is marked external but not yet assigned to anyone
+ * (external_host_id IS NULL). These are what the operator needs to staff.
+ */
+export async function loadCrawlsNeedingExternalHost(): Promise<PendingExternalCrawl[]> {
+  await requireStaff();
+  try {
+    const rows = await db
+      .select({
+        crawlHostId: crawlHosts.id,
+        eventId: events.id,
+        cityCampaignId: cityCampaigns.id,
+        cityName: cities.name,
+        campaignName: campaigns.name,
+        eventDate: events.eventDate,
+        dayPart: events.dayPart,
+        crawlNumber: events.crawlNumber,
+      })
+      .from(crawlHosts)
+      .innerJoin(events, eq(events.id, crawlHosts.eventId))
+      .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+      .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+      .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+      .where(and(eq(crawlHosts.hostType, "external"), isNull(crawlHosts.externalHostId)))
+      .orderBy(asc(events.eventDate));
+    return rows.map((r) => ({
+      crawlHostId: r.crawlHostId,
+      eventId: r.eventId,
+      cityCampaignId: r.cityCampaignId,
+      cityName: r.cityName,
+      campaignName: r.campaignName,
+      eventDate: String(r.eventDate),
+      dayPart: r.dayPart,
+      crawlNumber: r.crawlNumber,
+    }));
+  } catch (err) {
+    logger.error({ err }, "loadCrawlsNeedingExternalHost failed");
+    return [];
+  }
+}
+
+const assignCrawlSchema = z.object({ crawlHostId: uuid, externalHostId: uuid });
+
+/** Assign an external host to a pending crawl (sets external_host_id). */
+export async function assignExternalHostToCrawl(
+  input: z.infer<typeof assignCrawlSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = assignCrawlSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  const { crawlHostId, externalHostId } = parsed.data;
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(crawlHosts)
+        .set({ externalHostId, updatedBy: staff.id })
+        .where(and(eq(crawlHosts.id, crawlHostId), eq(crawlHosts.hostType, "external"))),
+    );
+    revalidatePath("/external-hosts");
+    return { ok: true, data: { id: crawlHostId } };
+  } catch (err) {
+    logger.error({ err, crawlHostId }, "assignExternalHostToCrawl failed");
+    return { ok: false, error: "Couldn't assign the host." };
   }
 }
