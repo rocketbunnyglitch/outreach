@@ -34,6 +34,7 @@ export * from "./campaigns";
 export * from "./city-campaigns";
 export * from "./middle-venue-groups";
 export * from "./internal-hosts";
+export * from "./external-hosts";
 export * from "./events";
 export * from "./venues";
 export * from "./venue-events";

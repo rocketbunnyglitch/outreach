@@ -125,6 +125,7 @@ const SECTIONS: Section[] = [
       { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3 w-3" /> },
       { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
       { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3 w-3" /> },
+      { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3 w-3" /> },
     ],
   },
 ];
