@@ -63,6 +63,7 @@ import {
   Compass,
   FileCode,
   Globe,
+  Globe2,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -118,6 +119,7 @@ const SECTIONS: Section[] = [
         icon: <Upload className="h-3 w-3" />,
       },
       { href: "/discover", label: "Discover", icon: <Compass className="h-3 w-3" /> },
+      { href: "/maps", label: "Maps", icon: <Globe2 className="h-3 w-3" /> },
     ],
   },
   {

@@ -39,6 +39,7 @@ import {
   Compass,
   FileCode,
   Globe,
+  Globe2,
   Inbox,
   LayoutGrid,
   LifeBuoy,
@@ -94,6 +95,7 @@ const SECTIONS: Array<{
         icon: <Upload className="h-3.5 w-3.5" />,
       },
       { href: "/discover", label: "Discover", icon: <Compass className="h-3.5 w-3.5" /> },
+      { href: "/maps", label: "Maps", icon: <Globe2 className="h-3.5 w-3.5" /> },
     ],
   },
   {
