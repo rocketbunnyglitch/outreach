@@ -16,6 +16,7 @@ import { Pool, type PoolConfig } from "pg";
 import * as schema from "../db/schema";
 import { env } from "./env";
 import { logger } from "./logger";
+import { publishRealtime } from "./realtime-publish";
 
 type Database = NodePgDatabase<typeof schema>;
 
@@ -62,7 +63,7 @@ export async function withAuditContext<T>(
   staffId: string | null,
   fn: (tx: Database) => Promise<T>,
 ): Promise<T> {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     if (staffId) {
       // Drizzle's tx.execute(sql.raw(...)) is for parameterized queries.
       // SET LOCAL doesn't accept parameters, so we validate the UUID format
@@ -74,6 +75,13 @@ export async function withAuditContext<T>(
     }
     return fn(tx);
   });
+  // Transaction committed successfully — broadcast a generic "data changed"
+  // event on the firehose channel so every open client soft-refreshes. This
+  // gives us live updates everywhere with no per-action wiring; the global
+  // RealtimeRefresh consumer filters out the editor's own events by staffId.
+  // Fire-and-forget: publishRealtime never throws and never blocks.
+  publishRealtime({ table: "all", type: "update", byStaffId: staffId });
+  return result;
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
