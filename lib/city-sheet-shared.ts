@@ -66,6 +66,18 @@ export interface CrawlCard {
   routeLabel: string | null;
   eventDate: string;
   ticketsSold: number;
+  /**
+   * Wristband shipping rollup for this crawl, derived from the
+   * wristbands row tied to the wristband-role venue_event. Drives the
+   * status dot next to an expanded crawl:
+   *   - "none":      no wristband venue_event yet (nothing to ship)
+   *   - "not_shipped": row exists but not shipped (red)
+   *   - "shipped":   shipped, not yet delivered (yellow)
+   *   - "received":  delivered (green)
+   */
+  wristbandShip: "none" | "not_shipped" | "shipped" | "received";
+  /** wristband-role venue_event id, for deep-linking the wristband sheet. */
+  wristbandVenueEventId: string | null;
   /** Up to 2 assigned hosts (internal/external). Empty = no host. */
   hosts: CrawlHostRef[];
   middleVenueGroupId: string | null;

@@ -29,9 +29,10 @@ import {
   staffMembers,
   venueEvents,
   venues,
+  wristbands,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Client-safe surface (types + SLOT_ROLE_ORDER) lives in ./city-sheet-shared
@@ -146,6 +147,49 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
           .where(inArray(venueEvents.eventId, eventIds))
           .orderBy(asc(venueEvents.role), asc(venueEvents.slotPosition))
       : [];
+
+  // Wristband shipping rollup per crawl. The wristband-role venue_event
+  // is the entry venue; its wristbands row (if any) carries the shipping
+  // status. We map event_id -> {venueEventId, status, shippedAt,
+  // deliveredAt} and derive a coarse ship state for the status dot.
+  const wbRows =
+    eventIds.length > 0
+      ? await db
+          .select({
+            eventId: venueEvents.eventId,
+            venueEventId: venueEvents.id,
+            wbStatus: wristbands.status,
+            shippedAt: wristbands.shippedAt,
+            deliveredAt: wristbands.deliveredAt,
+          })
+          .from(venueEvents)
+          .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
+          .where(and(inArray(venueEvents.eventId, eventIds), eq(venueEvents.role, "wristband")))
+      : [];
+
+  // event_id -> { ship state, wristband venue_event id }. If multiple
+  // wristband-role venue_events somehow exist for one event, the most
+  // "advanced" ship state wins (received > shipped > not_shipped).
+  const shipRank = { none: 0, not_shipped: 1, shipped: 2, received: 3 } as const;
+  type ShipState = keyof typeof shipRank;
+  const wbByEvent = new Map<string, { ship: ShipState; venueEventId: string | null }>();
+  for (const w of wbRows) {
+    let ship: ShipState;
+    if (w.deliveredAt || w.wbStatus === "delivered") {
+      ship = "received";
+    } else if (w.shippedAt || w.wbStatus === "shipped") {
+      ship = "shipped";
+    } else if (w.wbStatus == null) {
+      // venue_event exists but no wristbands row yet → still "to ship".
+      ship = "not_shipped";
+    } else {
+      ship = "not_shipped";
+    }
+    const prev = wbByEvent.get(w.eventId);
+    if (!prev || shipRank[ship] > shipRank[prev.ship]) {
+      wbByEvent.set(w.eventId, { ship, venueEventId: w.venueEventId });
+    }
+  }
 
   // Middle venue groups (for label display)
   const groupIds = Array.from(
@@ -285,6 +329,8 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       routeLabel: ev.routeLabel ?? null,
       eventDate: String(ev.eventDate ?? ""),
       ticketsSold: ev.ticketsSold ?? 0,
+      wristbandShip: wbByEvent.get(ev.id)?.ship ?? "none",
+      wristbandVenueEventId: wbByEvent.get(ev.id)?.venueEventId ?? null,
       hosts: hostsByEvent.get(ev.id) ?? [],
       middleVenueGroupId: ev.middleVenueGroupId,
       middleVenueGroupName: ev.middleVenueGroupId

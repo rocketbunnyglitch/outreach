@@ -191,6 +191,7 @@ function CrawlHeader({
             </>
           )}
         </span>
+        <WristbandShipDot ship={crawl.wristbandShip} venueEventId={crawl.wristbandVenueEventId} />
         {/* Edit + delete affordances — appear on header hover to keep the
             calm state clean. */}
         <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover/crawlhdr:opacity-100">
@@ -226,6 +227,51 @@ function CrawlHeader({
         hosts={crawl.hosts}
       />
     </div>
+  );
+}
+
+/**
+ * Tiny status dot for a crawl's wristband shipping, next to the crawl
+ * header. red = not shipped, yellow = shipped, green = received. Hidden
+ * when there's no wristband venue_event yet (nothing to ship). Clicking
+ * opens the wristband sheet focused on this crawl's wristband.
+ */
+function WristbandShipDot({
+  ship,
+  venueEventId,
+}: {
+  ship: CrawlCard["wristbandShip"];
+  venueEventId: string | null;
+}) {
+  if (ship === "none") return null;
+  const config = {
+    not_shipped: { tone: "bg-rose-500", label: "Wristbands: not shipped" },
+    shipped: { tone: "bg-amber-500", label: "Wristbands: shipped, in transit" },
+    received: { tone: "bg-emerald-500", label: "Wristbands: received" },
+  }[ship];
+
+  const dot = (
+    <span className="inline-flex items-center gap-1">
+      <span className={cn("inline-block h-2 w-2 rounded-full", config.tone)} aria-hidden />
+      <span className="sr-only">{config.label}</span>
+    </span>
+  );
+
+  if (!venueEventId) {
+    return (
+      <span title={config.label} className="inline-flex">
+        {dot}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/wristbands?ve=${venueEventId}`}
+      title={`${config.label} — open wristband sheet`}
+      className="inline-flex rounded-full p-0.5 transition-transform hover:scale-125"
+    >
+      {dot}
+    </Link>
   );
 }
 

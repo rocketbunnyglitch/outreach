@@ -19,16 +19,20 @@ export const metadata = { title: "Wristbands" };
 export const dynamic = "force-dynamic";
 
 interface Props {
-  searchParams: Promise<{ scope?: string; status?: string }>;
+  searchParams: Promise<{ scope?: string; status?: string; ve?: string }>;
 }
 
 export default async function WristbandsPage({ searchParams }: Props) {
   const params = await searchParams;
   const allScope = params.scope === "all";
   const filterStatus = params.status ?? null;
+  // Deep-link from a city-sheet crawl's wristband dot: focus one
+  // wristband-role venue_event. When set, ignore campaign scope so the
+  // row always resolves regardless of the current campaign.
+  const focusVe = params.ve ?? null;
 
   const currentCampaign = await getCurrentCampaign();
-  const campaignId = !allScope && currentCampaign ? currentCampaign.campaign.id : null;
+  const campaignId = !allScope && !focusVe && currentCampaign ? currentCampaign.campaign.id : null;
 
   // Pull every wristband-role venue_event in scope, joined to wristbands
   // tracking. LEFT join because some confirmed wristband venue_events
@@ -72,12 +76,16 @@ export default async function WristbandsPage({ searchParams }: Props) {
     .orderBy(asc(events.eventDate), asc(cities.name), asc(venues.name));
 
   // Filter by status if requested (NEEDS SETUP = no wristbands row yet)
-  const filtered = filterStatus
+  const statusFiltered = filterStatus
     ? rows.filter((r) => {
         if (filterStatus === "needs_setup") return !r.wristbandId;
         return r.status === filterStatus;
       })
     : rows;
+  // A ve deep-link narrows to that single wristband venue_event.
+  const filtered = focusVe
+    ? statusFiltered.filter((r) => r.venueEventId === focusVe)
+    : statusFiltered;
 
   const stats = {
     total: rows.length,
