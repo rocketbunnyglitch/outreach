@@ -7,7 +7,7 @@ import { archiveCrawlBrand, updateCrawlBrand } from "../../_actions";
 import { CrawlBrandForm } from "../../_components/crawl-brand-form";
 
 export const metadata = {
-  title: "Edit crawl brand · Crawl Engine",
+  title: "Edit crawl brand",
 };
 
 export default async function EditCrawlBrandPage({

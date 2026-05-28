@@ -14,7 +14,7 @@ import { notFound } from "next/navigation";
 import { removeVenueFromMiddleGroup, updateMiddleVenueGroup } from "../_actions";
 import { MiddleGroupForm } from "../_components/middle-group-form";
 
-export const metadata = { title: "Middle group · Crawl Engine" };
+export const metadata = { title: "Middle group" };
 export const dynamic = "force-dynamic";
 
 interface Props {

@@ -14,7 +14,7 @@ import { InboxPresenceBar } from "./_components/InboxPresenceBar";
 import { InboxShell } from "./_components/InboxShell";
 import { ThreadList } from "./_components/ThreadList";
 
-export const metadata = { title: "Inbox · Crawl Engine" };
+export const metadata = { title: "Inbox" };
 export const dynamic = "force-dynamic";
 
 interface Props {

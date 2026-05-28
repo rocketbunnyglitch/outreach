@@ -6,7 +6,7 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { MapPin, Sliders } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Cluster builder · Crawl Engine" };
+export const metadata = { title: "Cluster builder" };
 export const dynamic = "force-dynamic";
 
 interface Props {

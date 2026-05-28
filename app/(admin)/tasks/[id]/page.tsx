@@ -10,7 +10,7 @@ import { updateTask } from "../_actions";
 import { CompleteTaskButton } from "../_components/complete-task-button";
 import { TaskForm } from "../_components/task-form";
 
-export const metadata = { title: "Task · Crawl Engine" };
+export const metadata = { title: "Task" };
 export const dynamic = "force-dynamic";
 
 interface PageProps {

@@ -4,7 +4,7 @@ import { getCurrentCampaign } from "@/lib/current-campaign";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Grid3X3, XCircle } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Crawl Matrix · Crawl Engine" };
+export const metadata = { title: "Crawl Matrix" };
 export const dynamic = "force-dynamic";
 
 export default async function CrawlMatrixPage({

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { createTask } from "../_actions";
 import { TaskForm } from "../_components/task-form";
 
-export const metadata = { title: "New task · Crawl Engine" };
+export const metadata = { title: "New task" };
 export const dynamic = "force-dynamic";
 
 export default async function NewTaskPage() {

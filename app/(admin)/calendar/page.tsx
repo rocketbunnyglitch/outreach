@@ -8,7 +8,7 @@ import Link from "next/link";
 import { rescheduleTask } from "./_actions";
 import { CalendarGrid } from "./_components/calendar-grid";
 
-export const metadata = { title: "Calendar · Crawl Engine" };
+export const metadata = { title: "Calendar" };
 export const dynamic = "force-dynamic";
 
 const ITEM_TYPES: CalendarItemType[] = [

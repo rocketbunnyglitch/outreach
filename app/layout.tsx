@@ -7,7 +7,19 @@ import Script from "next/script";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Crawl Outreach Engine",
+  title: {
+    /**
+     * Default title shown on routes that don't set their own
+     * `title` metadata (e.g. login, error pages without explicit
+     * metadata). Pages that DO set a title get the template applied
+     * automatically: title="Tasks" renders as "Tasks · Perse" in
+     * the browser tab. Single source of truth for the brand name —
+     * if PERSE ever rebrands again, this template + the wordmark
+     * PNG are the only places to update.
+     */
+    default: "Perse",
+    template: "%s · Perse",
+  },
   description: "Multi-brand CRM and outreach automation for club crawls.",
   robots: { index: false, follow: false },
 };

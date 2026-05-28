@@ -10,7 +10,7 @@ import Link from "next/link";
 import { importDiscoveredPlaces, searchPlaces } from "./_actions";
 import { DiscoverForm } from "./_components/discover-form";
 
-export const metadata = { title: "Discover · Crawl Engine" };
+export const metadata = { title: "Discover" };
 export const dynamic = "force-dynamic";
 
 export default async function DiscoverPage() {

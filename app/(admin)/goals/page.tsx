@@ -7,7 +7,7 @@ import { asc, eq, sql } from "drizzle-orm";
 import { Plus, Target } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Goals · Crawl Engine" };
+export const metadata = { title: "Goals" };
 export const dynamic = "force-dynamic";
 
 export default async function GoalsListPage() {

@@ -14,7 +14,7 @@ import { AlertTriangle, CheckCircle2, Clock, Loader2, Mail, XCircle } from "luci
 import Link from "next/link";
 import { cancelScheduledBatch, cancelScheduledSend } from "./_actions";
 
-export const metadata = { title: "Send queue · Crawl Engine" };
+export const metadata = { title: "Send queue" };
 export const dynamic = "force-dynamic";
 
 const STATUS_TONE: Record<string, string> = {

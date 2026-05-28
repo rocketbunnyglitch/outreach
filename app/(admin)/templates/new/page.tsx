@@ -4,7 +4,7 @@ import Link from "next/link";
 import { createEmailTemplate } from "../_actions";
 import { TemplateForm } from "../_components/template-form";
 
-export const metadata = { title: "New template · Crawl Engine" };
+export const metadata = { title: "New template" };
 export const dynamic = "force-dynamic";
 
 export default async function NewTemplatePage() {

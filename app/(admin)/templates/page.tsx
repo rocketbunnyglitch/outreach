@@ -8,7 +8,7 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { Mail, Plus, Star } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Email templates · Crawl Engine" };
+export const metadata = { title: "Email templates" };
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesListPage() {

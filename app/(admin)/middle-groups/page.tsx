@@ -4,7 +4,7 @@ import { asc, eq, isNull, sql } from "drizzle-orm";
 import { Layers, Plus } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Middle Venue Groups · Crawl Engine" };
+export const metadata = { title: "Middle Venue Groups" };
 export const dynamic = "force-dynamic";
 
 export default async function MiddleGroupsPage() {

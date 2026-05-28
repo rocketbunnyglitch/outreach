@@ -11,7 +11,7 @@ import { deleteGoal, updateGoal } from "../_actions";
 import { GoalForm } from "../_components/goal-form";
 import { loadScopeOptions } from "../_scope-options";
 
-export const metadata = { title: "Goal · Crawl Engine" };
+export const metadata = { title: "Goal" };
 export const dynamic = "force-dynamic";
 
 interface Props {

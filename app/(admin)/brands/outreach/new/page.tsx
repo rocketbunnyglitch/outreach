@@ -3,7 +3,7 @@ import { createOutreachBrand } from "../../_actions";
 import { OutreachBrandForm } from "../../_components/outreach-brand-form";
 
 export const metadata = {
-  title: "New outreach brand · Crawl Engine",
+  title: "New outreach brand",
 };
 
 export default function NewOutreachBrandPage() {

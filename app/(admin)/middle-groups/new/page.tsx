@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createMiddleVenueGroup } from "../_actions";
 import { MiddleGroupForm } from "../_components/middle-group-form";
 
-export const metadata = { title: "New middle group · Crawl Engine" };
+export const metadata = { title: "New middle group" };
 export const dynamic = "force-dynamic";
 
 export default async function NewMiddleGroupPage({

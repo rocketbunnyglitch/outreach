@@ -20,7 +20,7 @@ import { getUnclassifiedCount } from "./_actions-classifier";
 import { ClassifierBackfillPanel } from "./_components/classifier-backfill-panel";
 import { CsvImportWidget } from "./_components/csv-import-widget";
 
-export const metadata = { title: "Admin · Crawl Engine" };
+export const metadata = { title: "Admin" };
 export const dynamic = "force-dynamic";
 
 /**

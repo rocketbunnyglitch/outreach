@@ -7,7 +7,7 @@ import { CrawlBrandForm } from "../../_components/crawl-brand-form";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "New crawl brand · Crawl Engine",
+  title: "New crawl brand",
 };
 
 export default async function NewCrawlBrandPage() {

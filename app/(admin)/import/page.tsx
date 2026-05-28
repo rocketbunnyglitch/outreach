@@ -4,7 +4,7 @@ import Link from "next/link";
 import { importVenuesCsv } from "./_actions";
 import { VenueImportForm } from "./_components/import-form";
 
-export const metadata = { title: "Import · Crawl Engine" };
+export const metadata = { title: "Import" };
 export const dynamic = "force-dynamic";
 
 export default function ImportPage() {

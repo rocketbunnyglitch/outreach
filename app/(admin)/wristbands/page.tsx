@@ -14,7 +14,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { AlertTriangle, CheckCircle2, Package, Truck } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Wristbands · Crawl Engine" };
+export const metadata = { title: "Wristbands" };
 export const dynamic = "force-dynamic";
 
 const STATUS_CONFIG: Record<string, { label: string; tone: string; icon: React.ReactNode }> = {

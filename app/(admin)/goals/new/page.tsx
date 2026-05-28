@@ -4,7 +4,7 @@ import { createGoal } from "../_actions";
 import { GoalForm } from "../_components/goal-form";
 import { loadScopeOptions } from "../_scope-options";
 
-export const metadata = { title: "New goal · Crawl Engine" };
+export const metadata = { title: "New goal" };
 export const dynamic = "force-dynamic";
 
 export default async function NewGoalPage() {

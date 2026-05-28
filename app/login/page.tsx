@@ -11,7 +11,7 @@ import { DevImpersonationForm } from "./_dev-form";
 import { GoogleSignInButton } from "./_google-button";
 
 export const metadata = {
-  title: "Sign in · Perse",
+  title: "Sign in",
 };
 
 // The login page reads the seed staff list at request time. Never prerender.

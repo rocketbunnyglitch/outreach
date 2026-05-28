@@ -16,7 +16,7 @@ import { AlertTriangle, Calendar, CheckCircle2, Plus, User } from "lucide-react"
 import Link from "next/link";
 import { AddTaskRow } from "./_components/AddTaskRow";
 
-export const metadata = { title: "Tasks · Crawl Engine" };
+export const metadata = { title: "Tasks" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;

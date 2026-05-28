@@ -14,7 +14,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { ChevronLeft, ChevronRight, Database, PencilLine, Plus, Trash2, User } from "lucide-react";
 import Link from "next/link";
 
-export const metadata = { title: "Audit log · Crawl Engine" };
+export const metadata = { title: "Audit log" };
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;

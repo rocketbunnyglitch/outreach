@@ -10,7 +10,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Brands · Crawl Engine",
+  title: "Brands",
 };
 
 export default async function BrandsPage() {

@@ -33,7 +33,7 @@ import Link from "next/link";
 import { updateCampaignTicketSalesGoal } from "./_actions";
 import { GoalRow } from "./_components/goal-row";
 
-export const metadata = { title: "Goals · Crawl Engine" };
+export const metadata = { title: "Goals" };
 export const dynamic = "force-dynamic";
 
 export default async function GoalsPage() {

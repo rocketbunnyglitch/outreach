@@ -12,7 +12,7 @@ import { OutreachBrandForm } from "../../_components/outreach-brand-form";
 import { PhaseSwitcher } from "../../_components/phase-switcher";
 
 export const metadata = {
-  title: "Edit outreach brand · Crawl Engine",
+  title: "Edit outreach brand",
 };
 
 export default async function EditOutreachBrandPage({
