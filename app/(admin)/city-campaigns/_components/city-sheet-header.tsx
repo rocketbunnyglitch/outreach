@@ -5,8 +5,9 @@ import {
   STATUS_PILL_LABEL,
   STATUS_PILL_TONE,
 } from "@/lib/tracker-status-types";
-import { MapPin, Printer, User2 } from "lucide-react";
+import { MapPin, Printer } from "lucide-react";
 import Link from "next/link";
+import { AssignStatCard, EditableDashboardNote } from "./city-sheet-editables";
 import { PriorityStatCard } from "./priority-stat-card";
 
 interface Props {
@@ -69,12 +70,10 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
           tint="emerald"
           tooltip="Total tickets sold across every crawl in this city campaign."
         />
-        <StatCard
-          label="Assigned"
-          value={data.leadStaffName?.split(" ")[0] ?? "—"}
-          icon={<User2 className="h-3 w-3" />}
-          tint={data.leadStaffName ? "blue" : "zinc"}
-          tooltip="The lead staffer responsible for this city. Set it from the dashboard tracker's Assign column."
+        <AssignStatCard
+          cityCampaignId={data.cityCampaignId}
+          leadStaffId={data.leadStaffId}
+          staff={data.staff}
         />
         <div
           title="Overall status for this city, computed from crawl progress (same logic as the dashboard tracker)."
@@ -94,11 +93,7 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
         </div>
       </div>
 
-      {data.dashboardNote && (
-        <p className="mt-4 rounded-lg border border-zinc-200/60 bg-zinc-50/40 px-3 py-2 text-xs text-zinc-700 italic dark:border-zinc-800/40 dark:bg-zinc-900/30 dark:text-zinc-300">
-          “{data.dashboardNote}”
-        </p>
-      )}
+      <EditableDashboardNote cityCampaignId={data.cityCampaignId} note={data.dashboardNote} />
     </header>
   );
 }
