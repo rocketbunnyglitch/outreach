@@ -276,6 +276,16 @@ export const replyClassification = pgEnum("reply_classification", [
 
 export const messageKind = pgEnum("message_kind", ["email", "sms", "viber", "line", "manual_note"]);
 
+// Payment rails for paying hosts (internal staff + external contractors).
+export const paymentMethod = pgEnum("payment_method", [
+  "venmo",
+  "bank",
+  "interac",
+  "zelle",
+  "paypal",
+  "wise",
+]);
+
 // =========================================================================
 // Audit
 // =========================================================================
