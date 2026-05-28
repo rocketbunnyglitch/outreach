@@ -1,5 +1,6 @@
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
+import { captureException } from "@/lib/logger";
 import { loadTeamActivity } from "@/lib/team-activity";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
@@ -46,13 +47,40 @@ export default async function DashboardHome({
   // Premium per-campaign tracker + Today digest — both campaign-scoped,
   // loaded in parallel so the dashboard stays under one DB roundtrip
   // budget perceived from the operator's POV.
-  const [{ rows: trackerRows, staff: trackerStaff }, todayDigest, teamActivity] = await Promise.all(
-    [
-      campaignId ? loadTrackerData({ campaignId }) : Promise.resolve({ rows: [], staff: [] }),
-      loadTodayDigest(campaignId),
-      loadTeamActivity(4),
-    ],
-  );
+  //
+  // CLAUDE.md §12.3 fix (carryover): each secondary load is wrapped so
+  // a single broken query (schema drift, missing index, transient pool
+  // exhaustion) degrades the affected widget rather than 500-ing the
+  // entire dashboard. The primary loadDashboardData call above stays
+  // unguarded — without KPIs + city rows there's nothing useful to
+  // show, so an error page is the right response.
+  //
+  // captureException routes via lib/logger.ts: pino entry + (when
+  // configured) Sentry forward. Engineers see WHICH widget failed in
+  // pm2 logs; operators see the rest of the dashboard render with the
+  // failed widget showing empty state.
+  const [trackerLoaded, todayDigest, teamActivity] = await Promise.all([
+    campaignId
+      ? loadTrackerData({ campaignId }).catch(async (err) => {
+          await captureException(err, { widget: "tracker", campaignId });
+          return { rows: [], staff: [] };
+        })
+      : Promise.resolve({ rows: [], staff: [] }),
+    loadTodayDigest(campaignId).catch(async (err) => {
+      await captureException(err, { widget: "today_digest", campaignId });
+      // Empty digest (matches the EMPTY_DIGEST shape in today-data.ts)
+      // — keeps the widget rendered with "nothing urgent" state rather
+      // than 500-ing the page.
+      return { urgentCrawls: [], staleFollowUps: [], recentWins: [] };
+    }),
+    loadTeamActivity(4).catch(async (err) => {
+      await captureException(err, { widget: "team_activity" });
+      // Empty TeamActivitySummary — preserves shape so the widget
+      // renders its empty state rather than the page erroring.
+      return { entries: [], windowHours: 4, totalEvents: 0 };
+    }),
+  ]);
+  const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
 
   const venueProgress =
     data.kpis.venuesTargeted > 0
