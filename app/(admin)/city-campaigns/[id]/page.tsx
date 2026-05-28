@@ -240,12 +240,16 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}
       {process.env.GOOGLE_MAPS_API_KEY && <PasteMapsUrl cityCampaignId={id} />}
 
-      {/* Visual venue discovery — pin-tap any bar/restaurant/club to add */}
-      {process.env.GOOGLE_MAPS_API_KEY && (
+      {/* Visual venue discovery — pin-tap any bar/restaurant/club to add.
+          Uses the BROWSER key (referrer-restricted, Maps JS only). Falls
+          back to the server key only if the browser key isn't set. */}
+      {(process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_API_KEY) && (
         <CityVenueMap
           cityCampaignId={id}
           cityId={cc.city.id}
-          googleMapsApiKey={process.env.GOOGLE_MAPS_API_KEY}
+          googleMapsApiKey={
+            process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? ""
+          }
         />
       )}
 

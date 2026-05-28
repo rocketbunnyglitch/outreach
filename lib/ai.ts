@@ -169,7 +169,7 @@ export async function generateCompletion(opts: {
   model?: string;
   /** Lower for shorter responses; default 1024 tokens. */
   maxTokens?: number;
-  /** 0..1; lower = more deterministic. Default 0.7. */
+  /** @deprecated no-op — current model rejects temperature. Kept for compat. */
   temperature?: number;
 }): Promise<AiResult> {
   const client = getClient();
@@ -184,10 +184,15 @@ export async function generateCompletion(opts: {
 
   const start = Date.now();
   try {
+    // NOTE: `temperature` is intentionally NOT sent. The current default
+    // model (claude-opus-4-7) deprecates the temperature parameter and
+    // returns 400 "`temperature` is deprecated for this model" if it's
+    // included. The opts.temperature field is kept for backwards compat
+    // but is a no-op. If a future model override needs it again, gate it
+    // on the model name here.
     const response = await client.messages.create({
       model: opts.model ?? process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
       max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,
-      temperature: opts.temperature ?? 0.7,
       system: opts.system,
       messages: [{ role: "user", content: opts.prompt }],
     });
@@ -415,7 +420,6 @@ Draft the email now.`;
     prompt,
     tag: "outreach_draft",
     maxTokens: 600,
-    temperature: 0.75,
   });
   if (!result.ok) return { ok: false, reason: result.reason, message: result.message };
 
@@ -565,7 +569,6 @@ Rank these candidates now. Return the JSON array.`;
     prompt,
     tag: "venue_ranking",
     maxTokens: 2048,
-    temperature: 0.4, // lower temp for ranking — we want consistency
   });
   if (!result.ok) {
     // Suggest-venues already has a graceful fallback (rating-sorted

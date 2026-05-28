@@ -45,7 +45,16 @@ const envSchema = z.object({
   ENABLE_DEV_IMPERSONATION: stringOptional,
 
   // --- Phase 5: lead generation ---
+  // SERVER key: used by lib/google-places.ts for Places/Geocoding fetches
+  // from the VPS. MUST NOT have an HTTP-referrer ("Websites") restriction —
+  // server requests carry no Referer, so a referrer-restricted key 403s.
+  // Restrict this one by IP (the VPS) or leave unrestricted + API-limited.
   GOOGLE_MAPS_API_KEY: stringOptional,
+  // BROWSER key: injected into the client Maps JS map (CityVenueMap).
+  // This one SHOULD be HTTP-referrer restricted to https://*.barcrawlconnect.com/*
+  // and limited to the Maps JavaScript API. Falls back to the server key
+  // if unset (single-key setups), but two keys is the correct setup.
+  GOOGLE_MAPS_BROWSER_KEY: stringOptional,
   ZEROBOUNCE_API_KEY: stringOptional,
 
   // --- Phase 6: outreach ---
