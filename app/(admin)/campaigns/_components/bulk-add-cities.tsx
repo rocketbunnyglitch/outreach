@@ -40,8 +40,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
-import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Plus, Upload } from "lucide-react";
-import { useState, useTransition } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  Loader2,
+  Plus,
+  Upload,
+} from "lucide-react";
+import { useRef, useState, useTransition } from "react";
 
 interface CityOption {
   id: string;
@@ -221,6 +229,70 @@ function CsvPanel({ campaignId }: { campaignId: string }) {
   const [meta, setMeta] = useState<{ alreadyInCampaign: number; totalCities: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [commitResult, setCommitResult] = useState<{ added: number; skipped: number } | null>(null);
+  /**
+   * Drag-and-drop state for the CSV drop zone. Tracks whether a file
+   * is currently hovering over the zone so we can apply a hover style
+   * (highlighted border + tint). The browser fires dragenter/dragleave
+   * multiple times as the pointer crosses child boundaries; we increment
+   * /decrement a counter rather than toggle a boolean to avoid flicker.
+   */
+  const [dragDepth, setDragDepth] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Read an uploaded CSV/text file into the textarea. We treat the
+   * file as plain UTF-8 text — anything beyond that (xlsx, gzipped,
+   * non-UTF-8) is rejected with a clear message so the operator
+   * doesn't get a silent garbage import.
+   *
+   * Supported extensions: .csv, .txt, .tsv. Other extensions hit
+   * the rejection path so the operator can re-export from their
+   * spreadsheet tool. (Most spreadsheet tools "Save As CSV" works.)
+   *
+   * File size limit: 1 MB. Real bulk-add datasets for this app are
+   * <1000 lines = ~30 KB; anything larger is almost certainly a
+   * pasted wrong-file. We refuse politely rather than freeze the
+   * tab on a 50 MB file.
+   */
+  function handleFile(file: File) {
+    setError(null);
+    setCommitResult(null);
+
+    const ext = file.name.toLowerCase().split(".").pop() ?? "";
+    const allowedExts = ["csv", "txt", "tsv"];
+    if (!allowedExts.includes(ext)) {
+      setError(
+        `Unsupported file type: .${ext}. Re-export as CSV/TXT/TSV from your spreadsheet tool.`,
+      );
+      return;
+    }
+
+    const ONE_MB = 1024 * 1024;
+    if (file.size > ONE_MB) {
+      setError(
+        `File is ${(file.size / ONE_MB).toFixed(1)} MB — over the 1 MB limit. Most bulk imports are under 30 KB.`,
+      );
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === "string" ? reader.result : "";
+      // Normalize line endings: Windows \r\n → \n. Otherwise the parser
+      // sees " ON\r" as a region name with trailing \r — silent bad data.
+      // Also strip BOM if present (Excel exports occasionally include
+      // U+FEFF at the start of UTF-8 CSVs).
+      const normalized = content
+        .replace(/^\uFEFF/, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n");
+      setText(normalized);
+    };
+    reader.onerror = () => {
+      setError("Could not read file. Try pasting the contents directly instead.");
+    };
+    reader.readAsText(file);
+  }
 
   function handlePreview() {
     setError(null);
@@ -300,21 +372,95 @@ function CsvPanel({ campaignId }: { campaignId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-zinc-700 dark:text-zinc-300">
-        Paste a list of cities (one per line). Optional second column = region; optional last column
-        = priority 1-10. Slight misspellings are matched automatically.
+        Paste a list of cities (one per line) or drop a CSV file below. Optional second column =
+        region; optional last column = priority 1-10. Slight misspellings are matched automatically.
       </p>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={"Toronto, ON\nBuffalo, NY, 3\nNew York\nChicago, IL, 7"}
-        rows={6}
+
+      {/* Drop zone wrapping the textarea. dragenter / dragleave fire on
+          every child element transition, so we use a counter (dragDepth)
+          and treat any non-zero value as "hovering" — this avoids flicker
+          when the pointer crosses from textarea to the surrounding div. */}
+      <div
+        onDragEnter={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer.types.includes("Files")) {
+            setDragDepth((d) => d + 1);
+          }
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setDragDepth((d) => Math.max(0, d - 1));
+        }}
+        onDragOver={(e) => {
+          // Required to allow drop; without this the browser refuses
+          // the operation and the cursor shows "not allowed".
+          if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragDepth(0);
+          const file = e.dataTransfer.files[0];
+          if (file) handleFile(file);
+        }}
         className={cn(
-          "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs",
-          "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
-          "dark:border-zinc-700 dark:bg-zinc-900",
+          "relative rounded-md transition-colors",
+          dragDepth > 0 &&
+            "ring-2 ring-blue-500/40 ring-offset-2 ring-offset-white dark:ring-offset-zinc-950",
         )}
+      >
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={"Toronto, ON\nBuffalo, NY, 3\nNew York\nChicago, IL, 7"}
+          rows={6}
+          className={cn(
+            "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs",
+            "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+            "dark:border-zinc-700 dark:bg-zinc-900",
+          )}
+        />
+        {/* Drop overlay — appears over the textarea while a file is being
+            dragged over. We pointer-events-none on it so the underlying
+            textarea still receives the drop event. */}
+        {dragDepth > 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-blue-500/[0.06] backdrop-blur-[2px] dark:bg-blue-500/[0.08]">
+            <div className="flex flex-col items-center gap-1 font-mono text-[11px] text-blue-700 uppercase tracking-[0.08em] dark:text-blue-300">
+              <FileText className="h-5 w-5" />
+              Drop CSV to import
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Hidden file input — clicked by the "Choose file" button below
+          so we don't need a styled <input type=file> which is famously
+          hard to align with the design system. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.txt,.tsv,text/csv,text/plain,text/tab-separated-values"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+          // Reset so re-selecting the same file fires onChange again
+          e.target.value = "";
+        }}
       />
+
       <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <FileText className="h-3 w-3" />
+          Choose CSV file
+        </Button>
         <Button
           type="button"
           size="sm"
