@@ -351,13 +351,21 @@ export async function addPlaceToCampaign(opts: {
     // Not fatal — the venue exists; operator can attach manually if needed
   }
 
-  revalidatePath(`/city-campaigns/${opts.cityCampaignId}`);
-  publishRealtime({
-    table: `cold-outreach-${opts.cityCampaignId}`,
-    type: "insert",
-    byStaffId: staff.id,
-    byStaffName: staff.displayName ?? null,
-  });
+  try {
+    revalidatePath(`/city-campaigns/${opts.cityCampaignId}`);
+  } catch (err) {
+    logger.warn({ err }, "addPlaceToCampaign: revalidate failed (non-fatal)");
+  }
+  try {
+    publishRealtime({
+      table: `cold-outreach-${opts.cityCampaignId}`,
+      type: "insert",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+  } catch (err) {
+    logger.warn({ err }, "addPlaceToCampaign: realtime publish failed (non-fatal)");
+  }
 
   return { ok: true, venueId };
 }

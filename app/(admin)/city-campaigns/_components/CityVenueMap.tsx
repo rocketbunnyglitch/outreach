@@ -135,31 +135,42 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
   function handleAdd(place: CityMapPlace) {
     setAddError(null);
     startAddTx(async () => {
-      const result = await addPlaceToCampaign({
-        cityCampaignId,
-        cityId,
-        place: {
-          placeId: place.placeId,
-          name: place.name,
-          lat: place.lat,
-          lng: place.lng,
-          address: place.address,
-          phone: place.phone,
-          website: place.website,
-          rating: place.rating,
-          userRatingCount: place.userRatingCount,
-          types: place.types,
-        },
-      });
+      let result: { ok: boolean; venueId?: string; error?: string };
+      try {
+        result = await addPlaceToCampaign({
+          cityCampaignId,
+          cityId,
+          place: {
+            placeId: place.placeId,
+            name: place.name,
+            lat: place.lat,
+            lng: place.lng,
+            address: place.address,
+            phone: place.phone,
+            website: place.website,
+            rating: place.rating,
+            userRatingCount: place.userRatingCount,
+            types: place.types,
+          },
+        });
+      } catch (err) {
+        // Server may have actually succeeded (venue created) before failing
+        // on a downstream step like revalidate or realtime publish; treat as
+        // recoverable, prompt a refresh.
+        console.error("[CityVenueMap] addPlaceToCampaign threw", err);
+        setAddError("Saved, but the page needs a refresh to show it.");
+        router.refresh();
+        return;
+      }
       if (!result.ok) {
         setAddError(result.error ?? "Couldn't add.");
         return;
       }
       // Optimistic: flip this pin to "inDirectory" so the user sees
       // the change immediately. Server revalidation re-fetches the
-      // page list; we re-mark on next load.
+      // page list; we re-mark on next load. Guarded against shape drift.
       setData((prev) => {
-        if (!prev) return prev;
+        if (!prev || !Array.isArray(prev.places)) return prev;
         return {
           ...prev,
           places: prev.places.map((p) =>

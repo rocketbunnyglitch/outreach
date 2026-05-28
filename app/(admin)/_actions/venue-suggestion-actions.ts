@@ -24,6 +24,7 @@ import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { captureException, logger } from "@/lib/logger";
 import { and, eq, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
@@ -297,34 +298,55 @@ export async function addSuggestedVenueToColdOutreach(
       if (existing[0]) {
         venueId = existing[0].id;
       } else {
-        const inserted = await tx
-          .insert(venues)
-          .values({
-            cityId,
-            name: parsed.data.venueName,
-            address: parsed.data.formattedAddress,
-            phoneE164: parsed.data.phoneE164,
-            websiteUrl: parsed.data.websiteUri,
+        try {
+          const inserted = await tx
+            .insert(venues)
+            .values({
+              cityId,
+              name: parsed.data.venueName,
+              address: parsed.data.formattedAddress,
+              phoneE164: parsed.data.phoneE164,
+              websiteUrl: parsed.data.websiteUri,
+              googlePlaceId: parsed.data.googlePlaceId,
+              createdBy: staff.id,
+              updatedBy: staff.id,
+            })
+            .returning({ id: venues.id });
+          const created = inserted[0];
+          if (!created) return { ok: false, error: "Couldn't create venue record." };
+          venueId = created.id;
+        } catch (err) {
+          console.error("[addSuggestedVenue] venue insert failed", {
+            err,
             googlePlaceId: parsed.data.googlePlaceId,
-          })
-          .returning({ id: venues.id });
-        const created = inserted[0];
-        if (!created) return { ok: false, error: "Couldn't create venue record." };
-        venueId = created.id;
+            cityId,
+          });
+          throw err;
+        }
       }
 
       // Insert cold outreach entry, or return existing if already present
-      const inserted = await tx
-        .insert(coldOutreachEntries)
-        .values({
-          cityCampaignId: parsed.data.cityCampaignId,
+      let inserted: Array<{ id: string }>;
+      try {
+        inserted = await tx
+          .insert(coldOutreachEntries)
+          .values({
+            cityCampaignId: parsed.data.cityCampaignId,
+            venueId,
+            status: "not_contacted",
+          })
+          .onConflictDoNothing({
+            target: [coldOutreachEntries.cityCampaignId, coldOutreachEntries.venueId],
+          })
+          .returning({ id: coldOutreachEntries.id });
+      } catch (err) {
+        console.error("[addSuggestedVenue] cold outreach insert failed", {
+          err,
           venueId,
-          status: "not_contacted",
-        })
-        .onConflictDoNothing({
-          target: [coldOutreachEntries.cityCampaignId, coldOutreachEntries.venueId],
-        })
-        .returning({ id: coldOutreachEntries.id });
+          cityCampaignId: parsed.data.cityCampaignId,
+        });
+        throw err;
+      }
 
       let entryId = inserted[0]?.id;
       if (!entryId) {
@@ -343,9 +365,15 @@ export async function addSuggestedVenueToColdOutreach(
       }
       if (!entryId) return { ok: false, error: "Failed to add to cold outreach." };
 
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
       return { ok: true, data: { entryId } };
     });
   } catch (err) {
+    console.error("[addSuggestedVenue] failed", {
+      err,
+      cityCampaignId: parsed.data.cityCampaignId,
+      googlePlaceId: parsed.data.googlePlaceId,
+    });
     await captureException(err, {
       tag: "add_suggested_venue",
       cityCampaignId: parsed.data.cityCampaignId,

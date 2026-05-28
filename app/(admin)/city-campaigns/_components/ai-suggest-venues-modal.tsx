@@ -374,7 +374,7 @@ function SuggestionCard({
             </Button>
           )}
           <a
-            href={`https://www.google.com/maps/place/?q=place_id:${suggestion.googlePlaceId}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(suggestion.name)}&query_place_id=${suggestion.googlePlaceId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
