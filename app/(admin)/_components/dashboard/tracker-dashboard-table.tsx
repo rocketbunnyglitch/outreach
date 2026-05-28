@@ -302,10 +302,10 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
               type="button"
               onClick={() => setPriorityFilter(chip.key)}
               className={cn(
-                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset transition-colors",
+                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
                 priorityFilter === chip.key
                   ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
-                  : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+                  : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
               )}
             >
               {chip.label}
@@ -406,7 +406,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
       <div className="hidden overflow-x-auto sm:block lg:overflow-x-visible" ref={gridNavRef}>
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead className="sticky top-14 z-20">
-            <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-500">
+            <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-400">
               <th
                 className={cn("w-8 px-2 py-3", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[0], FROZEN_BASE)}
               >

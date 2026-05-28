@@ -567,7 +567,7 @@ export function ColdOutreachTable({
             <Sparkles className="h-2.5 w-2.5" />
             Suggest venues
           </button>
-          <p className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] sm:block">
+          <p className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] sm:block dark:text-zinc-400">
             status + ZeroBounce auto-tracked
           </p>
         </div>
@@ -611,7 +611,7 @@ export function ColdOutreachTable({
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
+            <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40 dark:text-zinc-400">
               <th className="w-9 px-3 py-2.5">
                 <SelectAllCheckbox
                   checked={allSelected}

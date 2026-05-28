@@ -35,7 +35,7 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
     <header className="rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
       <div className="flex flex-col gap-1">
         <div className="flex items-start justify-between gap-3">
-          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
+          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em] dark:text-zinc-400">
             {data.campaignName}
           </p>
           <Link
@@ -79,7 +79,7 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
           title="Overall status for this city, computed from crawl progress (same logic as the dashboard tracker)."
           className="flex flex-col justify-between rounded-xl border border-zinc-200/60 bg-zinc-50/40 p-3 dark:border-zinc-800/40 dark:bg-zinc-900/30"
         >
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] dark:text-zinc-400">
             Status
           </span>
           <span
@@ -126,7 +126,7 @@ function StatCard({
         tintBg,
       )}
     >
-      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] dark:text-zinc-400">
         {icon}
         {label}
       </span>
