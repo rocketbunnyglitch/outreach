@@ -121,7 +121,7 @@ function TopBar({
               height={28}
               priority
               className={cn(
-                "h-7 w-auto select-none",
+                "h-3.5 w-auto select-none",
                 // Light mode: brightness(0) zeroes RGB → black wordmark.
                 // Dark mode: no filter → original white.
                 "brightness-0 dark:brightness-100",

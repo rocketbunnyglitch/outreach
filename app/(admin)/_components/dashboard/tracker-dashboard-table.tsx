@@ -69,7 +69,7 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
     <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-zinc-200/80 border-b bg-zinc-50/60 text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
+          <tr className="border-zinc-200/80 border-b bg-zinc-200/60 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
             <th className="w-9 px-2 py-3" />
             <th className="w-10 px-2 py-3 text-right">#</th>
             <th className="px-3 py-3">City</th>
@@ -124,12 +124,18 @@ function CityRow({
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
 
-  // Alternating tones — pulled apart enough to read clearly but close
-  // enough that the table reads as one surface. Light mode: white +
-  // zinc-50/60. Dark mode: zinc-900/30 + zinc-900/60 (the "medium gray
-  // / dark gray" pairing the spec asks for).
+  // Alternating tones — operators flagged the prior light-mode tones
+  // (white + zinc-50/70 ≈ 90% white) as "too light", washing out the
+  // table on bright displays. New pairing pushes BOTH stripes into
+  // the visible-gray range so the table reads as a distinct surface.
+  //   Light mode: zinc-50 (solid) + zinc-100 (solid) — both have full
+  //               opacity so backdrop-blur from the canvas can't bleed
+  //               through.
+  //   Dark mode:  zinc-900/40 + zinc-900/80 — kept similar to before
+  //               since the dark canvas already gives plenty of
+  //               contrast.
   const rowTone =
-    stripeIndex % 2 === 0 ? "bg-white dark:bg-zinc-900/30" : "bg-zinc-50/70 dark:bg-zinc-900/60";
+    stripeIndex % 2 === 0 ? "bg-zinc-50 dark:bg-zinc-900/30" : "bg-zinc-100 dark:bg-zinc-900/70";
 
   return (
     <>
@@ -328,6 +334,11 @@ function SlotPills({ slots }: { slots: SlotKind[] }) {
           key={slot}
           className={cn(
             "inline-flex h-[22px] items-center font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
+            // whitespace-nowrap: prevents "Middle 1 + 2" from wrapping
+            // onto two lines at narrow viewport widths, which made the
+            // middle pill taller than its neighbors and broke the
+            // continuous-bar visual.
+            "whitespace-nowrap",
             SLOT_PILL_TONE[slot],
             // Tight rounding on inner edges to create the continuous bar feel
             slot === "middle_pair" ? "px-3" : "px-2.5",
@@ -501,7 +512,7 @@ function CrawlBreakdownRow({
   return (
     <tr
       className={cn(
-        zebra ? "bg-zinc-100/30 dark:bg-zinc-800/15" : tone,
+        zebra ? "bg-zinc-200/40 dark:bg-zinc-800/15" : tone,
         "border-zinc-200/30 border-b dark:border-zinc-800/20",
         "animate-[fade-in_180ms_ease-out]",
       )}
