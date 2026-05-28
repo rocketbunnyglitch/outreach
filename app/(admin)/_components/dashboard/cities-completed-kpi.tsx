@@ -77,14 +77,17 @@ export function CitiesCompletedKpi({
       />
 
       {/* Square-ish wrapper so the arc reads cleanly regardless of grid */}
-      <div className="relative aspect-square min-h-[300px] w-full p-5">
+      {/* Aspect-square wrapper so the arc reads cleanly regardless of grid.
+          min-h scales up at sm: so the card stays compact at the narrow
+          1/4-width slot on phones, then grows on tablet/desktop. */}
+      <div className="relative aspect-square min-h-[140px] w-full p-3 sm:min-h-[260px] sm:p-5">
         <DottedArc ratio={ratio} />
 
         {/* Centered overlay text — sits in the hollow of the semicircle */}
         {/* Big number — pinned inside the arc's hollow, near its apex */}
         <div className="pointer-events-none absolute inset-x-0 top-[34%] flex justify-center">
           <p
-            className="font-semibold text-6xl text-zinc-900 tabular-nums sm:text-7xl dark:text-white"
+            className="font-semibold text-3xl text-zinc-900 tabular-nums sm:text-5xl lg:text-7xl dark:text-white"
             style={{ fontFeatureSettings: '"tnum"' }}
           >
             {completed.toLocaleString()}
@@ -94,7 +97,7 @@ export function CitiesCompletedKpi({
         {/* Label — sits just below the arc's baseline */}
         <div className="pointer-events-none absolute inset-x-0 top-[64%] flex justify-center">
           <div className="pointer-events-auto flex flex-col items-center">
-            <p className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.18em] dark:text-zinc-300">
+            <p className="flex items-center gap-1 whitespace-nowrap font-mono text-[7px] text-zinc-600 uppercase tracking-[0.12em] sm:gap-1.5 sm:text-[10px] sm:tracking-[0.18em] dark:text-zinc-300">
               <span>Cities completed of</span>
               {editing ? (
                 <span className="inline-flex items-center gap-1">

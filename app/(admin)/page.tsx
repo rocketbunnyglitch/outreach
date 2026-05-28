@@ -134,6 +134,7 @@ export default async function DashboardHome({
           <h1 className="mt-1 font-semibold text-4xl tracking-tight">Dashboard</h1>
         </div>
         <div className="flex items-center gap-3 sm:justify-end">
+          <WhosOnline currentStaffId={staff.id} compact />
           <MeetingMode
             room={`dashboard:${campaignId ?? "global"}`}
             viewerName={staff.displayName}
@@ -178,21 +179,19 @@ export default async function DashboardHome({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-4 gap-3 sm:gap-4">
         <CitiesCompletedKpi
           completed={data.kpis.citiesCompleted}
           goal={data.kpis.citiesGoal}
           campaignId={campaignId}
           isAdmin={staff.role === "admin"}
         />
-        <div className="card-surface grid grid-cols-1 gap-px overflow-hidden bg-zinc-200 sm:grid-cols-2 lg:col-span-2 dark:bg-zinc-800/40">
+        <div className="card-surface col-span-3 grid grid-cols-1 gap-px overflow-hidden bg-zinc-200 sm:grid-cols-2 dark:bg-zinc-800/40">
           {kpis.map((kpi) => (
             <KpiCard key={kpi.label} kpi={kpi} />
           ))}
         </div>
       </div>
-
-      <WhosOnline currentStaffId={staff.id} />
 
       {/* Escalations widget — only renders when this staffer actually
           has pending escalations parked with them. Empty array = hide
