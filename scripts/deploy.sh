@@ -213,9 +213,20 @@ fi
 
 # === Done ===
 # Record the successfully-deployed commit so the next run's guard works.
+# CRITICAL: only stamp when we ACTUALLY built for this commit. With
+# --skip-build the standalone bundle is whatever was there from the last
+# real build, NOT $TARGET_COMMIT. If we stamped here, the next normal
+# deploy would see "already deployed" and exit without rebuilding, so
+# the app would keep running stale code despite git being at the new
+# commit. Operator session 11 caught this: "deploy.sh skip-build bug".
 mkdir -p .next
-echo "$TARGET_COMMIT" > .next/.deployed-commit
-log "stamped .next/.deployed-commit = $TARGET_COMMIT"
+if [ "$SKIP_BUILD" = "1" ]; then
+  log "skip-build was set — NOT stamping .next/.deployed-commit"
+  log "  (next normal deploy will rebuild for $TARGET_COMMIT, as intended)"
+else
+  echo "$TARGET_COMMIT" > .next/.deployed-commit
+  log "stamped .next/.deployed-commit = $TARGET_COMMIT"
+fi
 
 log ""
 log "=========================================="
