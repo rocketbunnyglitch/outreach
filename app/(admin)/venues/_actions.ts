@@ -1,7 +1,7 @@
 "use server";
 
 import { outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { requireStaff, requireSuperUser } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
@@ -183,6 +183,33 @@ export async function archiveVenue(id: string): Promise<void> {
   );
   revalidatePath("/venues");
   redirect("/venues");
+}
+
+/**
+ * Permanent, irreversible delete of a venue and EVERY downstream record
+ * referencing it (outreach log, notes, cold-outreach entries, venue_events,
+ * call_logs, etc. — anything FK'd to venues with ON DELETE CASCADE will go;
+ * anything ON DELETE RESTRICT will throw and abort the transaction).
+ *
+ * Superuser only. Most operators should use archiveVenue instead — this is
+ * for clearing duplicate / mis-imported records that should never have
+ * existed. Audited via withAuditContext so the deletion is logged before
+ * the row disappears.
+ */
+export async function hardDeleteVenue(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireSuperUser();
+  try {
+    await withAuditContext(staff.id, async (tx) => tx.delete(venues).where(eq(venues.id, id)));
+    revalidatePath("/venues");
+    return { ok: true };
+  } catch (err) {
+    console.error("[hardDeleteVenue] failed", { err, venueId: id, by: staff.id });
+    return {
+      ok: false,
+      error:
+        "Couldn't permanently delete this venue — it's still referenced by other records (a crawl, outreach history, etc.). Archive it instead, or clear those references first.",
+    };
+  }
 }
 
 // =========================================================================

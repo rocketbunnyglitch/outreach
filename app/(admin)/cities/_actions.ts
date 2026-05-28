@@ -1,7 +1,7 @@
 "use server";
 
 import { cities } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { requireStaff, requireSuperUser } from "@/lib/auth";
 import { withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -141,4 +141,27 @@ export async function archiveCity(id: string): Promise<void> {
   );
   revalidatePath("/cities");
   redirect("/cities");
+}
+
+/**
+ * Permanent, irreversible delete of a city and every downstream record
+ * referencing it. Superuser only. Most operators should archive instead;
+ * this is for clearing duplicate / mistaken entries. If any FK has
+ * ON DELETE RESTRICT (e.g. a venue still points here), the transaction
+ * aborts and we return a friendly error.
+ */
+export async function hardDeleteCity(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireSuperUser();
+  try {
+    await withAuditContext(staff.id, async (tx) => tx.delete(cities).where(eq(cities.id, id)));
+    revalidatePath("/cities");
+    return { ok: true };
+  } catch (err) {
+    console.error("[hardDeleteCity] failed", { err, cityId: id, by: staff.id });
+    return {
+      ok: false,
+      error:
+        "Couldn't permanently delete this city — venues, campaigns, or other records still reference it. Archive it instead, or remove those references first.",
+    };
+  }
 }

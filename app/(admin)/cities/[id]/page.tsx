@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { cities, countries } from "@/db/schema";
+import { getSuperUserOrNull } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { archiveCity, updateCity } from "../_actions";
+import { HardDeleteButton } from "../../_components/hard-delete-button";
+import { archiveCity, hardDeleteCity, updateCity } from "../_actions";
 import { CityForm } from "../_components/city-form";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function EditCityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [city, countriesList] = await Promise.all([
+  const [city, countriesList, superUser] = await Promise.all([
     db
       .select()
       .from(cities)
@@ -21,6 +23,7 @@ export default async function EditCityPage({ params }: { params: Promise<{ id: s
       .limit(1)
       .then((r) => r[0]),
     db.select().from(countries).orderBy(asc(countries.name)),
+    getSuperUserOrNull(),
   ]);
   if (!city) notFound();
 
@@ -74,6 +77,18 @@ export default async function EditCityPage({ params }: { params: Promise<{ id: s
           Archive
         </Button>
       </form>
+
+      {superUser ? (
+        <HardDeleteButton
+          label={`city "${city.name}"`}
+          matchText={city.name}
+          redirectTo="/cities"
+          action={async () => {
+            "use server";
+            return hardDeleteCity(id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

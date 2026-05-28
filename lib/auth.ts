@@ -107,3 +107,37 @@ export async function getAdminOrNull(): Promise<AuthContext | null> {
   if (!ctx || ctx.staff.role !== "admin") return null;
   return ctx;
 }
+
+/**
+ * Superuser tier — strictly above `admin`. Reserved for irreversible
+ * destructive operations (permanent hard-delete of cities, venues, etc.)
+ * that even a normal admin shouldn't be able to do. Driven by env so we
+ * don't need a schema change: SUPERUSER_EMAILS is a comma-separated list
+ * of staff primary_email addresses; falls back to nauth.nathan@gmail.com.
+ */
+function isSuperUserEmail(email: string): boolean {
+  const raw = process.env.SUPERUSER_EMAILS ?? "nauth.nathan@gmail.com";
+  const set = new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  return set.has(email.toLowerCase());
+}
+
+export async function getSuperUserOrNull(): Promise<AuthContext | null> {
+  const ctx = await getCurrentStaff();
+  if (!ctx) return null;
+  if (!isSuperUserEmail(ctx.staff.primaryEmail)) return null;
+  return ctx;
+}
+
+export async function requireSuperUser(): Promise<AuthContext> {
+  const ctx = await requireStaff();
+  if (!isSuperUserEmail(ctx.staff.primaryEmail)) {
+    const { notFound } = await import("next/navigation");
+    notFound();
+  }
+  return ctx;
+}

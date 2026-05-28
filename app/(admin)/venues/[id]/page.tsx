@@ -8,7 +8,7 @@ import {
   venues,
   wristbands,
 } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { getSuperUserOrNull, requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
 import { loadComposerData } from "@/lib/composer-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
@@ -21,10 +21,17 @@ import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { HardDeleteButton } from "../../_components/hard-delete-button";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import type { WristbandRowData } from "../../wristbands/_components/wristband-shipping-row";
-import { archiveVenue, getVenueOutreachLog, logOutreach, updateVenue } from "../_actions";
+import {
+  archiveVenue,
+  getVenueOutreachLog,
+  hardDeleteVenue,
+  logOutreach,
+  updateVenue,
+} from "../_actions";
 import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { SendComposer } from "../_components/send-composer";
@@ -37,6 +44,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   const { id } = await params;
 
   const { staff } = await requireStaff();
+  const superUser = await getSuperUserOrNull();
 
   const [venue, citiesList, outreachBrandsList, outreachEntries, currentCampaign, notesList] =
     await Promise.all([
@@ -263,6 +271,18 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
           Archive
         </Button>
       </form>
+
+      {superUser ? (
+        <HardDeleteButton
+          label={`venue "${venue.name}"`}
+          matchText={venue.name}
+          redirectTo="/venues"
+          action={async () => {
+            "use server";
+            return hardDeleteVenue(id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
