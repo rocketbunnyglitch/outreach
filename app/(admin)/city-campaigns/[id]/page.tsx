@@ -10,8 +10,8 @@ import type { CityStatusPill } from "@/lib/tracker-status";
 import { findWarmLeads } from "@/lib/warm-leads";
 import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { goToCampaignDashboard } from "../../_actions";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
@@ -138,13 +138,19 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
 
   return (
     <div className="mx-auto flex max-w-6xl animate-[fade-in_300ms_ease-out] flex-col gap-8">
-      {/* Back link */}
-      <Link
-        href={`/campaigns/${cc.campaign.id}`}
-        className="inline-flex w-fit items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] hover:text-zinc-900 dark:hover:text-zinc-100"
-      >
-        <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
-      </Link>
+      {/* Back link — returns to THIS campaign's operations dashboard
+          (sets the current-campaign cookie + redirects to /). Operators
+          flagged that this previously went to the campaign SETUP page;
+          the ops dashboard is the expected destination (session 12). */}
+      <form action={goToCampaignDashboard} className="w-fit">
+        <input type="hidden" name="campaignId" value={cc.campaign.id} />
+        <button
+          type="submit"
+          className="inline-flex w-fit items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
+        </button>
+      </form>
 
       {/* Current time in the city + viewer's local time.
           Helps avoid "scheduling a call at 3pm without realizing that's

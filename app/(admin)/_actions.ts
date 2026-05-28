@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 export async function signOutAction(): Promise<void> {
   await signOut({ redirectTo: "/login" });
@@ -31,6 +32,24 @@ export async function switchCurrentCampaign(formData: FormData): Promise<void> {
   }
   // Refresh every admin route — most pages display per-campaign data.
   revalidatePath("/", "layout");
+}
+
+/**
+ * Set the current campaign + navigate to its operations dashboard.
+ *
+ * Used by the city-sheet breadcrumb ("< Campaign name"). Operators
+ * flagged (session 12) that this back-link went to the campaign SETUP
+ * page (/campaigns/[id]); it should return to that campaign's OPS
+ * DASHBOARD (/) instead. Since the dashboard scopes by the
+ * current-campaign cookie, we set the cookie to this campaign, then
+ * redirect to /.
+ */
+export async function goToCampaignDashboard(formData: FormData): Promise<void> {
+  const raw = String(formData.get("campaignId") ?? "").trim();
+  if (raw) {
+    await setCurrentCampaignCookie(raw);
+  }
+  redirect("/");
 }
 
 /**
