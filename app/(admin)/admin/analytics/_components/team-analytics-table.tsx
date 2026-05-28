@@ -64,7 +64,7 @@ export function TeamAnalyticsTable({ rows, windowDays }: Props) {
   const maxDailyAcrossTeam = Math.max(1, ...rows.flatMap((r) => r.daily));
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <section className="overflow-hidden card-surface">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

@@ -2,8 +2,8 @@
 
 import { cities, outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
 import { requireStaff, requireSuperUser } from "@/lib/auth";
-import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
 import { db, withAuditContext } from "@/lib/db";
+import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import {

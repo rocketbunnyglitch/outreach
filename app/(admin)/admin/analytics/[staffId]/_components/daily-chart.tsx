@@ -33,7 +33,7 @@ export function DailyChart({ daily, windowDays }: Props) {
   const allZero = daily.every((d) => d.total === 0);
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <section className="overflow-hidden rounded-2xl card-surface p-6">
       <header className="mb-4 flex items-baseline justify-between">
         <div>
           <h2 className="font-semibold text-sm tracking-tight">Daily activity</h2>

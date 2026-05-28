@@ -184,7 +184,7 @@ export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
   const someSelected = selected.size > 0 && selected.size < filtered.length;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <section className="overflow-hidden card-surface">
       <header className="flex flex-col gap-3 border-zinc-200/60 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800/40">
         <div>
           <h2 className="font-semibold text-lg tracking-tight">All crawls</h2>

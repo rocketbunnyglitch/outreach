@@ -288,7 +288,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <div className="overflow-hidden card-surface">
       <div className="flex flex-wrap items-center gap-2 border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
         <div className="flex items-center gap-1">
           {(

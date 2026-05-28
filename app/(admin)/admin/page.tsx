@@ -122,10 +122,7 @@ export default async function AdminPage() {
       </section>
 
       {/* Campaigns */}
-      <section
-        id="campaigns"
-        className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none"
-      >
+      <section id="campaigns" className="overflow-hidden card-surface">
         <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-6 py-4 dark:border-zinc-800/40">
           <div>
             <h2 className="inline-flex items-center gap-2.5 font-semibold text-lg tracking-tight">
@@ -177,7 +174,7 @@ export default async function AdminPage() {
       <CsvImportWidget campaigns={activeCampaigns.map((c) => ({ id: c.id, name: c.name }))} />
 
       {/* Master cities pointer */}
-      <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+      <section className="overflow-hidden card-surface">
         <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-6 py-4 dark:border-zinc-800/40">
           <div>
             <h2 className="inline-flex items-center gap-2.5 font-semibold text-lg tracking-tight">

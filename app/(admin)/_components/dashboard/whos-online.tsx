@@ -57,7 +57,7 @@ export function WhosOnline({ currentStaffId }: { currentStaffId: string }) {
   if (present.length === 0) return null;
 
   return (
-    <section className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <section className="rounded-2xl card-surface p-4">
       <div className="flex items-center gap-2">
         <span className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />

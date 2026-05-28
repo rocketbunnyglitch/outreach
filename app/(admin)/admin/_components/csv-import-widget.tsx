@@ -107,7 +107,7 @@ export function CsvImportWidget({ campaigns }: Props) {
     !!campaignId;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
+    <section className="overflow-hidden card-surface">
       <header className="border-zinc-200/60 border-b px-6 py-4 dark:border-zinc-800/40">
         <h2 className="inline-flex items-center gap-2.5 font-semibold text-lg tracking-tight">
           <FileUp className="h-4 w-4 text-zinc-500" />
