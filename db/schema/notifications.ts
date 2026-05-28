@@ -19,6 +19,11 @@ export const notificationKind = pgEnum("notification_kind", [
   "ai_draft_failed",
   "edit_conflict",
   "admin_message",
+  // Migration 0028 — fires when an outreach staffer escalates a
+  // cold-outreach entry to a senior staffer (typically Brandon).
+  // The notifications bell + dropdown surfaces this so the escalation
+  // owner sees it immediately even if email is delayed/blocked.
+  "escalation",
 ]);
 
 export const notifications = pgTable(

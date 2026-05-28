@@ -33,14 +33,16 @@
 import { cityCampaigns } from "@/db/schema/city-campaigns";
 import { coldOutreachEntries } from "@/db/schema/cold-outreach";
 import { cities } from "@/db/schema/geography";
-import { staffMembers } from "@/db/schema/staff";
+import { notifications } from "@/db/schema/notifications";
+import { staffMembers, staffOutreachEmails } from "@/db/schema/staff";
 import { tasks } from "@/db/schema/tasks";
 import { venues } from "@/db/schema/venues";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
+import { isGmailOAuthConfigured, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -153,6 +155,30 @@ export async function escalateColdEntry(
         })
         .returning({ id: tasks.id });
 
+      // 3. In-app notification — drops into the assignee's notifications
+      // bell immediately. Source of truth for "Brandon was told". The
+      // email send below is a best-effort enhancement; if SMTP/Gmail is
+      // down, the assignee still sees this on next page load.
+      //
+      // linkPath points at the venue (Phase 1 — task list also surfaces
+      // the same info). When a dedicated /escalations dashboard route
+      // ships in a follow-up, we'll swap to that link.
+      await tx.insert(notifications).values({
+        staffId,
+        kind: "escalation",
+        title: `Escalation: ${contextRow.venueName}`,
+        body: `From ${staff.displayName} · ${cityLabel}\n\n${notes}`,
+        linkPath: `/venues/${contextRow.venueId}`,
+        metadata: {
+          escalationEntryId: entryId,
+          escalationTaskId: row?.id ?? null,
+          venueId: contextRow.venueId,
+          cityLabel,
+          escalatedByStaffId: staff.id,
+          escalatedByName: staff.displayName,
+        },
+      });
+
       return row?.id ?? "";
     });
 
@@ -172,6 +198,36 @@ export async function escalateColdEntry(
       "cold-outreach escalation created",
     );
 
+    // 4. Best-effort email notification. The in-app notification +
+    // task above are the SOURCE OF TRUTH for "Brandon was told" — if
+    // Gmail send fails, the operator's workflow still works. So we
+    // don't await this in the request critical path; we run it
+    // outside the try/catch and log success or failure independently.
+    //
+    // Sender: the escalator's first connected outreach inbox. The
+    // From: header will read "Yesu <yesu@perse.io>" etc. — totally
+    // fine for internal notification email since the assignee
+    // recognizes their teammate's address. We don't try to use a
+    // shared notifications@ inbox because we don't have one yet.
+    //
+    // If the escalator has no connected inbox (admin/web-only staff,
+    // or never finished Gmail OAuth), we skip the email entirely and
+    // log "skipped — no sender inbox". The in-app notification still
+    // alerts Brandon.
+    void sendEscalationEmail({
+      escalatorStaffId: staff.id,
+      escalatorName: staff.displayName,
+      assigneeEmail: contextRow.assigneeEmail,
+      assigneeName: contextRow.assigneeName,
+      venueName: contextRow.venueName,
+      cityLabel,
+      venuePhone: contextRow.venuePhone,
+      venueEmailAddr: contextRow.venueEmail,
+      notes,
+      taskId,
+      venueId: contextRow.venueId,
+    });
+
     revalidatePath(`/city-campaigns/${entryId}`);
     revalidatePath("/tasks");
     revalidatePath("/"); // dashboard
@@ -181,6 +237,164 @@ export async function escalateColdEntry(
     logger.error({ err, entryId, staffId }, "escalateColdEntry failed");
     return { ok: false, error: "Failed to escalate. See server logs." };
   }
+}
+
+/**
+ * Send the escalation notification email — best-effort, never throws.
+ *
+ * Called fire-and-forget from escalateColdEntry. Failures are logged
+ * via captureException (which now routes through Pino as well, since
+ * commit cd68049) but DON'T propagate back to the operator. The
+ * operator already got an ok response based on the DB writes; the
+ * email is enhancement, not requirement.
+ *
+ * If the escalator has no connected outreach inbox, the function
+ * exits early after logging — the assignee still gets the in-app
+ * notification + task.
+ */
+async function sendEscalationEmail(opts: {
+  escalatorStaffId: string;
+  escalatorName: string;
+  assigneeEmail: string;
+  assigneeName: string;
+  venueName: string;
+  cityLabel: string;
+  venuePhone: string | null;
+  venueEmailAddr: string | null;
+  notes: string;
+  taskId: string;
+  venueId: string;
+}): Promise<void> {
+  try {
+    // Find the escalator's first connected outreach inbox. Any brand
+    // works — we just need a valid Gmail OAuth refresh token to send
+    // FROM. Order by created_at desc so the most-recently-set-up
+    // brand wins (likely their currently-active workflow).
+    const [inbox] = await db
+      .select({
+        emailAddress: staffOutreachEmails.emailAddress,
+        refreshToken: staffOutreachEmails.gmailOauthRefreshToken,
+      })
+      .from(staffOutreachEmails)
+      .where(
+        and(
+          eq(staffOutreachEmails.staffMemberId, opts.escalatorStaffId),
+          eq(staffOutreachEmails.status, "connected"),
+        ),
+      )
+      .orderBy(desc(staffOutreachEmails.createdAt))
+      .limit(1);
+
+    if (!inbox || !inbox.refreshToken || !isGmailOAuthConfigured()) {
+      logger.info(
+        {
+          escalatorStaffId: opts.escalatorStaffId,
+          gmailConfigured: isGmailOAuthConfigured(),
+          hasInbox: Boolean(inbox),
+        },
+        "escalation email skipped — no sender inbox available",
+      );
+      return;
+    }
+
+    const subject = `Escalation: ${opts.venueName} (${opts.cityLabel})`;
+
+    const textBody = [
+      `Hi ${opts.assigneeName.split(" ")[0] ?? opts.assigneeName},`,
+      "",
+      `${opts.escalatorName} escalated a venue to you.`,
+      "",
+      `Venue: ${opts.venueName}`,
+      `City: ${opts.cityLabel}`,
+      opts.venuePhone ? `Phone: ${opts.venuePhone}` : null,
+      opts.venueEmailAddr ? `Email: ${opts.venueEmailAddr}` : null,
+      "",
+      "What the venue wants to discuss:",
+      opts.notes,
+      "",
+      "There's a task assigned to you in the system + a notification",
+      "in your bell. Reply to this email if you have questions for",
+      `${opts.escalatorName.split(" ")[0] ?? opts.escalatorName}.`,
+      "",
+      "— Perse",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Minimal HTML — operator's email client will mostly show this
+    // as plain text but the bullet points + bold venue line make it
+    // scannable when rendered HTML-side. Inline styles only (Gmail
+    // strips <style> blocks).
+    const venuePhoneRow = opts.venuePhone
+      ? `<li style="margin:2px 0"><strong>Phone:</strong> ${escapeHtml(opts.venuePhone)}</li>`
+      : "";
+    const venueEmailRow = opts.venueEmailAddr
+      ? `<li style="margin:2px 0"><strong>Email:</strong> ${escapeHtml(opts.venueEmailAddr)}</li>`
+      : "";
+    const htmlBody = `
+<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a">
+  <p>Hi ${escapeHtml(opts.assigneeName.split(" ")[0] ?? opts.assigneeName)},</p>
+  <p><strong>${escapeHtml(opts.escalatorName)}</strong> escalated a venue to you.</p>
+  <ul style="padding-left:18px;margin:8px 0">
+    <li style="margin:2px 0"><strong>Venue:</strong> ${escapeHtml(opts.venueName)}</li>
+    <li style="margin:2px 0"><strong>City:</strong> ${escapeHtml(opts.cityLabel)}</li>
+    ${venuePhoneRow}
+    ${venueEmailRow}
+  </ul>
+  <p style="margin-top:14px"><strong>What the venue wants to discuss:</strong></p>
+  <blockquote style="margin:6px 0 12px 0;padding:8px 12px;border-left:3px solid #d4d4d8;background:#fafafa;white-space:pre-wrap">${escapeHtml(opts.notes)}</blockquote>
+  <p style="color:#71717a;font-size:13px">
+    There's a task assigned to you in the system + a notification in your bell.
+    Reply to this email if you have questions for ${escapeHtml(opts.escalatorName.split(" ")[0] ?? opts.escalatorName)}.
+  </p>
+  <p style="color:#a1a1aa;font-size:12px;margin-top:18px">— Perse</p>
+</div>`.trim();
+
+    await sendGmailMessage({
+      encryptedRefreshToken: inbox.refreshToken,
+      from: inbox.emailAddress,
+      to: opts.assigneeEmail,
+      subject,
+      htmlBody,
+      textBody,
+    });
+
+    logger.info(
+      {
+        from: inbox.emailAddress,
+        to: opts.assigneeEmail,
+        venueId: opts.venueId,
+        taskId: opts.taskId,
+      },
+      "escalation email sent",
+    );
+  } catch (err) {
+    // Don't propagate — in-app notification + task already exist.
+    // Engineers see this in pm2 logs.
+    logger.error(
+      {
+        err,
+        escalatorStaffId: opts.escalatorStaffId,
+        assigneeEmail: opts.assigneeEmail,
+        venueId: opts.venueId,
+      },
+      "escalation email send failed (notification + task still created)",
+    );
+  }
+}
+
+/**
+ * Tiny HTML escaper for the email body — handles the 5 characters
+ * that matter for the inline HTML construction above. Lighter than
+ * pulling in a full dompurify import for this single use case.
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /**
