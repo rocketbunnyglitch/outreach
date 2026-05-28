@@ -1,11 +1,14 @@
+import { requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
+import { loadPendingEscalationsForStaff } from "@/lib/escalations-data";
 import { captureException } from "@/lib/logger";
 import { loadTeamActivity } from "@/lib/team-activity";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
 import { CitiesTable } from "./_components/dashboard/cities-table";
+import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
@@ -37,6 +40,11 @@ export default async function DashboardHome({
   const params = await searchParams;
   const allCampaigns = params.scope === "all";
 
+  // Current staff — used to scope the escalations widget to "me".
+  // Layout already requireStaff'd to keep us authed; cheap to re-read
+  // the cookie here for the id + name we need.
+  const { staff } = await requireStaff();
+
   const currentCampaign = await getCurrentCampaign();
   // If the operator picked a campaign in the switcher AND hasn't opted into
   // "all campaigns" via the URL, scope the dashboard to that campaign.
@@ -59,7 +67,7 @@ export default async function DashboardHome({
   // configured) Sentry forward. Engineers see WHICH widget failed in
   // pm2 logs; operators see the rest of the dashboard render with the
   // failed widget showing empty state.
-  const [trackerLoaded, todayDigest, teamActivity] = await Promise.all([
+  const [trackerLoaded, todayDigest, teamActivity, pendingEscalations] = await Promise.all([
     campaignId
       ? loadTrackerData({ campaignId }).catch(async (err) => {
           await captureException(err, { widget: "tracker", campaignId });
@@ -78,6 +86,10 @@ export default async function DashboardHome({
       // Empty TeamActivitySummary — preserves shape so the widget
       // renders its empty state rather than the page erroring.
       return { entries: [], windowHours: 4, totalEvents: 0 };
+    }),
+    loadPendingEscalationsForStaff(staff.id).catch(async (err) => {
+      await captureException(err, { widget: "escalations", staffId: staff.id });
+      return [];
     }),
   ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
@@ -224,6 +236,20 @@ export default async function DashboardHome({
       </div>
 
       <KpiStrip kpis={kpis} />
+
+      {/* Escalations widget — only renders when this staffer actually
+          has pending escalations parked with them. Empty array = hide
+          entirely (avoids cluttering the dashboard for staffers who
+          never receive escalations, e.g. outreach specialists). When
+          shown, the widget is the second thing the operator sees
+          after KPIs — by design, since unresolved escalations are
+          high-priority unblockers. */}
+      {pendingEscalations.length > 0 && (
+        <EscalationsWidget
+          escalations={pendingEscalations}
+          staffFirstName={staff.displayName.split(" ")[0] ?? staff.displayName}
+        />
+      )}
 
       <TodayWidget
         digest={todayDigest}
