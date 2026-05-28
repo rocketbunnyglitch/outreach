@@ -15,6 +15,7 @@
 
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { sql } from "drizzle-orm";
 
 export interface PaletteSearchResult {
@@ -62,8 +63,32 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
   };
   type StaffRow = { id: string; display_name: string; primary_email: string };
 
+  // Per-query error logging (CLAUDE.md §12.4 fix).
+  //
+  // Previous shape ran all 4 db.execute calls inside Promise.all and
+  // surrounded the whole batch in a single catch at the action level,
+  // which collapsed individual failures into EMPTY_RESULT. That meant
+  // if e.g. the campaign UNION query broke (it did — see palette fix
+  // commit 726dc55), Cmd+K would silently return zero campaign results
+  // forever and no error would surface.
+  //
+  // The wrapper below tags each query with its source name and logs
+  // any failure individually before returning [] for that source.
+  // Other sources still succeed. Operators see partial results but
+  // engineers see the actual error in logs.
+  async function tagAndCatch<T>(name: string, run: () => Promise<unknown>): Promise<T[]> {
+    try {
+      const result = await run();
+      return Array.isArray(result) ? (result as T[]) : ((result as { rows: T[] }).rows ?? []);
+    } catch (err) {
+      logger.error({ err, source: name, query: q }, "palette-search subquery failed");
+      return [];
+    }
+  }
+
   const [venuesResult, citiesResult, campaignsResult, staffResult] = await Promise.all([
-    db.execute<VenueRow>(sql`
+    tagAndCatch<VenueRow>("venues", () =>
+      db.execute<VenueRow>(sql`
       SELECT v.id::text, v.name, c.name AS city_name, v.address
       FROM venues v
       LEFT JOIN cities c ON c.id = v.city_id
@@ -77,7 +102,9 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       ORDER BY similarity(v.name, ${q}) DESC NULLS LAST, v.name
       LIMIT 8
     `),
-    db.execute<CityRow>(sql`
+    ),
+    tagAndCatch<CityRow>("cities", () =>
+      db.execute<CityRow>(sql`
       SELECT id::text, name, region
       FROM cities
       WHERE archived_at IS NULL
@@ -85,7 +112,9 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       ORDER BY name
       LIMIT 5
     `),
-    db.execute<CampaignRow>(sql`
+    ),
+    tagAndCatch<CampaignRow>("campaigns", () =>
+      db.execute<CampaignRow>(sql`
       (
         SELECT
           cc.id::text,
@@ -116,7 +145,9 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
         LIMIT 4
       )
     `),
-    db.execute<StaffRow>(sql`
+    ),
+    tagAndCatch<StaffRow>("staff", () =>
+      db.execute<StaffRow>(sql`
       SELECT id::text, display_name, primary_email
       FROM staff_members
       WHERE archived_at IS NULL
@@ -125,31 +156,30 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       ORDER BY display_name
       LIMIT 5
     `),
+    ),
   ]);
 
-  function unwrap<T>(r: unknown): T[] {
-    return Array.isArray(r) ? (r as T[]) : ((r as { rows: T[] }).rows ?? []);
-  }
-
+  // tagAndCatch already normalizes to T[] (handles both the array
+  // shape and the { rows: T[] } shape). Direct .map below.
   return {
-    venues: unwrap<VenueRow>(venuesResult).map((v) => ({
+    venues: venuesResult.map((v) => ({
       id: v.id,
       name: v.name,
       cityName: v.city_name,
       address: v.address,
     })),
-    cities: unwrap<CityRow>(citiesResult).map((c) => ({
+    cities: citiesResult.map((c) => ({
       id: c.id,
       name: c.name,
       region: c.region,
     })),
-    campaigns: unwrap<CampaignRow>(campaignsResult).map((c) => ({
+    campaigns: campaignsResult.map((c) => ({
       id: c.id,
       name: c.name,
       brandName: c.brand_name,
       isCityCampaign: c.is_city_campaign,
     })),
-    staff: unwrap<StaffRow>(staffResult).map((s) => ({
+    staff: staffResult.map((s) => ({
       id: s.id,
       displayName: s.display_name,
       primaryEmail: s.primary_email,
