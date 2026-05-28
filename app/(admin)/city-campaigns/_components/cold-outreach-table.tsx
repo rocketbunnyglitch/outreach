@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   CalendarClock,
   Check,
+  ChevronDown,
   ClipboardPaste,
   ExternalLink,
   Loader2,
@@ -1493,23 +1494,29 @@ function StatusSelect({
 }) {
   const opt = STATUS_OPTIONS.find((o) => o.value === current);
   return (
-    <select
-      value={current}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={pending}
-      className={cn(
-        "w-full appearance-none rounded-md border border-transparent bg-transparent px-2 py-1 font-medium font-mono text-[10px] uppercase tracking-[0.08em] transition-colors",
-        "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
-        "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
-        opt?.tone,
-      )}
-    >
-      {STATUS_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <div className="group/cell relative">
+      <select
+        value={current}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={pending}
+        className={cn(
+          "w-full appearance-none rounded-md border border-transparent bg-transparent py-1 pr-5 pl-2 font-medium font-mono text-[10px] uppercase tracking-[0.08em] transition-colors",
+          "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
+          "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
+          opt?.tone,
+        )}
+      >
+        {STATUS_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1.5 h-2.5 w-2.5 text-zinc-400/60 transition-opacity duration-150 group-hover/cell:text-zinc-500 dark:text-zinc-500/60 dark:group-hover/cell:text-zinc-400"
+      />
+    </div>
   );
 }
 
@@ -1525,23 +1532,29 @@ function AssignedSelect({
   onChange: (v: string) => void;
 }) {
   return (
-    <select
-      value={current}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={pending}
-      className={cn(
-        "w-full appearance-none rounded-md border border-transparent bg-transparent px-2 py-1 text-xs transition-colors",
-        "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
-        "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
-      )}
-    >
-      <option value="">—</option>
-      {staff.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.displayName.split(" ")[0]}
-        </option>
-      ))}
-    </select>
+    <div className="group/cell relative">
+      <select
+        value={current}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={pending}
+        className={cn(
+          "w-full appearance-none rounded-md border border-transparent bg-transparent py-1 pr-5 pl-2 text-xs transition-colors",
+          "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
+          "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
+        )}
+      >
+        <option value="">—</option>
+        {staff.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.displayName.split(" ")[0]}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1.5 h-2.5 w-2.5 text-zinc-400/60 transition-opacity duration-150 group-hover/cell:text-zinc-500 dark:text-zinc-500/60 dark:group-hover/cell:text-zinc-400"
+      />
+    </div>
   );
 }
 

@@ -480,24 +480,30 @@ function PriorityCell({ row }: { row: TrackerRow }) {
   }
 
   return (
-    <select
-      value={value}
-      onChange={(e) => handleChange(e.target.value)}
-      disabled={pending}
-      aria-label="City priority (1 = highest)"
-      title="Priority — 1 is highest, 10 is lowest. Click to change."
-      className={cn(
-        "w-12 appearance-none rounded-md border border-transparent bg-transparent py-1 text-right font-mono text-xs text-zinc-600 tabular-nums transition-colors dark:text-zinc-300",
-        "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
-        pending && "opacity-50",
-      )}
-    >
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-        <option key={n} value={n}>
-          {n}
-        </option>
-      ))}
-    </select>
+    <div className="group/cell relative inline-block">
+      <select
+        value={value}
+        onChange={(e) => handleChange(e.target.value)}
+        disabled={pending}
+        aria-label="City priority (1 = highest)"
+        title="Priority — 1 is highest, 10 is lowest. Click to change."
+        className={cn(
+          "w-12 appearance-none rounded-md border border-transparent bg-transparent py-1 pr-4 text-right font-mono text-xs text-zinc-600 tabular-nums transition-colors dark:text-zinc-300",
+          "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+          pending && "opacity-50",
+        )}
+      >
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-1 h-2.5 w-2.5 text-zinc-400/60 transition-opacity duration-150 group-hover/cell:text-zinc-500 dark:text-zinc-500/60 dark:group-hover/cell:text-zinc-400"
+      />
+    </div>
   );
 }
 
@@ -714,7 +720,7 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
         disabled={pending}
         title="Click to override · pill auto-suggests from open slots"
         className={cn(
-          "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
+          "group/pill inline-flex items-center gap-1 rounded-full py-0.5 pr-1.5 pl-2.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
           "hover:scale-[1.03] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-300/40",
           STATUS_PILL_TONE[row.need.statusPill],
           pending && "opacity-50",
@@ -728,6 +734,10 @@ function StatusOverridePill({ row }: { row: TrackerRow }) {
           <Check className="h-2.5 w-2.5" />
         ) : null}
         {STATUS_PILL_LABEL[row.need.statusPill]}
+        <ChevronDown
+          aria-hidden="true"
+          className="-mr-0.5 h-2.5 w-2.5 opacity-50 transition-opacity duration-150 group-hover/pill:opacity-90"
+        />
       </button>
 
       {open &&
@@ -1017,7 +1027,7 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
         disabled={pending}
         title="Override this crawl's status"
         className={cn(
-          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
+          "group/pill inline-flex items-center gap-1 rounded-full py-0.5 pr-1 pl-2 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
           "hover:scale-[1.03] focus:outline-none focus:ring-2 focus:ring-zinc-300/40",
           currentTone,
           pending && "opacity-50",
@@ -1031,6 +1041,10 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
           <Check className="h-2.5 w-2.5" />
         ) : null}
         {EVENT_STATUS_LABEL[crawl.status] ?? crawl.status}
+        <ChevronDown
+          aria-hidden="true"
+          className="-mr-0.5 h-2.5 w-2.5 opacity-50 transition-opacity duration-150 group-hover/pill:opacity-90"
+        />
       </button>
 
       {open &&
