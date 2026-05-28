@@ -242,10 +242,10 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           className="h-8 max-w-sm text-sm"
         />
       </div>
-      <div className="overflow-x-auto" ref={gridNavRef}>
+      <div className="overflow-x-auto lg:overflow-x-visible" ref={gridNavRef}>
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
-          <thead>
-            <tr className="border-zinc-200/80 border-b bg-zinc-200/60 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
+          <thead className="sticky top-14 z-20">
+            <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-500">
               <th className="w-9 px-2 py-3" />
               <SortableTh
                 label="#"
