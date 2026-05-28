@@ -41,21 +41,38 @@ const themeInitScript = `
 (function() {
   try {
     var root = document.documentElement;
-    var pref = localStorage.getItem('theme-pref') || 'system';
+    function readPref() {
+      return localStorage.getItem('theme-pref') || 'system';
+    }
     function apply(p) {
       root.classList.remove('light', 'dark');
       if (p === 'light') root.classList.add('light');
       else if (p === 'dark') root.classList.add('dark');
       else if (window.matchMedia('(prefers-color-scheme: dark)').matches) root.classList.add('dark');
     }
-    apply(pref);
+    apply(readPref());
     var mq = window.matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', function() {
-      var current = localStorage.getItem('theme-pref') || 'system';
-      if (current === 'system') apply('system');
+      if (readPref() === 'system') apply('system');
     });
     window.addEventListener('theme-pref-change', function() {
-      apply(localStorage.getItem('theme-pref') || 'system');
+      apply(readPref());
+    });
+    // bfcache restore — when the browser shows the page from its
+    // back/forward cache, this script does NOT re-run (the DOM is
+    // restored as-is). But the persisted <html> class may have been
+    // stripped by something during navigation away (e.g. a crashed
+    // page that reset state), leaving the canvas in the wrong theme.
+    //
+    // The 'pageshow' event fires for BOTH fresh navigation
+    // (persisted=false) and bfcache restore (persisted=true). We
+    // re-apply the saved preference on every pageshow to guarantee
+    // the theme matches localStorage regardless of how we got here.
+    //
+    // Fixes the operator's "hit back after a crash and the site
+    // was in light mode instead of dark" bug (session 12).
+    window.addEventListener('pageshow', function() {
+      apply(readPref());
     });
   } catch (e) {}
 })();

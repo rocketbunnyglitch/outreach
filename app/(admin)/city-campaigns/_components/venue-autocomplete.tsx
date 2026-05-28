@@ -113,8 +113,24 @@ export function VenueAutocomplete({
     }
     debounceRef.current = setTimeout(() => {
       startSearch(async () => {
-        const result = await searchVenues({ cityId, query, limit: 8 });
-        setHits(result);
+        // try/catch hardening — without this, a transient DB error
+        // or auth redirect during searchVenues propagates as an
+        // unhandled rejection inside the React transition, which
+        // surfaces to the user as the "Application error: a
+        // client-side exception has occurred" overlay. The operator
+        // hit this in session 12 when typing a venue name and
+        // pressing Enter mid-search. Catching here keeps the
+        // autocomplete usable — search just returns no hits on
+        // error, the operator can retry.
+        try {
+          const result = await searchVenues({ cityId, query, limit: 8 });
+          setHits(result);
+        } catch (err) {
+          // Don't surface to UI — search errors should be quiet.
+          // Engineers see this in browser console + Sentry.
+          console.error("[venue-autocomplete] searchVenues failed", err);
+          setHits([]);
+        }
       });
     }, 200);
     return () => {
@@ -134,7 +150,16 @@ export function VenueAutocomplete({
   }, [open]);
 
   function handleSelect(v: VenueHit) {
-    onSelect({ id: v.id, name: v.name });
+    // Wrap the parent onSelect in try/catch — if the consumer
+    // (cold-outreach AddVenueRow, crawl-slot table, etc.) throws
+    // synchronously during its handler, that crash would propagate
+    // up the React tree and trigger the global error overlay.
+    // Catching here turns it into a quiet console.error.
+    try {
+      onSelect({ id: v.id, name: v.name });
+    } catch (err) {
+      console.error("[venue-autocomplete] onSelect threw", err);
+    }
     setOpen(false);
     setQuery("");
     setMapsError(null);
@@ -146,11 +171,24 @@ export function VenueAutocomplete({
     fd.set("name", query.trim());
     fd.set("cityId", cityId);
     startCreate(async () => {
-      const result = await quickCreateVenue(null, fd);
-      if (result.ok && result.data) {
-        onSelect({ id: result.data.venueId, name: query.trim() });
-        setOpen(false);
-        setQuery("");
+      try {
+        const result = await quickCreateVenue(null, fd);
+        if (result.ok && result.data) {
+          try {
+            onSelect({ id: result.data.venueId, name: query.trim() });
+          } catch (err) {
+            console.error("[venue-autocomplete] onSelect threw after create", err);
+          }
+          setOpen(false);
+          setQuery("");
+        } else if (!result.ok) {
+          // Surface the error inline (re-uses mapsError as the
+          // user-facing error slot — it shows under the input).
+          setMapsError(result.error ?? "Couldn't create venue.");
+        }
+      } catch (err) {
+        console.error("[venue-autocomplete] quickCreateVenue failed", err);
+        setMapsError("Couldn't create venue — try again.");
       }
     });
   }
@@ -162,19 +200,28 @@ export function VenueAutocomplete({
     fd.set("url", query.trim());
     fd.set("cityId", cityId);
     startMaps(async () => {
-      const result = await createVenueFromMapsUrl(null, fd);
-      if (result.ok && result.data) {
-        if (result.data.notConfigured) {
-          setMapsError(
-            "Maps autopopulate not configured — set GOOGLE_MAPS_API_KEY on the server, or paste the venue name instead to quick-create.",
-          );
-          return;
+      try {
+        const result = await createVenueFromMapsUrl(null, fd);
+        if (result.ok && result.data) {
+          if (result.data.notConfigured) {
+            setMapsError(
+              "Maps autopopulate not configured — set GOOGLE_MAPS_API_KEY on the server, or paste the venue name instead to quick-create.",
+            );
+            return;
+          }
+          try {
+            onSelect({ id: result.data.venueId, name: result.data.venueName });
+          } catch (err) {
+            console.error("[venue-autocomplete] onSelect threw after maps create", err);
+          }
+          setOpen(false);
+          setQuery("");
+        } else if (!result.ok) {
+          setMapsError(result.error ?? "Couldn't resolve Maps URL.");
         }
-        onSelect({ id: result.data.venueId, name: result.data.venueName });
-        setOpen(false);
-        setQuery("");
-      } else if (!result.ok) {
-        setMapsError(result.error ?? "Couldn't resolve Maps URL.");
+      } catch (err) {
+        console.error("[venue-autocomplete] createVenueFromMapsUrl failed", err);
+        setMapsError("Couldn't resolve Maps URL — try again.");
       }
     });
   }
