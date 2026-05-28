@@ -99,6 +99,9 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
             externalHostId: crawlHosts.externalHostId,
             internalName: internalHosts.name,
             externalName: externalHosts.fullName,
+            internalHostName: crawlHosts.internalHostName,
+            internalHostHours: crawlHosts.internalHostHours,
+            internalHostRateCents: crawlHosts.internalHostRateCents,
           })
           .from(crawlHosts)
           .leftJoin(internalHosts, eq(internalHosts.id, crawlHosts.internalHostId))
@@ -110,12 +113,21 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
   const hostsByEvent = new Map<string, CrawlHostRef[]>();
   for (const h of hostRows) {
     const isInternal = h.hostType === "internal";
+    const externalPending = !isInternal && !h.externalHostId;
     const arr = hostsByEvent.get(h.eventId) ?? [];
+    const name = isInternal
+      ? (h.internalName ?? h.internalHostName ?? "(internal host)")
+      : (h.externalName ?? (externalPending ? "Unassigned" : "(removed host)"));
     arr.push({
       id: h.id,
       hostId: (isInternal ? h.internalHostId : h.externalHostId) ?? "",
-      name: (isInternal ? h.internalName : h.externalName) ?? "(removed host)",
+      name,
       type: h.hostType as "internal" | "external",
+      slot: h.slot,
+      internalHostName: h.internalHostName,
+      internalHostHours: h.internalHostHours,
+      internalHostRateCents: h.internalHostRateCents,
+      externalPending,
     });
     hostsByEvent.set(h.eventId, arr);
   }

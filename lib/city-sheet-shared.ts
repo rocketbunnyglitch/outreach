@@ -56,6 +56,14 @@ export interface CrawlHostRef {
   hostId: string;
   name: string;
   type: "internal" | "external";
+  /** 1 or 2. Slot 1 is the wristband slot (host-type selector lives there). */
+  slot: number;
+  /** Per-crawl internal-host capture (host_type='internal'). */
+  internalHostName: string | null;
+  internalHostHours: string | null;
+  internalHostRateCents: number | null;
+  /** True when host_type='external' but no external host assigned yet. */
+  externalPending: boolean;
 }
 
 export interface CrawlCard {

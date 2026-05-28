@@ -142,3 +142,129 @@ export async function removeCrawlHost(
     return { ok: false, error: "Couldn't remove the host." };
   }
 }
+
+const slot1Schema = z.object({
+  eventId: uuid,
+  cityCampaignId: uuid,
+  hostType: z.enum(["none", "internal", "external"]),
+});
+
+/**
+ * Set the slot-1 (wristband slot) host TYPE for a crawl:
+ *   none     -> remove the slot-1 host row
+ *   internal -> an internal host whose name/hours are captured inline here
+ *   external -> routed to /external-hosts for assignment (external_host_id null)
+ * Switching type clears the fields that belong to the other type.
+ */
+export async function setSlot1HostType(
+  input: z.infer<typeof slot1Schema>,
+): Promise<ActionResult<{ id: string | null }>> {
+  const { staff } = await requireStaff();
+  const parsed = slot1Schema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  const { eventId, cityCampaignId, hostType } = parsed.data;
+
+  try {
+    const id = await withAuditContext(staff.id, async (tx) => {
+      const existing = await tx
+        .select({ id: crawlHosts.id })
+        .from(crawlHosts)
+        .where(and(eq(crawlHosts.eventId, eventId), eq(crawlHosts.slot, 1)))
+        .limit(1)
+        .then((r) => r[0]);
+
+      if (hostType === "none") {
+        if (existing) await tx.delete(crawlHosts).where(eq(crawlHosts.id, existing.id));
+        return null;
+      }
+
+      if (existing) {
+        await tx
+          .update(crawlHosts)
+          .set({
+            hostType,
+            externalHostId: null,
+            ...(hostType === "external"
+              ? {
+                  internalHostId: null,
+                  internalHostName: null,
+                  internalHostHours: null,
+                  internalHostRateCents: null,
+                }
+              : {}),
+            updatedBy: staff.id,
+          })
+          .where(eq(crawlHosts.id, existing.id));
+        return existing.id;
+      }
+
+      const [row] = await tx
+        .insert(crawlHosts)
+        .values({
+          eventId,
+          hostType,
+          slot: 1,
+          internalHostId: null,
+          externalHostId: null,
+          createdBy: staff.id,
+          updatedBy: staff.id,
+        })
+        .returning({ id: crawlHosts.id });
+      return row?.id ?? null;
+    });
+
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { id } };
+  } catch (err) {
+    logger.error({ err, eventId }, "setSlot1HostType failed");
+    return { ok: false, error: "Couldn't update the host." };
+  }
+}
+
+const captureSchema = z.object({
+  crawlHostId: uuid,
+  cityCampaignId: uuid,
+  name: z.string().trim().max(120),
+  hours: z
+    .string()
+    .trim()
+    .max(12)
+    .refine((v) => v === "" || !Number.isNaN(Number(v)), "Hours must be a number"),
+  rate: z
+    .string()
+    .trim()
+    .max(12)
+    .refine((v) => v === "" || !Number.isNaN(Number(v)), "Rate must be a number"),
+});
+
+/**
+ * Save the inline internal-host capture (name + hours + hourly rate) on a
+ * slot-1 internal crawl_hosts row. Rate is entered in dollars, stored as cents.
+ */
+export async function updateInternalHostCapture(
+  input: z.infer<typeof captureSchema>,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = captureSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid." };
+  const { crawlHostId, cityCampaignId, name, hours, rate } = parsed.data;
+
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(crawlHosts)
+        .set({
+          internalHostName: name || null,
+          internalHostHours: hours === "" ? null : hours,
+          internalHostRateCents: rate === "" ? null : Math.round(Number(rate) * 100),
+          updatedBy: staff.id,
+        })
+        .where(eq(crawlHosts.id, crawlHostId)),
+    );
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { id: crawlHostId } };
+  } catch (err) {
+    logger.error({ err, crawlHostId }, "updateInternalHostCapture failed");
+    return { ok: false, error: "Couldn't save host details." };
+  }
+}
