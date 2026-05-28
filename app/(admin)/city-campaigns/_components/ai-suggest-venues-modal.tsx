@@ -15,6 +15,9 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onAdded: () => void;
+  /** Browser-restricted Maps key for the static overview map. Optional —
+   *  without it, the overview map just hides. */
+  googleMapsApiKey?: string;
 }
 
 type LoadState =
@@ -52,7 +55,13 @@ const SLOT_OPTIONS: Array<{ value: "any" | "wristband" | "middle" | "final"; lab
  * Selectors stay independent — adding venue A doesn't block adding
  * venue B; each card has its own pending state.
  */
-export function AiSuggestVenuesModal({ cityCampaignId, open, onClose, onAdded }: Props) {
+export function AiSuggestVenuesModal({
+  cityCampaignId,
+  open,
+  onClose,
+  onAdded,
+  googleMapsApiKey,
+}: Props) {
   const [slot, setSlot] = useState<"any" | "wristband" | "middle" | "final">("any");
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [pending, startTx] = useTransition();
@@ -241,6 +250,9 @@ export function AiSuggestVenuesModal({ cityCampaignId, open, onClose, onAdded }:
                   Claude reasoning.
                 </li>
               )}
+              {googleMapsApiKey && (
+                <SuggestionsOverviewMap apiKey={googleMapsApiKey} suggestions={state.suggestions} />
+              )}
               {state.suggestions.map((s, idx) => (
                 <SuggestionCard
                   key={s.googlePlaceId}
@@ -383,6 +395,49 @@ function SuggestionCard({
           </a>
         </div>
       </div>
+    </li>
+  );
+}
+
+/**
+ * Overview map for the suggestion list. Renders a Google Static Maps image
+ * with one numbered red pin per suggestion that has coordinates — gives the
+ * operator a quick "lay of the land" view at the top of the panel without
+ * the cost (or complexity) of a full interactive map. The numbers match
+ * each card's rank, so glancing at the map and reading the list compose.
+ *
+ * Static Maps API uses the same browser-restricted key the rest of the app
+ * uses; one image, no JS, no extra map quota beyond the static-maps call.
+ */
+function SuggestionsOverviewMap({
+  apiKey,
+  suggestions,
+}: {
+  apiKey: string;
+  suggestions: VenueSuggestion[];
+}) {
+  const withCoords = suggestions
+    .map((s, i) => ({ rank: i + 1, lat: s.lat, lng: s.lng }))
+    .filter((p): p is { rank: number; lat: number; lng: number } => p.lat != null && p.lng != null);
+  if (withCoords.length === 0) return null;
+
+  // Static Maps URL: one marker per suggestion, numbered, red.
+  const markers = withCoords
+    .map((p) => `markers=color:red%7Clabel:${p.rank}%7C${p.lat},${p.lng}`)
+    .join("&");
+  const url = `https://maps.googleapis.com/maps/api/staticmap?size=600x260&scale=2&maptype=roadmap&${markers}&key=${apiKey}`;
+
+  return (
+    <li className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50/40 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <img
+        src={url}
+        alt={`Overview map of ${withCoords.length} suggested venues`}
+        className="block h-auto w-full"
+        loading="lazy"
+      />
+      <p className="px-3 py-1.5 font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]">
+        Pin numbers match the rank in the list below
+      </p>
     </li>
   );
 }

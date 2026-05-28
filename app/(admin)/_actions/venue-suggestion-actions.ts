@@ -45,6 +45,9 @@ export interface VenueSuggestion {
   reasoning: string;
   /** Claude's confidence — used to lightly visualize fit in the UI. */
   fitScore: number;
+  /** Coordinates from the source Places call — for the modal's overview map. */
+  lat: number | null;
+  lng: number | null;
 }
 
 interface SuggestResponseOk {
@@ -221,6 +224,8 @@ export async function suggestVenuesForCampaign(
         types: place.types,
         reasoning: r.reasoning,
         fitScore: r.fitScore,
+        lat: place.location?.lat ?? null,
+        lng: place.location?.lng ?? null,
       };
     })
     .filter((s): s is VenueSuggestion => s !== null);

@@ -128,6 +128,9 @@ interface Props {
     role: string;
     primaryEmail: string;
   }>;
+  /** Browser-restricted Maps key — passed through to AiSuggestVenuesModal so
+   *  its overview map can render. Optional; if absent the map just hides. */
+  googleMapsApiKey?: string;
 }
 
 const STATUS_OPTIONS: Array<{ value: string; label: string; tone: string }> = [
@@ -188,6 +191,7 @@ export function ColdOutreachTable({
   staff,
   currentStaffId,
   escalationTargets,
+  googleMapsApiKey,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -762,6 +766,7 @@ export function ColdOutreachTable({
         open={suggestOpen}
         onClose={() => setSuggestOpen(false)}
         onAdded={() => router.refresh()}
+        googleMapsApiKey={googleMapsApiKey}
       />
 
       <BulkPasteModal

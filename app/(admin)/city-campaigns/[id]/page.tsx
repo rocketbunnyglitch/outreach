@@ -244,6 +244,9 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         staff={sheetData?.staff ?? []}
         currentStaffId={currentStaff.id}
         escalationTargets={escalationTargets}
+        googleMapsApiKey={
+          process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
+        }
       />
 
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}
