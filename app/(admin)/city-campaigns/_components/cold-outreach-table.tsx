@@ -53,7 +53,7 @@ import { FindEmailButton } from "./find-email-button";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
-type SortKey = "venue" | "email" | "status" | "assignee" | "zb" | "lastTouch";
+type SortKey = "venue" | "email" | "status" | "assignee" | "zb" | "lastTouch" | "callWindow";
 
 interface ColdEntry {
   entryId: string;
@@ -265,6 +265,35 @@ export function ColdOutreachTable({
 
   // Compute the displayed entry list: filter → sort
   const displayed = useMemo(() => {
+    // Pre-compute call-window suggestion per row when the operator
+    // sorts by it. Doing this once per row (rather than inside the
+    // comparator, which would parse hours O(n log n) times) keeps the
+    // sort cheap on large lists. Map is by entryId so we don't pay
+    // the cost when the sort key is something else.
+    const now = new Date();
+    const callWindowToneByEntry = new Map<string, number>();
+    if (sortKey === "callWindow") {
+      // Tone → priority. Lower = higher priority (floats to top in asc).
+      const tonePriority: Record<string, number> = {
+        now: 0,
+        ok: 1,
+        later: 2,
+        unknown: 3,
+      };
+      for (const e of entries) {
+        if (!e.venueHours && (!e.venueType || e.venueType.length === 0)) {
+          callWindowToneByEntry.set(e.entryId, 99);
+          continue;
+        }
+        const parsed = parseVenueHours(e.venueHours);
+        const suggestion = suggestCallWindow(parsed, now, e.venueType, e.venueTimezone);
+        callWindowToneByEntry.set(
+          e.entryId,
+          suggestion ? (tonePriority[suggestion.tone] ?? 99) : 99,
+        );
+      }
+    }
+
     const filtered = entries.filter((e) => {
       // Hide-unreachable rule. Skipped when the operator explicitly
       // selected status='unreachable' (they want to see those rows)
@@ -324,6 +353,16 @@ export function ColdOutreachTable({
           const aT = a.lastTouchAt ? new Date(a.lastTouchAt).getTime() : 0;
           const bT = b.lastTouchAt ? new Date(b.lastTouchAt).getTime() : 0;
           cmp = aT - bT;
+          break;
+        }
+        case "callWindow": {
+          // 'now' rows first (priority 0), then 'ok' (pre-open),
+          // 'later' (closed today), 'unknown', then everything else.
+          // Asc puts "call them right now" at the top — the operator's
+          // most-actionable rows.
+          const aPri = callWindowToneByEntry.get(a.entryId) ?? 99;
+          const bPri = callWindowToneByEntry.get(b.entryId) ?? 99;
+          cmp = aPri - bPri;
           break;
         }
       }
@@ -536,7 +575,14 @@ export function ColdOutreachTable({
                 onClick={() => toggleSort("zb")}
                 width="w-24 px-2"
               />
-              <th className="w-32 px-2 py-2.5">Phone</th>
+              <SortableTh
+                label="Phone"
+                col="callWindow"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("callWindow")}
+                width="w-32 px-2"
+              />
               <SortableTh
                 label="Status"
                 col="status"
