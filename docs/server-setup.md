@@ -290,7 +290,54 @@ pm2 startup systemd -u root --hp /root
 # (run any sudo command the above prints, if any)
 ```
 
-## 12. Verify
+### 11b. WebSocket presence sidecar (live cursors + avatars)
+
+The presence layer ("feels like Google Sheets") runs as a SECOND PM2
+process — `realtime/ws-server.mjs` on port 3002 (127.0.0.1) — proxied by
+nginx at `/ws`. It reuses `NEXTAUTH_SECRET` to authenticate sockets; no
+new env var is required (optional: `WS_PORT`).
+
+1) nginx — add this `location` ABOVE `location /` in the 443 server
+   block (the global config already sets the Upgrade headers; the long
+   timeouts here are REQUIRED so idle sockets aren't dropped at 120s):
+
+```nginx
+location /ws {
+    proxy_pass http://127.0.0.1:3002;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+Then `nginx -t && systemctl reload nginx`.
+
+2) PM2 — add a second app to `ecosystem.config.cjs` (leave "outreach"
+   untouched):
+
+```js
+{
+  name: "outreach-ws",
+  script: "realtime/ws-server.mjs",
+  cwd: "/var/www/outreach",
+  instances: 1,
+  exec_mode: "fork",
+  max_memory_restart: "300M",
+  env: { NODE_ENV: "production", WS_PORT: "3002" },
+  env_file: ".env",
+  error_file: "/var/log/outreach-ws-error.log",
+  out_file: "/var/log/outreach-ws-out.log",
+  time: true,
+}
+```
+Then `pm2 start ecosystem.config.cjs --only outreach-ws && pm2 save`.
+
+Once registered, `deploy.sh` reloads `outreach-ws` automatically on every
+deploy (it skips silently if the app isn't registered yet).
+
+
 
 ```bash
 sleep 5

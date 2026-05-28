@@ -192,6 +192,18 @@ fi
 # === Step 5: Reload PM2 ===
 log "reloading PM2 process (zero-downtime)..."
 pm2 reload "$PM2_NAME" --update-env 2>&1 | tail -5 | tee -a "$LOG_FILE"
+
+# Reload the WebSocket presence sidecar IF it's registered. It's a
+# separate PM2 app ("outreach-ws", realtime/ws-server.mjs) wired up
+# once on the box (nginx /ws + ecosystem entry). If it isn't registered
+# yet, skip silently — the main deploy must not fail on its absence.
+if pm2 describe outreach-ws >/dev/null 2>&1; then
+  log "reloading PM2 process: outreach-ws..."
+  pm2 reload outreach-ws --update-env 2>&1 | tail -5 | tee -a "$LOG_FILE"
+else
+  log "outreach-ws not registered yet — skipping (set it up per docs/server-setup.md)"
+fi
+
 pm2 save 2>&1 | tail -2 | tee -a "$LOG_FILE"
 
 # === Step 6: Health check ===

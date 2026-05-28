@@ -22,6 +22,7 @@ import { CityTime } from "../_components/CityTime";
 import { CityVenueMap } from "../_components/CityVenueMap";
 import { AddCrawlRow } from "../_components/add-crawl-row";
 import { CityCampaignForm } from "../_components/city-campaign-form";
+import { CityPresence } from "../_components/city-presence";
 import { CitySheetHeader } from "../_components/city-sheet-header";
 import { ColdOutreachTable } from "../_components/cold-outreach-table";
 import { CrawlSlotTable } from "../_components/crawl-slot-table";
@@ -173,14 +174,21 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       {/* Crawls grouped by day */}
       {sheetData && sheetData.crawls.length > 0 ? (
         <section className="flex flex-col gap-5">
-          <header>
-            <h2 className="font-semibold text-2xl tracking-tight">Crawls</h2>
-            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-              {sheetData.crawls.length} crawl{sheetData.crawls.length === 1 ? "" : "s"} across{" "}
-              {Array.from(new Set(sheetData.crawls.map((c) => c.dayPart))).length} day
-              {Array.from(new Set(sheetData.crawls.map((c) => c.dayPart))).length === 1 ? "" : "s"}{" "}
-              · default 4 slots per crawl (Wristband, Middle 1, Middle 2, Final)
-            </p>
+          <header className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-semibold text-2xl tracking-tight">Crawls</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                {sheetData.crawls.length} crawl{sheetData.crawls.length === 1 ? "" : "s"} across{" "}
+                {Array.from(new Set(sheetData.crawls.map((c) => c.dayPart))).length} day
+                {Array.from(new Set(sheetData.crawls.map((c) => c.dayPart))).length === 1
+                  ? ""
+                  : "s"}{" "}
+                · default 4 slots per crawl (Wristband, Middle 1, Middle 2, Final)
+              </p>
+            </div>
+            {/* Live presence — avatar stack here, cursor overlay is fixed.
+                Dormant until the /ws sidecar is live. */}
+            <CityPresence cityCampaignId={id} viewerName={currentStaff.displayName} />
           </header>
           {sheetData.crawls.map((crawl) => (
             <CrawlSlotTable

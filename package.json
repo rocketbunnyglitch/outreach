@@ -53,6 +53,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.4",
+    "ws": "^8.21.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -64,6 +65,7 @@
     "@types/pg": "^8.11.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.28.0",
     "husky": "^9.1.0",
     "postcss": "^8.4.0",
