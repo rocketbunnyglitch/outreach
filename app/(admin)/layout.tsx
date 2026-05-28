@@ -3,6 +3,7 @@ import { StaleDataIndicator } from "@/components/ui/stale-data-indicator";
 import { ToastProvider } from "@/components/ui/toast";
 import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
+import { getCurrentCampaign } from "@/lib/current-campaign";
 import { getStaffSendCapStatus } from "@/lib/send-cap-status";
 import { ShieldAlert } from "lucide-react";
 import Image from "next/image";
@@ -44,6 +45,10 @@ export default async function AdminLayout({
   // Fetch send cap status server-side so the pill renders at SSR time
   // and stays in sync with the throttle. Cheap query (~5ms typical).
   const sendCap = await getStaffSendCapStatus(staff.id);
+  // Used to default the Admin nav group to collapsed when a campaign
+  // is scoped — admin views are usually irrelevant per-campaign.
+  const currentCampaign = await getCurrentCampaign();
+  const hasCurrentCampaign = !!currentCampaign;
 
   return (
     <ToastProvider>
@@ -58,7 +63,7 @@ export default async function AdminLayout({
               (operator session 11). */}
           <MobileSectionNav isAdmin={staff.role === "admin"} />
           <div className="flex flex-1">
-            <SideNav isAdmin={staff.role === "admin"} />
+            <SideNav isAdmin={staff.role === "admin"} hasCurrentCampaign={hasCurrentCampaign} />
             <main className="min-w-0 flex-1 px-6 py-10 sm:px-10 sm:py-14">{children}</main>
           </div>
           <GlobalShortcuts />

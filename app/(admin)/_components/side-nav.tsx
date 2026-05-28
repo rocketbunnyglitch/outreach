@@ -35,6 +35,7 @@ import {
   Building2,
   Calendar,
   CheckSquare,
+  ChevronDown,
   Clock,
   Compass,
   FileCode,
@@ -54,7 +55,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 interface NavItem {
   href: string;
@@ -129,7 +130,16 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
   ],
 };
 
-export function SideNav({ isAdmin }: { isAdmin: boolean }) {
+export function SideNav({
+  isAdmin,
+  hasCurrentCampaign,
+}: {
+  isAdmin: boolean;
+  /** True when a specific campaign is scoped (not "all"). Used to default
+   *  the Admin nav group to collapsed — when you're inside a campaign,
+   *  admin views are usually noise. */
+  hasCurrentCampaign: boolean;
+}) {
   const pathname = usePathname();
   const sections = isAdmin ? [...SECTIONS, ADMIN_SECTION] : SECTIONS;
 
@@ -138,6 +148,35 @@ export function SideNav({ isAdmin }: { isAdmin: boolean }) {
   function isActive(href: string): boolean {
     if (href === "/") return pathname === "/";
     return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  // Admin section collapse state. Default: collapsed when a campaign is
+  // scoped (else expanded). Once the user clicks, persist their choice in
+  // localStorage so we don't fight them on every nav.
+  const [adminExpanded, setAdminExpanded] = useState<boolean>(!hasCurrentCampaign);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("sidenav.adminExpanded");
+      if (stored === "1") setAdminExpanded(true);
+      else if (stored === "0") setAdminExpanded(false);
+      // No stored value → keep the default from hasCurrentCampaign.
+    } catch {
+      /* ignore — storage may be unavailable */
+    }
+  }, []);
+  // If the user is currently ON an admin route, force-expand so the active
+  // item is reachable; the chevron still toggles the persisted state.
+  const onAdminRoute = ADMIN_SECTION.items.some((i) => isActive(i.href));
+  const effectiveAdminExpanded = onAdminRoute || adminExpanded;
+
+  function toggleAdmin() {
+    const next = !adminExpanded;
+    setAdminExpanded(next);
+    try {
+      window.localStorage.setItem("sidenav.adminExpanded", next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
@@ -156,43 +195,66 @@ export function SideNav({ isAdmin }: { isAdmin: boolean }) {
       aria-label="Primary navigation"
     >
       <nav className="flex flex-col gap-5 px-3 py-5">
-        {sections.map((section) => (
-          <div key={section.label} className="flex flex-col gap-1">
-            <p className="px-2 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.16em] dark:text-zinc-600">
-              {section.label}
-            </p>
-            <ul className="flex flex-col gap-0.5">
-              {section.items.map((item) => {
-                const active = isActive(item.href);
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors",
-                        active
-                          ? "bg-zinc-900 font-medium text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-700 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "shrink-0",
-                          active
-                            ? "text-zinc-50 dark:text-zinc-900"
-                            : "text-zinc-400 dark:text-zinc-600",
-                        )}
-                      >
-                        {item.icon}
-                      </span>
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+        {sections.map((section) => {
+          const collapsible = section.label === "Admin";
+          const expanded = collapsible ? effectiveAdminExpanded : true;
+          return (
+            <div key={section.label} className="flex flex-col gap-1">
+              {collapsible ? (
+                <button
+                  type="button"
+                  onClick={toggleAdmin}
+                  aria-expanded={expanded}
+                  className="flex items-center justify-between gap-1 rounded px-2 py-0.5 text-left font-mono text-[9px] text-zinc-400 uppercase tracking-[0.16em] hover:bg-zinc-200/40 hover:text-zinc-600 dark:text-zinc-600 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-400"
+                >
+                  <span>{section.label}</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-3 w-3 transition-transform duration-150",
+                      !expanded && "-rotate-90",
+                    )}
+                  />
+                </button>
+              ) : (
+                <p className="px-2 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.16em] dark:text-zinc-600">
+                  {section.label}
+                </p>
+              )}
+              {expanded && (
+                <ul className="flex flex-col gap-0.5">
+                  {section.items.map((item) => {
+                    const active = isActive(item.href);
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors",
+                            active
+                              ? "bg-zinc-900 font-medium text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                              : "text-zinc-700 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "shrink-0",
+                              active
+                                ? "text-zinc-50 dark:text-zinc-900"
+                                : "text-zinc-400 dark:text-zinc-600",
+                            )}
+                          >
+                            {item.icon}
+                          </span>
+                          {item.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          );
+        })}
       </nav>
     </aside>
   );
