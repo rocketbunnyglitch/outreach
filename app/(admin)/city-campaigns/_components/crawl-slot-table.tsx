@@ -22,7 +22,6 @@ import {
 } from "../_host-actions";
 import { addCrawlNote, deleteCrawlNote, loadCrawlNotes } from "../_note-actions";
 import {
-  addExtraSlot,
   assignSlotVenue,
   clearSlot,
   deleteCrawl,
@@ -652,7 +651,9 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   const [extraSlots, setExtraSlots] = useState<
     Array<{ role: "middle" | "alt_final"; slotPosition: number }>
   >([]);
-  const [adding, startAdd] = useTransition();
+  // Used for the server round-trip when deleting a slot that already has
+  // a persisted venue_event. Adds are now purely local (no server call).
+  const [, startSlotMutation] = useTransition();
 
   // Merge real slots with extras (UI placeholders for newly-added rows),
   // then sort by canonical role order so a just-added Middle 3 lands
@@ -669,16 +670,36 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   );
 
   function handleAddSlot(role: "middle" | "alt_final") {
-    const fd = new FormData();
-    fd.set("eventId", crawl.eventId);
-    fd.set("role", role);
-    fd.set("cityCampaignId", cityCampaignId);
-    startAdd(async () => {
-      const result = await addExtraSlot(null, fd);
-      if (result.ok && result.data) {
-        setExtraSlots((s) => [...s, { role, slotPosition: result.data.slotPosition }]);
-      }
-    });
+    // Numbering must be derived on the client: extra slots are UI-only
+    // placeholders that aren't persisted until a venue is assigned, so a
+    // server-side max(slot_position) query can't see them and returned the
+    // same position on every add — the "Alt Final 1" duplicate bug
+    // (session-13). The merged slot list here is the source of truth.
+    // Middles 1 & 2 are implicit defaults so extra middles start at 3;
+    // alt-finals start at 1.
+    const baseMin = role === "middle" ? 3 : 1;
+    const maxForRole = [...crawl.slots, ...extraSlots]
+      .filter((s) => s.role === role)
+      .reduce((max, s) => Math.max(max, s.slotPosition), 0);
+    const nextPosition = Math.max(maxForRole + 1, baseMin);
+    setExtraSlots((s) => [...s, { role, slotPosition: nextPosition }]);
+  }
+
+  function handleDeleteSlot(slot: SlotRow) {
+    // Drop the local placeholder for this (role, position)...
+    setExtraSlots((s) =>
+      s.filter((e) => !(e.role === slot.role && e.slotPosition === slot.slotPosition)),
+    );
+    // ...and if a venue was already persisted into the slot, delete that
+    // venue_event so the row doesn't reappear from the server on refresh.
+    if (slot.venueEventId) {
+      const fd = new FormData();
+      fd.set("venueEventId", slot.venueEventId);
+      fd.set("cityCampaignId", cityCampaignId);
+      startSlotMutation(async () => {
+        await clearSlot(null, fd);
+      });
+    }
   }
 
   return (
@@ -785,6 +806,7 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
                 staff={staff}
                 zebra={i % 2 === 1}
                 layout="table"
+                onDelete={() => handleDeleteSlot(slot)}
               />
             ))}
           </tbody>
@@ -803,6 +825,7 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
               staff={staff}
               zebra={false}
               layout="card"
+              onDelete={() => handleDeleteSlot(slot)}
             />
           </li>
         ))}
@@ -813,7 +836,6 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         <button
           type="button"
           onClick={() => handleAddSlot("middle")}
-          disabled={adding}
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.1em] transition-colors hover:bg-orange-500/[0.08] hover:text-orange-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-orange-300"
         >
           <Plus className="h-3 w-3" />
@@ -822,7 +844,6 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         <button
           type="button"
           onClick={() => handleAddSlot("alt_final")}
-          disabled={adding}
           className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.1em] transition-colors hover:bg-red-500/[0.08] hover:text-red-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-red-300"
         >
           <Plus className="h-3 w-3" />
@@ -841,6 +862,7 @@ function SlotTableRow({
   staff,
   zebra,
   layout,
+  onDelete,
 }: {
   slot: SlotRow;
   crawl: CrawlCard;
@@ -849,6 +871,8 @@ function SlotTableRow({
   staff: Array<{ id: string; displayName: string }>;
   zebra: boolean;
   layout: "table" | "card";
+  /** Remove this slot entirely (extra middles / alt-finals only). */
+  onDelete: () => void;
 }) {
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -895,6 +919,23 @@ function SlotTableRow({
       ? `${ROLE_LABEL[slot.role]} ${slot.slotPosition}`
       : ROLE_LABEL[slot.role];
 
+  // Only operator-added slots can be deleted: alt-finals (any position)
+  // and middles beyond the two defaults (position >= 3). Wristband, the
+  // two default middles, and the final are fixed parts of every crawl.
+  const canDelete = slot.role === "alt_final" || (slot.role === "middle" && slot.slotPosition >= 3);
+
+  function handleDelete() {
+    if (
+      slot.venueEventId &&
+      !confirm(
+        `Delete ${slotLabel}${slot.venueName ? ` (${slot.venueName})` : ""}? This removes the slot.`,
+      )
+    ) {
+      return;
+    }
+    onDelete();
+  }
+
   // ---------------------------------------------------------------
   // Card layout (mobile)
   // ---------------------------------------------------------------
@@ -919,16 +960,28 @@ function SlotTableRow({
           </span>
           <div className="flex items-center gap-2">
             <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
-            {slot.venueEventId && (
+            {canDelete ? (
               <button
                 type="button"
-                onClick={clearVenue}
+                onClick={handleDelete}
                 className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
-                aria-label="Clear slot"
+                aria-label="Delete slot"
                 disabled={pending}
               >
                 <Trash2 className="h-3 w-3" />
               </button>
+            ) : (
+              slot.venueEventId && (
+                <button
+                  type="button"
+                  onClick={clearVenue}
+                  className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+                  aria-label="Clear slot"
+                  disabled={pending}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )
             )}
           </div>
         </div>
@@ -1129,18 +1182,30 @@ function SlotTableRow({
           <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
         </td>
 
-        {/* Clear */}
+        {/* Clear / delete */}
         <td className="px-1 py-2 align-middle">
-          {slot.venueEventId && (
+          {canDelete ? (
             <button
               type="button"
-              onClick={clearVenue}
+              onClick={handleDelete}
               className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
-              aria-label="Clear slot"
+              aria-label="Delete slot"
               disabled={pending}
             >
               <Trash2 className="h-3 w-3" />
             </button>
+          ) : (
+            slot.venueEventId && (
+              <button
+                type="button"
+                onClick={clearVenue}
+                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+                aria-label="Clear slot"
+                disabled={pending}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )
           )}
         </td>
       </tr>
