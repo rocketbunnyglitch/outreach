@@ -26,6 +26,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   reassignCityCampaign,
+  updateCityCampaignPriority,
   updateCityCampaignStatus,
   updateDashboardNote,
   updateEventStatus,
@@ -53,7 +54,7 @@ interface Props {
   staff: StaffOption[];
 }
 
-type SortKey = "priority" | "city" | "status" | "need" | "assign" | "notes";
+type SortKey = "priority" | "city" | "status" | "need" | "sales" | "assign" | "notes";
 
 const STATUS_PILL_RANK: Record<CityStatusPill, number> = {
   outreach: 0,
@@ -81,6 +82,8 @@ function compareRows(
       return STATUS_PILL_RANK[a.need.statusPill] - STATUS_PILL_RANK[b.need.statusPill];
     case "need":
       return a.need.openSlotCount - b.need.openSlotCount;
+    case "sales":
+      return a.totalSalesCents - b.totalSalesCents;
     case "assign": {
       const an = a.leadStaffId ? (staffNameById.get(a.leadStaffId) ?? "") : "";
       const bn = b.leadStaffId ? (staffNameById.get(b.leadStaffId) ?? "") : "";
@@ -160,6 +163,7 @@ function SortableTh({
  */
 export function TrackerDashboardTable({ rows, staff }: Props) {
   const [query, setQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<"top" | "all">("top");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "priority",
     dir: "asc",
@@ -177,8 +181,9 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
 
   const visibleRows = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const base = priorityFilter === "top" ? rows.filter((r) => r.priority <= 4) : rows;
     const filtered = q
-      ? rows.filter((r) => {
+      ? base.filter((r) => {
           const assignee = r.leadStaffId ? (staffNameById.get(r.leadStaffId) ?? "") : "";
           return (
             r.cityName.toLowerCase().includes(q) ||
@@ -187,14 +192,36 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
             (r.dashboardNote ?? "").toLowerCase().includes(q)
           );
         })
-      : rows;
+      : base;
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => compareRows(a, b, sort.key, staffNameById) * dir);
-  }, [rows, query, sort, staffNameById]);
+  }, [rows, query, sort, staffNameById, priorityFilter]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
-      <div className="border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
+      <div className="flex flex-wrap items-center gap-2 border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
+        <div className="flex items-center gap-1">
+          {(
+            [
+              { key: "top", label: "Priority 1-4" },
+              { key: "all", label: "Show all" },
+            ] as const
+          ).map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => setPriorityFilter(chip.key)}
+              className={cn(
+                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset transition-colors",
+                priorityFilter === chip.key
+                  ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+                  : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+              )}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -219,6 +246,14 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
               <SortableTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
               <SortableTh label="Need" sortKey="need" sort={sort} onSort={toggleSort} />
               <SortableTh
+                label="Sales"
+                sortKey="sales"
+                sort={sort}
+                onSort={toggleSort}
+                align="right"
+                className="w-24"
+              />
+              <SortableTh
                 label="Assign"
                 sortKey="assign"
                 sort={sort}
@@ -231,7 +266,7 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-16 text-center">
+                <td colSpan={8} className="px-4 py-16 text-center">
                   <div className="mx-auto max-w-sm">
                     <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
                       No cities in this campaign yet
@@ -251,7 +286,7 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-zinc-500">
                   No cities match that filter.
                 </td>
               </tr>
@@ -264,6 +299,51 @@ export function TrackerDashboardTable({ rows, staff }: Props) {
         </table>
       </div>
     </div>
+  );
+}
+
+function formatSales(cents: number): string {
+  if (!cents) return "—";
+  const dollars = cents / 100;
+  return dollars >= 1000
+    ? `$${(dollars / 1000).toFixed(1)}k`
+    : `$${Math.round(dollars).toLocaleString()}`;
+}
+
+/** Inline-editable city priority (1 = highest .. 10 = lowest). */
+function PriorityCell({ row }: { row: TrackerRow }) {
+  const [pending, startTransition] = useTransition();
+  const [value, setValue] = useState(String(row.priority));
+
+  function handleChange(next: string) {
+    setValue(next);
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("cityCampaignId", row.cityCampaignId);
+      fd.set("priority", next);
+      await updateCityCampaignPriority(null, fd);
+    });
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => handleChange(e.target.value)}
+      disabled={pending}
+      aria-label="City priority (1 = highest)"
+      title="Priority — 1 is highest, 10 is lowest. Click to change."
+      className={cn(
+        "w-12 appearance-none rounded-md border border-transparent bg-transparent py-1 text-right font-mono text-xs text-zinc-600 tabular-nums transition-colors dark:text-zinc-300",
+        "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+        pending && "opacity-50",
+      )}
+    >
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -321,7 +401,7 @@ function CityRow({
         </td>
 
         <td className="px-2 py-2.5 text-right align-middle">
-          <span className="font-mono text-xs text-zinc-500 tabular-nums">{row.priority}</span>
+          <PriorityCell row={row} />
         </td>
 
         <td className="px-3 py-2 align-middle sm:py-2.5">
@@ -339,6 +419,12 @@ function CityRow({
 
         <td className="px-3 py-2 align-middle sm:py-2.5">
           <SlotPills slots={row.need.slots} />
+        </td>
+
+        <td className="px-3 py-2.5 text-right align-middle">
+          <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-300">
+            {formatSales(row.totalSalesCents)}
+          </span>
         </td>
 
         <td className="px-3 py-2 align-middle sm:py-2.5">
@@ -953,7 +1039,7 @@ function CrawlBreakdownRow({
       <td className="px-3 py-1.5">
         <SlotPills slots={slots} />
       </td>
-      <td className="px-3 py-1.5" colSpan={2}>
+      <td className="px-3 py-1.5" colSpan={3}>
         {crawl.ticketsSold > 0 && (
           <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
             {crawl.ticketsSold} tickets sold

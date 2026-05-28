@@ -220,7 +220,14 @@ export default async function DashboardHome({
         }
       />
 
-      <TeamActivityWidget summary={teamActivity} />
+      <section className="flex flex-col gap-3">
+        <TasksWidget
+          tasks={data.upcomingTasks}
+          totalOpen={data.kpis.openTaskCount}
+          overdueCount={data.kpis.overdueTaskCount}
+        />
+        <NotesWidget notes={data.recentNotes} />
+      </section>
 
       <section className="flex flex-col gap-3">
         <header className="flex items-baseline justify-between">
@@ -245,14 +252,7 @@ export default async function DashboardHome({
         )}
       </section>
 
-      <section className="flex flex-col gap-3">
-        <TasksWidget
-          tasks={data.upcomingTasks}
-          totalOpen={data.kpis.openTaskCount}
-          overdueCount={data.kpis.overdueTaskCount}
-        />
-        <NotesWidget notes={data.recentNotes} />
-      </section>
+      <TeamActivityWidget summary={teamActivity} />
     </div>
   );
 }

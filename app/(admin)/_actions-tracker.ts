@@ -170,3 +170,35 @@ export async function updateEventStatus(
     return { ok: false, error: "Status update failed." };
   }
 }
+
+const prioritySchema = z.object({
+  cityCampaignId: uuidSchema,
+  priority: z.coerce.number().int().min(1).max(10),
+});
+
+/** Inline-edit the city-campaign priority (1 = highest .. 10 = lowest). */
+export async function updateCityCampaignPriority(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = prioritySchema.safeParse({
+    cityCampaignId: String(formData.get("cityCampaignId") ?? ""),
+    priority: formData.get("priority") ?? "",
+  });
+  if (!parsed.success) return { ok: false, error: "Priority must be 1-10." };
+  const { cityCampaignId, priority } = parsed.data;
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(cityCampaigns)
+        .set({ priority, updatedBy: staff.id })
+        .where(eq(cityCampaigns.id, cityCampaignId));
+    });
+    revalidatePath("/");
+    return { ok: true, data: { id: cityCampaignId } };
+  } catch (err) {
+    logger.error({ err }, "updateCityCampaignPriority failed");
+    return { ok: false, error: "Priority update failed." };
+  }
+}

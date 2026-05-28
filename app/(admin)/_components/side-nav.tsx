@@ -65,7 +65,7 @@ const SECTIONS: Array<{
   items: NavItem[];
 }> = [
   {
-    label: "Today",
+    label: "Current Crawl",
     items: [
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3.5 w-3.5" /> },

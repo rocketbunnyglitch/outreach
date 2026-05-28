@@ -93,7 +93,7 @@ interface Section {
 // same canonical grouping. Future refactor: lift into a shared module.
 const SECTIONS: Section[] = [
   {
-    label: "Today",
+    label: "Current Crawl",
     items: [
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3 w-3" /> },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3 w-3" /> },
