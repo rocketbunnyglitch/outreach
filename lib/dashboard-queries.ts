@@ -72,6 +72,10 @@ export interface DashboardData {
     replyRate: number; // 0-100 percentage
     openTaskCount: number;
     overdueTaskCount: number;
+    /** City-campaigns with status='completed' in the current scope. */
+    citiesCompleted: number;
+    /** Sum of campaigns.target_cities_scheduled in scope; defaults to 10. */
+    citiesGoal: number;
   };
   /** The campaign currently scoping the dashboard, or null if 'all campaigns'. */
   scopedCampaign: {
@@ -130,6 +134,7 @@ export async function loadDashboardData(
       salesCents: cityCampaigns.currentSalesCents,
       goalCents: cityCampaigns.salesGoalCents,
       targetVenueCount: cityCampaigns.targetVenueCount,
+      campaignCitiesGoal: campaigns.targetCitiesScheduled,
     })
     .from(cityCampaigns)
     .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
@@ -518,6 +523,26 @@ export async function loadDashboardData(
     if (row[0]) scopedCampaign = { id: row[0].id, name: row[0].name };
   }
 
+  // Cities completed + goal — for the dotted-arc KPI on the dashboard.
+  // "Completed" here means the city-campaign has reached the final / sealed
+  // state in the campaign workflow: confirmed OR contract_signed. (There's
+  // no 'completed' value on city_campaign_status; the closest equivalent
+  // is contract_signed, and most teams treat confirmed as "all crawls
+  // locked" too — so we count both.) Goal lives on the campaign row
+  // (targetCitiesScheduled); we sum across campaigns in scope. Falls back
+  // to 10 when no goal has been set so the viz always renders.
+  const COMPLETED_STATUSES = new Set(["confirmed", "contract_signed"]);
+  const citiesCompleted = cityCampaignRows.filter((r) => COMPLETED_STATUSES.has(r.status)).length;
+  const seenCampaigns = new Map<string, number>();
+  for (const r of cityCampaignRows) {
+    if (!seenCampaigns.has(r.campaignId)) {
+      seenCampaigns.set(r.campaignId, r.campaignCitiesGoal ?? 0);
+    }
+  }
+  let summedGoal = 0;
+  for (const g of seenCampaigns.values()) summedGoal += g;
+  const citiesGoal = summedGoal > 0 ? summedGoal : 10;
+
   return {
     cityRows,
     upcomingTasks,
@@ -535,6 +560,8 @@ export async function loadDashboardData(
       replyRate,
       openTaskCount,
       overdueTaskCount,
+      citiesCompleted,
+      citiesGoal,
     },
     scopedCampaign,
   };

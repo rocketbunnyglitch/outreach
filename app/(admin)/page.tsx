@@ -7,6 +7,7 @@ import { loadTeamActivity } from "@/lib/team-activity";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
+import { CitiesCompletedKpi } from "./_components/dashboard/cities-completed-kpi";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
 import { KpiStrip } from "./_components/dashboard/kpi-strip";
@@ -96,32 +97,7 @@ export default async function DashboardHome({
   ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
 
-  const venueProgress =
-    data.kpis.venuesTargeted > 0
-      ? Math.round((data.kpis.venuesConfirmed / data.kpis.venuesTargeted) * 100)
-      : 0;
-
-  // Series for KPI sparklines: aggregate across all cities by index
-  const venuesSeries = new Array(14).fill(data.kpis.venuesConfirmed);
-
   const kpis = [
-    {
-      label: "Venues confirmed",
-      value: data.kpis.venuesConfirmed.toString(),
-      meta:
-        data.kpis.venuesTargeted > 0
-          ? `${venueProgress}% · target ${data.kpis.venuesTargeted}`
-          : "no targets set",
-      tooltip:
-        "Venues that have agreed to host, across all crawls in scope, versus the target. The sparkline shows the 14-day trend.",
-      trend:
-        venueProgress >= 80
-          ? ("up" as const)
-          : venueProgress >= 40
-            ? ("flat" as const)
-            : ("down" as const),
-      series: venuesSeries,
-    },
     {
       label: "Events",
       value: (data.kpis.eventsConfirmed + data.kpis.eventsPlanned).toString(),
@@ -201,6 +177,13 @@ export default async function DashboardHome({
           </div>
         </div>
       </header>
+
+      <CitiesCompletedKpi
+        completed={data.kpis.citiesCompleted}
+        goal={data.kpis.citiesGoal}
+        campaignId={campaignId}
+        isAdmin={staff.role === "admin"}
+      />
 
       <KpiStrip kpis={kpis} />
 
