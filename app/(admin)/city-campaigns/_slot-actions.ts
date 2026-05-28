@@ -66,13 +66,30 @@ export async function assignSlotVenue(
   //     alt_final on any other same-day event in this city_campaign.
   // Within the SAME event the unique index already blocks duplicate
   // (event, role, slot_position).
-  const conflict = await db.execute<{
+  //
+  // Wrapped in try/catch (§12.1): this is hand-written multi-CTE raw
+  // SQL that isn't type-checked. A bad column ref or schema drift
+  // would otherwise throw an UNHANDLED exception out of the action,
+  // crashing the client with the "Application error" overlay (the
+  // operator hit exactly this — a stale e.event_id ref). On any query
+  // error we log + fail open (skip the conflict check) so venue
+  // assignment still works; the unique index still blocks same-event
+  // dupes regardless.
+  let conflictRows: Array<{
     other_event_id: string;
     other_role: string;
     other_day_part: string | null;
     other_crawl_number: number | null;
     same_date: boolean;
-  }>(sql`
+  }> = [];
+  try {
+    const conflict = await db.execute<{
+      other_event_id: string;
+      other_role: string;
+      other_day_part: string | null;
+      other_crawl_number: number | null;
+      same_date: boolean;
+    }>(sql`
     WITH this_event AS (
       SELECT id, event_date, city_campaign_id FROM events WHERE id = ${input.eventId}
     ),
@@ -112,7 +129,7 @@ export async function assignSlotVenue(
       JOIN events e ON e.middle_venue_group_id = mvgm.middle_venue_group_id
       WHERE mvgm.venue_id = ${input.venueId}
         AND e.city_campaign_id = (SELECT city_campaign_id FROM this_event)
-        AND e.event_id <> ${input.eventId}
+        AND e.id <> ${input.eventId}
         AND e.event_date = (SELECT event_date FROM this_event)
         AND ${input.role}::text IN ('wristband','final','alt_final')
     )
@@ -122,31 +139,15 @@ export async function assignSlotVenue(
     LIMIT 5
   `);
 
-  const conflictRows: Array<{
-    other_event_id: string;
-    other_role: string;
-    other_day_part: string | null;
-    other_crawl_number: number | null;
-    same_date: boolean;
-  }> = Array.isArray(conflict)
-    ? (conflict as unknown as Array<{
-        other_event_id: string;
-        other_role: string;
-        other_day_part: string | null;
-        other_crawl_number: number | null;
-        same_date: boolean;
-      }>)
-    : ((
-        conflict as unknown as {
-          rows: Array<{
-            other_event_id: string;
-            other_role: string;
-            other_day_part: string | null;
-            other_crawl_number: number | null;
-            same_date: boolean;
-          }>;
-        }
-      ).rows ?? []);
+    conflictRows = Array.isArray(conflict)
+      ? (conflict as unknown as typeof conflictRows)
+      : ((conflict as unknown as { rows: typeof conflictRows }).rows ?? []);
+  } catch (err) {
+    // Fail open — log + skip the cross-crawl conflict check. The
+    // same-event unique index still prevents duplicate slot fills.
+    logger.error({ err, venueId: input.venueId }, "slot conflict check failed — skipping");
+    conflictRows = [];
+  }
 
   if (conflictRows.length > 0) {
     const c = conflictRows[0];

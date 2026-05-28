@@ -285,9 +285,18 @@ function SlotTableRow({
     fd.set("venueId", v.id);
     fd.set("cityCampaignId", cityCampaignId);
     startTx(async () => {
-      const result = await assignSlotVenue(null, fd);
-      if (!result.ok && result.error) {
-        setError(result.error);
+      // try/catch hardening — if assignSlotVenue throws (raw-SQL error,
+      // auth race), the rejection would otherwise propagate out of the
+      // transition and crash the React tree with the "Application
+      // error" overlay. Surface it inline instead.
+      try {
+        const result = await assignSlotVenue(null, fd);
+        if (!result.ok && result.error) {
+          setError(result.error);
+        }
+      } catch (err) {
+        console.error("[crawl-slot] assignSlotVenue failed", err);
+        setError("Couldn't assign venue — try again.");
       }
     });
   }
