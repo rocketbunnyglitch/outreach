@@ -1,5 +1,7 @@
 "use client";
 
+import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
+import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import {
@@ -169,6 +171,11 @@ function SortableTh({
  */
 export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "top" }: Props) {
   const [query, setQuery] = useState("");
+  // Spreadsheet-style arrow-key navigation between editable cells. Cells that
+  // opt in carry data-grid-cell="r:c" (currently the Notes column); the hook
+  // moves focus on Arrow/Home/End and InlineCell handles Enter-moves-down.
+  const gridNavRef = useRef<HTMLDivElement>(null);
+  useGridArrowNav(gridNavRef);
   const [priorityFilter, setPriorityFilter] = useState<"top" | "all">(defaultPriorityFilter);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "priority",
@@ -235,7 +242,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           className="h-8 max-w-sm text-sm"
         />
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" ref={gridNavRef}>
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead>
             <tr className="border-zinc-200/80 border-b bg-zinc-200/60 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900/40 dark:text-zinc-500">
@@ -465,7 +472,7 @@ function CityRow({
         </td>
 
         <td className="px-3 py-2 align-middle sm:py-2.5">
-          <NoteInput row={row} />
+          <NoteInput row={row} gridRow={stripeIndex} />
         </td>
       </tr>
 
@@ -734,69 +741,28 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
   );
 }
 
-function NoteInput({ row }: { row: TrackerRow }) {
-  const [pending, startTransition] = useTransition();
-  const [committedValue, setCommittedValue] = useState(row.dashboardNote ?? "");
-  const [draft, setDraft] = useState(committedValue);
-  const [saved, setSaved] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+/** Notes column = the Sheets-grade InlineCell: click to edit, Enter commits +
+ *  moves down a row, Esc cancels, optimistic. gridRow lets arrow keys move
+ *  between note cells; NOTES_COL is the column coordinate. */
+const NOTES_COL = 6;
 
-  // Keep the input in sync if the row prop changes (e.g. parent revalidates)
-  useEffect(() => {
-    setCommittedValue(row.dashboardNote ?? "");
-    setDraft(row.dashboardNote ?? "");
-  }, [row.dashboardNote]);
-
-  function commit() {
-    if (draft === committedValue) return;
-    setSaved(false);
-    startTransition(async () => {
-      const fd = new FormData();
-      fd.set("cityCampaignId", row.cityCampaignId);
-      fd.set("note", draft);
-      const result = await updateDashboardNote(null, fd);
-      if (result.ok) {
-        setCommittedValue(draft);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 1200);
-      }
-    });
-  }
-
+function NoteInput({ row, gridRow }: { row: TrackerRow; gridRow: number }) {
   return (
-    <div className="relative">
-      <Input
-        ref={inputRef}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.currentTarget.blur();
-          } else if (e.key === "Escape") {
-            setDraft(committedValue);
-            e.currentTarget.blur();
-          }
-        }}
-        disabled={pending}
-        placeholder="Add a note…"
-        className={cn(
-          "h-7 border-transparent bg-transparent pr-6 text-xs transition-colors duration-150",
-          "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
-          "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
-          "placeholder:text-zinc-400/60",
-        )}
-      />
-      {(pending || saved) && (
-        <div className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2">
-          {pending ? (
-            <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
-          ) : (
-            <Check className="h-3 w-3 text-emerald-500" />
-          )}
-        </div>
-      )}
-    </div>
+    <InlineCell
+      value={row.dashboardNote ?? ""}
+      placeholder="Add a note…"
+      label={`Dashboard note for ${row.cityName}`}
+      cellId={`citycampaign:${row.cityCampaignId}:note`}
+      gridRow={gridRow}
+      gridCol={NOTES_COL}
+      onCommit={async (next) => {
+        const fd = new FormData();
+        fd.set("cityCampaignId", row.cityCampaignId);
+        fd.set("note", next);
+        const result = await updateDashboardNote(null, fd);
+        return result.ok ? { ok: true } : { ok: false, error: result.error };
+      }}
+    />
   );
 }
 
