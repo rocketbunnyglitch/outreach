@@ -69,13 +69,13 @@ export const taskUpdateSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v === "" || v === undefined ? null : v)),
-  version: z.coerce.number().int().min(1),
+  version: z.coerce.number().int().min(0),
 });
 export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>;
 
 export const taskCompleteSchema = z.object({
   id: uuidSchema,
-  version: z.coerce.number().int().min(1),
+  version: z.coerce.number().int().min(0),
 });
 export type TaskCompleteInput = z.infer<typeof taskCompleteSchema>;
 

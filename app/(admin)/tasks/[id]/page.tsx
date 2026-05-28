@@ -8,6 +8,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { updateTask } from "../_actions";
 import { CompleteTaskButton } from "../_components/complete-task-button";
+import { DeleteTaskButton } from "../_components/delete-task-button";
 import { TaskForm } from "../_components/task-form";
 
 export const metadata = { title: "Task" };
@@ -83,9 +84,12 @@ export default async function TaskDetailPage({ params }: PageProps) {
             )}
           </div>
         </div>
-        {task.status === "pending" || task.status === "in_progress" ? (
-          <CompleteTaskButton taskId={task.id} version={task.version} />
-        ) : null}
+        <div className="flex items-center gap-2">
+          {task.status === "pending" || task.status === "in_progress" ? (
+            <CompleteTaskButton taskId={task.id} version={task.version} />
+          ) : null}
+          {currentStaff.role === "admin" ? <DeleteTaskButton taskId={task.id} /> : null}
+        </div>
       </header>
 
       <TaskForm

@@ -11,7 +11,7 @@ import { staffMembers, tasks } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/db";
-import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { AlertTriangle, Calendar, CheckCircle2, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { AddTaskRow } from "./_components/AddTaskRow";
@@ -59,12 +59,35 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     ? or(eq(tasks.status, "pending"), eq(tasks.status, "in_progress"))
     : undefined;
 
-  const where = and(statusFilter, assigneeFilter, dueFilter, defaultStatusFilter);
-
-  // Resolve current user — we use the ID to mark "(you)" in the assignee
-  // dropdowns so operators can find themselves at a glance (session 11:
-  // "Tasks should be able to be assigned to anyone, even me").
+  // Resolve current user — used to mark "(you)" in the assignee dropdown and to
+  // scope task visibility. Admins see all tasks; everyone else sees their own +
+  // their direct reports' (manager_id = me) + unassigned backlog. Assigning is
+  // NOT restricted — anyone can be assigned a task.
   const { staff: currentStaff } = await requireStaff();
+  const isAdmin = currentStaff.role === "admin";
+
+  let reportIds: string[] = [];
+  if (!isAdmin) {
+    try {
+      const reports = await db
+        .select({ id: staffMembers.id })
+        .from(staffMembers)
+        .where(eq(staffMembers.managerId, currentStaff.id));
+      reportIds = reports.map((r) => r.id);
+    } catch {
+      // manager_id column may not be migrated yet — degrade to own tasks only.
+      reportIds = [];
+    }
+  }
+
+  const visibilityFilter = isAdmin
+    ? undefined
+    : or(
+        inArray(tasks.assignedStaffId, [currentStaff.id, ...reportIds]),
+        isNull(tasks.assignedStaffId),
+      );
+
+  const where = and(statusFilter, assigneeFilter, dueFilter, defaultStatusFilter, visibilityFilter);
 
   // Parallel fetch: rows + count + staff list for filter dropdown
   const [rows, [countRow], staffList] = await Promise.all([
@@ -123,6 +146,34 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           New task
         </Link>
       </header>
+
+      {/* Quick visibility chips */}
+      <div className="flex items-center gap-1.5">
+        <Link
+          href={`/tasks?assignee=${currentStaff.id}`}
+          className={cn(
+            "rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset transition-colors",
+            params.assignee === currentStaff.id
+              ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+              : "text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+          )}
+          title="Show only tasks assigned to you"
+        >
+          My tasks
+        </Link>
+        <Link
+          href="/tasks"
+          className={cn(
+            "rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset transition-colors",
+            !params.assignee
+              ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+              : "text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+          )}
+          title={isAdmin ? "All tasks across the team" : "Your tasks + your team's"}
+        >
+          {isAdmin ? "Everyone" : "My team"}
+        </Link>
+      </div>
 
       {/* Filter bar */}
       <form method="get" className="card-surface-quiet flex flex-wrap items-end gap-3 p-4">

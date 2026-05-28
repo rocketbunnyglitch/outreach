@@ -41,6 +41,11 @@ export const staffMembers = pgTable(
     role: staffRole("role").notNull().default("outreach"),
     status: staffStatus("status").notNull().default("active"),
 
+    // Reporting line for task visibility: a lead sees their own + their direct
+    // reports' tasks. Self-FK (-> staff_members.id) added in the migration to
+    // avoid the self-reference typing dance here. NULL = no manager.
+    managerId: uuid("manager_id"),
+
     // IANA timezone (e.g. "America/Toronto"). Used per DECISIONS.md#012 for
     // user-TZ display in cross-city views.
     timezone: text("timezone").notNull().default("America/Toronto"),

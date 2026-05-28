@@ -12,7 +12,7 @@
  */
 
 import { tasks } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { requireAdmin, requireStaff } from "@/lib/auth";
 import { withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
@@ -24,7 +24,7 @@ import {
   taskCreateSchema,
   taskUpdateSchema,
 } from "@/lib/validation/tasks";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
@@ -114,6 +114,7 @@ export async function updateTask(
           dueAt: input.dueAt ?? null,
           slaThresholdMinutes: input.slaThresholdMinutes ?? null,
           completedAt,
+          version: sql`${tasks.version} + 1`,
         })
         .where(and(eq(tasks.id, input.id), eq(tasks.version, input.version)))
         .returning({ id: tasks.id });
@@ -156,6 +157,7 @@ export async function completeTask(
         .set({
           status: "completed",
           completedAt: new Date(),
+          version: sql`${tasks.version} + 1`,
         })
         .where(and(eq(tasks.id, input.id), eq(tasks.version, input.version)))
         .returning({ id: tasks.id });
@@ -175,5 +177,25 @@ export async function completeTask(
     return { ok: true, data: { id: input.id } };
   } catch (err) {
     return wrapDbError(err, "completeTask");
+  }
+}
+
+// === Delete (admin only) ===
+
+const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Hard-delete a task. Admin only (tasks have no soft-delete column). */
+export async function deleteTask(id: string): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireAdmin();
+  if (!uuidRe.test(id)) return { ok: false, error: "Bad task id." };
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx.delete(tasks).where(eq(tasks.id, id));
+    });
+    revalidatePath("/tasks");
+    revalidatePath("/");
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return wrapDbError(err, "deleteTask");
   }
 }
