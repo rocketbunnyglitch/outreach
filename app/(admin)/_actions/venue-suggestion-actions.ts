@@ -135,13 +135,28 @@ export async function suggestVenuesForCampaign(
   // ---------------------------------------------------------------
   // 2. Places API call
   // ---------------------------------------------------------------
-  const result = await searchNearbyPlaces({
-    lat: ctx.city_lat,
-    lng: ctx.city_lng,
-    radiusMeters: 2500,
-    includedTypes: ["bar", "night_club", "restaurant"],
-    maxResults: 20,
-  });
+  // Wrap the Places API call so a 403 ("API not enabled" / billing missing /
+  // referer block) or 429 (rate limit) surfaces as the SAME "places not
+  // configured" notice the missing-key pre-check above returns, instead of
+  // bubbling up an uncaught throw that crashes the server-component render
+  // and trips the global error boundary (which also drops the theme class
+  // because the error layout has no inline theme script).
+  let result: Awaited<ReturnType<typeof searchNearbyPlaces>>;
+  try {
+    result = await searchNearbyPlaces({
+      lat: ctx.city_lat,
+      lng: ctx.city_lng,
+      radiusMeters: 2500,
+      includedTypes: ["bar", "night_club", "restaurant"],
+      maxResults: 20,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.startsWith("Places API error")) {
+      return { ok: true, data: { notConfigured: true, reason: "places" } };
+    }
+    return { ok: false, error: "Places API call failed. Try again later." };
+  }
 
   // ---------------------------------------------------------------
   // 3. Dedupe — drop venues already in our table for this city
