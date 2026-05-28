@@ -45,6 +45,7 @@ import {
   ShieldCheck,
   Tag,
   Target,
+  Upload,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -78,6 +79,11 @@ const SECTIONS: Array<{
       { href: "/send-queue", label: "Send Queue", icon: <Send className="h-3.5 w-3.5" /> },
       { href: "/wristbands", label: "Wristbands", icon: <Tag className="h-3.5 w-3.5" /> },
       { href: "/support-hours", label: "Support Hours", icon: <Clock className="h-3.5 w-3.5" /> },
+      {
+        href: "/event-submission",
+        label: "Event Submission",
+        icon: <Upload className="h-3.5 w-3.5" />,
+      },
       { href: "/discover", label: "Discover", icon: <Compass className="h-3.5 w-3.5" /> },
     ],
   },
