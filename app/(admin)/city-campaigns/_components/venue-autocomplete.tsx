@@ -57,6 +57,15 @@ export function VenueAutocomplete({
   const [mapsPending, startMaps] = useTransition();
   const [mapsError, setMapsError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Ref on the PORTALED dropdown. Because the dropdown renders into
+  // document.body (escaping the table cell's stacking context), it is
+  // NOT a DOM descendant of containerRef. The outside-click handler
+  // must therefore check BOTH refs — otherwise a pointerdown on a
+  // venue button counts as an "outside" click, closes the dropdown,
+  // and the button unmounts before its onClick fires. That was the
+  // operator's "click a venue and it disappears without loading" bug
+  // (session 12 hotfix).
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputWrapRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,10 +81,19 @@ export function VenueAutocomplete({
     const el = inputWrapRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    // Dropdown renders at min 280px wide (see portal below). If the
+    // input sits near the right edge, anchoring the dropdown at
+    // rect.left would push it off-screen, forcing a horizontal
+    // scrollbar (the operator's "scrolling window / cut off" bug).
+    // Clamp left so the full dropdown width stays within the
+    // viewport with an 8px gutter.
+    const dropdownWidth = Math.max(rect.width, 280);
+    const maxLeft = window.innerWidth - dropdownWidth - 8;
+    const left = Math.max(8, Math.min(rect.left, maxLeft));
     setPos({
       // Position BELOW the input. Add a small 4px gap.
       top: rect.bottom + 4,
-      left: rect.left,
+      left,
       width: rect.width,
     });
   }, []);
@@ -141,7 +159,15 @@ export function VenueAutocomplete({
   useEffect(() => {
     if (!open) return;
     function onPointer(e: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Click counts as "outside" only if it's outside BOTH the
+      // input container AND the portaled dropdown. Without the
+      // dropdownRef check, clicking a venue option (which lives in
+      // document.body via the portal) would be treated as outside,
+      // closing the dropdown before the option's onClick runs.
+      const inContainer = containerRef.current?.contains(target) ?? false;
+      const inDropdown = dropdownRef.current?.contains(target) ?? false;
+      if (!inContainer && !inDropdown) {
         setOpen(false);
       }
     }
@@ -297,11 +323,12 @@ export function VenueAutocomplete({
             typeof document !== "undefined" &&
             createPortal(
               <div
+                ref={dropdownRef}
                 style={{
                   position: "fixed",
                   top: pos.top,
                   left: pos.left,
-                  width: pos.width,
+                  width: Math.max(pos.width, 280),
                 }}
                 className="z-50 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-lg dark:border-blue-900/50 dark:bg-zinc-900"
               >
@@ -342,13 +369,14 @@ export function VenueAutocomplete({
             typeof document !== "undefined" &&
             createPortal(
               <div
+                ref={dropdownRef}
                 style={{
                   position: "fixed",
                   top: pos.top,
                   left: pos.left,
-                  width: pos.width,
+                  width: Math.max(pos.width, 280),
                 }}
-                className="z-50 max-h-72 overflow-auto rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+                className="z-50 max-h-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
               >
                 {hits.map((v) => (
                   <button
@@ -358,7 +386,7 @@ export function VenueAutocomplete({
                     className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800"
                   >
                     <span className="font-medium text-zinc-900 dark:text-zinc-100">{v.name}</span>
-                    <span className="font-mono text-[10px] text-zinc-500">
+                    <span className="w-full truncate font-mono text-[10px] text-zinc-500">
                       {v.email ?? "no email"}
                       {v.capacity != null && ` · ${v.capacity} cap`}
                       {v.address && ` · ${v.address.slice(0, 40)}`}
@@ -369,10 +397,12 @@ export function VenueAutocomplete({
                   <button
                     type="button"
                     onClick={handleCreate}
-                    className="flex w-full items-center gap-2 border-zinc-200 border-t px-3 py-2 text-xs text-zinc-700 transition-colors hover:bg-emerald-500/[0.06] dark:border-zinc-800 dark:text-zinc-300"
+                    className="flex w-full items-center gap-2 border-zinc-200 border-t px-3 py-2 text-left text-xs text-zinc-700 transition-colors hover:bg-emerald-500/[0.06] dark:border-zinc-800 dark:text-zinc-300"
                   >
-                    <Plus className="h-3 w-3" />
-                    Create "<span className="font-medium">{query.trim()}</span>" as new venue
+                    <Plus className="h-3 w-3 shrink-0" />
+                    <span className="min-w-0">
+                      Create <span className="font-medium">"{query.trim()}"</span> as new venue
+                    </span>
                   </button>
                 )}
               </div>,
