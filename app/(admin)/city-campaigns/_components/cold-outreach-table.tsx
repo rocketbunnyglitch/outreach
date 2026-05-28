@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { useShortcut } from "@/components/ui/shortcut-provider";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { parseVenueHours, suggestCallWindow } from "@/lib/parse-venue-hours";
 import { useDraft } from "@/lib/use-draft";
 import {
   Check,
@@ -62,6 +63,11 @@ interface ColdEntry {
   venuePhone: string | null;
   venueWebsite: string | null;
   venueInstagramHandle: string | null;
+  /** Free-text opening hours; drives the "Best call: 2-3 PM" hint. */
+  venueHours: string | null;
+  /** Tag array (["bar", "club", ...]) — fallback signal for the
+   *  call-window heuristic when hours can't be parsed. */
+  venueType: string[];
   cityName: string | null;
   venueUpdatedAt: string;
   zeroBounceStatus: string | null;
@@ -1201,6 +1207,7 @@ function PhoneCell({
         coldEntryId={entry.entryId}
       />
       <CallAttemptBadge count={entry.callAttempts} />
+      <CallWindowHint venueHours={entry.venueHours} venueType={entry.venueType} />
       <button
         type="button"
         onClick={() => setEditing(true)}
@@ -2164,6 +2171,58 @@ function CallAttemptBadge({ count }: { count: number }) {
       title={`${count} unanswered call ${count === 1 ? "attempt" : "attempts"} in the last 60 days. 5+ auto-flips status to 'unreachable'.`}
     >
       {count}/5
+    </span>
+  );
+}
+
+/**
+ * CallWindowHint — small pill suggesting when to call this venue
+ * based on its parsed opening hours + venue type.
+ *
+ * Rendered inline next to the dial controls + attempt badge. Hidden
+ * when no useful suggestion can be derived (no hours data + no
+ * venue type signal) so we don't add noise.
+ *
+ * Memoized via useMemo so the parser doesn't re-run on every render
+ * — for cold-outreach tables with 100+ rows the cumulative parse
+ * cost is non-trivial without it.
+ */
+function CallWindowHint({
+  venueHours,
+  venueType,
+}: {
+  venueHours: string | null;
+  venueType: readonly string[];
+}) {
+  const suggestion = useMemo(() => {
+    if (!venueHours && (!venueType || venueType.length === 0)) return null;
+    const parsed = parseVenueHours(venueHours);
+    return suggestCallWindow(parsed, new Date(), venueType);
+  }, [venueHours, venueType]);
+
+  if (!suggestion) return null;
+
+  // Tone palette mirrors the rest of the inline pill family in this
+  // file (CallAttemptBadge, status pills). 'now' = warm emerald so
+  // operators notice the "call them right now" cue; 'ok' = neutral
+  // zinc; 'later' = blue for the planned-for-tomorrow case;
+  // 'unknown' = ghost zinc to indicate the suggestion is a fallback
+  // (hours unparsed).
+  const tone =
+    suggestion.tone === "now"
+      ? "bg-emerald-500/15 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300"
+      : suggestion.tone === "later"
+        ? "bg-blue-500/[0.10] text-blue-700 ring-blue-500/30 dark:text-blue-300"
+        : suggestion.tone === "ok"
+          ? "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-400"
+          : "bg-zinc-500/5 text-zinc-500 ring-zinc-500/15 dark:text-zinc-500";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-px font-mono text-[9px] ring-1 ring-inset ${tone}`}
+      title={suggestion.detail}
+    >
+      {suggestion.label}
     </span>
   );
 }

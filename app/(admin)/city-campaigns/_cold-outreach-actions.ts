@@ -859,6 +859,19 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venuePhone: string | null;
     venueWebsite: string | null;
     venueInstagramHandle: string | null;
+    /**
+     * Free-text opening hours from the venue record. Used to compute
+     * a "Best call: 2-3 PM" hint via lib/parse-venue-hours.ts. NULL
+     * when the venue hasn't had hours entered yet (most venues
+     * pre-migration-0025).
+     */
+    venueHours: string | null;
+    /**
+     * venues.venue_type tag array (["bar", "club", ...]). Fed into
+     * the call-window heuristic as a fallback when hours parse is
+     * incomplete.
+     */
+    venueType: string[];
     cityName: string | null;
     venueUpdatedAt: string;
     zeroBounceStatus: string | null;
@@ -887,6 +900,8 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venuePhone: venues.phoneE164,
       venueWebsite: venues.websiteUrl,
       venueInstagramHandle: venues.instagramHandle,
+      venueHours: venues.hours,
+      venueType: venues.venueType,
       cityName: cities.name,
       venueUpdatedAt: venues.updatedAt,
       status: coldOutreachEntries.status,
@@ -955,6 +970,8 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venuePhone: r.venuePhone,
     venueWebsite: r.venueWebsite,
     venueInstagramHandle: r.venueInstagramHandle,
+    venueHours: r.venueHours,
+    venueType: r.venueType,
     cityName: r.cityName,
     venueUpdatedAt: r.venueUpdatedAt.toISOString(),
     zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
