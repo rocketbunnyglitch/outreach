@@ -7,6 +7,7 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { AlertCircle, CheckCircle2, Mail, Unplug } from "lucide-react";
 import Link from "next/link";
 import { disconnectInbox } from "./_actions";
+import { InboxBrandSelect } from "./_components/inbox-brand-select";
 
 export const metadata = { title: "Email Connection" };
 export const dynamic = "force-dynamic";
@@ -166,7 +167,22 @@ export default async function InboxesPage({ searchParams }: Props) {
 
       {/* My inboxes — per brand */}
       <section className="flex flex-col gap-3">
-        <h2 className="font-semibold text-2xl tracking-tight">Your inboxes</h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-semibold text-2xl tracking-tight">Your inboxes</h2>
+          {oauthReady && brands.length > 0 ? (
+            <a
+              href={`/api/auth/google/start?outreachBrandId=${brands[0]?.id ?? ""}`}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-xs text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              title="Connect a Gmail, then pick its brand from the dropdown on the connected email"
+            >
+              <Mail className="h-3 w-3" /> Add an email
+            </a>
+          ) : null}
+        </div>
+        <p className="text-xs text-zinc-500">
+          Connect as many Gmail accounts as you like, then use the brand dropdown on each to choose
+          which brand it&apos;s grouped under. An email can be moved between brands anytime.
+        </p>
         {brands.length === 0 ? (
           <p className="text-sm text-zinc-500">
             No outreach brands yet. Create one in{" "}
@@ -233,6 +249,11 @@ export default async function InboxesPage({ searchParams }: Props) {
                             />
                           </div>
                           <div className="flex shrink-0 items-center gap-2">
+                            <InboxBrandSelect
+                              emailId={inbox.id}
+                              currentBrandId={brand.id}
+                              brands={brands}
+                            />
                             {oauthReady && (
                               <a
                                 href={`/api/auth/google/start?outreachBrandId=${brand.id}`}
