@@ -95,6 +95,7 @@ export async function createVenue(
           instagramHandle: input.instagramHandle,
           capacity: input.capacity,
           servesAlcohol: input.servesAlcohol ?? true,
+          hours: input.hours,
           internalNotes: input.internalNotes ?? "",
           doNotContact: input.doNotContact ?? false,
           doNotContactReason: input.doNotContactReason,
@@ -151,6 +152,7 @@ export async function updateVenue(
   if (input.instagramHandle !== undefined) patch.instagramHandle = input.instagramHandle;
   if (input.capacity !== undefined) patch.capacity = input.capacity;
   if (input.servesAlcohol !== undefined) patch.servesAlcohol = input.servesAlcohol;
+  if (input.hours !== undefined) patch.hours = input.hours;
   if (input.internalNotes !== undefined) patch.internalNotes = input.internalNotes;
   if (input.doNotContact !== undefined) patch.doNotContact = input.doNotContact;
   if (input.doNotContactReason !== undefined) patch.doNotContactReason = input.doNotContactReason;

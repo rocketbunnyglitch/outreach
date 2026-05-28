@@ -66,6 +66,12 @@ const baseVenue = z.object({
     .optional(),
   capacity: optionalInt,
   servesAlcohol: z.coerce.boolean().optional(),
+  // Free-text opening hours pasted from Google Maps. Capped at 2KB
+  // since multi-line "Mon 4PM-2AM\n..." entries rarely exceed 200
+  // chars, and we want headroom for special-cases ("Holiday hours:
+  // closed Dec 24-26"). 5KB matches internalNotes but feels excessive
+  // for hours; 2KB is plenty.
+  hours: z.union([z.literal("").transform(() => undefined), z.string().max(2000)]).optional(),
   internalNotes: z.union([z.literal("").transform(() => ""), z.string().max(5000)]).optional(),
   doNotContact: z.coerce.boolean().optional(),
   doNotContactReason: optionalString(500),

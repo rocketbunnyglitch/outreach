@@ -98,6 +98,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
             instagramHandle: venue.instagramHandle,
             capacity: venue.capacity,
             servesAlcohol: venue.servesAlcohol,
+            hours: venue.hours,
             internalNotes: venue.internalNotes,
             doNotContact: venue.doNotContact,
             doNotContactReason: venue.doNotContactReason,

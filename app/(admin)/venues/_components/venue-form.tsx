@@ -32,6 +32,7 @@ interface VenueFormProps {
     instagramHandle: string | null;
     capacity: number | null;
     servesAlcohol: boolean;
+    hours: string | null;
     internalNotes: string;
     doNotContact: boolean;
     doNotContactReason: string | null;
@@ -247,6 +248,25 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               name="doNotContactReason"
               defaultValue={initial?.doNotContactReason ?? ""}
               placeholder="Owner asked to be removed from cold outreach"
+            />
+          </FieldShell>
+        </FieldRow>
+
+        <FieldRow>
+          <FieldShell
+            label="Opening hours"
+            name="hours"
+            className="md:col-span-2"
+            hint="Paste from Google Maps. Free-form text. Used to suggest the best call window."
+          >
+            <Textarea
+              id="hours"
+              name="hours"
+              rows={4}
+              defaultValue={initial?.hours ?? ""}
+              placeholder={
+                "Monday: 4 PM \u2013 2 AM\nTuesday: 4 PM \u2013 2 AM\nWednesday: 4 PM \u2013 2 AM\n\u2026"
+              }
             />
           </FieldShell>
         </FieldRow>

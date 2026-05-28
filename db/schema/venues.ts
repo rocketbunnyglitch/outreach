@@ -53,6 +53,14 @@ export const venues = pgTable(
     venueType: text("venue_type").array().notNull().default([]), // ["bar", "club", "restaurant", "lounge"]
     servesAlcohol: boolean("serves_alcohol").notNull().default(true),
 
+    /**
+     * Free-text opening hours, typically pasted from Google Maps.
+     * Multi-line "Mon 4PM-2AM\nTue 4PM-2AM\n..." is the common shape.
+     * v1 stores text verbatim; a future parser can derive structure
+     * to power a "suggested call window" hint. See migration 0025.
+     */
+    hours: text("hours"),
+
     // Internal CRM notes — visible to all staff across brands. Persistent.
     internalNotes: text("internal_notes").notNull().default(""),
 
