@@ -59,7 +59,9 @@ module.exports = {
       exec_mode: "fork",
       max_memory_restart: "300M",
       env: { NODE_ENV: "production", WS_PORT: "3002" },
-      env_file: ".env",
+      // PM2 env_file is not honored in this PM2 version; use Node 20+ --env-file
+      // so NEXTAUTH_SECRET (read by the WS auth check) loads from /var/www/outreach/.env.
+      node_args: ["--env-file=/var/www/outreach/.env"],
       error_file: "/var/log/outreach-ws-error.log",
       out_file: "/var/log/outreach-ws-out.log",
       time: true,
