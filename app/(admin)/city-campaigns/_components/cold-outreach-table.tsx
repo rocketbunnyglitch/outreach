@@ -257,6 +257,17 @@ export function ColdOutreachTable({
   const filterAssignee = searchParams.get("assignee") ?? "";
   const filterZb = searchParams.get("zb") ?? "";
   /**
+   * Escalation filter (#028). When set to a staff id, only rows
+   * escalated to that staff member are shown. The special value
+   * "__any__" shows all escalations regardless of assignee — useful
+   * for "what's currently escalated overall" view.
+   *
+   * The URL param is the source of truth; staff can share filtered
+   * views with each other ("here's everything with Brandon right
+   * now") via the URL.
+   */
+  const filterEscalated = searchParams.get("escalated") ?? "";
+  /**
    * Hide-unreachable toggle (session 11 follow-up to the 5-attempt
    * cap). DEFAULT ON — operators don't want the call queue cluttered
    * with venues we've already given up on. Stored in the URL as
@@ -339,6 +350,13 @@ export function ColdOutreachTable({
         if (e.assignedStaffId !== filterAssignee) return false;
       }
       if (filterZb && (e.zeroBounceStatus ?? "") !== filterZb) return false;
+      // Escalation filter — "__any__" matches any escalation, a staff
+      // UUID matches only escalations to that staffer.
+      if (filterEscalated === "__any__") {
+        if (!e.escalatedToStaffId) return false;
+      } else if (filterEscalated) {
+        if (e.escalatedToStaffId !== filterEscalated) return false;
+      }
       return true;
     });
 
@@ -396,7 +414,16 @@ export function ColdOutreachTable({
     });
 
     return sorted;
-  }, [entries, filterStatus, filterAssignee, filterZb, sortKey, sortDir, showUnreachable]);
+  }, [
+    entries,
+    filterStatus,
+    filterAssignee,
+    filterZb,
+    filterEscalated,
+    sortKey,
+    sortDir,
+    showUnreachable,
+  ]);
 
   // Count of unreachable rows currently hidden by the filter — used to
   // surface a "+ N unreachable" chip operators can click to reveal.
@@ -405,13 +432,14 @@ export function ColdOutreachTable({
     return entries.filter((e) => e.status === "unreachable").length;
   }, [entries, showUnreachable, filterStatus]);
 
-  const hasActiveFilter = !!(filterStatus || filterAssignee || filterZb);
+  const hasActiveFilter = !!(filterStatus || filterAssignee || filterZb || filterEscalated);
 
   function clearAllFilters() {
     const sp = new URLSearchParams(searchParams.toString());
     sp.delete("status");
     sp.delete("assignee");
     sp.delete("zb");
+    sp.delete("escalated");
     const qs = sp.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
@@ -563,6 +591,7 @@ export function ColdOutreachTable({
         filterStatus={filterStatus}
         filterAssignee={filterAssignee}
         filterZb={filterZb}
+        filterEscalated={filterEscalated}
         hasActive={hasActiveFilter}
         showUnreachable={showUnreachable}
         hiddenUnreachableCount={hiddenUnreachableCount}
@@ -2171,6 +2200,7 @@ function FilterChipStrip({
   filterStatus,
   filterAssignee,
   filterZb,
+  filterEscalated,
   hasActive,
   showUnreachable,
   hiddenUnreachableCount,
@@ -2185,6 +2215,8 @@ function FilterChipStrip({
   filterStatus: string;
   filterAssignee: string;
   filterZb: string;
+  /** Escalation filter — "", "__any__", or a staff UUID. */
+  filterEscalated: string;
   hasActive: boolean;
   /** Whether unreachable-status rows are currently being shown. */
   showUnreachable: boolean;
@@ -2213,6 +2245,23 @@ function FilterChipStrip({
     }
   }
 
+  // Per-assignee escalation buckets. Only includes staffers who
+  // currently have at least one escalation parked with them, so the
+  // chip strip stays quiet on city sheets where no one's escalated.
+  // Sorted by count descending so the busiest escalation queue
+  // surfaces first.
+  const escalationBuckets = new Map<string, { name: string; count: number }>();
+  for (const e of entries) {
+    if (e.escalatedToStaffId && e.escalatedToName) {
+      const existing = escalationBuckets.get(e.escalatedToStaffId);
+      if (existing) existing.count += 1;
+      else escalationBuckets.set(e.escalatedToStaffId, { name: e.escalatedToName, count: 1 });
+    }
+  }
+  const escalationChips = Array.from(escalationBuckets.entries())
+    .map(([id, { name, count }]) => ({ id, name, count }))
+    .sort((a, b) => b.count - a.count);
+
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-zinc-200/60 border-b bg-zinc-50/30 px-4 py-2 dark:border-zinc-800/40 dark:bg-zinc-900/20">
       {/* Status filter — pills, click to toggle */}
@@ -2236,6 +2285,39 @@ function FilterChipStrip({
                 <span className="font-normal tabular-nums opacity-60">
                   {statusCounts.get(s.value) ?? 0}
                 </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Escalation filter chips — one per staffer with active escalations
+          in this city sheet, sorted by count desc. The "Escalated to
+          Brandon (3)" pattern from the operator's spec — gives every
+          staffer visibility into what's parked with whom. Click toggles
+          the filter; clicking the active chip clears it. The amber
+          color matches the row's escalation pill so the visual link is
+          immediate. */}
+      {escalationChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          {escalationChips.map((chip) => {
+            const selected = filterEscalated === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => onChange("escalated", selected ? null : chip.id)}
+                title={`Show only entries escalated to ${chip.name}`}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ring-1 ring-inset transition-colors",
+                  selected
+                    ? "bg-amber-500/[0.15] text-amber-800 ring-amber-500/40 dark:text-amber-200"
+                    : "bg-amber-500/[0.06] text-amber-700 ring-amber-500/20 hover:bg-amber-500/[0.12] dark:text-amber-300",
+                )}
+              >
+                <AlertTriangle className="h-2.5 w-2.5" />
+                Escalated to {chip.name}
+                <span className="font-normal tabular-nums opacity-70">{chip.count}</span>
               </button>
             );
           })}
