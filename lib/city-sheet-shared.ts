@@ -50,6 +50,14 @@ export interface GroupMemberRow {
   drinkSpecials: string | null;
 }
 
+export interface CrawlHostRef {
+  /** crawl_hosts row id (target for removal). */
+  id: string;
+  hostId: string;
+  name: string;
+  type: "internal" | "external";
+}
+
 export interface CrawlCard {
   eventId: string;
   dayPart: "thursday_night" | "friday_night" | "saturday_night";
@@ -58,6 +66,8 @@ export interface CrawlCard {
   routeLabel: string | null;
   eventDate: string;
   ticketsSold: number;
+  /** Up to 2 assigned hosts (internal/external). Empty = no host. */
+  hosts: CrawlHostRef[];
   middleVenueGroupId: string | null;
   middleVenueGroupName: string | null;
   /** Other crawls in this city_campaign sharing this group. */

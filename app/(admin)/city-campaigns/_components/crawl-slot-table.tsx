@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import {
   type CrawlCard,
+  type CrawlHostRef,
   SLOT_ROLE_ORDER,
   type SlotRole,
   type SlotRow,
@@ -12,6 +13,12 @@ import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import {
+  type HostOption,
+  assignCrawlHost,
+  loadHostOptions,
+  removeCrawlHost,
+} from "../_host-actions";
 import {
   addExtraSlot,
   assignSlotVenue,
@@ -164,49 +171,220 @@ function CrawlHeader({
   }
 
   return (
-    <div className="group/crawlhdr flex items-baseline gap-3">
-      <h3 className="font-semibold text-base tracking-tight">
-        {DAY_LABEL[crawl.dayPart]} crawl {crawl.crawlNumber}
-        {crawl.routeLabel && (
-          <span className="ml-2 font-normal text-zinc-500">· {crawl.routeLabel}</span>
-        )}
-      </h3>
-      <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-        {crawl.eventDate}
-        {crawl.middleGroupSharedWith.length > 0 && (
-          <>
-            {" · "}
-            shared with{" "}
-            <span className="text-zinc-700 dark:text-zinc-300">
-              {crawl.middleGroupSharedWith.map((s) => s.label).join(", ")}
-            </span>
-          </>
-        )}
-      </span>
-      {/* Edit + delete affordances — appear on header hover to keep the
-          calm state clean. */}
-      <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover/crawlhdr:opacity-100">
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          disabled={pending}
-          className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-          aria-label="Edit crawl"
-          title="Rename / renumber crawl"
+    <div className="flex flex-col gap-1.5">
+      <div className="group/crawlhdr flex items-baseline gap-3">
+        <h3 className="font-semibold text-base tracking-tight">
+          {DAY_LABEL[crawl.dayPart]} crawl {crawl.crawlNumber}
+          {crawl.routeLabel && (
+            <span className="ml-2 font-normal text-zinc-500">· {crawl.routeLabel}</span>
+          )}
+        </h3>
+        <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+          {crawl.eventDate}
+          {crawl.middleGroupSharedWith.length > 0 && (
+            <>
+              {" · "}
+              shared with{" "}
+              <span className="text-zinc-700 dark:text-zinc-300">
+                {crawl.middleGroupSharedWith.map((s) => s.label).join(", ")}
+              </span>
+            </>
+          )}
+        </span>
+        {/* Edit + delete affordances — appear on header hover to keep the
+            calm state clean. */}
+        <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover/crawlhdr:opacity-100">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={pending}
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            aria-label="Edit crawl"
+            title="Rename / renumber crawl"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={remove}
+            disabled={pending}
+            className="rounded p-1 text-zinc-400 hover:bg-rose-500/[0.08] hover:text-rose-600"
+            aria-label="Delete crawl"
+            title="Delete crawl"
+          >
+            {pending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+          </button>
+        </span>
+      </div>
+      <CrawlHostsControl
+        eventId={crawl.eventId}
+        cityCampaignId={cityCampaignId}
+        hosts={crawl.hosts}
+      />
+    </div>
+  );
+}
+
+/**
+ * Host chips + assignment picker for a crawl. Up to 2 hosts, each
+ * internal or external. Loads the host roster lazily on first open.
+ */
+function CrawlHostsControl({
+  eventId,
+  cityCampaignId,
+  hosts,
+}: {
+  eventId: string;
+  cityCampaignId: string;
+  hosts: CrawlHostRef[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<HostOption[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTx] = useTransition();
+  const atCap = hosts.length >= 2;
+
+  function openPicker() {
+    setError(null);
+    setOpen(true);
+    if (options === null) {
+      startTx(async () => {
+        try {
+          setOptions(await loadHostOptions());
+        } catch (err) {
+          console.error("[crawl-hosts] loadHostOptions failed", err);
+          setError("Couldn't load hosts.");
+        }
+      });
+    }
+  }
+
+  function assign(opt: HostOption) {
+    startTx(async () => {
+      try {
+        const result = await assignCrawlHost({
+          eventId,
+          cityCampaignId,
+          hostType: opt.type,
+          hostId: opt.id,
+        });
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't assign.");
+          return;
+        }
+        setOpen(false);
+        router.refresh();
+      } catch (err) {
+        console.error("[crawl-hosts] assign failed", err);
+        setError("Couldn't assign — try again.");
+      }
+    });
+  }
+
+  function unassign(h: CrawlHostRef) {
+    startTx(async () => {
+      try {
+        const result = await removeCrawlHost({ crawlHostId: h.id, cityCampaignId });
+        if (!result.ok) {
+          setError(result.error ?? "Couldn't remove.");
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        console.error("[crawl-hosts] remove failed", err);
+        setError("Couldn't remove — try again.");
+      }
+    });
+  }
+
+  const assignedHostIds = new Set(hosts.map((h) => h.hostId));
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="font-mono text-[9px] text-zinc-400 uppercase tracking-[0.14em]">Hosts</span>
+      {hosts.length === 0 && (
+        <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-widest">none</span>
+      )}
+      {hosts.map((h) => (
+        <span
+          key={h.id}
+          className={cn(
+            "group/hostchip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ring-1 ring-inset",
+            h.type === "internal"
+              ? "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300"
+              : "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:text-violet-300",
+          )}
         >
-          <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          onClick={remove}
-          disabled={pending}
-          className="rounded p-1 text-zinc-400 hover:bg-rose-500/[0.08] hover:text-rose-600"
-          aria-label="Delete crawl"
-          title="Delete crawl"
-        >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-        </button>
-      </span>
+          <span className="font-mono text-[8px] uppercase tracking-widest opacity-70">
+            {h.type === "internal" ? "INT" : "EXT"}
+          </span>
+          {h.name}
+          <button
+            type="button"
+            onClick={() => unassign(h)}
+            disabled={pending}
+            className="opacity-0 transition-opacity hover:text-rose-600 group-hover/hostchip:opacity-100"
+            aria-label={`Remove ${h.name}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+
+      {!atCap && (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={open ? () => setOpen(false) : openPicker}
+            disabled={pending}
+            className="inline-flex items-center gap-0.5 rounded-full border border-zinc-300 border-dashed px-2 py-0.5 text-[11px] text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-700 dark:hover:text-zinc-300"
+          >
+            {pending && options === null ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Plus className="h-3 w-3" />
+            )}
+            host
+          </button>
+          {open && options !== null && (
+            <div className="absolute top-full left-0 z-20 mt-1 max-h-56 w-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+              {options.filter((o) => !assignedHostIds.has(o.id)).length === 0 ? (
+                <p className="px-2 py-1.5 text-[11px] text-zinc-500">
+                  No more hosts. Add them under Settings → Internal / External Hosts.
+                </p>
+              ) : (
+                options
+                  .filter((o) => !assignedHostIds.has(o.id))
+                  .map((o) => (
+                    <button
+                      key={`${o.type}-${o.id}`}
+                      type="button"
+                      onClick={() => assign(o)}
+                      disabled={pending}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      <span
+                        className={cn(
+                          "font-mono text-[8px] uppercase tracking-widest",
+                          o.type === "internal" ? "text-blue-500" : "text-violet-500",
+                        )}
+                      >
+                        {o.type === "internal" ? "INT" : "EXT"}
+                      </span>
+                      {o.name}
+                    </button>
+                  ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {error && <span className="text-[10px] text-rose-600">{error}</span>}
     </div>
   );
 }

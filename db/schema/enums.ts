@@ -286,6 +286,9 @@ export const paymentMethod = pgEnum("payment_method", [
   "wise",
 ]);
 
+// Which host roster a crawl_hosts row points at.
+export const hostKind = pgEnum("host_kind", ["internal", "external"]);
+
 // =========================================================================
 // Audit
 // =========================================================================

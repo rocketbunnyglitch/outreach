@@ -21,6 +21,9 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  crawlHosts,
+  externalHosts,
+  internalHosts,
   middleVenueGroupMembers,
   middleVenueGroups,
   staffMembers,
@@ -38,11 +41,12 @@ import { asc, eq, inArray } from "drizzle-orm";
 export * from "./city-sheet-shared";
 import { SLOT_ROLE_ORDER } from "./city-sheet-shared";
 import type {
+  CitySheetData,
+  CrawlCard,
+  CrawlHostRef,
+  GroupMemberRow,
   SlotRole,
   SlotRow,
-  GroupMemberRow,
-  CrawlCard,
-  CitySheetData,
 } from "./city-sheet-shared";
 
 export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetData | null> {
@@ -79,6 +83,41 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
     .orderBy(asc(events.dayPart), asc(events.crawlNumber));
 
   const eventIds = eventRows.map((e) => e.id);
+
+  // Crawl hosts (≤2 per event), joined to whichever roster they point
+  // at so we have the display name. host_type discriminates.
+  const hostRows =
+    eventIds.length > 0
+      ? await db
+          .select({
+            id: crawlHosts.id,
+            eventId: crawlHosts.eventId,
+            slot: crawlHosts.slot,
+            hostType: crawlHosts.hostType,
+            internalHostId: crawlHosts.internalHostId,
+            externalHostId: crawlHosts.externalHostId,
+            internalName: internalHosts.name,
+            externalName: externalHosts.fullName,
+          })
+          .from(crawlHosts)
+          .leftJoin(internalHosts, eq(internalHosts.id, crawlHosts.internalHostId))
+          .leftJoin(externalHosts, eq(externalHosts.id, crawlHosts.externalHostId))
+          .where(inArray(crawlHosts.eventId, eventIds))
+          .orderBy(asc(crawlHosts.slot))
+      : [];
+
+  const hostsByEvent = new Map<string, CrawlHostRef[]>();
+  for (const h of hostRows) {
+    const isInternal = h.hostType === "internal";
+    const arr = hostsByEvent.get(h.eventId) ?? [];
+    arr.push({
+      id: h.id,
+      hostId: (isInternal ? h.internalHostId : h.externalHostId) ?? "",
+      name: (isInternal ? h.internalName : h.externalName) ?? "(removed host)",
+      type: h.hostType as "internal" | "external",
+    });
+    hostsByEvent.set(h.eventId, arr);
+  }
 
   // venue_events filled per event
   const veRows =
@@ -246,6 +285,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       routeLabel: ev.routeLabel ?? null,
       eventDate: String(ev.eventDate ?? ""),
       ticketsSold: ev.ticketsSold ?? 0,
+      hosts: hostsByEvent.get(ev.id) ?? [],
       middleVenueGroupId: ev.middleVenueGroupId,
       middleVenueGroupName: ev.middleVenueGroupId
         ? (groupNameById.get(ev.middleVenueGroupId) ?? null)
