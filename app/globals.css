@@ -70,6 +70,17 @@ html {
 
 body {
   background-color: var(--color-canvas);
+  /* Subtle radial accent so card backdrop-filter has substance to
+     refract. Light mode: barely-visible warm tint at the top-left,
+     cool tint at the bottom-right. The blur on translucent cards
+     picks up just enough of this to feel materially "glass" rather
+     than flat. */
+  background-image: radial-gradient(
+      ellipse 70% 50% at 0% 0%,
+      rgba(255, 240, 220, 0.18),
+      transparent 60%
+    ), radial-gradient(ellipse 60% 60% at 100% 100%, rgba(210, 230, 255, 0.15), transparent 60%);
+  background-attachment: fixed;
   font-feature-settings: "ss01", "cv01", "cv09"; /* Geist refinements */
   letter-spacing: -0.011em;
 }
@@ -107,6 +118,19 @@ h1 {
 }
 .dark body {
   background-color: var(--color-canvas-dark);
+  /* Dark mode: deep blue-purple radial top-left + cooler accent
+     bottom-right. The macOS dark wallpaper vibe — gives backdrop-
+     filter on cards real substance to refract instead of a flat
+     near-black wash. background-attachment:fixed pins it to the
+     viewport so cards passing over it create a parallax effect on
+     scroll. */
+  background-image: radial-gradient(
+      ellipse 70% 60% at 5% 0%,
+      rgba(50, 40, 90, 0.32),
+      transparent 55%
+    ), radial-gradient(ellipse 60% 60% at 95% 100%, rgba(20, 50, 80, 0.28), transparent 55%),
+    radial-gradient(ellipse 100% 70% at 50% 50%, rgba(20, 20, 35, 0.4), transparent 70%);
+  background-attachment: fixed;
 }
 
 /* ===== Card surface =======================================================
@@ -118,41 +142,114 @@ h1 {
    element don't override the gradient via cascade order.
 */
 @layer components {
+  /*
+   * card-surface — Apple-glass treatment.
+   *
+   * Light mode:
+   *   - Near-white translucent fill with a hint of warmth
+   *   - Multi-stop gradient (3 stops) mimicking specular curvature
+   *     (slightly brighter at the top edge, slightly cooler toward
+   *     the bottom)
+   *   - Hairline border with a touch of saturation so it doesn't
+   *     read as flat gray
+   *   - Soft 2-layer shadow: a tight 1px hairline + a wider diffuse
+   *     shadow that mimics ambient occlusion against the canvas
+   *   - backdrop-filter to refract the subtle body gradient through
+   *     translucent fill
+   *
+   * Dark mode (see .dark .card-surface below):
+   *   - Translucent dark fill so the body's radial gradient shows
+   *     through with backdrop saturation
+   *   - Bright top-edge inset shadow → the specular highlight that
+   *     reads as "glass catching a light source"
+   *   - Wider diffuse outer shadow for depth against the near-black
+   *     canvas
+   *
+   * Placed in @layer components so Tailwind utilities on the same
+   * element can override via cascade specificity when needed.
+   */
   .card-surface {
-    background-color: #ffffff;
-    border: 1px solid #e4e4e7;
+    background-color: rgba(255, 255, 255, 0.78);
+    background-image: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(255, 255, 255, 0.82) 30%,
+      rgba(252, 252, 254, 0.74) 100%
+    );
+    border: 1px solid rgba(228, 228, 234, 0.85);
     border-radius: 1rem;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.95), 0 1px 2px 0 rgba(15, 15, 35, 0.04), 0 8px
+      24px -8px rgba(15, 15, 35, 0.05);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
   }
 
   .card-surface-quiet {
-    background-color: #ffffff;
-    border: 1px solid #e4e4e7;
+    background-color: rgba(255, 255, 255, 0.72);
+    background-image: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(250, 250, 252, 0.7) 100%
+    );
+    border: 1px solid rgba(228, 228, 234, 0.7);
     border-radius: 0.75rem;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
   }
 }
 
-/* Dark-mode card treatment.
+/* Dark-mode card treatment — Apple-glass vibrancy.
  *
  * Class-based (.dark) only. The previous version ALSO had a
  * @media (prefers-color-scheme: dark) block here that competed with
  * the .dark selector — same bug as the body rule above. When the OS
  * was dark but the operator clicked Light, the cards stayed black
  * because the media query still matched. Removed.
+ *
+ * Stack of effects (top to bottom):
+ *   1. Translucent dark fill so backdrop-filter has substance to
+ *      refract — without it, blur on a flat dark canvas is invisible.
+ *   2. 3-stop gradient — top edge is slightly cool/blue-gray
+ *      (catches imaginary light), bottom is deep near-black.
+ *   3. Border with low alpha so it reads as a soft edge, not a
+ *      hard line.
+ *   4. Inset 1px highlight at the top — the specular kicker.
+ *   5. Outer shadow stack: tight 1px hairline + 2 diffuse layers for
+ *      depth on the near-black canvas.
+ *   6. backdrop-filter blur + saturate — the actual "glass" effect;
+ *      refracts the body radial gradient.
  */
 .dark .card-surface {
-  background-color: #1f1f23;
-  background-image: linear-gradient(to bottom, #2a2a2e 0%, #1a1a1d 100%);
-  border-color: #3f3f46;
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 2px 8px 0
-    rgba(0, 0, 0, 0.2);
+  background-color: rgba(30, 30, 36, 0.72);
+  background-image: linear-gradient(
+    to bottom,
+    rgba(46, 46, 54, 0.78) 0%,
+    rgba(32, 32, 38, 0.74) 30%,
+    rgba(20, 20, 26, 0.7) 100%
+  );
+  border-color: rgba(80, 80, 92, 0.55);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.3),
+    0 1px 2px 0 rgba(0, 0, 0, 0.5),
+    0 8px 24px -6px rgba(0, 0, 0, 0.45),
+    0 24px 48px -12px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
 
 .dark .card-surface-quiet {
-  background-color: #1d1d20;
-  background-image: linear-gradient(to bottom, #232327 0%, #1a1a1d 100%);
-  border-color: #303035;
-  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  background-color: rgba(26, 26, 32, 0.68);
+  background-image: linear-gradient(
+    to bottom,
+    rgba(38, 38, 44, 0.7) 0%,
+    rgba(22, 22, 28, 0.66) 100%
+  );
+  border-color: rgba(60, 60, 70, 0.5);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
 }
 
 /* Hairline 1px borders are foundational; harden against subpixel issues */
