@@ -86,9 +86,9 @@ function DevModeBanner() {
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-2 border-amber-200 border-b bg-amber-50",
-        "px-4 py-1.5 font-medium text-[11px] text-amber-900 uppercase tracking-wider",
-        "dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
+        "flex items-center justify-center gap-2 border-rose-200 border-b bg-rose-50",
+        "px-4 py-1.5 font-medium text-[11px] text-rose-900 uppercase tracking-wider",
+        "dark:border-rose-900 dark:bg-rose-950 dark:text-rose-200",
       )}
     >
       <ShieldAlert className="h-3 w-3" />

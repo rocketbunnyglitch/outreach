@@ -118,6 +118,8 @@ const SECTIONS: Section[] = [
         icon: <Upload className="h-3 w-3" />,
       },
       { href: "/maps", label: "Maps", icon: <Globe2 className="h-3 w-3" /> },
+      { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3 w-3" /> },
+      { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3 w-3" /> },
     ],
   },
   {
@@ -133,8 +135,6 @@ const SECTIONS: Section[] = [
     items: [
       { href: "/brands", label: "Brands", icon: <Briefcase className="h-3 w-3" /> },
       { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3 w-3" /> },
-      { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3 w-3" /> },
-      { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3 w-3" /> },
     ],
   },
 ];

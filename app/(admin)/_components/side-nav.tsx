@@ -95,6 +95,21 @@ const SECTIONS: Array<{
         icon: <Upload className="h-3.5 w-3.5" />,
       },
       { href: "/maps", label: "Maps", icon: <Globe2 className="h-3.5 w-3.5" /> },
+      // Hosts (internal + external) moved here from Settings — operators
+      // touch the host pages during daily campaign work (assign hosts to
+      // crawls, mark internal-host hours/rate after the job, ship
+      // external-host shipments). Settings should be for config you
+      // touch rarely; Operate is the right home for these.
+      {
+        href: "/internal-hosts",
+        label: "Internal Hosts",
+        icon: <Users className="h-3.5 w-3.5" />,
+      },
+      {
+        href: "/external-hosts",
+        label: "External Hosts",
+        icon: <Users className="h-3.5 w-3.5" />,
+      },
     ],
   },
   {
@@ -110,8 +125,6 @@ const SECTIONS: Array<{
     items: [
       { href: "/brands", label: "Brands", icon: <Briefcase className="h-3.5 w-3.5" /> },
       { href: "/campaigns", label: "Campaigns", icon: <Target className="h-3.5 w-3.5" /> },
-      { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3.5 w-3.5" /> },
-      { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3.5 w-3.5" /> },
     ],
   },
 ];
