@@ -100,9 +100,12 @@ export const emailThreads = pgTable(
   {
     ...idColumn,
 
-    venueId: uuid("venue_id")
-      .notNull()
-      .references(() => venues.id, { onDelete: "restrict" }),
+    // Nullable: threads can ingest into the shared team inbox WITHOUT
+    // a venue match. The poll worker tries to resolve a venue from
+    // the sender domain; if that fails, the thread still ingests with
+    // venueId = null and an operator can attach a venue post-triage
+    // from the inbox UI. Migration 0046 dropped the NOT NULL.
+    venueId: uuid("venue_id").references(() => venues.id, { onDelete: "restrict" }),
 
     // Nullable: threads ingest into the team's shared inbox WITHOUT a
     // brand attribution. The brand (and/or campaign) gets attached

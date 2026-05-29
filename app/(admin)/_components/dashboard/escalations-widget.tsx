@@ -1,3 +1,4 @@
+import { ComposeEmailModal } from "@/app/(admin)/_components/compose-email-modal";
 import { cn } from "@/lib/cn";
 import type { PendingEscalation } from "@/lib/escalations-data";
 import { AlertTriangle, ArrowRight, Mail, MapPin, Phone, User } from "lucide-react";
@@ -29,7 +30,7 @@ interface Props {
  *     whether it's already been contacted, voicemail'd, etc.)
  *   - Who escalated + when (relative time)
  *   - The operator's verbatim notes ("wants a call at 7pm…")
- *   - Phone + email shortcuts (tel: / mailto:) for one-tap contact
+ *   - Phone + email shortcuts (tel: for one-tap call, in-app composer for email)
  *   - Deep link to the venue page
  *
  * Each escalation card is self-contained — the assignee can
@@ -124,8 +125,10 @@ function EscalationRow({ escalation }: { escalation: PendingEscalation }) {
         <p className="whitespace-pre-wrap">{escalation.escalationNotes}</p>
       </blockquote>
 
-      {/* Contact shortcuts — tel:/mailto: tap targets for one-touch
-          contact. Hidden when the venue has no value on file. */}
+      {/* Contact shortcuts — tel: for one-tap call, in-app composer
+          for email (replaces mailto so messages route through a
+          connected_account and ingest to the team inbox). Hidden when
+          the venue has no value on file. */}
       {(escalation.venuePhone || escalation.venueEmail) && (
         <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
           {escalation.venuePhone && (
@@ -138,13 +141,15 @@ function EscalationRow({ escalation }: { escalation: PendingEscalation }) {
             </a>
           )}
           {escalation.venueEmail && (
-            <a
-              href={`mailto:${escalation.venueEmail}`}
+            <ComposeEmailModal
+              defaultTo={escalation.venueEmail}
+              venueId={escalation.venueId}
+              ariaLabel={`Email ${escalation.venueEmail}`}
               className="inline-flex items-center gap-1.5 font-mono text-zinc-600 hover:text-blue-600 hover:underline dark:text-zinc-400 dark:hover:text-blue-400"
             >
               <Mail className="h-3 w-3" />
               {escalation.venueEmail}
-            </a>
+            </ComposeEmailModal>
           )}
         </div>
       )}

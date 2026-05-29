@@ -83,7 +83,12 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
 
   if (!detail) notFound();
 
-  const outreachHistory = await fetchVenueOutreachHistory(detail.thread.venueId);
+  // When the thread isn't matched to a venue yet (poll worker
+  // couldn't resolve the sender domain), there's no per-venue
+  // outreach history to fetch. Empty list keeps ThreadPane happy.
+  const outreachHistory = detail.thread.venueId
+    ? await fetchVenueOutreachHistory(detail.thread.venueId)
+    : [];
 
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);

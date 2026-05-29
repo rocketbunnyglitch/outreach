@@ -39,12 +39,18 @@ export function ThreadPane({
           </span>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-          <Link
-            href={`/venues/${thread.venueId}`}
-            className="font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
-          >
-            {thread.venueName}
-          </Link>
+          {thread.venueId && thread.venueName ? (
+            <Link
+              href={`/venues/${thread.venueId}`}
+              className="font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
+            >
+              {thread.venueName}
+            </Link>
+          ) : (
+            <span className="font-medium text-amber-700 dark:text-amber-300">
+              Unassigned · no venue match
+            </span>
+          )}
           {thread.cityName && <span>· {thread.cityName}</span>}
           {thread.brandName && <span>· {thread.brandName}</span>}
           {thread.campaignName && <span>· {thread.campaignName}</span>}
@@ -200,9 +206,13 @@ function VenueRail({
           <span className="font-mono uppercase tracking-widest">Venue</span>
         </header>
         <h3 className="mt-2 font-semibold text-base tracking-tight">
-          <Link href={`/venues/${thread.venueId}`} className="hover:underline">
-            {thread.venueName}
-          </Link>
+          {thread.venueId && thread.venueName ? (
+            <Link href={`/venues/${thread.venueId}`} className="hover:underline">
+              {thread.venueName}
+            </Link>
+          ) : (
+            <span className="text-amber-700 dark:text-amber-300">Unassigned</span>
+          )}
         </h3>
         <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
           {thread.cityName && (

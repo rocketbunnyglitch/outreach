@@ -1,0 +1,31 @@
+-- 0046_email_threads_venue_nullable.sql
+--
+-- Make email_threads.venue_id nullable so the gmail-poll-worker can
+-- ingest every inbound thread, even those whose sender domain
+-- doesn't match a known venue.
+--
+-- Background:
+--   Up to commit 7e4af85 the worker already DROPPED outreach_brand_id
+--   to NULL on ingest (post-triage attribution), but it still required
+--   a venue match — sender domains that don't map to a venue caused
+--   the worker to log "skipped — no venue match" and return null,
+--   silently swallowing the email.
+--
+--   The product intent for the new shared team inbox is the opposite:
+--   ingest EVERY message into the team inbox, let an operator triage
+--   and attach a venue post-ingest. With venue_id NOT NULL we couldn't
+--   do that.
+--
+-- This migration is a metadata-only change. No rewrite, no data backfill.
+-- Existing rows already have non-null venue_id; the constraint relaxation
+-- is forward-only.
+--
+-- The Drizzle schema in db/schema/outreach.ts gets the same change
+-- (drop .notNull() on emailThreads.venueId) so the worker types
+-- correctly. The inbox-data query in lib/inbox-data.ts switches its
+-- venues join from INNER to LEFT JOIN (so threads without a venue
+-- still appear in the list); UI components render "Unassigned" when
+-- venueName is null.
+
+ALTER TABLE email_threads
+  ALTER COLUMN venue_id DROP NOT NULL;

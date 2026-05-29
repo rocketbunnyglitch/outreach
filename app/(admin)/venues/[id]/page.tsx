@@ -177,6 +177,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
             {venue.address && <p className="mt-1 text-sm text-zinc-500">{venue.address}</p>}
           </div>
           <VenueQuickLinks
+            venueId={venue.id}
             phoneE164={venue.phoneE164}
             email={venue.email}
             websiteUrl={venue.websiteUrl}

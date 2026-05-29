@@ -1,5 +1,6 @@
 "use client";
 
+import { ComposeEmailModal } from "@/app/(admin)/_components/compose-email-modal";
 import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
 import { WarmLeadPromoteButton } from "@/app/(admin)/_components/warm-lead-promote-button";
 import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
@@ -1227,23 +1228,32 @@ function ColdRow({
             </div>
             {entry.venueEmail && (
               <>
-                <a
-                  href={`mailto:${entry.venueEmail}`}
+                <ComposeEmailModal
+                  defaultTo={entry.venueEmail}
+                  venueId={entry.venueId}
+                  ariaLabel={`Compose email to ${entry.venueEmail}`}
                   className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-                  aria-label="Open in email client"
                 >
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                  <Mail className="h-3 w-3" />
+                </ComposeEmailModal>
                 <AiDraftButton
                   venueId={entry.venueId}
                   venueName={entry.venueName}
                   cityCampaignId={cityCampaignId}
                   onUseDraft={(draft) => {
-                    const subject = encodeURIComponent(draft.subject);
-                    const body = encodeURIComponent(draft.body);
-                    window.open(
-                      `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
-                      "_self",
+                    // Open the in-app composer instead of mailto. The
+                    // AiDraftButton can't render the modal itself
+                    // (its child is a button), so we surface the draft
+                    // through window event the composer listens for.
+                    window.dispatchEvent(
+                      new CustomEvent("compose-email", {
+                        detail: {
+                          to: entry.venueEmail ?? "",
+                          subject: draft.subject,
+                          body: draft.body,
+                          venueId: entry.venueId,
+                        },
+                      }),
                     );
                   }}
                 />
@@ -1462,24 +1472,28 @@ function ColdRow({
           </div>
           {entry.venueEmail && (
             <>
-              <a
-                href={`mailto:${entry.venueEmail}`}
+              <ComposeEmailModal
+                defaultTo={entry.venueEmail}
+                venueId={entry.venueId}
+                ariaLabel={`Compose email to ${entry.venueEmail}`}
                 className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
-                title="Open in email client"
-                aria-label="Open in email client"
               >
                 <Mail className="h-2.5 w-2.5" />
-              </a>
+              </ComposeEmailModal>
               <AiDraftButton
                 venueId={entry.venueId}
                 venueName={entry.venueName}
                 cityCampaignId={cityCampaignId}
                 onUseDraft={(draft) => {
-                  const subject = encodeURIComponent(draft.subject);
-                  const body = encodeURIComponent(draft.body);
-                  window.open(
-                    `mailto:${entry.venueEmail ?? ""}?subject=${subject}&body=${body}`,
-                    "_self",
+                  window.dispatchEvent(
+                    new CustomEvent("compose-email", {
+                      detail: {
+                        to: entry.venueEmail ?? "",
+                        subject: draft.subject,
+                        body: draft.body,
+                        venueId: entry.venueId,
+                      },
+                    }),
                   );
                 }}
               />

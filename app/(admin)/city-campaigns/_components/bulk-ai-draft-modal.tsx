@@ -32,8 +32,8 @@ interface Props {
  * Per-card actions:
  *   • Subject + Body inline edit (instant, local state)
  *   • Regenerate — re-rolls just that card
- *   • Send — opens the operator's mailto: with subject/body
- *     pre-filled, marks card 'sent' in this session
+ *   • Send — opens the in-app compose modal pre-filled with subject
+ *     + body, marks card 'sent' in this session
  *   • Skip — collapses the card; useful when the AI output is off
  *     or the venue isn't a fit
  *
@@ -190,9 +190,24 @@ function DraftCard({
 
   function send() {
     if (!entry.venueEmail) return;
-    const subject = encodeURIComponent(state.subject);
-    const body = encodeURIComponent(state.body);
-    window.open(`mailto:${entry.venueEmail}?subject=${subject}&body=${body}`, "_blank");
+    // Open the in-app composer pre-filled with this draft. The modal
+    // is mounted somewhere on the page (currently every cold-outreach
+    // row mounts one); it listens for "compose-email" and opens with
+    // the supplied detail. Marking the card as "sent" optimistically
+    // before the user actually hits Send in the composer is wrong, so
+    // we leave the card in "ready" until the composer roundtrip
+    // completes — for now the operator manually clicks Skip if they
+    // decide not to send after opening.
+    window.dispatchEvent(
+      new CustomEvent("compose-email", {
+        detail: {
+          to: entry.venueEmail,
+          subject: state.subject,
+          body: state.body,
+          venueId: entry.venueId,
+        },
+      }),
+    );
     setState((s) => ({ ...s, status: "sent" }));
   }
 

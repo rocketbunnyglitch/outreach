@@ -117,7 +117,7 @@ function ThreadRow({
               thread.unreadCount > 0 ? "font-semibold" : "font-medium",
             )}
           >
-            {thread.lastSenderName ?? thread.venueName}
+            {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
           </p>
           <time
             dateTime={thread.lastMessageAt.toISOString()}
@@ -157,8 +157,9 @@ function ThreadRow({
             </Chip>
           )}
 
-          {/* Venue */}
-          {thread.venueName !== thread.lastSenderName && (
+          {/* Venue chip — only when matched to a venue AND the venue name
+              isn't already the sender (avoids redundant chips). */}
+          {thread.venueName && thread.venueName !== thread.lastSenderName && (
             <Chip tone="text-zinc-500">{thread.venueName}</Chip>
           )}
 

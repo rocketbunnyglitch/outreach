@@ -1,3 +1,4 @@
+import { ComposeEmailModal } from "@/app/(admin)/_components/compose-email-modal";
 import { Globe, Instagram, Mail, MapPin, Phone } from "lucide-react";
 import Link from "next/link";
 
@@ -59,6 +60,7 @@ export function VenueSummaryStrip({
  * site, check their Instagram. Icons only (with native title tooltips).
  */
 export function VenueQuickLinks({
+  venueId,
   phoneE164,
   email,
   websiteUrl,
@@ -67,6 +69,9 @@ export function VenueQuickLinks({
   address,
   venueName,
 }: {
+  /** Optional venue UUID; if provided, emails composed from this row
+   *  are attributed to the venue so the new thread shows up linked. */
+  venueId?: string;
   phoneE164: string | null;
   email: string | null;
   websiteUrl: string | null;
@@ -90,9 +95,17 @@ export function VenueQuickLinks({
         </IconLink>
       )}
       {email && (
-        <IconLink href={`mailto:${email}`} title={`Email ${email}`} label="Email">
+        // In-app composer instead of mailto so the message goes through
+        // a chosen connected_account and ingests into /inbox.
+        <ComposeEmailModal
+          defaultTo={email}
+          venueId={venueId}
+          ariaLabel={`Email ${email}`}
+          className="inline-flex h-6 items-center justify-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-xs text-zinc-600 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900"
+        >
           <Mail className="h-3.5 w-3.5" />
-        </IconLink>
+          Email
+        </ComposeEmailModal>
       )}
       {mapsHref && (
         <IconLink href={mapsHref} title="Open in Google Maps" label="Maps" external>

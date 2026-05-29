@@ -323,13 +323,17 @@ async function ingestMessage(opts: {
     threadId = existingThread[0].id;
   } else {
     // Try to resolve a venue from the inbound from-address domain.
+    // If we can't, the thread STILL ingests — venueId stays null and
+    // an operator attaches a venue post-triage from the inbox UI.
+    // (Previous behaviour silently swallowed every email whose sender
+    // domain didn't match a venue. Migration 0046 + schema relax
+    // make this safe.)
     const venueId = await resolveVenueFromAddress(fromHeader);
     if (!venueId) {
-      // No venue match — skip ingestion for now rather than create an
-      // orphaned thread. Future: parked-thread state with a UI to
-      // attach to a venue.
-      logger.info({ fromHeader, gmailThreadId }, "gmail message ingest skipped — no venue match");
-      return null;
+      logger.info(
+        { fromHeader, gmailThreadId },
+        "gmail message ingest: no venue match, ingesting as unassigned",
+      );
     }
 
     const created = await withAuditContext(

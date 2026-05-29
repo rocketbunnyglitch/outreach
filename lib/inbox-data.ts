@@ -142,8 +142,11 @@ export interface InboxThreadRow {
   classification: string;
   assignedStaffId: string | null;
   assignedStaffName: string | null;
-  venueId: string;
-  venueName: string;
+  /** Null when the thread hasn't been matched to a venue yet (the poll
+      worker couldn't resolve the sender domain). Operator can attach
+      one from the inbox UI. */
+  venueId: string | null;
+  venueName: string | null;
   cityName: string | null;
   /** null when the thread hasn't been attributed to a brand yet. */
   brandName: string | null;
@@ -191,7 +194,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       eventCrawlNumber: events.crawlNumber,
     })
     .from(emailThreads)
-    .innerJoin(venues, eq(venues.id, emailThreads.venueId))
+    .leftJoin(venues, eq(venues.id, emailThreads.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
     .leftJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
     .leftJoin(staffMembers, eq(staffMembers.id, emailThreads.assignedStaffId))
@@ -315,8 +318,9 @@ export interface InboxThreadDetail {
     classification: string;
     assignedStaffId: string | null;
     assignedStaffName: string | null;
-    venueId: string;
-    venueName: string;
+    /** null when the thread hasn't been matched to a venue yet. */
+    venueId: string | null;
+    venueName: string | null;
     cityName: string | null;
     cityId: string | null;
     /** null when the thread hasn't been attributed to a brand yet. */
@@ -383,7 +387,7 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       unreadCount: emailThreads.unreadCount,
     })
     .from(emailThreads)
-    .innerJoin(venues, eq(venues.id, emailThreads.venueId))
+    .leftJoin(venues, eq(venues.id, emailThreads.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
     .leftJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
     .leftJoin(staffMembers, eq(staffMembers.id, emailThreads.assignedStaffId))
