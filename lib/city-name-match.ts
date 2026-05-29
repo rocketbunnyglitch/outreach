@@ -258,38 +258,89 @@ export function matchCity(rawInput: string, cities: CityCandidate[]): MatchResul
  * The 'priority' column is opt-in. If a row has 2 columns, the second
  * is treated as priority if it's a number 1-10, else as region.
  *
- * Returns an array of { line, priority } where `line` is the raw text
- * passed to matchCity().
+ * Returns an array of { line, priority, eventDate, crawlNumber } — when
+ * a token in YYYY-MM-DD form is present in the row, the parser switches
+ * to extended mode and also extracts the crawl number (1-9) if a
+ * matching token follows the date. The `line` is always the
+ * city-name-bearing prefix passed to matchCity().
+ *
+ * Supported layouts (per line):
+ *   City                          — legacy
+ *   City, Region                  — legacy
+ *   City, Priority                — legacy
+ *   City, Region, Priority        — legacy
+ *   City, Priority, Date          — new (extended)
+ *   City, Priority, Date, Crawl   — new (extended)
+ *   City, Region, Priority, Date  — new (extended, region preserved)
+ *   City, Region, Priority, Date, Crawl
+ *
+ * Tab-separated input also works because we split on either tab or comma.
  */
-export function parseBulkCityCsv(input: string): Array<{ line: string; priority: number | null }> {
-  const rows: Array<{ line: string; priority: number | null }> = [];
+export function parseBulkCityCsv(input: string): Array<{
+  line: string;
+  priority: number | null;
+  eventDate: string | null;
+  crawlNumber: number | null;
+}> {
+  const rows: Array<{
+    line: string;
+    priority: number | null;
+    eventDate: string | null;
+    crawlNumber: number | null;
+  }> = [];
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
   for (const rawLine of input.split(/\r?\n/)) {
     const trimmed = rawLine.trim();
     if (!trimmed) continue;
 
-    // Don't skip if it has a digit — the first row might be the only row
-    // and start with the city name. We just detect 'name,region,priority'
-    // vs 'name,region' vs 'name,priority' vs 'name'.
-    const parts = trimmed.split(",").map((s) => s.trim());
+    // Accept comma OR tab as a separator so spreadsheet copy-paste works.
+    const parts = trimmed.split(/[,\t]/).map((s) => s.trim());
 
     if (parts.length === 1) {
-      rows.push({ line: trimmed, priority: null });
+      rows.push({ line: trimmed, priority: null, eventDate: null, crawlNumber: null });
       continue;
     }
 
-    // Last part: is it a number 1-10?
+    // Find a date token. If present, parse the row in extended mode.
+    const dateIdx = parts.findIndex((p) => DATE_RE.test(p));
+
+    if (dateIdx !== -1) {
+      const eventDate = parts[dateIdx] ?? null;
+      // After the date, an optional crawl number (single digit 1-9).
+      let crawlNumber: number | null = null;
+      const after = parts.slice(dateIdx + 1);
+      if (after.length > 0 && after[0] && /^[1-9]$/.test(after[0])) {
+        crawlNumber = Number.parseInt(after[0], 10);
+      }
+      // Before the date, a priority (1-10) MAY sit at the last position
+      // — strip it off if so. Everything remaining is the city + region.
+      const before = parts.slice(0, dateIdx);
+      let priority: number | null = null;
+      if (before.length >= 2) {
+        const last = before[before.length - 1] ?? "";
+        const n = Number.parseInt(last, 10);
+        if (Number.isFinite(n) && n >= 1 && n <= 10 && /^\d{1,2}$/.test(last)) {
+          priority = n;
+          before.pop();
+        }
+      }
+      const line = before.join(", ");
+      rows.push({ line, priority, eventDate, crawlNumber });
+      continue;
+    }
+
+    // Legacy path — no date in the row. Last part: is it a number 1-10?
     const last = parts[parts.length - 1] ?? "";
     const asInt = Number.parseInt(last, 10);
     const lastIsPriority =
       Number.isFinite(asInt) && asInt >= 1 && asInt <= 10 && /^\d{1,2}$/.test(last);
 
     if (lastIsPriority) {
-      // Everything except the last is the city + optional region
       const linePart = parts.slice(0, -1).join(", ");
-      rows.push({ line: linePart, priority: asInt });
+      rows.push({ line: linePart, priority: asInt, eventDate: null, crawlNumber: null });
     } else {
-      // All parts are name + region(s) — no priority column
-      rows.push({ line: trimmed, priority: null });
+      rows.push({ line: trimmed, priority: null, eventDate: null, crawlNumber: null });
     }
   }
   return rows;

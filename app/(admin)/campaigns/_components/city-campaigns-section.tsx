@@ -89,6 +89,12 @@ export function CityCampaignsSection({
   const [sortBy, setSortBy] = useState<SortKey>("priority_high");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  // Bulk-select state: a Set of cityCampaign IDs. Empty = no selection
+  // (bulk-action bar hidden). The checkboxes always render on each row;
+  // the bar appears only when ≥1 is selected.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const displayRows = useMemo(() => {
     const filtered = progressRows.filter((r) => {
@@ -128,6 +134,65 @@ export function CityCampaignsSection({
     });
     return sorted;
   }, [progressRows, sortBy, statusFilter, unassignedOnly]);
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function selectAllVisible() {
+    setSelectedIds(new Set(displayRows.map((r) => r.cityCampaignId)));
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected =
+    displayRows.length > 0 && displayRows.every((r) => selectedIds.has(r.cityCampaignId));
+
+  async function handleBulkDelete() {
+    if (selectedCount === 0) return;
+    const confirmed = window.confirm(
+      `Permanently remove ${selectedCount} ${
+        selectedCount === 1 ? "city" : "cities"
+      } from this campaign? This deletes any crawls scheduled for them too. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setDeleteError(null);
+    setDeletePending(true);
+    try {
+      const { removeCityCampaignsBulk } = await import("../_actions");
+      const r = await removeCityCampaignsBulk({
+        campaignId,
+        cityCampaignIds: Array.from(selectedIds),
+      });
+      if (!r.ok) {
+        setDeleteError(r.error ?? "Bulk delete failed.");
+        return;
+      }
+      clearSelection();
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
+  async function handleSingleDelete(id: string, cityName: string) {
+    const confirmed = window.confirm(
+      `Permanently remove ${cityName} from this campaign? This deletes any crawls scheduled for it too. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setDeleteError(null);
+    try {
+      const { removeCityCampaign } = await import("@/app/(admin)/city-campaigns/_actions");
+      await removeCityCampaign(id);
+    } catch {
+      setDeleteError("Couldn't delete. Try again.");
+    }
+  }
 
   return (
     <section className="flex flex-col gap-4">
@@ -212,6 +277,58 @@ export function CityCampaignsSection({
             </div>
           )}
 
+          {/* Bulk-action bar — appears when ≥1 row is selected. Shows
+              count, select-all, "add crawl to selected", and bulk delete
+              (admin-only). Sits between the filter bar and the list so
+              it's visible alongside its selection target. */}
+          {selectedCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50/60 p-2 text-xs dark:border-blue-900/40 dark:bg-blue-950/30">
+              <span className="font-medium text-blue-900 dark:text-blue-100">
+                {selectedCount} selected
+              </span>
+              <button
+                type="button"
+                onClick={selectAllVisible}
+                disabled={allVisibleSelected}
+                className="rounded-md border border-blue-200 px-2 py-1 text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-40 dark:border-blue-900/60 dark:text-blue-200 dark:hover:bg-blue-900/40"
+              >
+                Select all visible
+              </button>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="rounded-md border border-zinc-200 px-2 py-1 text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Clear
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={deletePending}
+                  className="ml-auto rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1 font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950"
+                >
+                  {deletePending
+                    ? "Deleting…"
+                    : `Delete ${selectedCount} ${selectedCount === 1 ? "city" : "cities"}`}
+                </button>
+              )}
+              {deleteError && (
+                <span className="text-rose-600 dark:text-rose-300">{deleteError}</span>
+              )}
+            </div>
+          )}
+
+          {/* Add-crawl-to-selected — uses the existing BulkAddCrawls UI
+              in scoped-selection mode. Hidden unless ≥1 row is selected. */}
+          {selectedCount > 0 && (
+            <BulkAddCrawls
+              campaignId={campaignId}
+              cityCount={cityCampaigns.length}
+              selectedCityCampaignIds={Array.from(selectedIds)}
+            />
+          )}
+
           {displayRows.length === 0 ? (
             <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
               No cities match the current filter. Try widening the filter or clearing it.
@@ -220,7 +337,16 @@ export function CityCampaignsSection({
             <ol className="flex flex-col gap-2">
               {displayRows.map((row) => (
                 <li key={row.cityCampaignId}>
-                  <CityProgressCard row={row} />
+                  <CityProgressCard
+                    row={row}
+                    selected={selectedIds.has(row.cityCampaignId)}
+                    onToggleSelected={() => toggleOne(row.cityCampaignId)}
+                    onDeleteRequest={
+                      isAdmin
+                        ? () => handleSingleDelete(row.cityCampaignId, row.cityName)
+                        : undefined
+                    }
+                  />
                 </li>
               ))}
             </ol>

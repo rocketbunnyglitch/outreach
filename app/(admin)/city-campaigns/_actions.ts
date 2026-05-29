@@ -263,6 +263,8 @@ export async function previewCsvCityImport(
       confidence: "high" | "ambiguous" | "not_found";
       candidates: Array<{ id: string; name: string; region: string | null }>;
       priority: number | null;
+      eventDate: string | null;
+      crawlNumber: number | null;
       matchedOn?: string;
     }>;
     alreadyInCampaign: number;
@@ -302,6 +304,8 @@ export async function previewCsvCityImport(
       confidence: m.confidence,
       candidates: m.candidates.map((c) => ({ id: c.id, name: c.name, region: c.region })),
       priority: row.priority,
+      eventDate: row.eventDate,
+      crawlNumber: row.crawlNumber,
       matchedOn: m.matchedOn,
     };
   });
@@ -318,60 +322,135 @@ export async function previewCsvCityImport(
 
 /**
  * Commit a resolved bulk import. The UI passes the operator-confirmed
- * city IDs (with optional per-row priority overrides).
+ * city IDs (with optional per-row priority overrides). When a pick also
+ * carries an event date + crawl number, we schedule a crawl on commit so
+ * the operator doesn't have to bounce back to "Add a crawl to every city"
+ * for the rows where they already specified a date in the CSV.
  *
  * - Skips any city already in this campaign (returned in `skipped`)
  * - All inserts run inside a single transaction with ON CONFLICT DO
  *   NOTHING for race-safety
+ * - Events insert is best-effort; if it conflicts on the unique
+ *   (cityCampaignId, eventDate, slotNumber) index the dup is silently
+ *   skipped (same shape as bulk-add-crawls)
  */
 export async function commitBulkCityImport(
   campaignId: string,
-  picks: Array<{ cityId: string; priority: number | null }>,
-): Promise<ActionResult<{ added: number; skipped: number }>> {
+  picks: Array<{
+    cityId: string;
+    priority: number | null;
+    eventDate?: string | null;
+    crawlNumber?: number | null;
+  }>,
+): Promise<ActionResult<{ added: number; skipped: number; crawlsAdded: number }>> {
   const { staff } = await requireStaff();
   if (picks.length === 0) {
     return { ok: false, error: "No cities to import." };
   }
 
   // Dedupe within the request itself (an operator might have picked
-  // the same city for two CSV rows).
-  const uniqueById = new Map<string, number | null>();
+  // the same city for two CSV rows). For dupes we keep the FIRST row's
+  // priority + crawl-schedule info.
+  const uniqueById = new Map<
+    string,
+    { priority: number | null; eventDate: string | null; crawlNumber: number | null }
+  >();
   for (const p of picks) {
-    if (!uniqueById.has(p.cityId)) uniqueById.set(p.cityId, p.priority);
+    if (!uniqueById.has(p.cityId)) {
+      uniqueById.set(p.cityId, {
+        priority: p.priority,
+        eventDate: p.eventDate ?? null,
+        crawlNumber: p.crawlNumber ?? null,
+      });
+    }
   }
 
   // Per CLAUDE.md §12.1, cityCampaigns has no archivedAt — the unique
   // index on (city_id, campaign_id) is the source of truth for dedup.
   const existing = await db
-    .select({ cityId: cityCampaigns.cityId })
+    .select({ id: cityCampaigns.id, cityId: cityCampaigns.cityId })
     .from(cityCampaigns)
     .where(eq(cityCampaigns.campaignId, campaignId));
-  const existingSet = new Set(existing.map((r) => r.cityId));
+  const existingByCityId = new Map(existing.map((r) => [r.cityId, r.id]));
 
   const toInsert = Array.from(uniqueById.entries())
-    .filter(([cityId]) => !existingSet.has(cityId))
-    .map(([cityId, priority]) => ({
+    .filter(([cityId]) => !existingByCityId.has(cityId))
+    .map(([cityId, info]) => ({
       cityId,
       campaignId,
       // Per #026: priority defaults to 5 when the CSV row didn't
       // specify one. Operator can edit later.
-      priority: priority ?? 5,
+      priority: info.priority ?? 5,
       createdBy: staff.id,
       updatedBy: staff.id,
     }));
 
-  if (toInsert.length === 0) {
-    return { ok: true, data: { added: 0, skipped: picks.length } };
+  // Pre-allocate a list of crawls we'll schedule after the city_campaigns
+  // insert. We need the new city_campaign IDs back from the insert so we
+  // can attach events to them; existing rows already have IDs in
+  // existingByCityId so we can schedule for those too without re-inserting.
+  const wantsCrawlByCityId = new Map<string, { eventDate: string; crawlNumber: number }>();
+  for (const [cityId, info] of uniqueById.entries()) {
+    if (info.eventDate && /^\d{4}-\d{2}-\d{2}$/.test(info.eventDate)) {
+      const slot =
+        info.crawlNumber && info.crawlNumber >= 1 && info.crawlNumber <= 9 ? info.crawlNumber : 1;
+      wantsCrawlByCityId.set(cityId, { eventDate: info.eventDate, crawlNumber: slot });
+    }
   }
 
   try {
+    let crawlsAdded = 0;
     await withAuditContext(staff.id, async (tx) => {
-      await tx.insert(cityCampaigns).values(toInsert).onConflictDoNothing();
+      const newCcIdByCityId = new Map<string, string>();
+      if (toInsert.length > 0) {
+        const insertedRows = await tx
+          .insert(cityCampaigns)
+          .values(toInsert)
+          .onConflictDoNothing()
+          .returning({ id: cityCampaigns.id, cityId: cityCampaigns.cityId });
+        for (const r of insertedRows) newCcIdByCityId.set(r.cityId, r.id);
+      }
+
+      // Schedule crawls for both pre-existing AND newly-inserted city
+      // campaigns where the CSV row carried a date.
+      if (wantsCrawlByCityId.size > 0) {
+        const eventRows = Array.from(wantsCrawlByCityId.entries())
+          .map(([cityId, sched]) => {
+            const ccId = newCcIdByCityId.get(cityId) ?? existingByCityId.get(cityId);
+            if (!ccId) return null;
+            return {
+              cityCampaignId: ccId,
+              eventDate: sched.eventDate,
+              slotNumber: sched.crawlNumber,
+              crawlNumber: sched.crawlNumber,
+              requiredVenueCountTotal: 4,
+              requiredWristbandCount: 1,
+              requiredFinalCount: 1,
+              requiredMiddleCount: 2,
+              createdBy: staff.id,
+              updatedBy: staff.id,
+            } as const;
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null);
+        if (eventRows.length > 0) {
+          const { events } = await import("@/db/schema");
+          const insertedEvents = await tx
+            .insert(events)
+            .values(eventRows)
+            .onConflictDoNothing()
+            .returning({ id: events.id });
+          crawlsAdded = insertedEvents.length;
+        }
+      }
     });
     revalidatePath(`/campaigns/${campaignId}`);
     return {
       ok: true,
-      data: { added: toInsert.length, skipped: picks.length - toInsert.length },
+      data: {
+        added: toInsert.length,
+        skipped: picks.length - toInsert.length,
+        crawlsAdded,
+      },
     };
   } catch (err) {
     return wrapDbError(err, "commit bulk city import");

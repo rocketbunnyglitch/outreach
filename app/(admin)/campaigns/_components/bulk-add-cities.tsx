@@ -71,6 +71,8 @@ interface PreviewRow {
   confidence: "high" | "ambiguous" | "not_found";
   candidates: Array<{ id: string; name: string; region: string | null }>;
   priority: number | null;
+  eventDate: string | null;
+  crawlNumber: number | null;
   matchedOn?: string;
   /** Operator's pick for ambiguous rows. Defaults to first candidate. */
   selectedCandidateId?: string;
@@ -228,7 +230,11 @@ function CsvPanel({ campaignId }: { campaignId: string }) {
   const [rows, setRows] = useState<PreviewRow[] | null>(null);
   const [meta, setMeta] = useState<{ alreadyInCampaign: number; totalCities: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [commitResult, setCommitResult] = useState<{ added: number; skipped: number } | null>(null);
+  const [commitResult, setCommitResult] = useState<{
+    added: number;
+    skipped: number;
+    crawlsAdded: number;
+  } | null>(null);
   /**
    * Drag-and-drop state for the CSV drop zone. Tracks whether a file
    * is currently hovering over the zone so we can apply a hover style
@@ -332,9 +338,21 @@ function CsvPanel({ campaignId }: { campaignId: string }) {
   function handleCommit() {
     if (!rows) return;
     setError(null);
-    const picks = rows.flatMap<{ cityId: string; priority: number | null }>((r) => {
+    const picks = rows.flatMap<{
+      cityId: string;
+      priority: number | null;
+      eventDate: string | null;
+      crawlNumber: number | null;
+    }>((r) => {
       if (r.confidence === "not_found" || !r.selectedCandidateId) return [];
-      return [{ cityId: r.selectedCandidateId, priority: r.priority }];
+      return [
+        {
+          cityId: r.selectedCandidateId,
+          priority: r.priority,
+          eventDate: r.eventDate,
+          crawlNumber: r.crawlNumber,
+        },
+      ];
     });
     if (picks.length === 0) {
       setError("Nothing to import.");
@@ -358,6 +376,10 @@ function CsvPanel({ campaignId }: { campaignId: string }) {
       <SuccessBanner>
         Imported {commitResult.added} {commitResult.added === 1 ? "city" : "cities"}.
         {commitResult.skipped > 0 && ` Skipped ${commitResult.skipped} (already in campaign).`}
+        {commitResult.crawlsAdded > 0 &&
+          ` Scheduled ${commitResult.crawlsAdded} ${
+            commitResult.crawlsAdded === 1 ? "crawl" : "crawls"
+          } from the CSV's date column.`}
         <button
           type="button"
           onClick={() => setCommitResult(null)}
@@ -372,8 +394,15 @@ function CsvPanel({ campaignId }: { campaignId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-zinc-700 dark:text-zinc-300">
-        Paste a list of cities (one per line) or drop a CSV file below. Optional second column =
-        region; optional last column = priority 1-10. Slight misspellings are matched automatically.
+        Paste a list of cities (one per line) or drop a CSV file below.{" "}
+        <span className="text-zinc-500">
+          Columns: <code className="font-mono">name</code>, optional{" "}
+          <code className="font-mono">region</code>, optional{" "}
+          <code className="font-mono">priority</code> (1-10), optional{" "}
+          <code className="font-mono">date</code> (YYYY-MM-DD), optional{" "}
+          <code className="font-mono">crawl#</code> (1-9). Rows with a date will auto-schedule a
+          crawl. Slight misspellings are matched automatically.
+        </span>
       </p>
 
       {/* Drop zone wrapping the textarea. dragenter / dragleave fire on
@@ -567,6 +596,11 @@ function PreviewList({
                 {row.candidates[0].region && `, ${row.candidates[0].region}`}
                 {row.priority != null && (
                   <span className="ml-2 text-zinc-400">priority {row.priority}</span>
+                )}
+                {row.eventDate && (
+                  <span className="ml-2 text-blue-500 dark:text-blue-400">
+                    will schedule crawl {row.crawlNumber ?? 1} on {row.eventDate}
+                  </span>
                 )}
               </div>
             )}

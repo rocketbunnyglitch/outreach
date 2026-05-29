@@ -22,13 +22,20 @@
 import type { CityProgressRow } from "@/lib/city-progress";
 import { pipelineHealthFor } from "@/lib/city-progress-shared";
 import { cn } from "@/lib/cn";
-import { ChevronRight, CircleDot, Sparkles, TriangleAlert } from "lucide-react";
+import { ChevronRight, CircleDot, Sparkles, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { SlotBar } from "./slot-bar";
 
 interface Props {
   row: CityProgressRow;
+  /** Selection state for bulk operations. When undefined, the checkbox
+   *  is hidden (legacy single-card render). */
+  selected?: boolean;
+  onToggleSelected?: () => void;
+  /** Admin-only per-row delete handler. When undefined, the trash icon
+   *  is hidden. The parent owns the confirmation modal + the action call. */
+  onDeleteRequest?: () => void;
 }
 
 // Tone palette — kept de-saturated to match the Apple-y aesthetic
@@ -54,7 +61,7 @@ const PIPELINE_LABEL = {
   none: "No pipeline",
 } as const;
 
-export function CityProgressCard({ row }: Props) {
+export function CityProgressCard({ row, selected, onToggleSelected, onDeleteRequest }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const health = pipelineHealthFor(row);
@@ -73,6 +80,7 @@ export function CityProgressCard({ row }: Props) {
       className={cn(
         "card-surface-quiet group/row relative overflow-hidden p-0 transition-colors",
         "hover:bg-zinc-50/60 dark:hover:bg-zinc-900/40",
+        selected && "ring-2 ring-blue-500/40 dark:ring-blue-400/40",
       )}
     >
       {/* Left risk border */}
@@ -81,7 +89,43 @@ export function CityProgressCard({ row }: Props) {
         className={cn("absolute top-0 bottom-0 left-0 w-1", RISK_BORDER[row.risk])}
       />
 
-      <div className="flex flex-col gap-2 pr-4 pl-5">
+      {/* Bulk-select checkbox — only rendered when the parent passes a
+          toggle handler (i.e., bulk-select mode is enabled). */}
+      {onToggleSelected && (
+        <span className="absolute top-3 right-3 z-10 flex items-center">
+          <input
+            id={`select-${row.cityCampaignId}`}
+            type="checkbox"
+            checked={selected ?? false}
+            onChange={onToggleSelected}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700"
+            aria-label={`Select ${row.cityName}`}
+          />
+        </span>
+      )}
+
+      {/* Admin-only delete button — opacity revealed on row hover so it
+          doesn't compete visually with the checkbox + status pills. */}
+      {onDeleteRequest && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteRequest();
+          }}
+          aria-label={`Delete ${row.cityName} from this campaign`}
+          title="Permanently remove this city from the campaign (admin)"
+          className={cn(
+            "absolute top-3 right-10 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-rose-500 transition-opacity",
+            "opacity-0 hover:bg-rose-50 group-hover/row:opacity-100 dark:hover:bg-rose-950/50",
+          )}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      <div className={cn("flex flex-col gap-2 pl-5", onToggleSelected ? "pr-14" : "pr-4")}>
         {/* Top row: city name + meta */}
         <div className="flex items-center justify-between gap-3 pt-3">
           <Link

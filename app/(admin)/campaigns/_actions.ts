@@ -18,7 +18,7 @@
  */
 
 import { events, campaigns, cityCampaigns, crawlBrands, outreachBrands } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { requireAdmin, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -27,7 +27,7 @@ import {
   campaignCreateSchema,
   campaignUpdateSchema,
 } from "@/lib/validation/campaigns";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
@@ -527,22 +527,49 @@ export async function addCrawlToAllCities(input: {
     | "sunday_night"
     | "other";
   extendedMiddle?: boolean;
+  /** Crawl number for the row (e.g. "2" for the second crawl on that
+   *  date in the city). Defaults to 1. Doubles as the slot number so
+   *  the (cityCampaignId, eventDate, slotNumber) unique index dedups
+   *  correctly when operators schedule multiple same-day crawls. */
+  crawlNumber?: number;
+  /** When set, restrict the bulk-add to just these cityCampaign IDs
+   *  ("add crawl to selected cities" flow). When omitted, every city
+   *  in the campaign receives the crawl ("add crawl to all" flow). */
+  cityCampaignIds?: string[];
 }): Promise<ActionResult<{ added: number; skipped: number; total: number }>> {
   const { staff } = await requireStaff();
 
-  // Pull every cityCampaign in this campaign. We don't filter by status
-  // here — even 'cancelled' cityCampaigns can receive a new crawl;
-  // operator may be re-activating them. The cityCampaigns table has no
-  // archived_at column (CLAUDE.md §12.1) so no archive filter applies.
-  const ccRows = await db
-    .select({ id: cityCampaigns.id })
-    .from(cityCampaigns)
-    .where(eq(cityCampaigns.campaignId, input.campaignId));
+  const slot = input.crawlNumber ?? 1;
+  if (!Number.isInteger(slot) || slot < 1 || slot > 9) {
+    return { ok: false, error: "Crawl number must be a whole number between 1 and 9." };
+  }
+
+  // Pull every cityCampaign in this campaign — optionally filtered to a
+  // selected subset. We don't filter by status (even 'cancelled' rows
+  // can receive a new crawl; operator may be re-activating them). The
+  // cityCampaigns table has no archived_at column (CLAUDE.md §12.1) so
+  // no archive filter applies.
+  const ccRows = await (input.cityCampaignIds && input.cityCampaignIds.length > 0
+    ? db
+        .select({ id: cityCampaigns.id })
+        .from(cityCampaigns)
+        .where(
+          and(
+            eq(cityCampaigns.campaignId, input.campaignId),
+            inArray(cityCampaigns.id, input.cityCampaignIds),
+          ),
+        )
+    : db
+        .select({ id: cityCampaigns.id })
+        .from(cityCampaigns)
+        .where(eq(cityCampaigns.campaignId, input.campaignId)));
 
   if (ccRows.length === 0) {
     return {
       ok: false,
-      error: "This campaign has no cities yet. Add cities first, then bulk-add crawls.",
+      error: input.cityCampaignIds
+        ? "None of the selected cities are still in this campaign."
+        : "This campaign has no cities yet. Add cities first, then bulk-add crawls.",
     };
   }
 
@@ -557,13 +584,15 @@ export async function addCrawlToAllCities(input: {
   const totalRequired = isExtended ? 5 : 4;
   const middlesRequired = isExtended ? 3 : 2;
 
-  // Build the values list. slotNumber=1 across the board — operators
-  // wanting a 2nd same-day crawl in a specific city use the per-city
-  // addCrawlToCityCampaign instead.
+  // Build the values list. slotNumber + crawlNumber are both set to the
+  // user-provided crawl number — operators wanting multiple same-day
+  // crawls increment this (1 = first, 2 = second, etc.). The unique
+  // index uses slotNumber for dedup.
   const rows = ccRows.map((cc) => ({
     cityCampaignId: cc.id,
     eventDate: input.eventDate,
-    slotNumber: 1,
+    slotNumber: slot,
+    crawlNumber: slot,
     dayPart: input.dayPart ?? null,
     requiredVenueCountTotal: totalRequired,
     requiredWristbandCount: 1,
@@ -596,5 +625,51 @@ export async function addCrawlToAllCities(input: {
     };
   } catch (err) {
     return wrapDbError(err, "bulk add crawls");
+  }
+}
+
+// =========================================================================
+// Bulk delete city_campaigns (admin only — hard delete)
+// =========================================================================
+
+/**
+ * Permanently remove the given city_campaign rows from this campaign.
+ * Admin-only. Cascades to events (events.cityCampaignId is FK with
+ * onDelete: 'cascade'), so all crawls scheduled for those cities under
+ * this campaign go away too. Cities themselves (db/schema/geography.ts)
+ * are unaffected — only their per-campaign assignment is removed.
+ *
+ * Use the single-row removeCityCampaign for one row; this is the
+ * "select N rows + delete" shape from the campaign detail page.
+ */
+export async function removeCityCampaignsBulk(input: {
+  campaignId: string;
+  cityCampaignIds: string[];
+}): Promise<ActionResult<{ removed: number }>> {
+  const { staff } = await requireAdmin();
+
+  if (input.cityCampaignIds.length === 0) {
+    return { ok: false, error: "Select at least one city to delete." };
+  }
+  if (input.cityCampaignIds.length > 500) {
+    return { ok: false, error: "Too many selected — limit to 500 cities per delete." };
+  }
+
+  try {
+    const deleted = await withAuditContext(staff.id, async (tx) =>
+      tx
+        .delete(cityCampaigns)
+        .where(
+          and(
+            eq(cityCampaigns.campaignId, input.campaignId),
+            inArray(cityCampaigns.id, input.cityCampaignIds),
+          ),
+        )
+        .returning({ id: cityCampaigns.id }),
+    );
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    return { ok: true, data: { removed: deleted.length } };
+  } catch (err) {
+    return wrapDbError(err, "bulk delete cities");
   }
 }

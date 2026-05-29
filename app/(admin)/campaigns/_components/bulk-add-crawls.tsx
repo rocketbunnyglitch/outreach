@@ -51,6 +51,13 @@ interface Props {
   campaignId: string;
   /** Number of cities currently in this campaign — gates the button + shows context. */
   cityCount: number;
+  /** When provided + non-empty, the bulk-add applies ONLY to these
+   *  cityCampaign IDs (called from the "add crawl to selected" flow).
+   *  When omitted/empty, it applies to every city in the campaign. */
+  selectedCityCampaignIds?: string[];
+  /** Custom label override for the disclosure trigger — e.g. "Add a
+   *  crawl to N selected cities" when in selected-scope mode. */
+  triggerLabel?: string;
 }
 
 type DayPart =
@@ -73,16 +80,29 @@ const DAY_PART_LABELS: Record<DayPart | "_none", string> = {
   other: "Other",
 };
 
-export function BulkAddCrawls({ campaignId, cityCount }: Props) {
+export function BulkAddCrawls({
+  campaignId,
+  cityCount,
+  selectedCityCampaignIds,
+  triggerLabel,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [eventDate, setEventDate] = useState("");
   const [dayPart, setDayPart] = useState<DayPart | "_none">("_none");
   const [extendedMiddle, setExtendedMiddle] = useState(false);
+  const [crawlNumber, setCrawlNumber] = useState(1);
   const [pending, startTx] = useTransition();
   const [result, setResult] = useState<{ added: number; skipped: number; total: number } | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
+
+  // Effective city count for the button label depends on whether we're
+  // in selected-scope mode or all-cities mode.
+  const scopedCount =
+    selectedCityCampaignIds && selectedCityCampaignIds.length > 0
+      ? selectedCityCampaignIds.length
+      : cityCount;
 
   function commit() {
     setError(null);
@@ -91,12 +111,21 @@ export function BulkAddCrawls({ campaignId, cityCount }: Props) {
       setError("Pick a date for the crawl.");
       return;
     }
+    if (!Number.isInteger(crawlNumber) || crawlNumber < 1 || crawlNumber > 9) {
+      setError("Crawl number must be a whole number between 1 and 9.");
+      return;
+    }
     startTx(async () => {
       const r = await addCrawlToAllCities({
         campaignId,
         eventDate,
         dayPart: dayPart === "_none" ? undefined : dayPart,
         extendedMiddle,
+        crawlNumber,
+        cityCampaignIds:
+          selectedCityCampaignIds && selectedCityCampaignIds.length > 0
+            ? selectedCityCampaignIds
+            : undefined,
       });
       if (!r.ok) {
         setError(r.error ?? "Couldn't schedule crawls.");
@@ -119,10 +148,17 @@ export function BulkAddCrawls({ campaignId, cityCount }: Props) {
       >
         <div className="flex items-center gap-2">
           <CalendarPlus className="h-4 w-4 text-zinc-500" />
-          <span className="font-medium text-sm">Add a crawl to every city</span>
-          <span className="text-xs text-zinc-500">
-            {cityCount} {cityCount === 1 ? "city" : "cities"} in this campaign
+          <span className="font-medium text-sm">
+            {triggerLabel ??
+              (selectedCityCampaignIds && selectedCityCampaignIds.length > 0
+                ? `Add a crawl to ${selectedCityCampaignIds.length} selected ${selectedCityCampaignIds.length === 1 ? "city" : "cities"}`
+                : "Add a crawl to every city")}
           </span>
+          {!(selectedCityCampaignIds && selectedCityCampaignIds.length > 0) && (
+            <span className="text-xs text-zinc-500">
+              {cityCount} {cityCount === 1 ? "city" : "cities"} in this campaign
+            </span>
+          )}
         </div>
         <ChevronDown
           className={cn("h-4 w-4 text-zinc-400 transition-transform", open && "rotate-180")}
@@ -157,7 +193,7 @@ export function BulkAddCrawls({ campaignId, cityCount }: Props) {
                 already have a crawl on that date are skipped silently.
               </p>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="flex flex-col gap-1">
                   <label
                     htmlFor="bulk-crawl-date"
@@ -172,6 +208,26 @@ export function BulkAddCrawls({ campaignId, cityCount }: Props) {
                     onChange={(e) => setEventDate(e.target.value)}
                     disabled={pending}
                     className="text-xs"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="bulk-crawl-number"
+                    className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]"
+                  >
+                    Crawl number
+                  </label>
+                  <Input
+                    id="bulk-crawl-number"
+                    type="number"
+                    min={1}
+                    max={9}
+                    value={crawlNumber}
+                    onChange={(e) => setCrawlNumber(Number.parseInt(e.target.value, 10) || 1)}
+                    disabled={pending}
+                    className="text-xs"
+                    title="The crawl number (e.g. 2 for the second crawl on this date). Also acts as the slot for dedup."
                   />
                 </div>
 
@@ -218,7 +274,7 @@ export function BulkAddCrawls({ campaignId, cityCount }: Props) {
                   type="button"
                   size="sm"
                   onClick={commit}
-                  disabled={pending || cityCount === 0}
+                  disabled={pending || scopedCount === 0}
                 >
                   {pending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -227,9 +283,9 @@ export function BulkAddCrawls({ campaignId, cityCount }: Props) {
                   )}
                   {pending
                     ? "Scheduling…"
-                    : cityCount === 0
+                    : scopedCount === 0
                       ? "Add cities first"
-                      : `Schedule for ${cityCount} ${cityCount === 1 ? "city" : "cities"}`}
+                      : `Schedule crawl ${crawlNumber} for ${scopedCount} ${scopedCount === 1 ? "city" : "cities"}`}
                 </Button>
                 {error && <ErrorBanner>{error}</ErrorBanner>}
               </div>
