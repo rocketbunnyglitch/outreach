@@ -205,20 +205,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           token.role = fromUser;
         }
       }
-      // Lazy upgrade: existing sessions issued before this change have
-      // staffId but no role. Look it up once and stash it so the
-      // middleware can branch by role without forcing every operator to
-      // sign out + back in.
-      if (token.staffId && !token.role) {
+      // Verify the staff_member referenced by this token still exists,
+      // and (lazily) backfill role for sessions issued before role was
+      // added. Without the existence check, a JWT that outlives its row
+      // (e.g. after the staff_members -> users migration TRUNCATE) lands
+      // in a redirect loop: middleware sees "valid token" -> passes
+      // through /login -> every page-level requireStaff() throws ->
+      // redirects to /login -> loop. Clearing identity here invalidates
+      // the session at the source so the middleware redirects cleanly.
+      if (token.staffId && typeof token.staffId === "string") {
         try {
           const rows = await db
             .select({ role: staffMembers.role })
             .from(staffMembers)
             .where(eq(staffMembers.id, token.staffId))
             .limit(1);
-          if (rows[0]?.role) token.role = rows[0].role;
+          if (rows.length === 0) {
+            logger.warn(
+              { staffId: token.staffId },
+              "jwt: token references a staff_member that no longer exists; clearing session identity",
+            );
+            token.staffId = undefined;
+            token.role = undefined;
+            return token;
+          }
+          if (!token.role && rows[0]?.role) {
+            token.role = rows[0].role;
+          }
         } catch (err) {
-          logger.warn({ err }, "jwt: lazy role lookup failed");
+          // Don't take down logins on a transient DB blip. Keep the
+          // token as-is and let the next refresh re-verify.
+          logger.warn({ err, staffId: token.staffId }, "jwt: staff lookup failed");
         }
       }
       return token;
@@ -227,14 +244,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     /**
      * Expose the staffId, role, and provider on the session object
      * available in Server Components / Server Actions via `await auth()`.
+     *
+     * If the jwt callback above cleared staffId (because the underlying
+     * staff_member row was deleted), nuke session.user too. Otherwise the
+     * default JWT email/name keeps auth.config's `!!auth?.user` check
+     * reading as authenticated, and the redirect loop persists even
+     * though the identity is gone.
      */
     async session({ session, token }) {
-      if (token.staffId && typeof token.staffId === "string") {
-        session.user = {
-          ...session.user,
-          staffId: token.staffId,
-        };
+      if (!token.staffId || typeof token.staffId !== "string") {
+        return { ...session, user: undefined } as unknown as typeof session;
       }
+      session.user = {
+        ...session.user,
+        staffId: token.staffId,
+      };
       if (token.role) {
         session.user = { ...session.user, role: token.role };
       }
