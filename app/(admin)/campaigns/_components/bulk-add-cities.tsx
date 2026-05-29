@@ -567,7 +567,7 @@ function PreviewList({
               row.confidence === "high"
                 ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/30"
                 : row.confidence === "ambiguous"
-                  ? "border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/30"
+                  ? "border-rose-200 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-950/30"
                   : "border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/60",
             )}
           >
@@ -579,7 +579,7 @@ function PreviewList({
                   row.confidence === "high"
                     ? "text-emerald-700 dark:text-emerald-400"
                     : row.confidence === "ambiguous"
-                      ? "text-amber-700 dark:text-amber-400"
+                      ? "text-rose-700 dark:text-rose-400"
                       : "text-zinc-500",
                 )}
               >
@@ -616,7 +616,7 @@ function PreviewList({
                       className={cn(
                         "rounded-md border px-2 py-0.5 text-[11px] transition-colors",
                         picked
-                          ? "border-amber-500 bg-amber-200/60 font-medium text-amber-900 dark:border-amber-400 dark:bg-amber-900/40 dark:text-amber-100"
+                          ? "border-rose-500 bg-rose-200/60 font-medium text-rose-900 dark:border-rose-400 dark:bg-rose-900/40 dark:text-rose-100"
                           : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800",
                       )}
                     >

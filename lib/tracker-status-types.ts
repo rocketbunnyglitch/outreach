@@ -76,11 +76,18 @@ export interface CrawlNeed {
 export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {
   outreach:
     "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
+  // Need 1 → blue (mild, "just one more"). Need 2 → yellow (more
+  // urgent). Need 3 → orange (most urgent). Per operator request:
+  // "need 1 pill should be blue, need 2 should be yellow, need 3
+  // should be orange." The escalation reads as cool → warm → hot
+  // and the pills now don't fight with the amber-reserved-for-
+  // legitimate-status convention.
   need_1_venue:
-    "bg-amber-400/15 text-amber-800 ring-amber-400/30 dark:bg-amber-400/15 dark:text-amber-200",
+    "bg-blue-500/10 text-blue-700 ring-blue-500/30 dark:bg-blue-500/15 dark:text-blue-300",
   need_2_venues:
+    "bg-yellow-400/15 text-yellow-800 ring-yellow-400/30 dark:bg-yellow-400/15 dark:text-yellow-200",
+  need_3_venues:
     "bg-orange-500/15 text-orange-800 ring-orange-500/30 dark:bg-orange-500/15 dark:text-orange-200",
-  need_3_venues: "bg-red-500/15 text-red-800 ring-red-500/30 dark:bg-red-500/15 dark:text-red-300",
   cancelled: "bg-zinc-500/8 text-zinc-500 ring-zinc-500/15 line-through dark:text-zinc-500",
 };
 

@@ -355,7 +355,7 @@ export function VenueAutocomplete({
                   )}
                 </button>
                 {mapsError && (
-                  <div className="border-zinc-200 border-t bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800 dark:border-zinc-800 dark:bg-amber-950/30 dark:text-amber-300">
+                  <div className="border-zinc-200 border-t bg-rose-50/60 px-3 py-2 text-[11px] text-rose-800 dark:border-zinc-800 dark:bg-rose-950/30 dark:text-rose-300">
                     {mapsError}
                   </div>
                 )}

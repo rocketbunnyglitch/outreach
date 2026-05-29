@@ -1963,13 +1963,13 @@ function GenerateLeadsButton({
       {Trigger}
 
       {notConfigured && (
-        <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-amber-200/80 bg-amber-50/95 p-3 text-xs shadow-lg dark:border-amber-900/40 dark:bg-amber-950/80">
-          <p className="font-medium text-amber-900 dark:text-amber-200">
+        <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-rose-200/80 bg-rose-50/95 p-3 text-xs shadow-lg dark:border-rose-900/40 dark:bg-rose-950/80">
+          <p className="font-medium text-rose-900 dark:text-rose-200">
             Lead generation isn't configured yet
           </p>
-          <p className="mt-1 text-amber-800/80 dark:text-amber-300/80">
+          <p className="mt-1 text-rose-800/80 dark:text-rose-300/80">
             Add{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[10px] dark:bg-amber-900/40">
+            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-[10px] dark:bg-rose-900/40">
               GOOGLE_MAPS_API_KEY
             </code>{" "}
             to the server env and Places nearby-search will populate suggestions automatically.

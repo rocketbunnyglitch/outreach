@@ -204,7 +204,7 @@ export function BulkPasteModal({
                         key={i}
                         className={cn(
                           "border-zinc-200/30 border-b dark:border-zinc-800/20",
-                          !v?.ok && "bg-amber-50/30 dark:bg-amber-950/10",
+                          !v?.ok && "bg-rose-50/30 dark:bg-rose-950/10",
                         )}
                       >
                         {row.cells.map((cell, ci) => (

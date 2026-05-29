@@ -337,17 +337,17 @@ function StatusBadge({ status }: { status: CrawlStatus }) {
     },
     need_final: {
       label: "Need final",
-      cls: "bg-amber-500/10 text-amber-500 ring-amber-500/20",
+      cls: "bg-blue-500/10 text-blue-600 ring-blue-500/25 dark:text-blue-300",
       icon: <XCircle className="h-3 w-3" />,
     },
     need_middle: {
       label: "Need middle",
-      cls: "bg-amber-500/10 text-amber-500 ring-amber-500/20",
+      cls: "bg-blue-500/10 text-blue-600 ring-blue-500/25 dark:text-blue-300",
       icon: <XCircle className="h-3 w-3" />,
     },
     need_wristband: {
       label: "Need wristband",
-      cls: "bg-amber-500/10 text-amber-500 ring-amber-500/20",
+      cls: "bg-blue-500/10 text-blue-600 ring-blue-500/25 dark:text-blue-300",
       icon: <XCircle className="h-3 w-3" />,
     },
     stale: {

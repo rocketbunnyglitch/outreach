@@ -697,20 +697,24 @@ function computeStatusPill(row: AllCrawlsRow): { label: string; tone: string } {
       label: "Ready",
       tone: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300",
     };
+  // Need 1 / Need 2 / Need 3+ — mirrors the dashboard tracker's
+  // STATUS_PILL_TONE: blue (mild) → yellow (more) → orange (most).
+  // Three-or-more deliberately stops at orange rather than red so red
+  // remains reserved for true failure/cancellation states.
   if (row.openSlots >= 3)
     return {
       label: `Need ${row.openSlots}`,
-      tone: "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300",
+      tone: "bg-orange-500/15 text-orange-700 ring-orange-500/25 dark:text-orange-300",
     };
   if (row.openSlots === 2)
     return {
       label: "Need 2",
-      tone: "bg-orange-500/15 text-orange-700 ring-orange-500/25 dark:text-orange-300",
+      tone: "bg-yellow-400/15 text-yellow-800 ring-yellow-400/30 dark:text-yellow-200",
     };
   if (row.openSlots === 1)
     return {
       label: "Need 1",
-      tone: "bg-amber-500/15 text-amber-700 ring-amber-500/25 dark:text-amber-300",
+      tone: "bg-blue-500/10 text-blue-700 ring-blue-500/30 dark:text-blue-300",
     };
   return {
     label: "Outreach",

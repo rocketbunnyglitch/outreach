@@ -543,7 +543,7 @@ function CallRow({
           className={cn(
             "rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] ring-1 ring-inset",
             unmatched
-              ? "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300"
+              ? "bg-rose-500/15 text-rose-700 ring-rose-500/30 dark:text-rose-300"
               : "bg-emerald-500/10 text-emerald-700 ring-emerald-500/25 dark:text-emerald-400",
           )}
         >

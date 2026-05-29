@@ -11,7 +11,7 @@ const badgeVariants = cva(
         success: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
         warning: "bg-rose-50 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
         muted: "bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-500",
-        accent: "bg-orange-50 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
+        accent: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
       },
     },
     defaultVariants: { tone: "default" },
