@@ -249,6 +249,12 @@ export async function updateSlotField(
         patch[field] = value || null;
       } else if (field === "status") {
         patch[field] = value;
+        // Stamp confirmed_at so the Today widget's "Recent wins" column
+        // (which filters on confirmed_at within the last 7 days) and any
+        // other downstream "confirmed N days ago" UI sees the
+        // transition. Mirrors the same step in
+        // events/_venue-event-actions.ts.
+        if (value === "confirmed") patch.confirmedAt = new Date();
       } else {
         patch[field] = value || null;
       }

@@ -3,6 +3,7 @@ import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
 import { loadPendingEscalationsForStaff } from "@/lib/escalations-data";
 import { captureException } from "@/lib/logger";
+import { loadNextBestActions } from "@/lib/next-best-actions";
 import { loadTeamActivity } from "@/lib/team-activity";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
@@ -13,6 +14,7 @@ import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
 import { KpiCard } from "./_components/dashboard/kpi-strip";
 import { MeetingMode } from "./_components/dashboard/meeting-mode";
+import { NextBestActionsWidget } from "./_components/dashboard/next-best-actions-widget";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
 import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
@@ -79,31 +81,37 @@ export default async function DashboardHome({
   // configured) Sentry forward. Engineers see WHICH widget failed in
   // pm2 logs; operators see the rest of the dashboard render with the
   // failed widget showing empty state.
-  const [trackerLoaded, todayDigest, teamActivity, pendingEscalations] = await Promise.all([
-    campaignId
-      ? loadTrackerData({ campaignId }).catch(async (err) => {
-          await captureException(err, { widget: "tracker", campaignId });
-          return { rows: [], staff: [] };
-        })
-      : Promise.resolve({ rows: [], staff: [] }),
-    loadTodayDigest(campaignId).catch(async (err) => {
-      await captureException(err, { widget: "today_digest", campaignId });
-      // Empty digest (matches the EMPTY_DIGEST shape in today-data.ts)
-      // — keeps the widget rendered with "nothing urgent" state rather
-      // than 500-ing the page.
-      return { urgentCrawls: [], staleFollowUps: [], recentWins: [] };
-    }),
-    loadTeamActivity(4).catch(async (err) => {
-      await captureException(err, { widget: "team_activity" });
-      // Empty TeamActivitySummary — preserves shape so the widget
-      // renders its empty state rather than the page erroring.
-      return { entries: [], windowHours: 4, totalEvents: 0 };
-    }),
-    loadPendingEscalationsForStaff(staff.id).catch(async (err) => {
-      await captureException(err, { widget: "escalations", staffId: staff.id });
-      return [];
-    }),
-  ]);
+  const [trackerLoaded, todayDigest, nextBestActions, teamActivity, pendingEscalations] =
+    await Promise.all([
+      campaignId
+        ? loadTrackerData({ campaignId }).catch(async (err) => {
+            await captureException(err, { widget: "tracker", campaignId });
+            return { rows: [], staff: [] };
+          })
+        : Promise.resolve({ rows: [], staff: [] }),
+      loadTodayDigest(campaignId).catch(async (err) => {
+        await captureException(err, { widget: "today_digest", campaignId });
+        // Empty digest (matches the EMPTY_DIGEST shape in today-data.ts)
+        // — keeps the widget rendered with "nothing urgent" state rather
+        // than 500-ing the page.
+        return { urgentCrawls: [], staleFollowUps: [], recentWins: [] };
+      }),
+      loadNextBestActions(campaignId).catch(async (err) => {
+        await captureException(err, { widget: "next_best_actions", campaignId });
+        // Empty array — section hides itself when nothing to do.
+        return [];
+      }),
+      loadTeamActivity(4).catch(async (err) => {
+        await captureException(err, { widget: "team_activity" });
+        // Empty TeamActivitySummary — preserves shape so the widget
+        // renders its empty state rather than the page erroring.
+        return { entries: [], windowHours: 4, totalEvents: 0 };
+      }),
+      loadPendingEscalationsForStaff(staff.id).catch(async (err) => {
+        await captureException(err, { widget: "escalations", staffId: staff.id });
+        return [];
+      }),
+    ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
 
   const kpis = [
@@ -224,6 +232,8 @@ export default async function DashboardHome({
             : null
         }
       />
+
+      <NextBestActionsWidget actions={nextBestActions} />
 
       <section className="flex flex-col gap-3">
         <TasksWidget
