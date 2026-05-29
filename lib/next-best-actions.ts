@@ -181,7 +181,7 @@ async function loadStaleOutreach(campaignId: string): Promise<NextBestAction[]> 
     JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
     JOIN cities c ON c.id = cc.city_id
     WHERE cc.campaign_id = ${campaignId}
-      AND coe.status NOT IN ('declined', 'do_not_contact', 'bad_email', 'bad_number')
+      AND coe.status NOT IN ('declined', 'do_not_contact', 'bad_email', 'wrong_number')
       AND (coe.last_touch_at IS NULL OR coe.last_touch_at < NOW() - INTERVAL '14 days')
     GROUP BY cc.id, c.name
     HAVING COUNT(*) >= 3
