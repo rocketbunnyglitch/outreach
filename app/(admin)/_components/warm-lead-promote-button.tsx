@@ -2,6 +2,7 @@
 import { cn } from "@/lib/cn";
 import { ChevronRight, Loader2, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { assignSlotVenue } from "../city-campaigns/_slot-actions";
 
 type SlotRole = "wristband" | "middle" | "final" | "alt_final";
@@ -74,18 +75,16 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
 
   useEffect(() => {
     if (!open) return;
-    function onPointer(e: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        close();
-      }
-    }
+    // Modal closing is handled by the backdrop's onClick (in the
+    // render below) and by Escape on the modal's onKeyDown. We still
+    // listen for document-level Escape here because focus may live
+    // inside an InlineCell or other widget that swallows the keydown
+    // bubble — this is the global fallback.
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") close();
     }
-    document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -139,61 +138,103 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
     );
   }
 
-  return (
-    <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        onClick={close}
-        className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/[0.12] px-2 py-1 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] dark:text-emerald-300"
-      >
-        <Sparkles className="h-3 w-3" />
-        {step === "crawl" ? "Pick a crawl…" : "Pick slot…"}
-      </button>
+  // Modal renders into document.body via createPortal so it escapes
+  // the cold-outreach table's overflow-hidden — previously the
+  // dropdown was clipped by the table's section wrapper and the
+  // bottom rows of the picker were unreachable. Centered + backdrop
+  // matches the rest of the admin app's modal pattern (escalation
+  // popover etc.).
+  if (typeof document === "undefined") return null;
 
-      <div className="absolute top-full right-0 z-50 mt-1 w-80 rounded-lg border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/40 px-4 pt-[10vh] pb-10 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Promote ${venueName} to a crawl slot`}
+      onClick={(e) => {
+        // Close when the backdrop itself is clicked (not when clicks
+        // bubble up from inside the modal).
+        if (e.target === e.currentTarget) close();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") close();
+      }}
+    >
+      <div
+        ref={containerRef}
+        className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+      >
+        {/* Header */}
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+              Promote warm lead
+            </p>
+            <h2 className="mt-1 font-semibold text-lg tracking-tight">{venueName}</h2>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              {step === "crawl"
+                ? "Pick a crawl below; you'll then pick the slot role."
+                : selectedCrawl
+                  ? `Picking a slot in ${DAY_LABEL[selectedCrawl.dayPart]} crawl ${selectedCrawl.crawlNumber}.`
+                  : "Pick a slot role."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
         {success && (
-          <div className="flex items-center gap-2 px-3 py-3 text-emerald-700 text-xs dark:text-emerald-300">
-            <Sparkles className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 px-3 py-3 text-emerald-700 text-sm dark:bg-emerald-500/15 dark:text-emerald-300">
+            <Sparkles className="h-4 w-4" />
             <span>
               Promoted <strong>{venueName}</strong> — refresh to see it in the crawl table.
             </span>
           </div>
         )}
 
-        {!success && step === "crawl" && (
-          <>
-            <p className="px-2 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-              Promote {venueName} to which crawl?
+        {!success &&
+          step === "crawl" &&
+          (crawls.length === 0 ? (
+            <p className="rounded-md bg-zinc-50 px-3 py-3 text-sm text-zinc-500 italic dark:bg-zinc-900">
+              No crawls yet for this city. Add crawls first, then come back to promote.
             </p>
-            {crawls.length === 0 ? (
-              <p className="px-2 py-2 text-xs text-zinc-500 italic">No crawls yet for this city.</p>
-            ) : (
-              <ul className="space-y-0.5">
-                {crawls.map((c) => (
-                  <li key={c.eventId}>
-                    <button
-                      type="button"
-                      onClick={() => pickCrawl(c)}
-                      className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                    >
+          ) : (
+            <ul className="space-y-1">
+              {crawls.map((c) => (
+                <li key={c.eventId}>
+                  <button
+                    type="button"
+                    onClick={() => pickCrawl(c)}
+                    className="flex w-full items-center justify-between gap-2 rounded-md border border-zinc-200/60 bg-white px-3 py-2.5 text-left text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-500/[0.04] dark:border-zinc-800/60 dark:bg-zinc-950 dark:hover:border-emerald-700 dark:hover:bg-emerald-500/[0.06]"
+                  >
+                    <div className="flex flex-col">
                       <span className="font-medium">
                         {DAY_LABEL[c.dayPart]} crawl {c.crawlNumber}
                       </span>
-                      <ChevronRight className="h-3 w-3 text-zinc-400" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
+                      <span className="mt-0.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
+                        {c.filledSlots.length} of 4 slots filled
+                      </span>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-zinc-400" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ))}
 
         {!success && step === "role" && selectedCrawl && (
           <>
-            <div className="mb-1.5 flex items-baseline justify-between px-2">
-              <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-                Which slot in {DAY_LABEL[selectedCrawl.dayPart]} {selectedCrawl.crawlNumber}?
-              </p>
+            <div className="mb-2 flex items-baseline justify-between">
+              <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+                Which slot?
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -202,10 +243,10 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
                 }}
                 className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] hover:text-zinc-900 dark:hover:text-zinc-100"
               >
-                ← back
+                ← back to crawls
               </button>
             </div>
-            <ul className="space-y-0.5">
+            <ul className="space-y-1">
               {ROLE_OPTIONS.map((r) => {
                 const filled = selectedCrawl.filledSlots.find(
                   (f) => f.role === r.role && f.slotPosition === r.position,
@@ -220,14 +261,14 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
                       onClick={() => pickRole(r.role, r.position)}
                       disabled={disabled || pending}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
-                        "hover:bg-zinc-100 dark:hover:bg-zinc-800",
-                        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
+                        "flex w-full items-center gap-3 rounded-md border border-zinc-200/60 bg-white px-3 py-2.5 text-left text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-500/[0.04] dark:border-zinc-800/60 dark:bg-zinc-950 dark:hover:border-emerald-700 dark:hover:bg-emerald-500/[0.06]",
+                        disabled &&
+                          "cursor-not-allowed opacity-40 hover:border-zinc-200/60 hover:bg-white dark:hover:border-zinc-800/60 dark:hover:bg-zinc-950",
                       )}
                     >
                       <span
                         className={cn(
-                          "inline-flex items-center rounded px-1.5 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.06em]",
+                          "inline-flex items-center rounded px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.06em]",
                           r.tone,
                         )}
                       >
@@ -238,9 +279,9 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
                           ? "managed by shared group"
                           : filled
                             ? `replaces ${filled.venueName ?? "venue"}`
-                            : "empty"}
+                            : "empty slot"}
                       </span>
-                      {pending && <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />}
+                      {pending && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
                     </button>
                   </li>
                 );
@@ -250,7 +291,7 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
         )}
 
         {error && (
-          <div className="mt-2 rounded-md bg-rose-50/60 px-2.5 py-2 text-rose-700 text-xs dark:bg-rose-950/30 dark:text-rose-300">
+          <div className="mt-3 rounded-md bg-rose-50/60 px-3 py-2.5 text-rose-700 text-sm dark:bg-rose-950/30 dark:text-rose-300">
             <div className="flex items-start gap-2">
               <span className="flex-1">{error}</span>
               <button
@@ -259,12 +300,13 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
                 className="text-rose-500 hover:text-rose-700"
                 aria-label="Dismiss"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -99,8 +99,13 @@ const ASC_DEFAULT: ReadonlySet<SortKey> = new Set(["priority", "city", "assign",
 const FROZEN_BASE = "lg:static lg:bg-transparent lg:dark:bg-transparent";
 const FROZEN_LEFT_OFFSETS = ["left-0", "left-[80px]"] as const;
 const FROZEN_HEAD_BG = "sticky z-30 bg-zinc-200 dark:bg-zinc-900";
-function frozenBodyBg(stripeIndex: number): string {
+function frozenBodyBg(stripeIndex: number, complete?: boolean): string {
   // Mirror rowTone but force full opacity so the column is opaque.
+  // When the city is complete, the frozen cells need the same emerald
+  // wash as the scrolling cells — otherwise the green tint would only
+  // show in the right half of the row and the frozen left cells would
+  // remain zinc, which reads as a half-painted row.
+  if (complete) return "sticky z-10 bg-emerald-50 dark:bg-emerald-950/40";
   return stripeIndex % 2 === 0
     ? "sticky z-10 bg-zinc-50 dark:bg-zinc-900"
     : "sticky z-10 bg-zinc-100 dark:bg-zinc-800";
@@ -612,11 +617,26 @@ function CityCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
+  // Mirror the desktop CityRow's cityComplete calc — see comments there.
+  const cityComplete =
+    hasBreakdown &&
+    row.need.crawlBreakdown.every((c) => {
+      if (c.status === "cancelled") return true;
+      const openSlots =
+        (c.needsWristband ? 1 : 0) +
+        (c.needsMiddle1 ? 1 : 0) +
+        (c.needsMiddle2 ? 1 : 0) +
+        (c.needsFinal ? 1 : 0);
+      return openSlots === 0;
+    });
   return (
     <li
       className={cn(
-        "bg-white px-3 py-3 dark:bg-zinc-950",
-        selected && "bg-blue-50/40 dark:bg-blue-950/15",
+        "px-3 py-3",
+        cityComplete
+          ? "bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]"
+          : "bg-white dark:bg-zinc-950",
+        selected && !cityComplete && "bg-blue-50/40 dark:bg-blue-950/15",
       )}
     >
       <div className="flex items-start gap-2">
@@ -702,6 +722,30 @@ function CityRow({
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
 
+  // "City complete" — every crawl under this city is either:
+  //   - fully booked (zero open needs, equivalent to the per-crawl
+  //     "Complete" pill), OR
+  //   - cancelled (events.status === 'cancelled')
+  // Both states mean "we're done with this city; nothing more to do
+  // here." The whole row picks up a soft emerald tint as a visible
+  // signal so the operator can see at-a-glance which cities are
+  // resolved without expanding them.
+  //
+  // Cities with no crawl breakdown at all (rare — usually a freshly
+  // added city before crawl rows exist) are NOT considered complete;
+  // they shouldn't read as "done" just because they're empty.
+  const cityComplete =
+    hasBreakdown &&
+    row.need.crawlBreakdown.every((c) => {
+      if (c.status === "cancelled") return true;
+      const openSlots =
+        (c.needsWristband ? 1 : 0) +
+        (c.needsMiddle1 ? 1 : 0) +
+        (c.needsMiddle2 ? 1 : 0) +
+        (c.needsFinal ? 1 : 0);
+      return openSlots === 0;
+    });
+
   // Alternating tones — operators flagged the prior light-mode tones
   // (white + zinc-50/70 ≈ 90% white) as "too light", washing out the
   // table on bright displays. New pairing pushes BOTH stripes into
@@ -712,8 +756,14 @@ function CityRow({
   //   Dark mode:  zinc-900/40 + zinc-900/80 — kept similar to before
   //               since the dark canvas already gives plenty of
   //               contrast.
-  const rowTone =
-    stripeIndex % 2 === 0 ? "bg-zinc-50 dark:bg-zinc-900/30" : "bg-zinc-100 dark:bg-zinc-900/70";
+  // When the city is complete, both stripes are replaced by an
+  // emerald tint that overrides the zebra — same intent as the
+  // per-crawl complete row, scaled up to the city level.
+  const rowTone = cityComplete
+    ? "bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]"
+    : stripeIndex % 2 === 0
+      ? "bg-zinc-50 dark:bg-zinc-900/30"
+      : "bg-zinc-100 dark:bg-zinc-900/70";
 
   return (
     <>
@@ -731,7 +781,7 @@ function CityRow({
         <td
           className={cn(
             "w-20 px-1 py-2 pl-2 align-middle sm:py-2.5",
-            frozenBodyBg(stripeIndex),
+            frozenBodyBg(stripeIndex, cityComplete),
             FROZEN_LEFT_OFFSETS[0],
             FROZEN_BASE,
           )}
@@ -771,7 +821,7 @@ function CityRow({
         <td
           className={cn(
             "px-2 py-2 align-middle sm:py-2.5",
-            frozenBodyBg(stripeIndex),
+            frozenBodyBg(stripeIndex, cityComplete),
             FROZEN_LEFT_OFFSETS[1],
             FROZEN_BASE,
           )}
