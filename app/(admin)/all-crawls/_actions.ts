@@ -771,41 +771,103 @@ export async function bulkSetEventTimes(
     ? (rows as unknown as Row[])
     : ((rows as unknown as { rows: Row[] }).rows ?? []);
 
-  let updated = 0;
+  // Build per-row computed timestamps client-side BEFORE hitting the DB.
+  // Previous implementation did N round-trips inside one transaction
+  // (one UPDATE per row); for 200+ events that loop alone could take
+  // 5-15 seconds and the popover's spinner sat indefinitely. Switching
+  // to a single bulk UPDATE...FROM(VALUES...) statement collapses
+  // hundreds of round-trips into one.
+  type Patch = {
+    id: string;
+    startsAt: Date | null;
+    endsAt: Date | null;
+    /** Which columns the SET clause should actually touch for this row.
+     *  When startTime wasn't sent at all (undefined), starts_at must be
+     *  left untouched. Same for endTime. */
+    touchStarts: boolean;
+    touchEnds: boolean;
+  };
+  const patches: Patch[] = [];
   let skipped = 0;
+  for (const r of list) {
+    if (!r.event_date) {
+      skipped += 1;
+      continue;
+    }
+    let startsAt: Date | null = null;
+    let endsAt: Date | null = null;
+    if (startTime !== undefined && startTime !== "") {
+      startsAt = zonedTimestamp(r.event_date, startTime, r.timezone);
+    }
+    if (endTime !== undefined && endTime !== "") {
+      // If endTime < startTime (start 22:00, end 02:00), treat end as
+      // next day — the past-midnight crawl case.
+      const startForCmp = startTime !== undefined && startTime !== "" ? startTime : null;
+      const rollover = startForCmp !== null && endTime < startForCmp ? 1 : 0;
+      endsAt = zonedTimestamp(r.event_date, endTime, r.timezone, rollover);
+    }
+    patches.push({
+      id: r.id,
+      startsAt,
+      endsAt,
+      touchStarts: startTime !== undefined,
+      touchEnds: endTime !== undefined,
+    });
+  }
+
+  if (patches.length === 0) {
+    return { ok: true, data: { updated: 0, skipped } };
+  }
 
   try {
     await withAuditContext(staff.id, async (tx) => {
-      for (const r of list) {
-        if (!r.event_date) {
-          skipped += 1;
-          continue;
-        }
-        const patch: { startsAt?: Date | null; endsAt?: Date | null; updatedBy?: string } = {
-          updatedBy: staff.id,
-        };
-        if (startTime !== undefined) {
-          patch.startsAt =
-            startTime === "" ? null : zonedTimestamp(r.event_date, startTime, r.timezone);
-        }
-        if (endTime !== undefined) {
-          if (endTime === "") {
-            patch.endsAt = null;
-          } else {
-            // If endTime < startTime (or there's no startTime baseline
-            // and we still want to be sane), treat end as next day.
-            const startForCmp = startTime !== undefined && startTime !== "" ? startTime : null;
-            const rollover = startForCmp !== null && endTime < startForCmp ? 1 : 0;
-            patch.endsAt = zonedTimestamp(r.event_date, endTime, r.timezone, rollover);
-          }
-        }
-        await tx.update(events).set(patch).where(eq(events.id, r.id));
-        updated += 1;
-      }
+      // Build a VALUES list with one row per event:
+      //   (id::uuid, starts_at::timestamptz, ends_at::timestamptz)
+      // For rows where the operator didn't touch starts_at (or ends_at)
+      // we still include a placeholder NULL and use a separate boolean
+      // column to tell the SET clause whether to apply it. This keeps
+      // the statement to a single round-trip regardless of row count.
+      const valuesRows = patches.map((p) => {
+        const startsTs = p.startsAt ? sql`${p.startsAt.toISOString()}::timestamptz` : sql`NULL`;
+        const endsTs = p.endsAt ? sql`${p.endsAt.toISOString()}::timestamptz` : sql`NULL`;
+        return sql`(${p.id}::uuid, ${startsTs}, ${endsTs}, ${p.touchStarts}::bool, ${p.touchEnds}::bool, ${p.touchStarts && p.startsAt === null}::bool, ${p.touchEnds && p.endsAt === null}::bool)`;
+      });
+
+      // Columns in VALUES:
+      //   id, starts_at, ends_at, touch_starts, touch_ends, clear_starts, clear_ends
+      //
+      // The CASE expressions handle four scenarios per side:
+      //   - don't touch the column: keep e.starts_at as-is
+      //   - set to a real timestamp: use v.starts_at
+      //   - clear the column to NULL: explicit NULL via clear_starts
+      await tx.execute(sql`
+        UPDATE events e
+           SET starts_at = CASE
+                 WHEN v.clear_starts THEN NULL
+                 WHEN v.touch_starts THEN v.starts_at
+                 ELSE e.starts_at
+               END,
+               ends_at = CASE
+                 WHEN v.clear_ends THEN NULL
+                 WHEN v.touch_ends THEN v.ends_at
+                 ELSE e.ends_at
+               END,
+               updated_by = ${staff.id}::uuid,
+               updated_at = NOW()
+          FROM (VALUES ${sql.join(valuesRows, sql`, `)})
+            AS v(id, starts_at, ends_at, touch_starts, touch_ends, clear_starts, clear_ends)
+         WHERE e.id = v.id
+      `);
     });
-    return { ok: true, data: { updated, skipped } };
+
+    // Invalidate the all-crawls route + the dashboard so the new times
+    // appear without a manual refresh.
+    revalidatePath("/all-crawls");
+    revalidatePath("/");
+
+    return { ok: true, data: { updated: patches.length, skipped } };
   } catch (err) {
-    logger.error({ err }, "bulkSetEventTimes failed");
+    logger.error({ err, count: patches.length }, "bulkSetEventTimes failed");
     return { ok: false, error: "Bulk update failed. Try again." };
   }
 }
