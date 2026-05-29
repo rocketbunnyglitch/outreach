@@ -84,18 +84,28 @@ export function CitiesCompletedKpi({
         <DottedArc ratio={ratio} />
 
         {/* Centered overlay text — sits in the hollow of the semicircle */}
-        {/* Big number — pinned inside the arc's hollow, near its apex */}
-        <div className="pointer-events-none absolute inset-x-0 top-[34%] flex justify-center">
+        {/* Big number — anchored so its BOTTOM aligns with the arc's
+            baseline (the line where the dots end). Using bottom-[33%]
+            instead of top-N% means we don't have to recompute for each
+            text-size breakpoint: the SVG's arc baseline lands at ~67%
+            from the top of the card (8% top offset + 96% of 61%-aspect
+            SVG height), so 33% from the BOTTOM places the number's
+            bottom edge there at every breakpoint. leading-none strips
+            the line-height padding so the visual character bottom
+            actually matches the element bottom. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-[33%] flex justify-center">
           <p
-            className="font-semibold text-3xl text-zinc-900 tabular-nums sm:text-5xl lg:text-7xl dark:text-white"
+            className="font-semibold text-3xl text-zinc-900 leading-none tabular-nums sm:text-5xl lg:text-7xl dark:text-white"
             style={{ fontFeatureSettings: '"tnum"' }}
           >
             {completed.toLocaleString()}
           </p>
         </div>
 
-        {/* Label — sits just below the arc's baseline */}
-        <div className="pointer-events-none absolute inset-x-0 top-[64%] flex justify-center">
+        {/* Label — sits BELOW the arc baseline + the number. The number
+            ends at ~67% from top; the label drops into the empty
+            bottom-third of the card with a small gap. */}
+        <div className="pointer-events-none absolute inset-x-0 top-[72%] flex justify-center">
           <div className="pointer-events-auto flex flex-col items-center">
             <p className="flex items-center gap-1 whitespace-nowrap font-mono text-[7px] text-zinc-600 uppercase tracking-[0.12em] sm:gap-1.5 sm:text-[10px] sm:tracking-[0.18em] dark:text-zinc-300">
               <span>Cities completed of</span>
