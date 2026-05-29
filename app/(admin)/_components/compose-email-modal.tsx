@@ -28,14 +28,20 @@
  *   </ComposeEmailModal>
  */
 
-import { Loader2, X } from "lucide-react";
+import { Loader2, Tag, X } from "lucide-react";
 import { type ReactNode, useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import {
   type ConnectedAccountOption,
   composeAndSend,
-  listSendableInboxes,
+  listComposeContext,
 } from "../_actions/compose-and-send";
+
+interface TeamLabel {
+  id: string;
+  name: string;
+  color: string | null;
+}
 
 interface Props {
   /** What renders as the click target (icon, button, anything). */
@@ -63,6 +69,8 @@ export function ComposeEmailModal({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [inboxes, setInboxes] = useState<ConnectedAccountOption[] | null>(null);
+  const [labels, setLabels] = useState<TeamLabel[]>([]);
+  const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [fromAccountId, setFromAccountId] = useState("");
   const [to, setTo] = useState(defaultTo);
@@ -81,14 +89,16 @@ export function ComposeEmailModal({
     setBody(defaultBody);
     setError(null);
     setSent(false);
+    setSelectedLabelIds([]);
     if (inboxes !== null) return; // already loaded
-    listSendableInboxes()
-      .then((list) => {
-        setInboxes(list);
+    listComposeContext()
+      .then((ctx) => {
+        setInboxes(ctx.inboxes);
+        setLabels(ctx.labels);
         // Default-select the first "mine" inbox if one exists; otherwise
         // the first available team inbox. The user can change before
         // sending.
-        if (list.length > 0 && list[0]) setFromAccountId(list[0].id);
+        if (ctx.inboxes.length > 0 && ctx.inboxes[0]) setFromAccountId(ctx.inboxes[0].id);
       })
       .catch((err) => {
         setLoadError(err instanceof Error ? err.message : "Couldn't load inboxes.");
@@ -136,6 +146,7 @@ export function ComposeEmailModal({
     fd.set("subject", subject);
     fd.set("body", body);
     if (venueId) fd.set("venueId", venueId);
+    if (selectedLabelIds.length > 0) fd.set("labelIds", selectedLabelIds.join(","));
     startTx(async () => {
       const result = await composeAndSend(null, fd);
       if (result.ok) {
@@ -144,6 +155,12 @@ export function ComposeEmailModal({
         setError(result.error);
       }
     });
+  }
+
+  function toggleLabel(id: string) {
+    setSelectedLabelIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
   return (
@@ -246,6 +263,59 @@ export function ComposeEmailModal({
                       className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
                     />
                   </label>
+
+                  {labels.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 font-medium text-xs">
+                        <Tag className="h-3 w-3 text-zinc-400" /> Labels
+                        <span className="font-normal text-[10px] text-zinc-500">
+                          (applied to the new thread; mirrored to Gmail)
+                        </span>
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {labels.map((l) => {
+                          const selected = selectedLabelIds.includes(l.id);
+                          return (
+                            <button
+                              type="button"
+                              key={l.id}
+                              onClick={() => toggleLabel(l.id)}
+                              aria-pressed={selected}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                                selected
+                                  ? "border-zinc-900 bg-zinc-900 text-zinc-50 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                                  : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                              }`}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                                  l.color === "emerald"
+                                    ? "bg-emerald-500"
+                                    : l.color === "rose"
+                                      ? "bg-rose-500"
+                                      : l.color === "blue"
+                                        ? "bg-blue-500"
+                                        : l.color === "amber"
+                                          ? "bg-amber-500"
+                                          : l.color === "violet"
+                                            ? "bg-violet-500"
+                                            : l.color === "sky"
+                                              ? "bg-sky-500"
+                                              : l.color === "orange"
+                                                ? "bg-orange-500"
+                                                : l.color === "yellow"
+                                                  ? "bg-yellow-500"
+                                                  : "bg-zinc-400"
+                                }`}
+                              />
+                              {l.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <label className="flex flex-col gap-1">
                     <span className="font-medium text-xs">Message</span>

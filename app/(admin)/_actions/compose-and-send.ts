@@ -24,6 +24,7 @@ import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
+import { type TeamLabelSummary, applyLabelToThread, listTeamLabels } from "@/lib/team-labels";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -91,6 +92,23 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
   return opts;
 }
 
+/**
+ * Bundle the modal's lazy-load: inboxes + team labels in one
+ * round trip so the compose modal doesn't have to make two calls
+ * the first time it opens.
+ */
+export async function listComposeContext(): Promise<{
+  inboxes: ConnectedAccountOption[];
+  labels: TeamLabelSummary[];
+}> {
+  const { staff } = await requireStaff();
+  const [inboxes, labels] = await Promise.all([
+    listSendableInboxes(),
+    listTeamLabels(staff.teamId),
+  ]);
+  return { inboxes, labels };
+}
+
 export type ComposeResult = { ok: true; threadId: string } | { ok: false; error: string };
 
 /**
@@ -117,6 +135,15 @@ export async function composeAndSend(_prev: unknown, formData: FormData): Promis
   const body = String(formData.get("body") ?? "");
   const venueIdRaw = String(formData.get("venueId") ?? "").trim();
   const venueId = venueIdRaw && UUID_RE.test(venueIdRaw) ? venueIdRaw : null;
+  // Optional comma-separated list of team_label ids to apply to the
+  // new thread after send. Filtered to valid UUIDs; unknown ids are
+  // dropped silently (label may have been deleted between modal open
+  // and submit).
+  const labelIdsRaw = String(formData.get("labelIds") ?? "");
+  const labelIds = labelIdsRaw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => UUID_RE.test(s));
 
   if (!UUID_RE.test(fromAccountId)) return { ok: false, error: "Pick a From inbox." };
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
@@ -218,6 +245,27 @@ export async function composeAndSend(_prev: unknown, formData: FormData): Promis
       sentByStaffId: staff.id,
       staffOutreachEmailId: inbox.id,
     });
+
+    // Apply any pre-selected team labels to the brand-new thread.
+    // applyLabelToThread also mirrors to Gmail (lazy-creates the
+    // Gmail-side label on this account if it's not linked yet).
+    // Each label is applied independently so one Gmail-side failure
+    // doesn't block the rest. Errors are logged inside the helper.
+    for (const labelId of labelIds) {
+      try {
+        await applyLabelToThread({
+          threadId,
+          teamLabelId: labelId,
+          appliedBy: staff.id,
+          via: "manual",
+        });
+      } catch (err) {
+        logger.warn(
+          { err, threadId, labelId },
+          "composeAndSend: applyLabelToThread failed after send",
+        );
+      }
+    }
   } catch (err) {
     logger.error({ err, fromAccountId, to }, "composeAndSend: DB write failed AFTER Gmail send");
     return {

@@ -142,6 +142,7 @@ const ADMIN_SECTION: Section = {
   items: [
     { href: "/admin", label: "Admin", icon: <ShieldCheck className="h-3 w-3" /> },
     { href: "/admin/users", label: "Users", icon: <Users className="h-3 w-3" /> },
+    { href: "/admin/labels", label: "Labels", icon: <Tag className="h-3 w-3" /> },
     { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3 w-3" /> },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3 w-3" /> },

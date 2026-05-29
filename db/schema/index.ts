@@ -46,6 +46,7 @@ export * from "./events";
 export * from "./venues";
 export * from "./venue-events";
 export * from "./outreach";
+export * from "./team-labels";
 export * from "./email-messages";
 export * from "./cold-outreach";
 export * from "./wristbands";

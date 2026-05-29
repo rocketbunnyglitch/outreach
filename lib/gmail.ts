@@ -260,3 +260,117 @@ function stripHtml(html: string): string {
  * without importing lib/crypto directly. Keeps the boundary clean.
  */
 export { encrypt as encryptRefreshToken };
+
+// =========================================================================
+// Label helpers — users.labels and users.threads.modify
+// =========================================================================
+//
+// All three helpers take an encryptedRefreshToken so callers don't have
+// to know about the access-token refresh flow. They use the standard
+// Gmail REST endpoints (no SDK).
+//
+// Label scoping note:
+//   Gmail labels live per-account. The dashboard's team_labels are
+//   logical labels shared across the team; we map them to per-account
+//   Gmail label ids via the team_label_gmail_links table.
+
+export interface GmailLabel {
+  id: string;
+  name: string;
+  type: "user" | "system";
+  /** Tailwind-friendly hex from Gmail's color config, if set. */
+  backgroundColor?: string;
+  textColor?: string;
+}
+
+/** List every label on a Gmail account. Used for reconciliation when
+ *  a team_label needs to be linked to a Gmail label by name match. */
+export async function listGmailLabels(encryptedRefreshToken: string): Promise<GmailLabel[]> {
+  const accessToken = await refreshAccessToken(encryptedRefreshToken);
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gmail labels.list failed: ${res.status} ${text}`);
+  }
+  const data = (await res.json()) as {
+    labels?: Array<{
+      id: string;
+      name: string;
+      type: "user" | "system";
+      color?: { backgroundColor?: string; textColor?: string };
+    }>;
+  };
+  return (data.labels ?? []).map((l) => ({
+    id: l.id,
+    name: l.name,
+    type: l.type,
+    backgroundColor: l.color?.backgroundColor,
+    textColor: l.color?.textColor,
+  }));
+}
+
+/** Create a label on a Gmail account. Returns the new label id.
+ *  Idempotent-ish: if a label with the same name already exists Gmail
+ *  returns 409; we catch it and re-fetch the existing id. */
+export async function createGmailLabel(opts: {
+  encryptedRefreshToken: string;
+  name: string;
+}): Promise<{ id: string; existed: boolean }> {
+  const accessToken = await refreshAccessToken(opts.encryptedRefreshToken);
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: opts.name,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    }),
+  });
+  if (res.ok) {
+    const data = (await res.json()) as { id: string };
+    return { id: data.id, existed: false };
+  }
+  if (res.status === 409 || res.status === 400) {
+    // Already exists — look it up. Gmail returns 409 with "Label name
+    // exists or conflicts" but some workspaces return 400. Both cases
+    // mean "look up the existing one by name."
+    const list = await listGmailLabels(opts.encryptedRefreshToken);
+    const existing = list.find((l) => l.name.toLowerCase() === opts.name.toLowerCase());
+    if (existing) return { id: existing.id, existed: true };
+  }
+  const text = await res.text();
+  throw new Error(`Gmail labels.create failed: ${res.status} ${text}`);
+}
+
+/** Apply / remove labels on a thread. Either array can be empty. */
+export async function modifyGmailThreadLabels(opts: {
+  encryptedRefreshToken: string;
+  gmailThreadId: string;
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+}): Promise<void> {
+  const accessToken = await refreshAccessToken(opts.encryptedRefreshToken);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${opts.gmailThreadId}/modify`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        addLabelIds: opts.addLabelIds ?? [],
+        removeLabelIds: opts.removeLabelIds ?? [],
+      }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gmail threads.modify failed: ${res.status} ${text}`);
+  }
+}

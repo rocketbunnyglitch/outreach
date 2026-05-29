@@ -12,13 +12,14 @@
  * non-form helpers (markThreadRead, archiveThread) take typed args.
  */
 
-import { emailMessages, emailThreads, staffOutreachEmails } from "@/db/schema";
+import { emailMessages, emailThreads, staffOutreachEmails, teamLabels } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
+import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -427,4 +428,84 @@ export async function backfillThreadClassifications(): Promise<
 
   revalidatePath("/inbox");
   return { ok: true, data: { updated, remaining } };
+}
+
+// =========================================================================
+// Team label actions — apply / remove a label on a thread.
+// =========================================================================
+
+/**
+ * Apply a team_label to a thread. Validates the label belongs to the
+ * current user's team. Mirrors to Gmail asynchronously inside
+ * applyLabelToThread (the dashboard is the source of truth).
+ */
+export async function applyLabelToThreadAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ threadId: string; labelId: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const teamLabelId = String(formData.get("teamLabelId") ?? "");
+  if (!threadId || !teamLabelId) {
+    return { ok: false, error: "threadId + teamLabelId required" };
+  }
+
+  // Defense in depth: confirm the label is on the user's team.
+  const labelRow = await db
+    .select({ teamId: teamLabels.teamId })
+    .from(teamLabels)
+    .where(eq(teamLabels.id, teamLabelId))
+    .limit(1);
+  if (!labelRow[0] || labelRow[0].teamId !== staff.teamId) {
+    return { ok: false, error: "Label not found." };
+  }
+
+  // Confirm the thread is on the user's team (via connected_accounts).
+  const threadRow = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!threadRow[0] || threadRow[0].teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not found." };
+  }
+
+  await applyLabelToThread({
+    threadId,
+    teamLabelId,
+    appliedBy: staff.id,
+    via: "manual",
+  });
+  revalidatePath(`/inbox/${threadId}`);
+  revalidatePath("/inbox");
+  return { ok: true, data: { threadId, labelId: teamLabelId } };
+}
+
+export async function removeLabelFromThreadAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ threadId: string; labelId: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const teamLabelId = String(formData.get("teamLabelId") ?? "");
+  if (!threadId || !teamLabelId) {
+    return { ok: false, error: "threadId + teamLabelId required" };
+  }
+
+  // Same team checks as apply.
+  const threadRow = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!threadRow[0] || threadRow[0].teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not found." };
+  }
+
+  await removeLabelFromThread({ threadId, teamLabelId });
+  revalidatePath(`/inbox/${threadId}`);
+  revalidatePath("/inbox");
+  return { ok: true, data: { threadId, labelId: teamLabelId } };
 }

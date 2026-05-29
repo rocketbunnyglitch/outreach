@@ -46,6 +46,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { refreshAccessToken } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
+import { reconcileGmailLabelsForThread } from "@/lib/team-labels";
 import { classifyInboundEmail } from "@/lib/triage-classifier";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
@@ -436,8 +437,46 @@ async function ingestMessage(opts: {
     WHERE id = ${threadId}
   `);
 
+  // Reconcile Gmail labels onto team_labels. Skip system labels
+  // (INBOX, UNREAD, IMPORTANT, CATEGORY_*, SENT etc.) — those aren't
+  // mirrored into the team namespace. Only user labels (anything not
+  // starting with one of the well-known system prefixes) get fed
+  // through reconcileGmailLabelsForThread. Unknown user labels (no
+  // corresponding team_label_gmail_links row) are silently ignored
+  // — the team_labels namespace is curated.
+  const userLabelIds = labels.filter(
+    (id) => !GMAIL_SYSTEM_LABEL_IDS.has(id) && !id.startsWith("CATEGORY_"),
+  );
+  if (userLabelIds.length > 0) {
+    try {
+      await reconcileGmailLabelsForThread({
+        threadId,
+        gmailLabelIds: userLabelIds,
+        connectedAccountId: inbox.id,
+        appliedBy: inbox.staff_member_id ?? SYSTEM_STAFF_ID_FALLBACK,
+      });
+    } catch (err) {
+      logger.warn({ err, threadId }, "gmail label reconcile failed (non-fatal)");
+    }
+  }
+
   return { threadCreated };
 }
+
+/** Gmail's well-known system label ids that should never be mirrored
+ *  into team_labels. Anything starting with CATEGORY_ is also a system
+ *  label (Forums/Promotions/Social/Updates/Personal). */
+const GMAIL_SYSTEM_LABEL_IDS = new Set([
+  "INBOX",
+  "UNREAD",
+  "STARRED",
+  "IMPORTANT",
+  "SENT",
+  "DRAFT",
+  "TRASH",
+  "SPAM",
+  "CHAT",
+]);
 
 // =========================================================================
 // Helpers

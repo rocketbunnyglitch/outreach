@@ -155,6 +155,10 @@ export interface InboxThreadRow {
   eventDayPart: string | null;
   eventCrawlNumber: number | null;
   slaBreached: boolean;
+  /** Team labels applied to this thread. Synced two-way with Gmail.
+   *  Display order is whatever the underlying query returns; UI may
+   *  sort by name. Empty array when no labels. */
+  labels: Array<{ id: string; name: string; color: string | null }>;
 }
 
 /**
@@ -257,8 +261,34 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     .orderBy(desc(emailThreads.lastMessageAt))
     .limit(200);
 
+  // Fetch the labels for all visible threads in one round trip, then
+  // attach to the row. Tiny query — limited to the 200 row cap above.
+  const threadIds = rows.map((r) => r.id);
+  const labelRows = threadIds.length
+    ? await db
+        .select({
+          threadId: emailThreadLabels.threadId,
+          id: teamLabels.id,
+          name: teamLabels.name,
+          color: teamLabels.color,
+        })
+        .from(emailThreadLabels)
+        .innerJoin(teamLabels, eq(teamLabels.id, emailThreadLabels.teamLabelId))
+        .where(inArray(emailThreadLabels.threadId, threadIds))
+    : [];
+  const labelsByThread = new Map<
+    string,
+    Array<{ id: string; name: string; color: string | null }>
+  >();
+  for (const lr of labelRows) {
+    const arr = labelsByThread.get(lr.threadId) ?? [];
+    arr.push({ id: lr.id, name: lr.name, color: lr.color });
+    labelsByThread.set(lr.threadId, arr);
+  }
+
   return rows.map((r) => ({
-    ...(r as Omit<InboxThreadRow, "slaBreached">),
+    ...(r as Omit<InboxThreadRow, "slaBreached" | "labels">),
+    labels: labelsByThread.get(r.id) ?? [],
     slaBreached:
       r.state === "needs_reply" && r.lastInboundAt != null && r.lastInboundAt < slaCutoff,
   }));
@@ -516,7 +546,7 @@ export async function fetchVenueCurrentBookings(venueId: string) {
  * doesn't show stale options; 'connected' AND 'needs_reauth' are
  * both visible so the operator can spot which alias is broken.
  */
-import { staffOutreachEmails } from "@/db/schema";
+import { emailThreadLabels, staffOutreachEmails, teamLabels } from "@/db/schema";
 
 export interface InboxAliasOption {
   id: string;

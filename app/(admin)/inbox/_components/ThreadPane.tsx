@@ -1,9 +1,11 @@
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
+import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
 import Link from "next/link";
 import { ClassificationPicker } from "./ClassificationPicker";
 import { ThreadActions } from "./ThreadActions";
+import { ThreadLabelsRow } from "./ThreadLabelsRow";
 
 /**
  * Right pane — full thread conversation + CRM rail below.
@@ -20,9 +22,13 @@ import { ThreadActions } from "./ThreadActions";
 export function ThreadPane({
   detail,
   outreachHistory,
+  threadLabels,
+  allTeamLabels,
 }: {
   detail: InboxThreadDetail;
   outreachHistory: VenueOutreachHistoryEntry[];
+  threadLabels: ThreadLabelRow[];
+  allTeamLabels: TeamLabelSummary[];
 }) {
   const { thread, messages } = detail;
 
@@ -77,6 +83,13 @@ export function ThreadPane({
             unreadCount={thread.unreadCount}
           />
         </div>
+        {/* Team labels — apply / remove inline; also surfaces gmail
+            labels that synced in via reconcileGmailLabelsForThread. */}
+        <ThreadLabelsRow
+          threadId={thread.id}
+          applied={threadLabels}
+          allTeamLabels={allTeamLabels}
+        />
       </header>
 
       {/* Messages */}

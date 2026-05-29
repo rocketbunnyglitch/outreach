@@ -182,6 +182,32 @@ function ThreadRow({
               SLA
             </span>
           )}
+
+          {/* Team labels — colored dot + name. Mirrored two-way with Gmail. */}
+          {thread.labels.map((l) => (
+            <span
+              key={l.id}
+              className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+              title={`Label: ${l.name}`}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "inline-block h-1.5 w-1.5 rounded-full",
+                  l.color === "emerald" && "bg-emerald-500",
+                  l.color === "rose" && "bg-rose-500",
+                  l.color === "blue" && "bg-blue-500",
+                  l.color === "amber" && "bg-amber-500",
+                  l.color === "violet" && "bg-violet-500",
+                  l.color === "sky" && "bg-sky-500",
+                  l.color === "orange" && "bg-orange-500",
+                  l.color === "yellow" && "bg-yellow-500",
+                  (!l.color || l.color === "zinc") && "bg-zinc-400",
+                )}
+              />
+              {l.name}
+            </span>
+          ))}
         </div>
       </Link>
     </li>

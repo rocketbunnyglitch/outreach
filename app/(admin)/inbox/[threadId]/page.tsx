@@ -9,6 +9,7 @@ import {
   fetchVenueOutreachHistory,
   isInboxFolder,
 } from "@/lib/inbox-data";
+import { listTeamLabels, listThreadLabels } from "@/lib/team-labels";
 import { notFound } from "next/navigation";
 import { FolderList } from "../_components/FolderList";
 import { InboxFilterBar } from "../_components/InboxFilterBar";
@@ -90,6 +91,14 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     ? await fetchVenueOutreachHistory(detail.thread.venueId)
     : [];
 
+  // Labels applied to THIS thread + the full team-label catalogue so
+  // the inline picker can render checked/unchecked state without an
+  // extra round trip. Both queries are small (single-team scope).
+  const [threadLabels, teamLabelsAll] = await Promise.all([
+    listThreadLabels(threadId),
+    listTeamLabels(currentStaff.teamId),
+  ]);
+
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
   if (mine) preservedQuery.set("mine", "1");
@@ -132,7 +141,14 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           </div>
         </div>
       }
-      right={<ThreadPane detail={detail} outreachHistory={outreachHistory} />}
+      right={
+        <ThreadPane
+          detail={detail}
+          outreachHistory={outreachHistory}
+          threadLabels={threadLabels}
+          allTeamLabels={teamLabelsAll}
+        />
+      }
     />
   );
 }
