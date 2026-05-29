@@ -1,31 +1,24 @@
 "use client";
 
 /**
- * InboxFilterBar — search box + alias picker + "Mine only" toggle that
- * sits above the thread list in the middle pane.
+ * InboxFilterBar — search box + alias picker + "Mine assigned" /
+ * "Mine inbox" toggles + submit cue.
  *
- * Per operator session 11:
- *   - Multi-alias inbox filter: Bryle has 3 aliases (#027); they need
- *     to focus on one at a time.
- *   - Assigned-to-me filter: "show only threads owned by me" — was
- *     URL-supported already (?staff=mine) but had no visible toggle.
- *   - Inbox search: substring match across subject, snippet, venue
- *     name, last-sender name. The most-asked-for feature.
+ * Two distinct "mine" filters:
+ *   - "Mine assigned" (?staff=<id>) — threads ASSIGNED TO ME (the
+ *     person triaging the thread). A thread can be in anyone's inbox
+ *     but assigned to me to follow up.
+ *   - "Mine inbox" (?mine=1) — threads flowing through MY connected
+ *     Gmail accounts. The new team-shared inbox shows every team
+ *     account by default; this toggle narrows to my own.
  *
- * Implementation
- * --------------
- * All three filters live in the URL so they survive across thread
- * picks + refresh + share-the-link. Submitting the search triggers a
- * router.push() with the merged params. Tabbing through alias /
- * "mine" doesn't auto-submit — we wait for a user gesture so the page
- * doesn't re-render on every keystroke.
- *
- * The form preserves the existing folder, campaign, brand chips so
- * those filters don't get nuked when the operator searches.
+ * Plus alias filter to pin to one specific Gmail account, and
+ * substring search across subject/snippet/venue/sender. All three
+ * filters live in the URL.
  */
 
 import { cn } from "@/lib/cn";
-import { Search, User, X } from "lucide-react";
+import { Inbox, Search, User, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
@@ -38,7 +31,10 @@ interface AliasOption {
 interface Props {
   aliases: AliasOption[];
   currentStaffId: string;
-  mineOnly: boolean;
+  /** "Assigned to me" filter (?staff=<currentId>). */
+  mineAssigned: boolean;
+  /** "Owned by me" inbox filter (?mine=1). */
+  mineInbox: boolean;
   activeAliasId?: string;
   initialSearch?: string;
 }
@@ -46,7 +42,8 @@ interface Props {
 export function InboxFilterBar({
   aliases,
   currentStaffId,
-  mineOnly,
+  mineAssigned,
+  mineInbox,
   activeAliasId,
   initialSearch,
 }: Props) {
@@ -55,7 +52,6 @@ export function InboxFilterBar({
   const [search, setSearch] = useState(initialSearch ?? "");
 
   function buildNextUrl(overrides: Record<string, string | null>): string {
-    // Start from the current params so we don't lose folder/campaign/brand.
     const next = new URLSearchParams(params.toString());
     for (const [key, value] of Object.entries(overrides)) {
       if (value === null || value === "") next.delete(key);
@@ -70,8 +66,12 @@ export function InboxFilterBar({
     router.push(buildNextUrl({ q: search.trim() || null }));
   }
 
-  function setMine(next: boolean) {
+  function setMineAssigned(next: boolean) {
     router.push(buildNextUrl({ staff: next ? currentStaffId : null }));
+  }
+
+  function setMineInbox(next: boolean) {
+    router.push(buildNextUrl({ mine: next ? "1" : null }));
   }
 
   function setAlias(next: string) {
@@ -116,21 +116,42 @@ export function InboxFilterBar({
         )}
       </div>
 
-      {/* Row 2: mine toggle + alias select */}
+      {/* Row 2: mine-assigned + mine-inbox toggles + alias select */}
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => setMine(!mineOnly)}
+          onClick={() => setMineInbox(!mineInbox)}
           className={cn(
             "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium text-[11px] transition-colors",
-            mineOnly
+            mineInbox
+              ? "border-emerald-400 bg-emerald-100 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100"
+              : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
+          )}
+          aria-pressed={mineInbox}
+          title={
+            mineInbox
+              ? "Showing only threads in YOUR connected inboxes"
+              : "Showing every team inbox"
+          }
+        >
+          <Inbox className="h-3 w-3" />
+          My inbox
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMineAssigned(!mineAssigned)}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium text-[11px] transition-colors",
+            mineAssigned
               ? "border-blue-400 bg-blue-100 text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100"
               : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
           )}
-          aria-pressed={mineOnly}
+          aria-pressed={mineAssigned}
+          title="Threads assigned to me"
         >
           <User className="h-3 w-3" />
-          Mine
+          Assigned to me
         </button>
 
         {aliases.length > 1 && (

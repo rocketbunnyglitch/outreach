@@ -29,6 +29,7 @@ interface Props {
     brand?: string;
     alias?: string;
     q?: string;
+    mine?: string;
   }>;
 }
 
@@ -47,28 +48,36 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   const { staff: currentStaff } = await requireStaff();
 
   const folder: InboxFolder = isInboxFolder(search.folder) ? search.folder : "needs_reply";
+  const mine = search.mine === "1";
   const assignedStaffId =
     search.staff === "mine"
       ? currentStaff.id
       : search.staff === currentStaff.id
         ? currentStaff.id
         : undefined;
-  const mineOnly = assignedStaffId === currentStaff.id;
+  const mineAssigned = assignedStaffId === currentStaff.id;
 
   const [detail, threads, counts, aliases] = await Promise.all([
     fetchThreadDetail(threadId),
     fetchInboxThreads({
       folder,
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
       assignedStaffId,
       cityCampaignId: search.campaign,
       outreachBrandId: search.brand,
       aliasId: search.alias,
       search: search.q,
     }),
-    fetchFolderCounts(),
+    fetchFolderCounts({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
+    }),
     fetchInboxAliases({
-      staffMemberId: currentStaff.id,
-      isAdmin: currentStaff.role === "admin",
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
     }),
   ]);
 
@@ -78,7 +87,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
 
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
-  if (mineOnly) preservedQuery.set("staff", currentStaff.id);
+  if (mine) preservedQuery.set("mine", "1");
+  if (mineAssigned) preservedQuery.set("staff", currentStaff.id);
   if (search.campaign) preservedQuery.set("campaign", search.campaign);
   if (search.brand) preservedQuery.set("brand", search.brand);
   if (search.alias) preservedQuery.set("alias", search.alias);
@@ -91,7 +101,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           <FolderList
             activeFolder={folder}
             counts={counts}
-            mineOnly={mineOnly}
+            mineOnly={mineAssigned}
             currentStaffId={currentStaff.id}
           />
           <InboxPresenceBar currentStaffId={currentStaff.id} />
@@ -102,7 +112,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           <InboxFilterBar
             aliases={aliases}
             currentStaffId={currentStaff.id}
-            mineOnly={mineOnly}
+            mineAssigned={mineAssigned}
+            mineInbox={mine}
             activeAliasId={search.alias}
             initialSearch={search.q}
           />

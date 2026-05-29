@@ -18,6 +18,7 @@ import {
   events,
   cities,
   cityCampaigns,
+  connectedAccounts,
   emailMessages,
   emailThreads,
   outreachBrands,
@@ -91,13 +92,33 @@ export const INBOX_SLA_HOURS = 4;
 
 export interface ThreadListFilter {
   folder: InboxFolder;
+  /**
+   * Team scope — REQUIRED. Every inbox query filters threads to
+   * connected_accounts.team_id = this. Set by the page from the
+   * signed-in user's team. Multi-tenancy depends on this being
+   * non-optional.
+   */
+  currentTeamId: string;
+  /**
+   * Current user id. Required only when `mine` is true, but the
+   * page always has it so we make it non-optional to keep the call
+   * sites simple.
+   */
+  currentUserId: string;
+  /**
+   * When true, restrict threads to those flowing through the
+   * current user's OWN connected_accounts rows. When false (default
+   * for the inbox), show every team inbox so any operator can pick
+   * up a thread.
+   */
+  mine?: boolean;
   assignedStaffId?: string;
   cityCampaignId?: string;
   outreachBrandId?: string;
   /**
-   * Filter to a specific Gmail alias (staff_outreach_emails.id). When
-   * a staff member has multiple inbox addresses (Bryle has 3 per
-   * decision #027), this lets them focus on one at a time.
+   * Filter to a specific connected Gmail account (connected_accounts.id).
+   * When a user has multiple inbox addresses (up to ~3 per the new
+   * model), this lets them focus on one at a time.
    */
   aliasId?: string;
   /**
@@ -175,9 +196,24 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     .leftJoin(staffMembers, eq(staffMembers.id, emailThreads.assignedStaffId))
     .leftJoin(cityCampaigns, eq(cityCampaigns.id, emailThreads.cityCampaignId))
     .leftJoin(events, eq(events.id, emailThreads.eventId))
+    // Team-scope join: every thread is ingested through a
+    // connected_accounts row (its staffOutreachEmailId). We INNER
+    // JOIN to that row so the WHERE below can constrain by
+    // team_id (default scope) and optionally owner_user_id
+    // ("Mine" toggle). Threads with NULL staffOutreachEmailId
+    // are historical / pre-multi-team and are intentionally
+    // hidden from the new team-scoped inbox — they should be
+    // backfilled with a connected_account before they reappear.
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
     .where(
       and(
         isNull(emailThreads.archivedAt),
+        // Team scope: ALWAYS applied. Inbox is per-team.
+        eq(connectedAccounts.teamId, filter.currentTeamId),
+        // "Mine" filter: restricts to the current user's own
+        // connected accounts. Off by default — operators want to
+        // see the full team inbox so anyone can pick up a thread.
+        filter.mine ? eq(connectedAccounts.ownerUserId, filter.currentUserId) : undefined,
         inArray(
           emailThreads.state,
           states as unknown as Array<
@@ -197,7 +233,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         filter.outreachBrandId
           ? eq(emailThreads.outreachBrandId, filter.outreachBrandId)
           : undefined,
-        // Alias filter (#027) — match the specific staff_outreach_emails row.
+        // Alias filter — match a specific connected_accounts row.
         filter.aliasId ? eq(emailThreads.staffOutreachEmailId, filter.aliasId) : undefined,
         // Free-text search. We OR across subject, snippet, venue name, and
         // last-sender name so operators can find a thread by whichever
@@ -228,14 +264,27 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
 // Folder counts (left sidebar)
 // =========================================================================
 
-export async function fetchFolderCounts(): Promise<Record<InboxFolder, number>> {
+export async function fetchFolderCounts(opts: {
+  currentTeamId: string;
+  currentUserId: string;
+  mine?: boolean;
+}): Promise<Record<InboxFolder, number>> {
   const rows = await db
     .select({
       state: emailThreads.state,
       count: sql<number>`count(*)::int`,
     })
     .from(emailThreads)
-    .where(isNull(emailThreads.archivedAt))
+    // Team-scope join — same shape as fetchInboxThreads. Threads
+    // with NULL staffOutreachEmailId are hidden.
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .where(
+      and(
+        isNull(emailThreads.archivedAt),
+        eq(connectedAccounts.teamId, opts.currentTeamId),
+        opts.mine ? eq(connectedAccounts.ownerUserId, opts.currentUserId) : undefined,
+      ),
+    )
     .groupBy(emailThreads.state);
 
   const byState = new Map<string, number>();
@@ -446,17 +495,20 @@ export async function fetchVenueCurrentBookings(venueId: string) {
 // =========================================================================
 
 /**
- * Email aliases (staff_outreach_emails rows) available as inbox filter
+ * Email aliases (connected_accounts rows) available as inbox filter
  * options.
  *
- * Visibility rule per decision #027 + the spirit of the role-gated
- * surfaces: admin sees every alias across all staff; outreach/lead/
- * readonly see only the aliases owned by their own staff_member row.
- * Bryle (3 aliases) gets a 3-option dropdown; JC (1) gets 1.
+ * Default scope (post commit 4): every connected account on the
+ * current user's team. The inbox is now shared across the team, so
+ * the alias picker shows ALL team accounts and the operator can
+ * filter by any of them.
  *
- * If the caller doesn't provide a staffId we treat that as "give me
- * all" (admin behavior). Status filter excludes archived/inactive
- * aliases so the dropdown doesn't show stale options.
+ * `mine` narrows to the current user's accounts only — useful when
+ * the operator wants to triage just their own inbox.
+ *
+ * Status filter excludes 'disconnected' aliases so the dropdown
+ * doesn't show stale options; 'connected' AND 'needs_reauth' are
+ * both visible so the operator can spot which alias is broken.
  */
 import { staffOutreachEmails } from "@/db/schema";
 
@@ -467,31 +519,31 @@ export interface InboxAliasOption {
 }
 
 export async function fetchInboxAliases(opts: {
-  /** When provided, restricts to aliases owned by this staff member. */
-  staffMemberId?: string;
-  /** Admin sees all aliases regardless of ownership. */
-  isAdmin?: boolean;
+  currentTeamId: string;
+  currentUserId: string;
+  /** When true, only list the current user's own aliases. */
+  mine?: boolean;
 }): Promise<InboxAliasOption[]> {
   const rows = await db
     .select({
       id: staffOutreachEmails.id,
       emailAddress: staffOutreachEmails.emailAddress,
       staffDisplayName: staffMembers.displayName,
-      ownerStaffId: staffOutreachEmails.ownerUserId,
+      ownerUserId: staffOutreachEmails.ownerUserId,
+      teamId: staffOutreachEmails.teamId,
       status: staffOutreachEmails.status,
     })
     .from(staffOutreachEmails)
-    .leftJoin(staffMembers, eq(staffMembers.id, staffOutreachEmails.ownerUserId));
+    .leftJoin(staffMembers, eq(staffMembers.id, staffOutreachEmails.ownerUserId))
+    .where(
+      and(
+        eq(staffOutreachEmails.teamId, opts.currentTeamId),
+        opts.mine ? eq(staffOutreachEmails.ownerUserId, opts.currentUserId) : undefined,
+      ),
+    );
 
-  // status filter and ownership filter in JS — the alias list is small
-  // (under ~20 rows even at full team size) so the savings of pushing
-  // these into SQL aren't worth the additional Drizzle complexity here.
-  // 'disconnected' aliases are hidden (they can't receive mail). We keep
-  // 'connected' AND 'needs_reauth' visible so the operator can spot which
-  // alias is broken — clicking it routes them to /settings/inboxes to fix.
   return rows
     .filter((r) => r.status === "connected" || r.status === "needs_reauth")
-    .filter((r) => opts.isAdmin || !opts.staffMemberId || r.ownerStaffId === opts.staffMemberId)
     .map((r) => ({
       id: r.id,
       emailAddress: r.emailAddress,

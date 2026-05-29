@@ -23,10 +23,16 @@ interface Props {
     staff?: string;
     campaign?: string;
     brand?: string;
-    /** staff_outreach_emails.id — narrow the list to one Gmail alias. */
+    /** connected_accounts.id — narrow the list to one Gmail alias. */
     alias?: string;
     /** Free-text search across subject, snippet, venue name, sender. */
     q?: string;
+    /**
+     * "1" -> show only threads flowing through the current user's
+     * own connected_accounts rows. Default (absent) = show all
+     * team inboxes so anyone can pick up a thread.
+     */
+    mine?: string;
   }>;
 }
 
@@ -35,14 +41,19 @@ interface Props {
  *
  * URL params:
  *   folder    = needs_reply | waiting | follow_up | closed | all
- *   staff     = <staff_id> | "mine" | undefined  (filter to assigned-to-staff)
+ *   staff     = <user_id> | "mine" | undefined  (filter by ASSIGNED-to)
+ *   mine      = "1"                              (filter by INBOX OWNER —
+ *               restricts to connected accounts owned by current user)
  *   campaign  = <city_campaign_id>               (chip filter)
  *   brand     = <outreach_brand_id>              (chip filter)
- *   alias     = <staff_outreach_email_id>        (#027 — Bryle has 3)
+ *   alias     = <connected_account_id>           (specific Gmail account)
  *   q         = <search text>                    (subject/snippet/venue/sender)
  *
- * Default folder is needs_reply — what the operator landing here cares
- * about first.
+ * The default scope is "every connected account on my team" so
+ * operators see the shared inbox. Toggle `?mine=1` to narrow to
+ * only their own inboxes.
+ *
+ * Default folder is needs_reply.
  */
 export default async function InboxPage({ searchParams }: Props) {
   const params = await searchParams;
@@ -50,34 +61,49 @@ export default async function InboxPage({ searchParams }: Props) {
 
   const folder: InboxFolder = isInboxFolder(params.folder) ? params.folder : "needs_reply";
 
-  // "mine" → current staff id; explicit id → that id; otherwise no filter
+  // "?mine=1" — show only threads flowing through MY OWN connected
+  // accounts (the new inbox owner toggle). Distinct from the
+  // existing "staff=mine" filter, which filters by the
+  // thread.assignedStaffId (who's working it). Both can be set.
+  const mine = params.mine === "1";
+
+  // "mine" → current user id; explicit id → that id; otherwise no filter.
+  // This filters by who the thread is ASSIGNED to.
   const assignedStaffId =
     params.staff === "mine"
       ? currentStaff.id
       : params.staff === currentStaff.id
         ? currentStaff.id
         : undefined;
-  const mineOnly = assignedStaffId === currentStaff.id;
+  const mineAssigned = assignedStaffId === currentStaff.id;
 
   const [threads, counts, aliases] = await Promise.all([
     fetchInboxThreads({
       folder,
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
       assignedStaffId,
       cityCampaignId: params.campaign,
       outreachBrandId: params.brand,
       aliasId: params.alias,
       search: params.q,
     }),
-    fetchFolderCounts(),
+    fetchFolderCounts({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
+    }),
     fetchInboxAliases({
-      staffMemberId: currentStaff.id,
-      isAdmin: currentStaff.role === "admin",
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
     }),
   ]);
 
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
-  if (mineOnly) preservedQuery.set("staff", currentStaff.id);
+  if (mine) preservedQuery.set("mine", "1");
+  if (mineAssigned) preservedQuery.set("staff", currentStaff.id);
   if (params.campaign) preservedQuery.set("campaign", params.campaign);
   if (params.brand) preservedQuery.set("brand", params.brand);
   if (params.alias) preservedQuery.set("alias", params.alias);
@@ -90,7 +116,7 @@ export default async function InboxPage({ searchParams }: Props) {
           <FolderList
             activeFolder={folder}
             counts={counts}
-            mineOnly={mineOnly}
+            mineOnly={mineAssigned}
             currentStaffId={currentStaff.id}
           />
           <InboxPresenceBar currentStaffId={currentStaff.id} />
@@ -101,7 +127,8 @@ export default async function InboxPage({ searchParams }: Props) {
           <InboxFilterBar
             aliases={aliases}
             currentStaffId={currentStaff.id}
-            mineOnly={mineOnly}
+            mineAssigned={mineAssigned}
+            mineInbox={mine}
             activeAliasId={params.alias}
             initialSearch={params.q}
           />
