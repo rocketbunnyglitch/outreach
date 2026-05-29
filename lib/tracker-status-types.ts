@@ -89,10 +89,31 @@ export const SLOT_PILL_TONE: Record<SlotKind, string> = {
   final: "bg-red-500 text-red-50 shadow-sm shadow-red-500/30",
 };
 
-export const SLOT_PILL_LABEL: Record<SlotKind, string> = {
+/**
+ * Long-form labels used in tooltips and accessible labels — the rendered
+ * pill text uses SLOT_PILL_LABEL (short) so it can fit on a single line
+ * at narrow viewport widths without wrapping or being cropped.
+ */
+export const SLOT_PILL_LABEL_LONG: Record<SlotKind, string> = {
   wristband: "Wristband",
   middle_1: "Middle 1",
   middle_2: "Middle 2",
   middle_pair: "Middle 1 + 2",
   final: "Final",
+};
+
+/**
+ * Short pill text. The tracker breakdown line gets very tight on narrower
+ * screens — "Wristband · Middle 1 + 2 · Final" wraps onto two lines and
+ * breaks the continuous-bar visual. Operator request: abbreviate W / M1 /
+ * M2 / F so the line never wraps. The long form lives in
+ * SLOT_PILL_LABEL_LONG for tooltips and aria-labels so the meaning is
+ * still discoverable.
+ */
+export const SLOT_PILL_LABEL: Record<SlotKind, string> = {
+  wristband: "W",
+  middle_1: "M1",
+  middle_2: "M2",
+  middle_pair: "M1+2",
+  final: "F",
 };

@@ -9,6 +9,7 @@ import {
   type CityStatusPill,
   type CrawlNeed,
   SLOT_PILL_LABEL,
+  SLOT_PILL_LABEL_LONG,
   SLOT_PILL_TONE,
   STATUS_PILL_LABEL,
   STATUS_PILL_TONE,
@@ -989,20 +990,28 @@ function SlotPills({ slots }: { slots: SlotKind[] }) {
   // wristband → middle (or pair) → final
   const ordered = [...slots].sort((a, b) => slotOrder(a) - slotOrder(b));
   return (
-    <div className="flex flex-wrap items-center gap-x-[3px] gap-y-1">
+    <div className="flex flex-nowrap items-center gap-x-[2px]">
       {ordered.map((slot) => (
         <span
           key={slot}
+          // Tooltip carries the long-form label so abbreviations stay
+          // discoverable. "W" / "M1" / "M2" / "M1+2" / "F" in the pill,
+          // full names on hover.
+          title={SLOT_PILL_LABEL_LONG[slot]}
+          aria-label={SLOT_PILL_LABEL_LONG[slot]}
           className={cn(
-            "inline-flex h-[22px] items-center font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
-            // whitespace-nowrap: prevents "Middle 1 + 2" from wrapping
-            // onto two lines at narrow viewport widths, which made the
-            // middle pill taller than its neighbors and broke the
-            // continuous-bar visual.
+            // Compact pill — small height + tabular-nums + nowrap so the
+            // line "W · M1+2 · F" stays on one row at every viewport
+            // width including the tracker's frozen-column narrowest
+            // breakdown column. Was font-mono text-[10px] previously,
+            // which made "Middle 1 + 2" wrap onto two lines and broke
+            // the continuous-bar visual.
+            "inline-flex h-[18px] items-center font-medium font-mono text-[9px] uppercase tracking-[0.06em] tabular-nums",
             "whitespace-nowrap",
             SLOT_PILL_TONE[slot],
-            // Tight rounding on inner edges to create the continuous bar feel
-            slot === "middle_pair" ? "px-3" : "px-2.5",
+            // middle_pair is two-character-wider; everything else gets
+            // the same tight inner padding.
+            slot === "middle_pair" ? "px-2" : "px-1.5",
             "first:rounded-l-md last:rounded-r-md",
             // When standing alone, fully round
             ordered.length === 1 && "rounded-md",
