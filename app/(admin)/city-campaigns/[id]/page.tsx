@@ -26,7 +26,6 @@ import { CityPresence } from "../_components/city-presence";
 import { CitySheetHeader } from "../_components/city-sheet-header";
 import { ColdOutreachTable } from "../_components/cold-outreach-table";
 import { CrawlSlotTable } from "../_components/crawl-slot-table";
-import { CurrentWarmLeads } from "../_components/current-warm-leads";
 import { PasteMapsUrl } from "../_components/paste-maps-url";
 
 export const dynamic = "force-dynamic";
@@ -237,36 +236,51 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         }
       />
 
-      {/* Current campaign's warm leads — venues an operator moved to
-          'interested' via the cold-outreach table's bulk "Move to warm
-          leads" button (or per-row status). Each row promotes through
-          the same crawl + slot picker the past-history panel uses. */}
-      <CurrentWarmLeads
-        entries={coldOutreach
-          .filter((e) => e.status === "interested")
-          .map((e) => ({
-            entryId: e.entryId,
-            venueId: e.venueId,
-            venueName: e.venueName,
-            venueEmail: e.venueEmail,
-            remarks: e.remarks,
-          }))}
-        crawls={
-          sheetData?.crawls.map((c) => ({
-            eventId: c.eventId,
-            dayPart: c.dayPart,
-            crawlNumber: c.crawlNumber,
-            middleVenueGroupId: c.middleVenueGroupId,
-            filledSlots: c.slots
-              .filter((s) => s.venueEventId != null)
-              .map((s) => ({
-                role: s.role,
-                slotPosition: s.slotPosition,
-                venueName: s.venueName,
-              })),
-          })) ?? []
-        }
+      {/* Warm leads — same component as the cold-outreach table below,
+          just rendered in "warm" mode (filters to status='interested',
+          flips the bulk Move button to send venues back to cold,
+          surfaces a per-row Promote button that opens the existing
+          two-step crawl + slot picker). Per operator: "when you
+          promote to warm leads it should have all the same columns
+          and features as the cold outreach table." */}
+      <ColdOutreachTable
         cityCampaignId={id}
+        cityId={cc.city.id}
+        outreachBrandId={cc.campaign.outreachBrandId ?? null}
+        entries={coldOutreach}
+        staff={sheetData?.staff ?? []}
+        currentStaffId={currentStaff.id}
+        escalationTargets={escalationTargets}
+        googleMapsApiKey={
+          process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
+        }
+        mode="warm"
+        crawlsForPromote={
+          sheetData?.crawls
+            .filter(
+              (
+                c,
+              ): c is typeof c & {
+                dayPart: "thursday_night" | "friday_night" | "saturday_night";
+              } =>
+                c.dayPart === "thursday_night" ||
+                c.dayPart === "friday_night" ||
+                c.dayPart === "saturday_night",
+            )
+            .map((c) => ({
+              eventId: c.eventId,
+              dayPart: c.dayPart,
+              crawlNumber: c.crawlNumber,
+              middleVenueGroupId: c.middleVenueGroupId,
+              filledSlots: c.slots
+                .filter((s) => s.venueEventId != null)
+                .map((s) => ({
+                  role: s.role,
+                  slotPosition: s.slotPosition,
+                  venueName: s.venueName,
+                })),
+            })) ?? []
+        }
       />
 
       <ColdOutreachTable

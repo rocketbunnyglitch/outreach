@@ -1,6 +1,7 @@
 "use client";
 
 import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
+import { WarmLeadPromoteButton } from "@/app/(admin)/_components/warm-lead-promote-button";
 import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
 import { Button } from "@/components/ui/button";
 import {
@@ -133,6 +134,38 @@ interface Props {
   /** Browser-restricted Maps key — passed through to AiSuggestVenuesModal so
    *  its overview map can render. Optional; if absent the map just hides. */
   googleMapsApiKey?: string;
+  /**
+   * Which slice of cold_outreach_entries to render:
+   *   - "cold" (default): everything EXCEPT status='interested'. The
+   *     classic outreach queue.
+   *   - "warm": ONLY status='interested'. Promoted leads ready to be
+   *     assigned to a crawl slot. Same columns, same features as cold
+   *     mode, but the section header reads "Warm leads," the bulk
+   *     "Move" button flips to "Move back to cold," and each row
+   *     gains an inline Promote-to-crawl affordance.
+   *
+   * Per operator: "when you promote to warm leads it should have all
+   * the same columns and features as the cold outreach table." So
+   * this is literally the same component; the mode just tweaks copy
+   * + a couple of action labels.
+   */
+  mode?: "cold" | "warm";
+  /**
+   * Crawls in this city_campaign, used to populate the per-row
+   * Promote button's crawl picker in warm mode. Empty / absent in
+   * cold mode — the Promote button doesn't render there.
+   */
+  crawlsForPromote?: Array<{
+    eventId: string;
+    dayPart: "thursday_night" | "friday_night" | "saturday_night";
+    crawlNumber: number;
+    middleVenueGroupId: string | null;
+    filledSlots: Array<{
+      role: "wristband" | "middle" | "final" | "alt_final";
+      slotPosition: number;
+      venueName: string | null;
+    }>;
+  }>;
 }
 
 const STATUS_OPTIONS: Array<{ value: string; label: string; tone: string }> = [
@@ -253,12 +286,26 @@ export function ColdOutreachTable({
   cityCampaignId,
   cityId,
   outreachBrandId,
-  entries,
+  entries: rawEntries,
   staff,
   currentStaffId,
   escalationTargets,
   googleMapsApiKey,
+  mode = "cold",
+  crawlsForPromote,
 }: Props) {
+  // Partition the input so each mode renders only its own slice.
+  // Warm mode = status === 'interested' (everything the operator has
+  // moved to the warm-lead queue); cold mode = everything else.
+  // Doing the filter at the top means everything downstream — sort,
+  // filter chips, selection, displayed count — operates on the
+  // already-narrowed list. That makes the two surfaces feel like
+  // independent tables even though they share a component.
+  const entries = useMemo(() => {
+    if (mode === "warm") return rawEntries.filter((e) => e.status === "interested");
+    return rawEntries.filter((e) => e.status !== "interested");
+  }, [rawEntries, mode]);
+
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -559,7 +606,15 @@ export function ColdOutreachTable({
     setSelected(new Set());
   }
 
+  // Empty-state behavior is mode-specific:
+  //   - cold: full discovery EmptyState (CTAs to add venues / paste /
+  //           AI suggest) — that's where outreach starts
+  //   - warm: hide the section entirely. An empty warm queue isn't a
+  //           "do something" moment; it just means nothing has been
+  //           promoted yet. The cold table above still works as the
+  //           on-ramp.
   if (entries.length === 0 && !adding) {
+    if (mode === "warm") return null;
     return (
       <EmptyState
         cityCampaignId={cityCampaignId}
@@ -583,12 +638,27 @@ export function ColdOutreachTable({
   useGridArrowNav(gridNavRef);
 
   return (
-    <section ref={gridNavRef} className="overflow-hidden card-surface">
+    <section
+      ref={gridNavRef}
+      className={cn(
+        "overflow-hidden card-surface",
+        // Warm-mode visual cue: subtle emerald ring on the section so
+        // the operator can spot it without reading the title. Same
+        // signal as the "all confirmed" green outline on the crawl
+        // table — emerald reserved for "this is the queue of good
+        // news."
+        mode === "warm" && "ring-1 ring-emerald-500/30",
+      )}
+    >
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-4 dark:border-zinc-800/40">
         <div className="flex items-baseline gap-2">
-          <Mail className="h-4 w-4 text-zinc-500" />
+          {mode === "warm" ? (
+            <Flame className="h-4 w-4 text-emerald-500" />
+          ) : (
+            <Mail className="h-4 w-4 text-zinc-500" />
+          )}
           <h2 className="font-semibold text-lg tracking-tight">
-            Cold outreach
+            {mode === "warm" ? "Warm leads" : "Cold outreach"}
             <span className="ml-2 font-mono font-normal text-[11px] text-zinc-500">
               {displayed.length}
               {hasActiveFilter && displayed.length !== entries.length
@@ -647,6 +717,7 @@ export function ColdOutreachTable({
           cityCampaignId={cityCampaignId}
           staff={staff}
           onComplete={clearSelection}
+          mode={mode}
         />
       )}
 
@@ -762,6 +833,8 @@ export function ColdOutreachTable({
                 rowIndex={i}
                 layout="table"
                 escalationTargets={escalationTargets}
+                mode={mode}
+                crawlsForPromote={crawlsForPromote}
               />
             ))}
           </tbody>
@@ -804,6 +877,8 @@ export function ColdOutreachTable({
                 zebra={false}
                 layout="card"
                 escalationTargets={escalationTargets}
+                mode={mode}
+                crawlsForPromote={crawlsForPromote}
               />
             </li>
           ))}
@@ -867,6 +942,8 @@ function ColdRow({
   rowIndex,
   layout,
   escalationTargets,
+  mode,
+  crawlsForPromote,
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
@@ -890,6 +967,20 @@ function ColdRow({
     displayName: string;
     role: string;
     primaryEmail: string;
+  }>;
+  /** Cold vs warm mode — drives the Promote-to-crawl affordance. */
+  mode: "cold" | "warm";
+  /** Crawls in this city_campaign for the per-row Promote picker. */
+  crawlsForPromote?: Array<{
+    eventId: string;
+    dayPart: "thursday_night" | "friday_night" | "saturday_night";
+    crawlNumber: number;
+    middleVenueGroupId: string | null;
+    filledSlots: Array<{
+      role: "wristband" | "middle" | "final" | "alt_final";
+      slotPosition: number;
+      venueName: string | null;
+    }>;
   }>;
 }) {
   const [pending, startTx] = useTransition();
@@ -1193,15 +1284,25 @@ function ColdRow({
             />
           </div>
 
-          {/* History + Archive */}
+          {/* History + Archive (+ Promote in warm mode) */}
           <div className="flex items-center justify-between">
-            <ActivityHistoryButton
-              table="cold_outreach_entries"
-              recordId={entry.entryId}
-              alsoTable="venues"
-              alsoRecordId={entry.venueId}
-              compact
-            />
+            <div className="flex items-center gap-2">
+              <ActivityHistoryButton
+                table="cold_outreach_entries"
+                recordId={entry.entryId}
+                alsoTable="venues"
+                alsoRecordId={entry.venueId}
+                compact
+              />
+              {mode === "warm" && crawlsForPromote && (
+                <WarmLeadPromoteButton
+                  venueId={entry.venueId}
+                  venueName={entry.venueName}
+                  cityCampaignId={cityCampaignId}
+                  crawls={crawlsForPromote}
+                />
+              )}
+            </div>
             <button
               type="button"
               onClick={archive}
@@ -1257,6 +1358,21 @@ function ColdRow({
             aria-label={`Select ${entry.venueName}`}
           />
           <div className="flex flex-col items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+            {/* In warm mode, the FIRST row action is Promote-to-crawl —
+                the operator's primary verb for an interested venue.
+                Reuses the existing WarmLeadPromoteButton popover
+                (which already implements the two-step crawl + slot
+                picker with conflict detection via assignSlotVenue).
+                Visible on hover like the other action icons; collapses
+                to "..." style if the operator hasn't loaded crawls. */}
+            {mode === "warm" && crawlsForPromote && (
+              <WarmLeadPromoteButton
+                venueId={entry.venueId}
+                venueName={entry.venueName}
+                cityCampaignId={cityCampaignId}
+                crawls={crawlsForPromote}
+              />
+            )}
             <ActivityHistoryButton
               table="cold_outreach_entries"
               recordId={entry.entryId}
@@ -2098,6 +2214,7 @@ function BulkActionBar({
   cityCampaignId,
   staff,
   onComplete,
+  mode,
 }: {
   selectedIds: string[];
   selectedEntries: Array<{
@@ -2109,6 +2226,10 @@ function BulkActionBar({
   cityCampaignId: string;
   staff: Array<{ id: string; displayName: string }>;
   onComplete: () => void;
+  /** Cold vs warm — drives whether the Move button reads "Move to warm
+   *  leads" (cold mode → sets status=interested) or "Move back to cold"
+   *  (warm mode → sets status=not_contacted). */
+  mode: "cold" | "warm";
 }) {
   const [pendingStatus, startStatus] = useTransition();
   const [pendingAssign, startAssign] = useTransition();
@@ -2280,23 +2401,26 @@ function BulkActionBar({
           )}
         </Button>
 
-        {/* Move-to-warm-leads — dedicated discoverable shortcut for the
-            "they're interested, queue for slot assignment" workflow.
-            Sets status=interested under the hood (same as picking
-            Interested in the Status → dropdown above); this just makes
-            the action visible at a glance. The warm-leads section on
-            the city page renders any entry with status=interested with
-            per-crawl assignment pills. */}
+        {/* Move between cold ↔ warm queues — same button, flipped
+            destination based on mode. In cold mode this promotes
+            selected venues to status='interested' (the warm queue).
+            In warm mode it sends them back to 'not_contacted' (the
+            cold queue). Both go through bulkUpdateColdOutreachStatus
+            via the shared setStatus helper. */}
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          onClick={() => setStatus("interested")}
+          onClick={() => setStatus(mode === "warm" ? "not_contacted" : "interested")}
           disabled={busy}
-          className="text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+          className={cn(
+            mode === "warm"
+              ? "text-zinc-600 hover:bg-zinc-500/10 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300",
+          )}
         >
           <Flame className="h-3 w-3" />
-          Move to warm leads
+          {mode === "warm" ? "Move back to cold" : "Move to warm leads"}
         </Button>
 
         {/* Bulk archive */}
