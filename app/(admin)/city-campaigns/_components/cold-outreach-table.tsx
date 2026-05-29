@@ -607,6 +607,22 @@ export function ColdOutreachTable({
   }
 
   // Empty-state behavior is mode-specific:
+  // Sheets-style arrow-key cell-to-cell navigation. The hook attaches a
+  // keydown listener to gridNavRef and moves focus between InlineCell
+  // buttons that carry a data-grid-cell attribute (we pass gridRow +
+  // gridCol on each editable cell below). Cells without grid coords
+  // (StatusSelect, AssignedSelect, RemarksInput's textarea) are
+  // unaffected — they participate in normal Tab order as before.
+  //
+  // MUST live ABOVE the empty-state early return below. Hooks must be
+  // called in the same order every render — when the operator clicks
+  // "Add venue manually" from the EmptyState, `adding` flips to true,
+  // the early return is skipped, and any hooks declared after it would
+  // suddenly start running. React then throws #310 (hooks-count
+  // mismatch) and the page swaps to the global error boundary.
+  const gridNavRef = useRef<HTMLElement>(null);
+  useGridArrowNav(gridNavRef);
+
   //   - cold: full discovery EmptyState (CTAs to add venues / paste /
   //           AI suggest) — that's where outreach starts
   //   - warm: hide the section entirely. An empty warm queue isn't a
@@ -626,16 +642,6 @@ export function ColdOutreachTable({
 
   const allSelected = selected.size > 0 && selected.size === displayed.length;
   const someSelected = selected.size > 0 && selected.size < displayed.length;
-
-  // Sheets-style arrow-key cell-to-cell navigation. The hook attaches a
-  // keydown listener to gridNavRef and moves focus between InlineCell
-  // buttons that carry a data-grid-cell attribute (we pass gridRow +
-  // gridCol on each editable cell below). Cells without grid coords
-  // (StatusSelect, AssignedSelect, RemarksInput's textarea) are
-  // unaffected — they participate in normal Tab order as before.
-  const gridNavRef = useRef<HTMLElement>(null);
-
-  useGridArrowNav(gridNavRef);
 
   return (
     <section
