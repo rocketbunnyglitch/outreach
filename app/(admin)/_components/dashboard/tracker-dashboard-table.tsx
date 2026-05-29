@@ -104,8 +104,11 @@ function frozenBodyBg(stripeIndex: number, complete?: boolean): string {
   // When the city is complete, the frozen cells need the same emerald
   // wash as the scrolling cells — otherwise the green tint would only
   // show in the right half of the row and the frozen left cells would
-  // remain zinc, which reads as a half-painted row.
-  if (complete) return "sticky z-10 bg-emerald-50 dark:bg-emerald-950/40";
+  // remain zinc, which reads as a half-painted row. The dark-mode
+  // variant uses emerald-900 (not 950) at high opacity — 950 is
+  // nearly indistinguishable from black, so the row failed the
+  // "actually looks green" test in dark mode.
+  if (complete) return "sticky z-10 bg-emerald-100 dark:bg-emerald-900/40";
   return stripeIndex % 2 === 0
     ? "sticky z-10 bg-zinc-50 dark:bg-zinc-900"
     : "sticky z-10 bg-zinc-100 dark:bg-zinc-800";
@@ -634,7 +637,7 @@ function CityCard({
       className={cn(
         "px-3 py-3",
         cityComplete
-          ? "bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]"
+          ? "bg-emerald-500/[0.10] dark:bg-emerald-500/[0.14]"
           : "bg-white dark:bg-zinc-950",
         selected && !cityComplete && "bg-blue-50/40 dark:bg-blue-950/15",
       )}
@@ -758,9 +761,14 @@ function CityRow({
   //               contrast.
   // When the city is complete, both stripes are replaced by an
   // emerald tint that overrides the zebra — same intent as the
-  // per-crawl complete row, scaled up to the city level.
+  // per-crawl complete row, scaled up to the city level. In dark
+  // mode the wash needs to be noticeably brighter than the
+  // per-crawl row's because the city row spans the full width of
+  // the table and a subtle 8% emerald reads as "almost zinc" on a
+  // black canvas. Bumped to 14% so the row reliably reads as
+  // "this is green" without going neon.
   const rowTone = cityComplete
-    ? "bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]"
+    ? "bg-emerald-500/[0.10] dark:bg-emerald-500/[0.14]"
     : stripeIndex % 2 === 0
       ? "bg-zinc-50 dark:bg-zinc-900/30"
       : "bg-zinc-100 dark:bg-zinc-900/70";
