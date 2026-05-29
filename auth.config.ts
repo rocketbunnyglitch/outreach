@@ -48,6 +48,9 @@ const config: NextAuthConfig = {
         pathname.startsWith("/api/auth") ||
         pathname === "/api/health" ||
         pathname === "/login" ||
+        // Client-state reset page — reachable without a session so
+        // a user with a broken auth cookie can still recover.
+        pathname === "/reset" ||
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico"
       ) {

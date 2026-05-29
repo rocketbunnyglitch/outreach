@@ -16,13 +16,16 @@ interface UserMenuProps {
  * Top-nav user display. Avatar is the trigger; opens a small dropdown
  * with:
  *   - Header (display name + role)
- *   - Reset cached state — clears localStorage + sessionStorage +
- *     unregisters any service workers + purges Cache Storage, then
- *     hard-reloads the current page. The auth session cookie is
- *     preserved, so the user STAYS logged in — this is meant to
- *     recover from the "site times out only in this Chrome profile"
- *     class of issues (stale cache, leftover client state, etc.)
- *     without forcing a re-login.
+ *   - Reset cached state — aggressive client-side reset. Clears
+ *     localStorage, sessionStorage, IndexedDB databases, the browser's
+ *     Cache Storage, every non-HttpOnly cookie (auth session cookie is
+ *     HttpOnly so it survives), and unregisters any service workers.
+ *     Then navigates to "/" with a cache-busting query parameter so the
+ *     browser refetches fresh HTML + JS chunks instead of serving from
+ *     its HTTP cache. This is the actual fix for "site won't load
+ *     after a deploy" (stale HTML referencing chunk hashes that no
+ *     longer exist on the server) and "stuck on a deleted route"
+ *     situations. The user STAYS signed in.
  *   - Sign out — calls the existing signOutAction.
  *
  * Outside-click + Escape close the dropdown.
@@ -52,60 +55,111 @@ export function UserMenu({ staff, provider }: UserMenuProps) {
 
   async function handleReset() {
     const confirmed = window.confirm(
-      "Reset cached client state and reload?\n\n" +
-        "This clears localStorage, sessionStorage, the browser's Cache Storage for this site, " +
-        "and unregisters any service workers. You will stay signed in. " +
-        "Use this if the site is hanging or behaving oddly only in this Chrome profile.",
+      `Reset cached client state and reload?\n\nThis clears localStorage, sessionStorage, IndexedDB, the browser's Cache Storage for this site, all non-auth cookies, and unregisters any service workers — then reloads the homepage with a cache-busting query so the browser fetches fresh HTML and JS chunks. You will stay signed in.\n\nTip: if the app itself won't load (so you can't reach this menu), bookmark ${window.location.origin}/reset — that's a static page that does the same thing without depending on the app.`,
     );
     if (!confirmed) return;
 
     setResetting(true);
+
+    // localStorage / sessionStorage — wrapped in try since some profiles
+    // (e.g. with site-data permissions tightened) throw on access.
     try {
-      // localStorage / sessionStorage — wrapped in try since some
-      // profiles (e.g. with site-data permissions tightened) throw on
-      // access.
-      try {
-        window.localStorage.clear();
-      } catch {
-        // ignore
-      }
-      try {
-        window.sessionStorage.clear();
-      } catch {
-        // ignore
-      }
-
-      // Cache Storage API — purge anything cached for this origin.
-      // Defensive; we don't register a SW today but a stale one from a
-      // prior deploy on this origin could still own a cache.
-      if (typeof caches !== "undefined") {
-        try {
-          const keys = await caches.keys();
-          await Promise.all(keys.map((k) => caches.delete(k)));
-        } catch {
-          // ignore
-        }
-      }
-
-      // Service workers — unregister any. Same defensive rationale as
-      // above: there isn't one in the codebase right now, but a stale
-      // one from a previous deploy can still be the culprit.
-      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-        try {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map((r) => r.unregister()));
-        } catch {
-          // ignore
-        }
-      }
-    } finally {
-      // Hard-reload the current path so the next request re-fetches
-      // everything fresh. We use location.replace so the broken state
-      // doesn't sit in the history's back-entry. The session cookie is
-      // HttpOnly and untouched by the above, so the user stays signed in.
-      const target = window.location.pathname + window.location.search;
-      window.location.replace(target || "/");
+      window.localStorage.clear();
+    } catch {
+      // ignore
     }
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+
+    // Cache Storage API — purge anything cached for this origin.
+    // Defensive; we don't register a SW today but a stale one from a
+    // prior deploy on this origin could still own a cache. Also the
+    // browser caches static asset responses here in some setups.
+    if (typeof caches !== "undefined") {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch {
+        // ignore
+      }
+    }
+
+    // Service workers — unregister any. Same defensive rationale.
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      } catch {
+        // ignore
+      }
+    }
+
+    // IndexedDB — wipe every database the app might have opened. The
+    // codebase doesn't use IDB directly but some libs do for caches.
+    // databases() is supported on Chromium / Safari / Firefox 126+.
+    if (typeof indexedDB !== "undefined") {
+      try {
+        const dbsFn = (
+          indexedDB as IDBFactory & {
+            databases?: () => Promise<{ name?: string }[]>;
+          }
+        ).databases;
+        if (typeof dbsFn === "function") {
+          const dbs = await dbsFn.call(indexedDB);
+          await Promise.all(
+            dbs.map(
+              (db) =>
+                new Promise<void>((resolve) => {
+                  if (!db.name) {
+                    resolve();
+                    return;
+                  }
+                  const req = indexedDB.deleteDatabase(db.name);
+                  req.onsuccess = () => resolve();
+                  req.onerror = () => resolve();
+                  req.onblocked = () => resolve();
+                }),
+            ),
+          );
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Clear every non-HttpOnly cookie on this origin. The auth session
+    // cookie is HttpOnly so this leaves it alone (the user stays signed
+    // in), but app-level cookies like theme prefs, CSRF tokens, and
+    // last-visited-route hints — any of which can be the actual cause
+    // of a redirect loop or stuck render — get wiped.
+    try {
+      const cookies = document.cookie ? document.cookie.split(";") : [];
+      for (const raw of cookies) {
+        const name = raw.split("=")[0]?.trim();
+        if (!name) continue;
+        // Delete on multiple path/domain combinations because cookies
+        // set at "/foo" can't be removed by deleting at "/".
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.${window.location.hostname}`;
+      }
+    } catch {
+      // ignore
+    }
+
+    // Navigate to root with a cache-busting query so the browser
+    // doesn't serve cached HTML or chunks. This is the actual fix for
+    // "site won't load after a deploy": the cached index.html references
+    // chunk hashes that no longer exist on the server, so reloading the
+    // SAME url returns the same broken HTML; changing the url (via
+    // ?_reset=) forces a fresh fetch, and the fresh HTML has the new
+    // chunk hashes. Going to "/" instead of the current path also
+    // recovers from "user is stuck on a deleted route" situations.
+    const cacheBust = `?_reset=${Date.now()}`;
+    window.location.replace(`/${cacheBust}`);
   }
 
   return (

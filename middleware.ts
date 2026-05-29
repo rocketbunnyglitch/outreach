@@ -56,6 +56,11 @@ export default auth((req) => {
     pathname.startsWith("/api/cron") ||
     pathname === "/api/health" ||
     pathname === "/login" ||
+    // Static client-state reset page. Must be reachable even when the
+    // user is signed out or the main app is broken — that's the whole
+    // point. Clearing your own browser storage is a self-service
+    // recovery action and not a security risk.
+    pathname === "/reset" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
 
