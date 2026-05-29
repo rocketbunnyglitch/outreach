@@ -5,7 +5,7 @@
  *   default  — solid charcoal (the primary action)
  *   ghost    — transparent with hover (secondary actions)
  *   outline  — hairline border (tertiary / cancel)
- *   destructive — for archive / delete (rust accent)
+ *   destructive — for archive / delete (rose accent)
  *
  * Sizes: sm | md | lg | icon
  *
@@ -35,7 +35,7 @@ const buttonVariants = cva(
         outline:
           "border border-zinc-200 bg-transparent text-zinc-700 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900",
         destructive:
-          "text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-900",
+          "text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:border-rose-900 dark:hover:bg-rose-900",
       },
       size: {
         sm: "h-8 px-3 text-xs",
