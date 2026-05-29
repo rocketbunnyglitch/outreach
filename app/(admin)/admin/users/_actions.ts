@@ -17,7 +17,7 @@ import { inviteTokens, users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
-import { IMPERSONATION_COOKIE_NAME, issueImpersonationGrant } from "@/lib/impersonation-cookie";
+import { issueImpersonationGrant } from "@/lib/impersonation-cookie";
 import { generateToken, inviteExpiresAt, resetExpiresAt } from "@/lib/invite-tokens";
 import { logger } from "@/lib/logger";
 import { hashPassword, validatePassword } from "@/lib/passwords";
@@ -303,6 +303,3 @@ export async function impersonateUser(formData: FormData): Promise<void> {
   // cookie, and create the session.
   redirect("/api/auth/signin/admin-impersonate?callbackUrl=/");
 }
-
-/** Convenience export so the page can clear a stale grant cookie if needed. */
-export const IMPERSONATE_COOKIE = IMPERSONATION_COOKIE_NAME;
