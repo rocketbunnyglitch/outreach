@@ -25,7 +25,6 @@ import {
   ExternalLink,
   Loader2,
   Mail,
-  Pencil,
   Plus,
   Sparkles,
   Trash2,
@@ -1413,48 +1412,51 @@ function PhoneCell({
   /** Forward to the inner InlineCell for grid arrow-nav (col=2). */
   rowIndex?: number;
 }) {
-  const [editing, setEditing] = useState(false);
   const phoneCommit = editVenueField("phoneE164");
 
-  // No number yet → straight to inline-edit mode so adding a phone is
-  // a single interaction
-  if (!entry.venuePhone || editing) {
+  // No number yet → inline-edit mode so adding a phone is a single
+  // interaction. The pencil-to-re-edit affordance was removed at the
+  // operator's request (it lived in this cluster and looked like it
+  // applied to the action icons instead of the phone number).
+  if (!entry.venuePhone) {
     return (
-      <div className="flex items-center gap-1">
-        <InlineCell
-          label="Venue phone"
-          value={entry.venuePhone ?? ""}
-          placeholder="add phone"
-          variant="mono"
-          inputType="tel"
-          maxWidth={140}
-          gridRow={rowIndex}
-          gridCol={2}
-          onCommit={async (next) => {
-            const result = await phoneCommit(next);
-            if (result.ok) setEditing(false);
-            return result;
-          }}
-        />
-        {entry.venuePhone && (
-          <button
-            type="button"
-            onClick={() => setEditing(false)}
-            className="rounded p-0.5 text-zinc-300 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-            aria-label="Cancel edit"
-            title="Cancel"
-          >
-            <X className="h-2.5 w-2.5" />
-          </button>
-        )}
-      </div>
+      <InlineCell
+        label="Venue phone"
+        value=""
+        placeholder="add phone"
+        variant="mono"
+        inputType="tel"
+        maxWidth={140}
+        gridRow={rowIndex}
+        gridCol={2}
+        onCommit={phoneCommit}
+      />
     );
   }
 
-  // Number present → show dial controls + a small pencil to switch
-  // into edit mode
+  // Number present → phone number on its own line (one-line, dynamic
+  // font size so international formats don't wrap or get truncated)
+  // with the action icons stacked beneath it. The previous layout put
+  // everything in a wide row, which was cramped and let long phone
+  // numbers wrap.
+  //
+  // Per operator request the pencil-edit affordance was removed from
+  // this cluster — to change a phone number, use the venue's detail
+  // page (or clear the field via the InlineCell when it's empty). The
+  // dial / SMS / Viber icons remain.
+  const phoneText = entry.venuePhone ?? "";
+  const phoneFontClass =
+    phoneText.length >= 16
+      ? "text-[9px]"
+      : phoneText.length >= 14
+        ? "text-[10px]"
+        : phoneText.length >= 12
+          ? "text-[11px]"
+          : "text-xs";
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-col items-start gap-0.5">
+      {/* Phone number — always one line; font scales by length so
+          long international numbers still fit. Click dials. */}
       <QuoDialControls
         venueId={entry.venueId}
         venueName={entry.venueName}
@@ -1465,22 +1467,17 @@ function PhoneCell({
         venueHours={entry.venueHours}
         venueType={entry.venueType}
         venueTimezone={entry.venueTimezone}
+        layout="stacked"
+        phoneFontClass={phoneFontClass}
       />
-      <CallAttemptBadge count={entry.callAttempts} />
-      <CallWindowHint
-        venueHours={entry.venueHours}
-        venueType={entry.venueType}
-        venueTimezone={entry.venueTimezone}
-      />
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
-        aria-label="Edit phone"
-        title="Edit phone"
-      >
-        <Pencil className="h-2.5 w-2.5" />
-      </button>
+      <div className="flex items-center gap-1">
+        <CallAttemptBadge count={entry.callAttempts} />
+        <CallWindowHint
+          venueHours={entry.venueHours}
+          venueType={entry.venueType}
+          venueTimezone={entry.venueTimezone}
+        />
+      </div>
     </div>
   );
 }

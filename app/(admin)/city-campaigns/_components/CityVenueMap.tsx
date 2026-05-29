@@ -159,29 +159,49 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
         // recoverable, prompt a refresh.
         console.error("[CityVenueMap] addPlaceToCampaign threw", err);
         setAddError("Saved, but the page needs a refresh to show it.");
-        router.refresh();
+        // Defer the refresh past the current React transition so any
+        // in-flight render doesn't collide with the route invalidation.
+        setTimeout(() => router.refresh(), 0);
         return;
       }
       if (!result.ok) {
         setAddError(result.error ?? "Couldn't add.");
         return;
       }
-      // Optimistic: flip this pin to "inDirectory" so the user sees
-      // the change immediately. Server revalidation re-fetches the
-      // page list; we re-mark on next load. Guarded against shape drift.
-      setData((prev) => {
-        if (!prev || !Array.isArray(prev.places)) return prev;
-        return {
-          ...prev,
-          places: prev.places.map((p) =>
-            p.placeId === place.placeId
-              ? { ...p, inDirectory: true, venueId: result.venueId ?? null }
-              : p,
-          ),
-        };
-      });
+      // Close the InfoWindow BEFORE updating the underlying place list
+      // and BEFORE triggering router.refresh(). The InfoWindow holds a
+      // reference to the place via `selectedPlace`; if its parent place
+      // object mutates between open and a refresh-driven re-render,
+      // @react-google-maps/api occasionally throws when re-syncing the
+      // overlay's position. Closing first removes that hazard.
       setSelectedPlace(null);
-      router.refresh();
+
+      // Optimistic: flip this pin to "inDirectory" so the user sees the
+      // change immediately. Server revalidation re-fetches the page list;
+      // we re-mark on next load. Guarded against shape drift + wrapped
+      // in try/catch so a stale shape doesn't blow up the whole render.
+      try {
+        setData((prev) => {
+          if (!prev || !Array.isArray(prev.places)) return prev;
+          return {
+            ...prev,
+            places: prev.places.map((p) =>
+              p.placeId === place.placeId
+                ? { ...p, inDirectory: true, venueId: result.venueId ?? null }
+                : p,
+            ),
+          };
+        });
+      } catch (err) {
+        console.error("[CityVenueMap] optimistic update failed", err);
+      }
+      // Defer router.refresh() so it runs AFTER the React transition has
+      // committed the state updates above. Without this, the refresh
+      // can re-render the page while the InfoWindow / overlay is still
+      // being torn down, and a downstream component (e.g. one of the
+      // cold-outreach cells that just got a new row) can throw with the
+      // "client-side exception" boundary catching it.
+      setTimeout(() => router.refresh(), 0);
     });
   }
 

@@ -3,7 +3,7 @@
 import { cn } from "@/lib/cn";
 import { GoogleMap, InfoWindow, Marker, useJsApiLoader } from "@react-google-maps/api";
 import { ExternalLink, Loader2, MapPin, Plus, Search, Star } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   type MapsSearchResult,
   mapsAddPlaceAsVenue,
@@ -76,13 +76,25 @@ export function MapsApp({
 
   const mapRef = useRef<google.maps.Map | null>(null);
 
+  // Stabilize the center reference so re-renders don't make
+  // @react-google-maps/api re-sync the map's center back to defaultCenter.
+  // The library effects on a new identity, so an inline object literal
+  // (or even a prop re-passed each render) caused the map to snap back
+  // to the city centroid after every state change — most visibly after
+  // clicking "Add to venues", where setAddedVenueId() triggered a re-
+  // render that jumped the map away from whatever the operator was
+  // looking at. The map's center is otherwise driven imperatively via
+  // mapRef.current.panTo() in pickResult / first-result load.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only the initial defaultCenter matters; later prop changes intentionally don't re-center.
+  const initialCenter = useMemo(() => defaultCenter, []);
+
   // When the operator clicks a different result/pin, clear the manual
   // city-override flag so the auto-suggest kicks in again for the new
   // place. Their previous manual pick was tied to the prior place, not
   // a global preference.
   useEffect(() => {
     setCityManuallyPicked(false);
-  }, [selected?.placeId]);
+  }, [selected]);
 
   // Auto-suggest the closest active city when a place's details land.
   // Only runs while the operator hasn't manually picked a city; once they
@@ -289,7 +301,7 @@ export function MapsApp({
       <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
         <GoogleMap
           mapContainerStyle={MAP_CONTAINER_STYLE}
-          center={defaultCenter}
+          center={initialCenter}
           zoom={12}
           onLoad={(m) => {
             mapRef.current = m;
