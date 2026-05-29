@@ -990,34 +990,56 @@ function SlotPills({ slots }: { slots: SlotKind[] }) {
   // wristband → middle (or pair) → final
   const ordered = [...slots].sort((a, b) => slotOrder(a) - slotOrder(b));
   return (
-    <div className="flex flex-nowrap items-center gap-x-[2px]">
+    // @container — Tailwind v4 container query root. Children below
+    // use `@[<min>]:` modifiers to size themselves according to the
+    // WIDTH THIS WRAPPER IS GIVEN, not the viewport. Three responsive
+    // tiers, controlled by container width (not screen width) because
+    // SlotPills sits inside cells whose width depends on the parent
+    // layout, not the page:
+    //
+    //   < 170px container  → short labels (W / M1 / M2 / M1+2 / F),
+    //                        text-[9px], compact padding. The "really
+    //                        small" case where abbreviations are the
+    //                        only thing that fits without truncation.
+    //   170 - 260px        → FULL labels at the same compact size
+    //                        (text-[9px], h-[18px]). Still single
+    //                        line, just slightly smaller text.
+    //   ≥ 260px            → FULL labels at the original size
+    //                        (text-[10px], h-[20px], looser padding).
+    //
+    // Long-form label always available as title + aria-label on every
+    // pill so the meaning is preserved when the abbreviation shows.
+    <div className="@container flex flex-nowrap items-center gap-x-[2px]">
       {ordered.map((slot) => (
         <span
           key={slot}
-          // Tooltip carries the long-form label so abbreviations stay
-          // discoverable. "W" / "M1" / "M2" / "M1+2" / "F" in the pill,
-          // full names on hover.
           title={SLOT_PILL_LABEL_LONG[slot]}
           aria-label={SLOT_PILL_LABEL_LONG[slot]}
           className={cn(
-            // Compact pill — small height + tabular-nums + nowrap so the
-            // line "W · M1+2 · F" stays on one row at every viewport
-            // width including the tracker's frozen-column narrowest
-            // breakdown column. Was font-mono text-[10px] previously,
-            // which made "Middle 1 + 2" wrap onto two lines and broke
-            // the continuous-bar visual.
-            "inline-flex h-[18px] items-center font-medium font-mono text-[9px] uppercase tracking-[0.06em] tabular-nums",
-            "whitespace-nowrap",
+            // Base pill — sized for the narrow tier. Wider tiers
+            // override via @container queries below.
+            "inline-flex h-[18px] items-center font-medium font-mono text-[9px] uppercase tracking-[0.06em] tabular-nums whitespace-nowrap",
+            // Padding scales with container width. middle_pair gets a
+            // touch more inner space at every tier because it carries
+            // the widest content ("Middle 1 + 2" / "M1+2").
+            slot === "middle_pair"
+              ? "px-2 @[170px]:px-2.5 @[260px]:px-3"
+              : "px-1.5 @[170px]:px-2 @[260px]:px-2.5",
+            // Bigger text + slightly taller pill on the widest tier.
+            "@[260px]:h-[20px] @[260px]:text-[10px] @[260px]:tracking-[0.08em]",
             SLOT_PILL_TONE[slot],
-            // middle_pair is two-character-wider; everything else gets
-            // the same tight inner padding.
-            slot === "middle_pair" ? "px-2" : "px-1.5",
+            // Tight rounding on inner edges to create the continuous
+            // bar feel; outer edges fully round at the ends.
             "first:rounded-l-md last:rounded-r-md",
-            // When standing alone, fully round
             ordered.length === 1 && "rounded-md",
           )}
         >
-          {SLOT_PILL_LABEL[slot]}
+          {/* Short label — visible only when the container is too
+              narrow for the full text (< 170px). At every wider tier
+              it's hidden in favor of the long label. */}
+          <span className="@[170px]:hidden">{SLOT_PILL_LABEL[slot]}</span>
+          {/* Long label — hidden by default; visible from 170px up. */}
+          <span className="hidden @[170px]:inline">{SLOT_PILL_LABEL_LONG[slot]}</span>
         </span>
       ))}
     </div>
