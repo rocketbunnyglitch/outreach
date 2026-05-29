@@ -58,23 +58,63 @@ export async function computeCityNeeds(
 ): Promise<Map<string, CityNeedSummary>> {
   if (cityCampaignIds.length === 0) return new Map();
 
-  // Load all events + venue_events for these city_campaigns
-  const rows = await db
-    .select({
-      eventId: events.id,
-      cityCampaignId: events.cityCampaignId,
-      dayPart: events.dayPart,
-      crawlNumber: events.crawlNumber,
-      eventStatus: events.status,
-      ticketsSold: events.ticketSalesCount,
-      venueEventStatus: venueEvents.status,
-      venueRole: venueEvents.role,
-      wristbandStatus: wristbands.status,
-    })
-    .from(events)
-    .leftJoin(venueEvents, eq(venueEvents.eventId, events.id))
-    .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
-    .where(inArray(events.cityCampaignId, cityCampaignIds));
+  // Load all events + venue_events for these city_campaigns.
+  // Wrapped in try/catch because events.notes was added in migration
+  // 0039 — if a deploy lands before the migration runs, the select on a
+  // non-existent column would crash the whole dashboard. Falling back
+  // to an empty-notes view degrades gracefully (the rest of the
+  // tracker still works; the per-crawl Notes column just stays blank
+  // until the migration is applied).
+  type EventJoinRow = {
+    eventId: string;
+    cityCampaignId: string;
+    dayPart: string | null;
+    crawlNumber: number | null;
+    eventStatus: string | null;
+    ticketsSold: number | null;
+    notes: string | null;
+    venueEventStatus: string | null;
+    venueRole: string | null;
+    wristbandStatus: CrawlNeed["wristbandStatus"];
+  };
+  let rows: EventJoinRow[];
+  try {
+    rows = (await db
+      .select({
+        eventId: events.id,
+        cityCampaignId: events.cityCampaignId,
+        dayPart: events.dayPart,
+        crawlNumber: events.crawlNumber,
+        eventStatus: events.status,
+        ticketsSold: events.ticketSalesCount,
+        notes: events.notes,
+        venueEventStatus: venueEvents.status,
+        venueRole: venueEvents.role,
+        wristbandStatus: wristbands.status,
+      })
+      .from(events)
+      .leftJoin(venueEvents, eq(venueEvents.eventId, events.id))
+      .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
+      .where(inArray(events.cityCampaignId, cityCampaignIds))) as EventJoinRow[];
+  } catch {
+    const fallback = (await db
+      .select({
+        eventId: events.id,
+        cityCampaignId: events.cityCampaignId,
+        dayPart: events.dayPart,
+        crawlNumber: events.crawlNumber,
+        eventStatus: events.status,
+        ticketsSold: events.ticketSalesCount,
+        venueEventStatus: venueEvents.status,
+        venueRole: venueEvents.role,
+        wristbandStatus: wristbands.status,
+      })
+      .from(events)
+      .leftJoin(venueEvents, eq(venueEvents.eventId, events.id))
+      .leftJoin(wristbands, eq(wristbands.venueEventId, venueEvents.id))
+      .where(inArray(events.cityCampaignId, cityCampaignIds))) as Omit<EventJoinRow, "notes">[];
+    rows = fallback.map((r) => ({ ...r, notes: null }));
+  }
 
   // Group by (city_campaign, day_part, crawl_number)
   type CrawlBucket = {
@@ -86,6 +126,7 @@ export async function computeCityNeeds(
     confirmedVenueCount: number;
     ticketsSold: number;
     wristbandStatus: CrawlNeed["wristbandStatus"];
+    notes: string;
   };
   const bucketKey = (cc: string, d: string, n: number) => `${cc}::${d}::${n}`;
   const buckets = new Map<string, CrawlBucket>();
@@ -104,6 +145,7 @@ export async function computeCityNeeds(
         confirmedVenueCount: 0,
         ticketsSold: r.ticketsSold ?? 0,
         wristbandStatus: null,
+        notes: r.notes ?? "",
       };
       buckets.set(k, b);
     }
@@ -136,8 +178,12 @@ export async function computeCityNeeds(
       needsMiddle2: open >= 2,
       needsFinal: open >= 1,
       ticketsSold: b.ticketsSold,
-      salesCents: 0, // wire from existing dashboard query if needed
+      // Per-crawl sales is tickets × $30 (cents), mirroring the city-level
+      // salesMap in tracker-data.ts. Will be replaced by a real Eventbrite
+      // pull when the integration lands.
+      salesCents: b.ticketsSold * 3000,
       wristbandStatus: b.wristbandStatus,
+      notes: b.notes,
     };
     const list = byCC.get(b.cityCampaignId) ?? [];
     list.push(need);

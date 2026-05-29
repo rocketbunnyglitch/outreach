@@ -33,6 +33,7 @@ import {
   reassignCityCampaign,
   updateCityCampaignPriority,
   updateCityCampaignStatus,
+  updateCrawlNote,
   updateDashboardNote,
   updateEventStatus,
 } from "../../_actions-tracker";
@@ -84,17 +85,19 @@ const ASC_DEFAULT: ReadonlySet<SortKey> = new Set(["priority", "city", "assign",
  * z-30 (top-left corner of the sticky thead/sticky-left intersection),
  * body cells on z-10 (above scrolling siblings, below the sticky header).
  *
- * left offsets:
- *   col 1 checkbox  = w-8  (32px) -> left-0
- *   col 2 expander  = w-9  (36px) -> left-8
- *   col 3 priority  = w-10 (40px) -> left-[68px]
- *   col 4 city                    -> left-[108px]
+ * left offsets — combined first column packs checkbox + chevron + #
+ * tightly (was 32 + 36 + 40 = 108px; now ~80px) so the scrolling
+ * cells start sooner and Notes / Sales get more room. City column
+ * starts at left-[80px].
+ *
+ *   col 1 select+expand+#  = w-20 (80px) -> left-0
+ *   col 2 city                          -> left-[80px]
  *
  * Background opacity is raised vs the row default (dark-mode zebras are
  * 30/70 alpha so the canvas blur shows; sticky cells need solid).
  */
 const FROZEN_BASE = "lg:static lg:bg-transparent lg:dark:bg-transparent";
-const FROZEN_LEFT_OFFSETS = ["left-0", "left-8", "left-[68px]", "left-[108px]"] as const;
+const FROZEN_LEFT_OFFSETS = ["left-0", "left-[80px]"] as const;
 const FROZEN_HEAD_BG = "sticky z-30 bg-zinc-200 dark:bg-zinc-900";
 function frozenBodyBg(stripeIndex: number): string {
   // Mirror rowTone but force full opacity so the column is opaque.
@@ -408,37 +411,56 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
         <table className="w-full min-w-[600px] text-[13px] sm:text-sm">
           <thead className="sticky top-14 z-20">
             <tr className="border-zinc-200/80 border-b bg-zinc-200 text-left font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] dark:border-zinc-800/40 dark:bg-zinc-900 dark:text-zinc-400">
+              {/* Combined select + expander + priority — one tight cell.
+                  Previously three separate frozen columns wasted ~108px
+                  of width before the city name appeared. Now packed
+                  into w-20 (80px), freeing column real estate for
+                  Sales and Notes. The select-all checkbox sits in the
+                  header; the priority column is still sort-clickable
+                  via the small "#" affordance. */}
               <th
-                className={cn("w-8 px-2 py-3", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[0], FROZEN_BASE)}
+                className={cn(
+                  "w-20 px-1 py-3 pl-2",
+                  FROZEN_HEAD_BG,
+                  FROZEN_LEFT_OFFSETS[0],
+                  FROZEN_BASE,
+                )}
               >
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={toggleSelectAll}
-                  aria-label="Select all visible cities"
-                  title="Select all visible rows for a bulk edit"
-                  className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
-                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all visible cities"
+                    title="Select all visible rows for a bulk edit"
+                    className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("priority")}
+                    className="flex-1 text-right text-zinc-600 tabular-nums hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                    title="Priority rank — 1 is highest. Click a number in a row to change it. Sort to bring the most important cities to the top."
+                  >
+                    {sort.key === "priority" ? (sort.dir === "asc" ? "▲ #" : "▼ #") : "#"}
+                  </button>
+                </div>
               </th>
-              <th
-                className={cn("w-9 px-2 py-3", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[1], FROZEN_BASE)}
-              />
-              <SortableTh
-                label="#"
-                sortKey="priority"
-                sort={sort}
-                onSort={toggleSort}
-                align="right"
-                className={cn("w-10 px-2", FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[2], FROZEN_BASE)}
-                tooltip="Priority rank — 1 is highest. Click a number in a row to change it. Sort to bring the most important cities to the top."
-              />
               <SortableTh
                 label="City"
                 sortKey="city"
                 sort={sort}
                 onSort={toggleSort}
-                className={cn(FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[3], FROZEN_BASE)}
-                tooltip="The city + campaign. Click the city name to open its full sheet; click the arrow on the left to expand its crawls."
+                className={cn(FROZEN_HEAD_BG, FROZEN_LEFT_OFFSETS[1], FROZEN_BASE)}
+                tooltip="The city + campaign. Click the city name to open its full sheet; click the arrow on the left of each row to expand its crawls."
+              />
+              <SortableTh
+                label="Sales"
+                sortKey="sales"
+                sort={sort}
+                onSort={toggleSort}
+                align="right"
+                className="w-20"
+                tooltip="Tickets sold across all of this city's crawls, shown as a dollar/k figure."
               />
               <SortableTh
                 label="Status"
@@ -453,15 +475,6 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sort={sort}
                 onSort={toggleSort}
                 tooltip="What's still missing to lock the crawls — open venue slots per crawl. Fewer filled dots means more to book."
-              />
-              <SortableTh
-                label="Sales"
-                sortKey="sales"
-                sort={sort}
-                onSort={toggleSort}
-                align="right"
-                className="w-24"
-                tooltip="Tickets sold across all of this city's crawls, shown as a dollar/k figure."
               />
               <SortableTh
                 label="Assign"
@@ -483,7 +496,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-16 text-center">
+                <td colSpan={7} className="px-4 py-16 text-center">
                   <div className="mx-auto max-w-sm">
                     <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
                       No cities in this campaign yet
@@ -503,7 +516,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
               </tr>
             ) : visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-sm text-zinc-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
                   No cities match that filter.
                 </td>
               </tr>
@@ -711,64 +724,55 @@ function CityRow({
           "hover:bg-blue-500/[0.04] dark:border-zinc-800/40 dark:hover:bg-blue-400/[0.04]",
         )}
       >
+        {/* Combined select + expand + priority cell. The three former
+            columns sit packed into one w-20 (80px) cell to free space
+            for the data columns to the right. Spacing inside the cell
+            is tight (gap-1) since each control is small. */}
         <td
           className={cn(
-            "px-2 py-2 align-middle sm:py-2.5",
+            "w-20 px-1 py-2 pl-2 align-middle sm:py-2.5",
             frozenBodyBg(stripeIndex),
             FROZEN_LEFT_OFFSETS[0],
             FROZEN_BASE,
           )}
         >
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={onToggleSelect}
-            aria-label={`Select ${row.cityName}`}
-            className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
-          />
+          <div className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              aria-label={`Select ${row.cityName}`}
+              className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
+            />
+            {hasBreakdown ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((e) => !e)}
+                className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 transition-all duration-150 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                aria-label={expanded ? "Collapse city breakdown" : "Expand city breakdown"}
+                aria-expanded={expanded}
+              >
+                <ChevronRight
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-200 ease-out",
+                    expanded && "rotate-90",
+                  )}
+                />
+              </button>
+            ) : (
+              <span className="inline-block w-5" />
+            )}
+            <div className="flex-1 text-right">
+              <PriorityCell row={row} />
+            </div>
+          </div>
         </td>
+
         <td
           className={cn(
             "px-2 py-2 align-middle sm:py-2.5",
             frozenBodyBg(stripeIndex),
             FROZEN_LEFT_OFFSETS[1],
-            FROZEN_BASE,
-          )}
-        >
-          {hasBreakdown && (
-            <button
-              type="button"
-              onClick={() => setExpanded((e) => !e)}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition-all duration-150 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-              aria-label={expanded ? "Collapse city breakdown" : "Expand city breakdown"}
-              aria-expanded={expanded}
-            >
-              <ChevronRight
-                className={cn(
-                  "h-3.5 w-3.5 transition-transform duration-200 ease-out",
-                  expanded && "rotate-90",
-                )}
-              />
-            </button>
-          )}
-        </td>
-
-        <td
-          className={cn(
-            "px-2 py-2.5 text-right align-middle",
-            frozenBodyBg(stripeIndex),
-            FROZEN_LEFT_OFFSETS[2],
-            FROZEN_BASE,
-          )}
-        >
-          <PriorityCell row={row} />
-        </td>
-
-        <td
-          className={cn(
-            "px-3 py-2 align-middle sm:py-2.5",
-            frozenBodyBg(stripeIndex),
-            FROZEN_LEFT_OFFSETS[3],
             FROZEN_BASE,
           )}
         >
@@ -780,25 +784,25 @@ function CityRow({
           </Link>
         </td>
 
-        <td className="px-3 py-2 align-middle sm:py-2.5">
-          <StatusOverridePill row={row} />
-        </td>
-
-        <td className="px-3 py-2 align-middle sm:py-2.5">
-          <SlotPills slots={row.need.slots} />
-        </td>
-
-        <td className="px-3 py-2.5 text-right align-middle">
+        <td className="px-2 py-2 text-right align-middle sm:py-2.5">
           <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-300">
             {formatSales(row.totalSalesCents)}
           </span>
         </td>
 
-        <td className="px-3 py-2 align-middle sm:py-2.5">
+        <td className="px-2 py-2 align-middle sm:py-2.5">
+          <StatusOverridePill row={row} />
+        </td>
+
+        <td className="px-2 py-2 align-middle sm:py-2.5">
+          <SlotPills slots={row.need.slots} />
+        </td>
+
+        <td className="px-2 py-2 align-middle sm:py-2.5">
           <AssignSelect row={row} staff={staff} />
         </td>
 
-        <td className="px-3 py-2 align-middle sm:py-2.5">
+        <td className="px-2 py-2 align-middle sm:py-2.5">
           <NoteInput row={row} gridRow={stripeIndex} />
         </td>
       </tr>
@@ -1129,6 +1133,33 @@ function NoteInput({ row, gridRow }: { row: TrackerRow; gridRow: number }) {
   );
 }
 
+/**
+ * Per-crawl inline note for sub-rows in the expanded breakdown.
+ * Distinct from NoteInput (which writes city_campaigns.dashboard_note)
+ * — this writes events.notes via updateCrawlNote.
+ *
+ * Same InlineCell affordance, no grid-nav coords (sub-rows aren't part
+ * of the parent grid, so arrow-key navigation doesn't include them).
+ */
+function CrawlNoteInput({ eventId, initial }: { eventId: string; initial: string }) {
+  return (
+    <InlineCell
+      value={initial}
+      placeholder="Note…"
+      variant="subtle"
+      label="Crawl note"
+      cellId={`event:${eventId}:note`}
+      onCommit={async (next) => {
+        const fd = new FormData();
+        fd.set("eventId", eventId);
+        fd.set("note", next);
+        const result = await updateCrawlNote(null, fd);
+        return result.ok ? { ok: true } : { ok: false, error: result.error };
+      }}
+    />
+  );
+}
+
 // Event-status (per-crawl) lifecycle values + display tones. Distinct
 // from the city-campaign status pill — these are the events.status
 // enum (planned → confirmed → contract_signed → completed; cancelled).
@@ -1357,19 +1388,27 @@ function CrawlBreakdownCard({
   if (crawl.needsFinal) slots.push("final");
 
   return (
-    <li className="flex flex-wrap items-center gap-2 py-1">
-      <WristbandIcon status={crawl.wristbandStatus} />
-      <Link
-        href={`/city-campaigns/${cityCampaignId}#crawl-${crawl.eventId}`}
-        title="Open this crawl on the city sheet"
-        className="text-xs text-zinc-600 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-      >
-        {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
-      </Link>
-      <CrawlStatusOverride crawl={crawl} />
-      <div className="ml-auto">
-        <SlotPills slots={slots} />
+    <li className="flex flex-col gap-1 py-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <WristbandIcon status={crawl.wristbandStatus} />
+        <Link
+          href={`/city-campaigns/${cityCampaignId}#crawl-${crawl.eventId}`}
+          title="Open this crawl on the city sheet"
+          className="text-xs text-zinc-600 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+        >
+          {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
+        </Link>
+        {crawl.salesCents > 0 && (
+          <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+            {formatSales(crawl.salesCents)}
+          </span>
+        )}
+        <CrawlStatusOverride crawl={crawl} />
+        <div className="ml-auto">
+          <SlotPills slots={slots} />
+        </div>
       </div>
+      <CrawlNoteInput eventId={crawl.eventId} initial={crawl.notes} />
     </li>
   );
 }
@@ -1417,35 +1456,25 @@ function CrawlBreakdownRow({
         "animate-[fade-in_180ms_ease-out]",
       )}
     >
+      {/* Empty leading cell mirroring the parent row's combined
+          checkbox/expand/# column. Just frozen-background filler so
+          the breakdown row aligns under the parent. */}
       <td
         className={cn(
-          "px-2 py-1.5",
+          "w-20 px-1 py-1.5 pl-2",
           frozenBreakdownBg(zebra, parentEven),
           FROZEN_LEFT_OFFSETS[0],
           FROZEN_BASE,
         )}
       />
+      {/* City column slot — shows the crawl label + wristband icon +
+          status override. Indented (pl-6) so it visually sits inside
+          its parent. */}
       <td
         className={cn(
           "px-2 py-1.5",
           frozenBreakdownBg(zebra, parentEven),
           FROZEN_LEFT_OFFSETS[1],
-          FROZEN_BASE,
-        )}
-      />
-      <td
-        className={cn(
-          "px-2 py-1.5",
-          frozenBreakdownBg(zebra, parentEven),
-          FROZEN_LEFT_OFFSETS[2],
-          FROZEN_BASE,
-        )}
-      />
-      <td
-        className={cn(
-          "px-3 py-1.5",
-          frozenBreakdownBg(zebra, parentEven),
-          FROZEN_LEFT_OFFSETS[3],
           FROZEN_BASE,
         )}
       >
@@ -1462,7 +1491,19 @@ function CrawlBreakdownRow({
           <CrawlStatusOverride crawl={crawl} />
         </div>
       </td>
-      <td className="px-3 py-1.5">
+      {/* Per-crawl Sales — mirrors the parent's Sales column. Computed
+          as tickets × $30 in lib/tracker-status.ts; will be replaced
+          with real Eventbrite numbers when that integration lands. */}
+      <td className="px-2 py-1.5 text-right">
+        {crawl.salesCents > 0 ? (
+          <span className="font-mono text-[11px] text-zinc-600 tabular-nums dark:text-zinc-300">
+            {formatSales(crawl.salesCents)}
+          </span>
+        ) : (
+          <span className="font-mono text-[11px] text-zinc-400">—</span>
+        )}
+      </td>
+      <td className="px-2 py-1.5">
         <span
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset",
@@ -1472,15 +1513,18 @@ function CrawlBreakdownRow({
           {statusLabel}
         </span>
       </td>
-      <td className="px-3 py-1.5">
+      <td className="px-2 py-1.5">
         <SlotPills slots={slots} />
       </td>
-      <td className="px-3 py-1.5" colSpan={3}>
-        {crawl.ticketsSold > 0 && (
-          <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-            {crawl.ticketsSold} tickets sold
-          </span>
-        )}
+      {/* Assign slot — empty for sub-crawls (lead assignment is per
+          city). Kept as a placeholder cell so the column grid stays
+          aligned with the parent row. */}
+      <td className="px-2 py-1.5" />
+      {/* Per-crawl note — independent of the city-level dashboard
+          note. events.notes column; edited inline via
+          updateCrawlNote. */}
+      <td className="px-2 py-1.5">
+        <CrawlNoteInput eventId={crawl.eventId} initial={crawl.notes} />
       </td>
     </tr>
   );

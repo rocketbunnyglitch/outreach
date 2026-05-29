@@ -262,3 +262,43 @@ export async function bulkUpdateCityCampaigns(input: {
     return { ok: false, error: "Bulk update failed." };
   }
 }
+
+// =========================================================================
+// updateCrawlNote — per-event free-text note edited from the tracker's
+// expanded breakdown row. Distinct from updateDashboardNote (which sets
+// the city-level note on city_campaigns); this writes events.notes.
+// =========================================================================
+
+const crawlNoteSchema = z.object({
+  eventId: uuidSchema,
+  note: z.string().max(500),
+});
+
+export async function updateCrawlNote(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const parsed = crawlNoteSchema.safeParse({
+    eventId: String(formData.get("eventId") ?? ""),
+    note: String(formData.get("note") ?? ""),
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid note." };
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(events)
+        .set({
+          notes: parsed.data.note.trim() === "" ? null : parsed.data.note,
+          updatedBy: staff.id,
+        })
+        .where(eq(events.id, parsed.data.eventId));
+    });
+    revalidatePath("/");
+    return { ok: true, data: { id: parsed.data.eventId } };
+  } catch (err) {
+    logger.error({ err }, "updateCrawlNote failed");
+    return { ok: false, error: "Note save failed." };
+  }
+}

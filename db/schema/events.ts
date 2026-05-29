@@ -63,6 +63,14 @@ export const events = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     routeLabel: text("route_label"),
+    /**
+     * Free-text per-crawl note that surfaces in the tracker's expanded
+     * breakdown row. Distinct from city_campaigns.dashboard_note which
+     * applies to the whole city; this one is for "Friday crawl 1
+     * specifically needs a backup wristband venue" style annotations.
+     * Added in migration 0039.
+     */
+    notes: text("notes"),
     middleVenueGroupId: uuid("middle_venue_group_id").references(() => middleVenueGroups.id, {
       onDelete: "set null",
     }),

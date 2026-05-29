@@ -56,6 +56,9 @@ export interface CrawlNeed {
    * yellow (shipped), green (delivered).
    */
   wristbandStatus: "pending" | "ready_to_ship" | "shipped" | "delivered" | "issue" | null;
+  /** Per-crawl operator note (events.notes). Edited inline from the
+   *  tracker's expanded breakdown row. Empty string when not set. */
+  notes: string;
 }
 
 export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {
