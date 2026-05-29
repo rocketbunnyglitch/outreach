@@ -2,12 +2,26 @@ import { connectedAccounts } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { withAuditContext } from "@/lib/db";
+import { env } from "@/lib/env";
 import { exchangeCodeForTokens, fetchUserEmail, isGmailOAuthConfigured } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { and, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+
+/**
+ * Build a redirect URL that always lands on the PUBLIC origin, not on
+ * the upstream-only host the Node process sees. `req.url` in a Next
+ * standalone route handler behind nginx/Caddy resolves to whatever the
+ * Node server binds to (HOSTNAME env var + PORT — for us, localhost:3001),
+ * so `publicUrl(path)` produces a redirect that the browser can't
+ * actually reach. env.APP_URL is the canonical public origin and is the
+ * same value /start uses to construct Google's redirect_uri.
+ */
+function publicUrl(path: string): URL {
+  return new URL(path, env.APP_URL);
+}
 
 /**
  * GET /api/auth/google/callback
@@ -39,7 +53,7 @@ export async function GET(req: NextRequest) {
   const { staff } = await requireStaff();
 
   if (!isGmailOAuthConfigured()) {
-    return NextResponse.redirect(new URL("/settings/inboxes?error=not_configured", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=not_configured"));
   }
 
   const url = new URL(req.url);
@@ -49,11 +63,11 @@ export async function GET(req: NextRequest) {
 
   if (errorParam) {
     logger.warn({ errorParam }, "gmail oauth user denied");
-    return NextResponse.redirect(new URL(`/settings/inboxes?error=${errorParam}`, req.url));
+    return NextResponse.redirect(publicUrl(`/settings/inboxes?error=${errorParam}`));
   }
 
   if (!code || !stateB64) {
-    return NextResponse.redirect(new URL("/settings/inboxes?error=missing_params", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=missing_params"));
   }
 
   // Validate CSRF
@@ -61,19 +75,19 @@ export async function GET(req: NextRequest) {
   try {
     state = JSON.parse(Buffer.from(stateB64, "base64").toString("utf8"));
   } catch {
-    return NextResponse.redirect(new URL("/settings/inboxes?error=bad_state", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=bad_state"));
   }
 
   const cookieJar = await cookies();
   const csrfCookie = cookieJar.get("gmail_oauth_csrf")?.value;
   if (!csrfCookie || csrfCookie !== state.csrf) {
-    return NextResponse.redirect(new URL("/settings/inboxes?error=csrf", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=csrf"));
   }
   cookieJar.delete("gmail_oauth_csrf");
 
   if (state.ownerUserId !== staff.id) {
     // The user who started the flow must be the user who completes it.
-    return NextResponse.redirect(new URL("/settings/inboxes?error=staff_mismatch", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=staff_mismatch"));
   }
 
   // Defensive: the team_id encoded in state must match the user's
@@ -81,7 +95,7 @@ export async function GET(req: NextRequest) {
   // true; once invites + multiple teams land, this guards against
   // a stale OAuth flow.)
   if (state.teamId !== staff.teamId) {
-    return NextResponse.redirect(new URL("/settings/inboxes?error=staff_mismatch", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=staff_mismatch"));
   }
 
   // Exchange code -> tokens
@@ -90,14 +104,14 @@ export async function GET(req: NextRequest) {
     tokens = await exchangeCodeForTokens(code);
   } catch (err) {
     logger.error({ err }, "gmail token exchange failed");
-    return NextResponse.redirect(new URL("/settings/inboxes?error=token_exchange", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=token_exchange"));
   }
 
   if (!tokens.refresh_token) {
     // Google sometimes withholds a refresh token if the user previously
     // granted access. Force re-consent by setting prompt=consent (done in
     // buildGmailAuthUrl). If we still didn't get one, something's wrong.
-    return NextResponse.redirect(new URL("/settings/inboxes?error=no_refresh_token", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=no_refresh_token"));
   }
 
   // Identify the connected Gmail account
@@ -106,7 +120,7 @@ export async function GET(req: NextRequest) {
     connectedEmail = await fetchUserEmail(tokens.access_token);
   } catch (err) {
     logger.error({ err }, "gmail userinfo fetch failed");
-    return NextResponse.redirect(new URL("/settings/inboxes?error=userinfo", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=userinfo"));
   }
 
   const encryptedRefresh = encrypt(tokens.refresh_token);
@@ -160,10 +174,10 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     logger.error({ err }, "gmail connect persist failed");
-    return NextResponse.redirect(new URL("/settings/inboxes?error=persist", req.url));
+    return NextResponse.redirect(publicUrl("/settings/inboxes?error=persist"));
   }
 
   return NextResponse.redirect(
-    new URL(`/settings/inboxes?connected=${encodeURIComponent(connectedEmail)}`, req.url),
+    publicUrl(`/settings/inboxes?connected=${encodeURIComponent(connectedEmail)}`),
   );
 }
