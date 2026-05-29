@@ -126,6 +126,13 @@ async function seedStaff() {
   // teamId defaults to the seeded BarCrawlConnect team — see
   // db/schema/teams.ts. Once multi-team support lands, seed extra
   // rows in teams + branch by team here.
+  //
+  // NOTE: these seeded users have NO password_hash. They cannot log
+  // in via /login until an admin sends them an invite (commit 5 adds
+  // the admin UI) or until you bootstrap an admin via
+  // `pnpm tsx scripts/bootstrap-admin.ts`. Seeded rows still exist
+  // so existing FKs (notes.author_staff_id etc.) have something to
+  // point at in dev.
   const TEAM_ID = "00000000-0000-0000-0000-000000000001";
   await db
     .insert(staffMembers)

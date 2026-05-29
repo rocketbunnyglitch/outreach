@@ -48,6 +48,10 @@ const config: NextAuthConfig = {
         pathname.startsWith("/api/auth") ||
         pathname === "/api/health" ||
         pathname === "/login" ||
+        // Invite + password-reset landing page. Carries a one-shot
+        // signed token in the URL, so it's safe to expose without a
+        // session — the token IS the authentication.
+        pathname.startsWith("/set-password/") ||
         // Client-state reset page — reachable without a session so
         // a user with a broken auth cookie can still recover.
         pathname === "/reset" ||

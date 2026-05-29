@@ -30,6 +30,7 @@ export * from "./enums";
 export * from "./teams";
 export * from "./brands";
 export * from "./users";
+export * from "./invite-tokens";
 export * from "./geography";
 export * from "./call-logs";
 export * from "./campaigns";

@@ -2,12 +2,18 @@
  * Module augmentation for NextAuth v5.
  *
  * NextAuth's default Session type has user.{name,email,image} but no concept
- * of a domain-specific user id. We attach `staffId` (the staff_members.id
- * uuid) so server actions can pass it directly to `withAuditContext`
- * without re-querying the DB.
+ * of a domain-specific user id. We attach `staffId` (the users.id uuid;
+ * kept as `staffId` for back-compat) so server actions can pass it
+ * directly to `withAuditContext` without re-querying the DB.
  *
- * We also expose `provider` on the session so the demo-mode banner can
- * detect when someone is signed in via the dev impersonation route.
+ * Also exposes:
+ *   - `teamId` so the inbox + future team-scoped queries can filter
+ *     without an extra DB hop
+ *   - `role` so the middleware + UI can branch by role
+ *   - `passwordMustChange` so the middleware can force a redirect to
+ *     /set-password on next request
+ *   - `provider` on the session to surface "admin-impersonate"
+ *     somewhere visible (commit 5 will add the banner)
  */
 
 import "next-auth";
@@ -17,14 +23,14 @@ declare module "next-auth" {
   interface Session {
     user: {
       staffId?: string;
-      /** Role from staff_members.role — used by the middleware to
-       *  pick the right landing route when no campaign is scoped. */
+      teamId?: string;
       role?: "admin" | "lead" | "outreach" | "readonly";
+      passwordMustChange?: boolean;
       name?: string | null;
       email?: string | null;
       image?: string | null;
     };
-    /** Which provider issued this session: "google" | "dev-staff-impersonate". */
+    /** Which provider issued this session: "password" | "admin-impersonate". */
     provider?: string;
   }
 }
@@ -32,7 +38,9 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     staffId?: string;
+    teamId?: string;
     role?: "admin" | "lead" | "outreach" | "readonly";
     provider?: string;
+    passwordMustChange?: boolean;
   }
 }
