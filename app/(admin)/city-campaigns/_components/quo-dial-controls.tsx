@@ -107,8 +107,10 @@ export function QuoDialControls({
 
   // -----------------------------------------------------------------
   // Stacked layout — phone number on its own line, action icons in a
-  // vertical column beneath it. Phone never wraps; the caller picks
-  // the font size based on string length.
+  // HORIZONTAL row beneath it (was vertical column previously, which
+  // wasted column width). The caller picks the font size for the phone
+  // string based on length so long international numbers still fit on
+  // a single line without wrapping.
   // -----------------------------------------------------------------
   if (layout === "stacked") {
     return (
@@ -131,7 +133,7 @@ export function QuoDialControls({
           <span>{venuePhone}</span>
         </button>
 
-        <div className="flex flex-col items-start gap-0.5">
+        <div className="flex items-center gap-0.5">
           <button
             type="button"
             onClick={() => setSmsOpen(true)}

@@ -20,9 +20,11 @@ import {
   AlertTriangle,
   CalendarClock,
   Check,
+  CheckCircle2,
   ChevronDown,
   ClipboardPaste,
   ExternalLink,
+  Flame,
   Loader2,
   Mail,
   Plus,
@@ -30,6 +32,7 @@ import {
   Trash2,
   Wifi,
   X,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -158,6 +161,70 @@ const ZB_TONE: Record<string, string> = {
   abuse: "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300",
   do_not_mail: "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300",
 };
+
+/** Statuses that mean "don't email this address" regardless of nuance. */
+const ZB_INVALID_FAMILY = new Set(["invalid", "spamtrap", "abuse", "do_not_mail"]);
+
+/**
+ * Compact icon rendering for the ZB (ZeroBounce) column.
+ *
+ *   valid         → green CheckCircle2  (tooltip "Valid")
+ *   invalid       → red XCircle         (tooltip "Invalid")
+ *   spamtrap      → red XCircle         (tooltip "Spamtrap (invalid)")
+ *   abuse         → red XCircle         (tooltip "Abuse (invalid)")
+ *   do_not_mail   → red XCircle         (tooltip "Do not mail (invalid)")
+ *   catch_all     → small amber dot     (tooltip "Catch-all (accepts everything, ambiguous)")
+ *   unknown       → small zinc dot      (tooltip "Unknown")
+ *   null          → small zinc dash     (tooltip "Unchecked")
+ *
+ * The column is sized w-10 to match this icon-only width — previously
+ * the column had to be w-24 to fit the "do_not_mail" pill text.
+ */
+function ZbIcon({ status }: { status: string | null }) {
+  if (status === null || status === undefined) {
+    return (
+      <span
+        className="inline-block h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-700"
+        title="Unchecked"
+        aria-label="ZeroBounce: unchecked"
+      />
+    );
+  }
+  if (status === "valid") {
+    return (
+      <CheckCircle2 className="inline h-3.5 w-3.5 text-emerald-500" aria-label="ZeroBounce: valid">
+        <title>Valid</title>
+      </CheckCircle2>
+    );
+  }
+  if (ZB_INVALID_FAMILY.has(status)) {
+    const label =
+      status === "invalid"
+        ? "Invalid"
+        : status === "spamtrap"
+          ? "Spamtrap (invalid)"
+          : status === "abuse"
+            ? "Abuse (invalid)"
+            : "Do not mail (invalid)";
+    return (
+      <XCircle className="inline h-3.5 w-3.5 text-rose-500" aria-label={`ZeroBounce: ${status}`}>
+        <title>{label}</title>
+      </XCircle>
+    );
+  }
+  // catch_all / unknown / anything else → small ambiguous dot
+  const isCatchAll = status === "catch_all";
+  return (
+    <span
+      className={cn(
+        "inline-block h-2 w-2 rounded-full",
+        isCatchAll ? "bg-amber-400" : "bg-zinc-400",
+      )}
+      title={isCatchAll ? "Catch-all (accepts everything, ambiguous)" : status.replace("_", " ")}
+      aria-label={`ZeroBounce: ${status}`}
+    />
+  );
+}
 
 /**
  * Cold outreach table for the city sheet.
@@ -612,7 +679,11 @@ export function ColdOutreachTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40 dark:text-zinc-400">
-              <th className="w-9 px-3 py-2.5">
+              {/* Checkbox + per-row actions stack — row actions
+                  (history, escalate, archive) live underneath the
+                  checkbox on hover so the right side of the row can
+                  give all its width to Remarks. */}
+              <th className="w-10 px-2 py-2.5">
                 <SelectAllCheckbox
                   checked={allSelected}
                   indeterminate={someSelected}
@@ -625,7 +696,7 @@ export function ColdOutreachTable({
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onClick={() => toggleSort("venue")}
-                width="w-48 px-3"
+                width="w-40 px-2"
               />
               <SortableTh
                 label="Email"
@@ -633,16 +704,23 @@ export function ColdOutreachTable({
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onClick={() => toggleSort("email")}
-                width="w-44 px-2"
+                width="w-40 px-1"
               />
-              <SortableTh
-                label="ZeroBounce"
-                col="zb"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("zb")}
-                width="w-24 px-2"
-              />
+              {/* ZB — abbreviated from "ZeroBounce" so the column can
+                  shrink to icon-width. Cell renders a green check
+                  (valid), red X (invalid family), or amber/grey
+                  marker for catch_all / unknown; tooltips spell out
+                  the underlying status. */}
+              <th className="w-10 px-1 py-2.5" title="ZeroBounce email validation">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("zb")}
+                  className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
+                  title="ZeroBounce email validation"
+                >
+                  ZB
+                </button>
+              </th>
               <SortableTh
                 label="Phone"
                 col="callWindow"
@@ -668,7 +746,6 @@ export function ColdOutreachTable({
                 width="w-28 px-2"
               />
               <th className="px-2 py-2.5">Remarks</th>
-              <th className="w-8 px-1 py-2.5" />
             </tr>
           </thead>
           <tbody>
@@ -1166,32 +1243,72 @@ function ColdRow({
         selected && "bg-blue-500/[0.05] dark:bg-blue-400/[0.06]",
       )}
     >
-      {/* Selection checkbox */}
-      <td className="px-3 py-2 align-middle">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-          className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
-          aria-label={`Select ${entry.venueName}`}
-        />
+      {/* Checkbox + per-row actions (history, escalate, archive) —
+          stacked vertically so the right side of the row reclaims
+          its width for Remarks. Actions stay hidden until the row
+          is hovered, keeping the resting state calm. */}
+      <td className="w-10 px-2 py-2 align-top">
+        <div className="flex flex-col items-center gap-1">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
+            aria-label={`Select ${entry.venueName}`}
+          />
+          <div className="flex flex-col items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+            <ActivityHistoryButton
+              table="cold_outreach_entries"
+              recordId={entry.entryId}
+              alsoTable="venues"
+              alsoRecordId={entry.venueId}
+              compact
+            />
+            {!entry.escalatedToName && (
+              <button
+                type="button"
+                onClick={() => setEscalationOpen(true)}
+                disabled={pending}
+                className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+                aria-label="Escalate to senior staff"
+                title="Escalate to senior staff"
+              >
+                <AlertTriangle className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={archive}
+              disabled={pending}
+              className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600"
+              aria-label="Archive"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
       </td>
 
       {/* Venue — inline-editable name. Operators can rename right from
           the table; the static link to /venues/[id] moves to a small
           arrow that appears on hover so quick edits don't require
-          navigating away. */}
-      <td className="px-3 py-2 align-middle">
-        <div className="flex items-center gap-1">
-          <InlineCell
-            label="Venue name"
-            value={entry.venueName}
-            variant="default"
-            maxWidth={220}
-            gridRow={rowIndex}
-            gridCol={0}
-            onCommit={editVenueField("name")}
-          />
+          navigating away. Venue name is allowed to wrap so the column
+          can stay narrow — long names break across two lines instead
+          of stretching the table. */}
+      <td className="w-40 px-2 py-2 align-top">
+        <div className="flex items-start gap-1">
+          <div className="min-w-0 flex-1">
+            <InlineCell
+              label="Venue name"
+              value={entry.venueName}
+              variant="default"
+              maxWidth={160}
+              gridRow={rowIndex}
+              gridCol={0}
+              onCommit={editVenueField("name")}
+              allowWrap
+            />
+          </div>
           <Link
             href={`/venues/${entry.venueId}`}
             className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
@@ -1204,20 +1321,23 @@ function ColdRow({
       </td>
 
       {/* Email — inline-editable address + AI draft button + mailto link.
-          The mailto link only shows when there's a value to send to. */}
-      <td className="relative px-2 py-2 align-middle">
-        <div className="flex items-center gap-1">
-          <InlineCell
-            label="Venue email"
-            value={entry.venueEmail ?? ""}
-            placeholder="add email"
-            variant="mono"
-            inputType="email"
-            maxWidth={150}
-            gridRow={rowIndex}
-            gridCol={1}
-            onCommit={editVenueField("email")}
-          />
+          Padding tightened (px-1) so the venue/email pair takes less
+          column real estate and Remarks gets more room. */}
+      <td className="relative w-40 px-1 py-2 align-top">
+        <div className="flex items-start gap-0.5">
+          <div className="min-w-0 flex-1">
+            <InlineCell
+              label="Venue email"
+              value={entry.venueEmail ?? ""}
+              placeholder="add email"
+              variant="mono"
+              inputType="email"
+              maxWidth={150}
+              gridRow={rowIndex}
+              gridCol={1}
+              onCommit={editVenueField("email")}
+            />
+          </div>
           {entry.venueEmail && (
             <>
               <a
@@ -1259,20 +1379,12 @@ function ColdRow({
         </div>
       </td>
 
-      {/* ZeroBounce */}
-      <td className="px-2 py-2 align-middle">
-        {entry.zeroBounceStatus ? (
-          <span
-            className={cn(
-              "inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] ring-1 ring-inset",
-              ZB_TONE[entry.zeroBounceStatus] ?? "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20",
-            )}
-          >
-            {entry.zeroBounceStatus.replace("_", " ")}
-          </span>
-        ) : (
-          <span className="font-mono text-[10px] text-zinc-400">unchecked</span>
-        )}
+      {/* ZB — compact icon-only column. Green check = valid, red X =
+          invalid family (invalid / spamtrap / abuse / do_not_mail),
+          amber dot = catch_all / unknown, neutral dash = unchecked.
+          Hover tooltip reveals the underlying ZeroBounce status name. */}
+      <td className="w-10 px-1 py-2 align-middle text-center">
+        <ZbIcon status={entry.zeroBounceStatus} />
       </td>
 
       {/* Phone — when present, QuoDialControls handles click-to-call /
@@ -1332,51 +1444,13 @@ function ColdRow({
             Escalated to {entry.escalatedToName}
           </div>
         )}
-      </td>
-
-      {/* History + Archive + Escalate — row-hover affordances so the row
-          itself reads calm when not interacting. */}
-      <td className="px-1 py-2 align-middle">
-        <div className="flex items-center gap-0.5">
-          <div className="opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            <ActivityHistoryButton
-              table="cold_outreach_entries"
-              recordId={entry.entryId}
-              alsoTable="venues"
-              alsoRecordId={entry.venueId}
-              compact
-            />
-          </div>
-          {/* Escalate button — only shows when NOT yet escalated. Once
-              escalated, the pill in the Remarks cell is the visible
-              affordance + clicking it could open the same popover
-              (un-escalate). Future iteration. */}
-          {!entry.escalatedToName && (
-            <button
-              type="button"
-              onClick={() => setEscalationOpen(true)}
-              disabled={pending}
-              className="rounded-md p-1 text-zinc-400 opacity-0 transition-all duration-150 hover:bg-amber-500/[0.08] hover:text-amber-600 group-hover:opacity-100"
-              aria-label="Escalate to senior staff"
-              title="Escalate to senior staff (e.g. Brandon)"
-            >
-              <AlertTriangle className="h-3 w-3" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={archive}
-            disabled={pending}
-            className="rounded-md p-1 text-zinc-400 opacity-0 transition-all duration-150 hover:bg-rose-500/[0.08] hover:text-rose-600 group-hover:opacity-100"
-            aria-label="Archive"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
-        {/* Popover rendered inside the last <td> but uses createPortal
-            internally — so the actual DOM lands at document.body and
-            doesn't violate the tbody>tr>td hierarchy. The component
-            returns null until mounted, so SSR is happy. */}
+        {/* EscalationPopover renders via createPortal so it can stay
+            in the row's DOM tree (here, attached to the Remarks <td>)
+            while visually landing at document.body — no tbody>tr>td
+            hierarchy violation. The trailing actions column was
+            removed and those affordances moved under the checkbox
+            cell on the left so Remarks can take the full remaining
+            width. */}
         {escalationOpen && (
           <EscalationPopover
             entryId={entry.entryId}
@@ -2204,6 +2278,25 @@ function BulkActionBar({
               ({eligibleForAi}/{selectedIds.length})
             </span>
           )}
+        </Button>
+
+        {/* Move-to-warm-leads — dedicated discoverable shortcut for the
+            "they're interested, queue for slot assignment" workflow.
+            Sets status=interested under the hood (same as picking
+            Interested in the Status → dropdown above); this just makes
+            the action visible at a glance. The warm-leads section on
+            the city page renders any entry with status=interested with
+            per-crawl assignment pills. */}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setStatus("interested")}
+          disabled={busy}
+          className="text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+        >
+          <Flame className="h-3 w-3" />
+          Move to warm leads
         </Button>
 
         {/* Bulk archive */}

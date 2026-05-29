@@ -57,6 +57,16 @@ interface Props {
    */
   gridRow?: number;
   gridCol?: number;
+  /**
+   * Allow the displayed value to wrap onto multiple lines instead of
+   * being truncated. Defaults to false (single line, truncated with
+   * ellipsis) to preserve the existing Sheets-like behavior for every
+   * caller that doesn't opt in. Useful for narrow columns where the
+   * value is more readable wrapping than truncated (e.g. venue names
+   * in the cold-outreach table where the column is sized for the
+   * common case but occasional long names should still be visible).
+   */
+  allowWrap?: boolean;
 }
 
 /**
@@ -93,6 +103,7 @@ export function InlineCell({
   peerFocus,
   gridRow,
   gridCol,
+  allowWrap = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -310,7 +321,11 @@ export function InlineCell({
         disabled={disabled}
         aria-label={label ?? "Edit"}
         className={cn(
-          "block truncate rounded-sm px-1 py-0.5 text-left transition-colors hover:bg-blue-500/[0.07] dark:hover:bg-blue-400/[0.08]",
+          "block rounded-sm px-1 py-0.5 text-left transition-colors hover:bg-blue-500/[0.07] dark:hover:bg-blue-400/[0.08]",
+          // allowWrap: let long values break across lines (e.g. venue
+          // names in a narrow column). Default: truncate to a single
+          // line with ellipsis (Sheets-like).
+          allowWrap ? "whitespace-normal break-words" : "truncate",
           baseFont,
           isEmpty ? "text-zinc-400" : "text-zinc-900 dark:text-zinc-100",
           pending && "opacity-60",
