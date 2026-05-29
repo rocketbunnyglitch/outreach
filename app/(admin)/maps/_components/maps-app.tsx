@@ -15,6 +15,8 @@ interface City {
   id: string;
   name: string;
   region: string | null;
+  lat: number | null;
+  lng: number | null;
 }
 
 interface PlaceDetails {
@@ -65,10 +67,49 @@ export function MapsApp({
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, startAdd] = useTransition();
   const [chosenCityId, setChosenCityId] = useState<string>(cities[0]?.id ?? "");
+  /** True once the operator has manually picked a city from the dropdown.
+   *  Used to stop the auto-suggest-closest-city effect from overriding
+   *  their explicit choice when they move between places. */
+  const [cityManuallyPicked, setCityManuallyPicked] = useState(false);
   const [addedVenueId, setAddedVenueId] = useState<string | null>(null);
   const [authFailed, setAuthFailed] = useState(false);
 
   const mapRef = useRef<google.maps.Map | null>(null);
+
+  // When the operator clicks a different result/pin, clear the manual
+  // city-override flag so the auto-suggest kicks in again for the new
+  // place. Their previous manual pick was tied to the prior place, not
+  // a global preference.
+  useEffect(() => {
+    setCityManuallyPicked(false);
+  }, [selected?.placeId]);
+
+  // Auto-suggest the closest active city when a place's details land.
+  // Only runs while the operator hasn't manually picked a city; once they
+  // touch the dropdown we respect their choice for the rest of the
+  // session. Closest = lowest great-circle distance from the place's
+  // (lat,lng) to the city's centroid. Falls back to the first city in
+  // the list if no city has coords yet.
+  useEffect(() => {
+    if (cityManuallyPicked) return;
+    if (!details || details.lat == null || details.lng == null) return;
+    if (cities.length === 0) return;
+    const pLat = details.lat;
+    const pLng = details.lng;
+    let bestId = cities[0]?.id ?? "";
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const c of cities) {
+      if (c.lat == null || c.lng == null) continue;
+      const d = haversineKm(pLat, pLng, c.lat, c.lng);
+      if (d < bestDist) {
+        bestDist = d;
+        bestId = c.id;
+      }
+    }
+    if (bestId && bestId !== chosenCityId) {
+      setChosenCityId(bestId);
+    }
+  }, [details, cities, cityManuallyPicked, chosenCityId]);
 
   // gm_authFailure can't be caught by useJsApiLoader's loadError — surface
   // the auth failure as a friendly in-app error instead of Google's overlay.
@@ -326,16 +367,28 @@ export function MapsApp({
                         </a>
                       ) : (
                         <div className="flex flex-col gap-1.5">
-                          <label
-                            htmlFor="maps-city-picker"
-                            className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]"
-                          >
-                            City
-                          </label>
+                          <div className="flex items-baseline justify-between">
+                            <label
+                              htmlFor="maps-city-picker"
+                              className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]"
+                            >
+                              City
+                            </label>
+                            {!cityManuallyPicked &&
+                              details?.lat != null &&
+                              details?.lng != null && (
+                                <span className="font-mono text-[9px] text-emerald-600 dark:text-emerald-400">
+                                  auto-suggested (closest)
+                                </span>
+                              )}
+                          </div>
                           <select
                             id="maps-city-picker"
                             value={chosenCityId}
-                            onChange={(e) => setChosenCityId(e.target.value)}
+                            onChange={(e) => {
+                              setChosenCityId(e.target.value);
+                              setCityManuallyPicked(true);
+                            }}
                             className="rounded-md border border-zinc-300 px-2 py-1 text-xs"
                           >
                             {cities.map((c) => (
@@ -378,4 +431,20 @@ declare global {
   interface Window {
     gm_authFailure?: () => void;
   }
+}
+
+/**
+ * Great-circle distance in kilometers between two (lat,lng) points
+ * using the haversine formula. Good enough for "which city is this
+ * place closest to" — accurate to under a percent at city scales.
+ */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth's mean radius, km
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }

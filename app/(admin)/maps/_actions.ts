@@ -8,11 +8,11 @@
  * what CityVenueMap is for).
  */
 
-import { cities, venues } from "@/db/schema";
+import { venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
-import { eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export interface MapsSearchResult {
@@ -171,15 +171,50 @@ export async function mapsAddPlaceAsVenue(input: {
   }
 }
 
-/** Cities list for the InfoWindow's city picker. */
+/** Cities list for the InfoWindow's city picker. Includes coords so
+ *  the client can auto-select the closest city to a place. */
 export async function mapsLoadCities(): Promise<
-  Array<{ id: string; name: string; region: string | null }>
+  Array<{ id: string; name: string; region: string | null; lat: number | null; lng: number | null }>
 > {
   await requireStaff();
-  const rows = await db
-    .select({ id: cities.id, name: cities.name, region: cities.region })
-    .from(cities)
-    .where(isNull(cities.archivedAt))
-    .orderBy(cities.name);
-  return rows;
+  // Pull cities + extract their lat/lng from the PostGIS geography
+  // column via ST_X / ST_Y on the casted geometry. NULL location rows
+  // come back with null lat+lng and the client falls back to the first
+  // city in the dropdown.
+  const { sql } = await import("drizzle-orm");
+  const rows = await db.execute<{
+    id: string;
+    name: string;
+    region: string | null;
+    lat: number | null;
+    lng: number | null;
+  }>(sql`
+    SELECT id::text AS id,
+           name,
+           region,
+           CASE WHEN location IS NULL THEN NULL
+                ELSE ST_Y(location::geometry) END AS lat,
+           CASE WHEN location IS NULL THEN NULL
+                ELSE ST_X(location::geometry) END AS lng
+      FROM cities
+     WHERE archived_at IS NULL
+  ORDER BY name
+  `);
+  type Row = {
+    id: string;
+    name: string;
+    region: string | null;
+    lat: number | null;
+    lng: number | null;
+  };
+  const list: Row[] = Array.isArray(rows)
+    ? (rows as unknown as Row[])
+    : ((rows as unknown as { rows: Row[] }).rows ?? []);
+  return list.map((r) => ({
+    id: r.id,
+    name: r.name,
+    region: r.region,
+    lat: r.lat != null ? Number(r.lat) : null,
+    lng: r.lng != null ? Number(r.lng) : null,
+  }));
 }

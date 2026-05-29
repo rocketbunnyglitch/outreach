@@ -262,12 +262,18 @@ export function isGoogleMapsConfigured(): boolean {
  *
  * Returns null if the URL doesn't parse or doesn't look like Google.
  */
-export function parseGoogleMapsUrl(
-  rawUrl: string,
-):
+export function parseGoogleMapsUrl(rawUrl: string):
   | { placeId: string }
   | { cid: string; lat?: number; lng?: number }
   | { searchQuery: string; lat?: number; lng?: number }
+  | {
+      /** Marker: we extracted a venue name + its actual coords from a
+       *  /place/.../!3d!4d... URL. The caller does a text-search
+       *  biased to (lat,lng) to resolve it to a real place_id. */
+      placeName: string;
+      lat: number;
+      lng: number;
+    }
   | { lat: number; lng: number }
   | { shortUrl: string }
   | null {
@@ -288,11 +294,14 @@ export function parseGoogleMapsUrl(
     return { shortUrl: rawUrl.trim() };
   }
 
-  // 2. explicit query_place_id
+  // 2. explicit query_place_id (?query_place_id=ChIJ...)
   const placeIdQuery = url.searchParams.get("query_place_id");
   if (placeIdQuery) return { placeId: placeIdQuery };
 
-  // 1. place_id embedded in path !1s prefix or place_id: literal
+  // 1. place_id embedded in the path. Google's /maps/place/ URLs put
+  //    several !1s markers — one for the search query, one for the
+  //    FTID — and ONLY the ChIJ-prefixed one is a real place_id. Older
+  //    URLs sometimes use a literal `place_id:` segment.
   const dataParam = url.pathname + url.search;
   const placeIdMatch =
     dataParam.match(/!1s(ChIJ[A-Za-z0-9_\-]+)/) ?? dataParam.match(/place_id:([A-Za-z0-9_\-]+)/);
@@ -317,11 +326,10 @@ export function parseGoogleMapsUrl(
     return ll ? { cid, lat: ll.lat, lng: ll.lng } : { cid };
   }
 
-  // 4. /maps/search/<query>/... — a search, not a venue
+  // 4. /maps/search/<query>/... — explicitly a search, not a venue
   const searchMatch = url.pathname.match(/\/maps\/search\/([^/]+)/);
   if (searchMatch?.[1]) {
     const raw = searchMatch[1];
-    // The path segment may use '+' for spaces (URL-encoded)
     const query = decodeURIComponent(raw.replace(/\+/g, " "));
     const coordMatch = url.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
     if (coordMatch?.[1] && coordMatch[2]) {
@@ -332,6 +340,42 @@ export function parseGoogleMapsUrl(
       };
     }
     return { searchQuery: query };
+  }
+
+  // 4b. /maps/place/<Name>/... — a place URL. The `@lat,lng` in this
+  //     pattern is the MAP CENTER (often the city's centroid), NOT the
+  //     venue location. The actual venue coords live in the `!3d!4d`
+  //     pair inside the data block. We extract:
+  //       - the venue name from the /place/{Name}/ path segment
+  //       - the venue coords from !3d{lat}!4d{lng}
+  //     and let the caller text-search biased to those coords to
+  //     resolve a real place_id. This is the fix for the common case
+  //     where Google's URL has !1s as a search query or FTID instead
+  //     of a ChIJ place_id (so step 1 above didn't catch it).
+  const placeMatch = url.pathname.match(/\/maps\/place\/([^/]+)/);
+  if (placeMatch?.[1]) {
+    const rawName = placeMatch[1];
+    const name = decodeURIComponent(rawName.replace(/\+/g, " "));
+    const dataCoordMatch = dataParam.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+    if (dataCoordMatch?.[1] && dataCoordMatch[2]) {
+      const lat = Number.parseFloat(dataCoordMatch[1]);
+      const lng = Number.parseFloat(dataCoordMatch[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { placeName: name, lat, lng };
+      }
+    }
+    // Fallback: no !3d!4d marker but we have a name — use the path's
+    // @lat,lng (map center) as a coarse bias and let text-search find it.
+    const coordMatch = url.pathname.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (coordMatch?.[1] && coordMatch[2]) {
+      return {
+        placeName: name,
+        lat: Number.parseFloat(coordMatch[1]),
+        lng: Number.parseFloat(coordMatch[2]),
+      };
+    }
+    // Last-resort: name without any coords. Treat as a search.
+    return { searchQuery: name };
   }
 
   // 5. coord-only — either in path (@lat,lng) or query (?ll=lat,lng)
@@ -347,23 +391,49 @@ export function parseGoogleMapsUrl(
 export async function resolveShortMapsUrl(
   shortUrl: string,
 ): Promise<Exclude<ReturnType<typeof parseGoogleMapsUrl>, { shortUrl: string } | null> | null> {
-  try {
-    const response = await fetch(shortUrl, {
-      method: "HEAD",
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
-    const location = response.headers.get("location");
-    if (!location) return null;
-    const parsed = parseGoogleMapsUrl(location);
-    if (!parsed) return null;
-    // Recursive shortUrl shouldn't happen (Google doesn't chain short
-    // links), but guard anyway
-    if ("shortUrl" in parsed) return null;
-    return parsed;
-  } catch {
-    return null;
+  // Google's maps.app.goo.gl service sometimes returns a 302 with a
+  // Location header on HEAD, sometimes only on GET, and sometimes
+  // only when a browser-shaped User-Agent is presented. We try HEAD
+  // first (cheap) with manual redirect, then fall back to GET with
+  // manual redirect; for GET we also peek at the response body for
+  // a `<meta http-equiv="refresh">` tag in case the redirect is HTML.
+  const ua =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+  async function followOnce(method: "HEAD" | "GET"): Promise<string | null> {
+    try {
+      const response = await fetch(shortUrl, {
+        method,
+        redirect: "manual",
+        signal: AbortSignal.timeout(5000),
+        headers: { "User-Agent": ua, Accept: "*/*" },
+      });
+      const loc = response.headers.get("location");
+      if (loc) return loc;
+      // If the body is HTML (consent / interstitial), look for a
+      // meta-refresh or a canonical link with the resolved URL.
+      if (method === "GET") {
+        const text = await response.text();
+        const metaRefresh = text.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]*url=([^"'>]+)/i);
+        if (metaRefresh?.[1]) return metaRefresh[1];
+        const canonical = text.match(/<link[^>]+rel=["']?canonical["']?[^>]+href=["']([^"']+)/i);
+        if (canonical?.[1]) return canonical[1];
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
+
+  let location = await followOnce("HEAD");
+  if (!location) location = await followOnce("GET");
+  if (!location) return null;
+  const parsed = parseGoogleMapsUrl(location);
+  if (!parsed) return null;
+  // Recursive shortUrl shouldn't happen (Google doesn't chain short
+  // links), but guard anyway
+  if ("shortUrl" in parsed) return null;
+  return parsed;
 }
 
 export async function fetchPlaceDetails(placeId: string): Promise<PlaceDetails | null> {
@@ -502,6 +572,35 @@ export async function resolveMapsUrlToPlace(rawUrl: string): Promise<ResolveMaps
     const resolved = await resolveShortMapsUrl(parsed.shortUrl);
     if (!resolved) return { kind: "lookup_failed" };
     parsed = resolved;
+  }
+
+  // /maps/place/{Name}/...!3d!4d — we have a venue name + its real
+  // coordinates. Use a text-search biased tightly around (lat,lng) to
+  // find the corresponding place_id, then hydrate via fetchPlaceDetails.
+  // Falls back to coord_only if nothing matches.
+  if ("placeName" in parsed) {
+    const candidates = await textSearchPlaces({
+      query: parsed.placeName,
+      bias: { lat: parsed.lat, lng: parsed.lng, radiusM: 250 },
+      maxResults: 5,
+    });
+    if (candidates.length > 0 && candidates[0]) {
+      const place = await fetchPlaceDetails(candidates[0].placeId);
+      if (place) return { kind: "venue", place };
+    }
+    // Widen the search radius once before giving up — sometimes the
+    // !3d!4d coords disagree with the actual place by 100-300m if the
+    // venue moved or Google's geocode is off.
+    const wider = await textSearchPlaces({
+      query: parsed.placeName,
+      bias: { lat: parsed.lat, lng: parsed.lng, radiusM: 2000 },
+      maxResults: 5,
+    });
+    if (wider.length > 0 && wider[0]) {
+      const place = await fetchPlaceDetails(wider[0].placeId);
+      if (place) return { kind: "venue", place };
+    }
+    return { kind: "coord_only", lat: parsed.lat, lng: parsed.lng };
   }
 
   if ("searchQuery" in parsed) {
