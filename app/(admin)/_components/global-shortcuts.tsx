@@ -59,13 +59,6 @@ export function GlobalShortcuts() {
     handler: () => router.push("/admin/analytics"),
   });
 
-  useShortcut({
-    keys: "g i",
-    label: "Go to Discover (venue scouting)",
-    group: "Navigation",
-    handler: () => router.push("/discover"),
-  });
-
   // Show shortcuts cheatsheet is handled internally by the provider
   // via '?', but we register it here too so it shows up in the
   // cheatsheet listing itself.

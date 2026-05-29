@@ -560,31 +560,19 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         </div>
       </header>
 
-      {/* Shared middle group section — read-only summary of group members */}
+      {/* Shared middle group section — read-only summary of group members.
+          The /middle-groups management UI was removed (it barely worked);
+          the schema stays and the group still functions, but membership
+          can no longer be edited from this surface. */}
       {crawl.middleVenueGroupId && (
         <div className="border-zinc-200/60 border-b bg-orange-500/[0.04] px-5 py-4 dark:border-zinc-800/40 dark:bg-orange-500/[0.06]">
           <div className="mb-2 flex items-baseline justify-between">
             <p className="font-mono text-[10px] text-orange-700 uppercase tracking-[0.12em] dark:text-orange-300">
               Middle venues · {crawl.middleVenueGroupName}
             </p>
-            <Link
-              href={`/middle-groups/${crawl.middleVenueGroupId}`}
-              className="font-mono text-[10px] text-orange-700 uppercase tracking-[0.1em] underline-offset-4 hover:underline dark:text-orange-300"
-            >
-              manage group →
-            </Link>
           </div>
           {crawl.middleGroupMembers.length === 0 ? (
-            <p className="text-xs text-zinc-500 italic">
-              Group has no venues yet. Add some via{" "}
-              <Link
-                href={`/middle-groups/${crawl.middleVenueGroupId}`}
-                className="underline-offset-2 hover:underline"
-              >
-                manage group
-              </Link>
-              .
-            </p>
+            <p className="text-xs text-zinc-500 italic">Group has no venues yet.</p>
           ) : (
             <ul className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
               {crawl.middleGroupMembers.map((m) => (

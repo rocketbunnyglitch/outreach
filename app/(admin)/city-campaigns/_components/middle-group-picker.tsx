@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Loader2, Plus, Share2, X } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   assignMiddleGroup,
@@ -116,17 +115,17 @@ export function MiddleGroupPicker({
     });
   }
 
-  // Closed state — current attachment summary
+  // Closed state — current attachment summary.
+  // Previously a link to /middle-groups/[id]; that route was removed
+  // (the management UI barely worked). Now a plain badge — the
+  // unshare button beside it is the only action that remains.
   if (!open && currentGroupId) {
     return (
       <div className="flex items-center gap-2">
-        <Link
-          href={`/middle-groups/${currentGroupId}`}
-          className="inline-flex items-center gap-1.5 rounded-md bg-orange-500/[0.08] px-2 py-1 font-mono text-[10px] text-orange-700 uppercase tracking-[0.08em] transition-colors hover:bg-orange-500/[0.15] dark:text-orange-300"
-        >
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-orange-500/[0.08] px-2 py-1 font-mono text-[10px] text-orange-700 uppercase tracking-[0.08em] dark:text-orange-300">
           <Share2 className="h-3 w-3" />
           {currentGroupName ?? "shared middles"}
-        </Link>
+        </span>
         <button
           type="button"
           onClick={() => handleAssign(null)}

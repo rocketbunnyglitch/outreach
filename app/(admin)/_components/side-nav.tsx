@@ -6,7 +6,7 @@
  *
  * Grouping decisions:
  *   • Inbox + Tasks: 'Today' — what you live in
- *   • All Crawls → Discover: 'Operate' — daily campaign work
+ *   • All Crawls → Maps: 'Operate' — daily campaign work
  *   • Cities → Templates: 'Data' — operational data setup
  *   • Brands + Campaigns + Hosts: 'Settings' — campaign configuration
  *   • Goals: under 'Admin' (admin-only — it's a management view)
@@ -37,7 +37,6 @@ import {
   CheckSquare,
   ChevronDown,
   Clock,
-  Compass,
   FileCode,
   Globe,
   Globe2,
@@ -95,7 +94,6 @@ const SECTIONS: Array<{
         label: "Event Submission",
         icon: <Upload className="h-3.5 w-3.5" />,
       },
-      { href: "/discover", label: "Discover", icon: <Compass className="h-3.5 w-3.5" /> },
       { href: "/maps", label: "Maps", icon: <Globe2 className="h-3.5 w-3.5" /> },
     ],
   },
@@ -104,8 +102,6 @@ const SECTIONS: Array<{
     items: [
       { href: "/cities", label: "Cities", icon: <Globe className="h-3.5 w-3.5" /> },
       { href: "/venues", label: "Venues", icon: <Building2 className="h-3.5 w-3.5" /> },
-      { href: "/cluster-builder", label: "Clusters", icon: <Boxes className="h-3.5 w-3.5" /> },
-      { href: "/middle-groups", label: "Middles", icon: <Users className="h-3.5 w-3.5" /> },
       { href: "/templates", label: "Templates", icon: <FileCode className="h-3.5 w-3.5" /> },
     ],
   },

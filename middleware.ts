@@ -35,7 +35,6 @@ const CAMPAIGN_GATED_PREFIXES = [
   "/wristbands",
   "/support-hours",
   "/event-submission",
-  "/discover",
   "/maps",
 ];
 

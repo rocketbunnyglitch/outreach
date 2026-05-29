@@ -19,9 +19,11 @@
  * Unassigning a group reverts the crawl to the per-event slot model.
  * Group's members aren't touched (other crawls may still use them).
  *
- * Adding/removing members from a group lives at /middle-groups/[id]
- * — we don't duplicate that UI in the city sheet to keep the slot
- * table focused on the per-crawl operational view.
+ * Adding/removing members from a group used to live at
+ * /middle-groups/[id]. That route was removed; member-management UI
+ * is currently absent. The schema + ability to assign an existing
+ * group to a crawl remain functional — what's gone is the
+ * group-membership editor.
  */
 
 import { events, middleVenueGroupMembers, middleVenueGroups } from "@/db/schema";

@@ -178,14 +178,6 @@ export function CommandPalette({
         action: () => router.push("/brands"),
       },
       {
-        id: "nav:discover",
-        label: "Discover new venues",
-        group: "Navigation",
-        icon: Search,
-        action: () => router.push("/discover"),
-        keywords: ["places", "scout"],
-      },
-      {
         id: "nav:analytics",
         label: "Team analytics",
         group: "Navigation",

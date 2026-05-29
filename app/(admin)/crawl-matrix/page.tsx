@@ -217,13 +217,16 @@ function CrawlRow({ row, striped }: { row: CrawlMatrixRow; striped: boolean }) {
       </td>
       <td className="px-3 py-2.5">
         {row.middleGroupId ? (
-          <Link href={`/middle-groups/${row.middleGroupId}`} className="hover:underline">
-            <RoleCell
-              name={row.middleGroupName}
-              status={row.middleStatus}
-              suffix={row.middleVenueCount > 0 ? ` (${row.middleVenueCount})` : ""}
-            />
-          </Link>
+          // The /middle-groups route was removed (the UI barely
+          // worked); the underlying middle_venue_groups schema stays
+          // because city sheets + events still reference it. So the
+          // group name is shown as plain text — no longer linkable to
+          // a management page that doesn't exist.
+          <RoleCell
+            name={row.middleGroupName}
+            status={row.middleStatus}
+            suffix={row.middleVenueCount > 0 ? ` (${row.middleVenueCount})` : ""}
+          />
         ) : (
           <RoleCell
             name={row.middleVenueCount > 0 ? `${row.middleVenueCount} inline` : null}
