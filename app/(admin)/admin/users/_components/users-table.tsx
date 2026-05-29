@@ -96,7 +96,7 @@ function UserRowEl({
           {user.primaryEmail}
         </td>
         <td className="px-4 py-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             {user.role}
           </span>
         </td>
@@ -111,7 +111,7 @@ function UserRowEl({
           </span>
         </td>
         <td className="px-4 py-2.5">
-          <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             {user.passwordSetAt ? "set" : "pending invite"}
           </span>
         </td>

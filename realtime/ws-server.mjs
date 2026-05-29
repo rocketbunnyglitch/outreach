@@ -234,9 +234,7 @@ const heartbeat = setInterval(() => {
   }
 }, HEARTBEAT_MS);
 
-httpServer.listen(PORT, HOST, () => {
-  console.log(`[ws] presence server listening on ${HOST}:${PORT}`);
-});
+httpServer.listen(PORT, HOST, () => {});
 
 function shutdown() {
   clearInterval(heartbeat);

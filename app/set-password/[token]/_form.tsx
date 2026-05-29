@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwords";
 import { Loader2 } from "lucide-react";
 import { useActionState } from "react";
-import { consumeInvite, type ConsumeResult } from "./_actions";
+import { type ConsumeResult, consumeInvite } from "./_actions";
 
 export function SetPasswordForm({ token, email }: { token: string; email: string }) {
   const [state, formAction, isPending] = useActionState<ConsumeResult, FormData>(consumeInvite, {

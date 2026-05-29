@@ -47,7 +47,7 @@ export function DeleteTaskButton({ taskId }: { taskId: string }) {
         type="button"
         onClick={onDelete}
         disabled={pending}
-        className="rounded-md bg-rose-600 px-2.5 py-1.5 text-sm text-white disabled:opacity-50 hover:bg-rose-700"
+        className="rounded-md bg-rose-600 px-2.5 py-1.5 text-sm text-white hover:bg-rose-700 disabled:opacity-50"
       >
         {pending ? "Deleting…" : "Confirm"}
       </button>

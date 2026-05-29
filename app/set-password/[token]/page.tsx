@@ -1,7 +1,7 @@
 import { inviteTokens, users } from "@/db/schema";
 import { db } from "@/lib/db";
 import { hashToken } from "@/lib/invite-tokens";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { SetPasswordForm } from "./_form";

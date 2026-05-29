@@ -54,7 +54,7 @@ const NEGATIVE_OUTCOMES = new Set(["declined", "bounced", "bad_email", "wrong_nu
  */
 export function ActivityFeed({ rows }: Props) {
   return (
-    <section className="overflow-hidden card-surface">
+    <section className="card-surface overflow-hidden">
       <header className="border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <div className="flex items-baseline gap-2">
           <Clock className="h-4 w-4 text-zinc-500" />

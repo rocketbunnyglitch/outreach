@@ -97,7 +97,7 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
 
       {/* Groups */}
       {grouped.map(([code, group]) => (
-        <section key={code} className="overflow-hidden card-surface">
+        <section key={code} className="card-surface overflow-hidden">
           <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b bg-zinc-50/60 px-5 py-3 dark:border-zinc-800/40 dark:bg-zinc-900/40">
             <h2 className="inline-flex items-center gap-2 font-semibold text-sm tracking-tight">
               <Globe className="h-3.5 w-3.5 text-zinc-500" />

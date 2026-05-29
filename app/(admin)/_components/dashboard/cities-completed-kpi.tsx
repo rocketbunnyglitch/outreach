@@ -95,7 +95,7 @@ export function CitiesCompletedKpi({
             actually matches the element bottom. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-[33%] flex justify-center">
           <p
-            className="font-semibold text-3xl text-zinc-900 leading-none tabular-nums sm:text-5xl lg:text-7xl dark:text-white"
+            className="font-semibold text-3xl text-zinc-900 tabular-nums leading-none sm:text-5xl lg:text-7xl dark:text-white"
             style={{ fontFeatureSettings: '"tnum"' }}
           >
             {completed.toLocaleString()}

@@ -57,9 +57,9 @@ export function NextBestActionsWidget({
               {/* Index + category dot. The dot tells the operator at a
                   glance which kind of problem this row is so they can
                   triage horizontally (all-needs-venues together, etc.) */}
-              <span className="flex items-center gap-2 shrink-0">
+              <span className="flex shrink-0 items-center gap-2">
                 <span
-                  className={cn("h-1.5 w-1.5 rounded-full shrink-0", CATEGORY_DOT[action.category])}
+                  className={cn("h-1.5 w-1.5 shrink-0 rounded-full", CATEGORY_DOT[action.category])}
                   aria-hidden="true"
                 />
                 <span className="font-mono text-[11px] text-zinc-500 tabular-nums">{idx + 1}.</span>

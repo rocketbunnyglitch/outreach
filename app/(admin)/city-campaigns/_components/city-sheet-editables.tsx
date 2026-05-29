@@ -125,7 +125,7 @@ export function EditableDashboardNote({
         type="button"
         onClick={save}
         disabled={pending}
-        className="rounded-md bg-zinc-900 px-3 py-2 text-xs text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        className="rounded-md bg-zinc-900 px-3 py-2 text-white text-xs hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
       >
         Save
       </button>

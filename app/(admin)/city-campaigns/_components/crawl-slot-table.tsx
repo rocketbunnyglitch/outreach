@@ -617,12 +617,12 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   return (
     <section
       className={cn(
-        "overflow-hidden card-surface transition-shadow duration-300",
+        "card-surface overflow-hidden transition-shadow duration-300",
         // Green outline + soft glow when the crawl is fully booked.
         // Uses ring (so the existing card-surface background stays
         // intact) + a same-color shadow for the glow effect.
         allVenuesConfirmed &&
-          "ring-2 ring-emerald-500/60 shadow-[0_0_24px_-4px_rgba(16,185,129,0.35)] dark:ring-emerald-400/50 dark:shadow-[0_0_28px_-2px_rgba(16,185,129,0.4)]",
+          "shadow-[0_0_24px_-4px_rgba(16,185,129,0.35)] ring-2 ring-emerald-500/60 dark:shadow-[0_0_28px_-2px_rgba(16,185,129,0.4)] dark:ring-emerald-400/50",
       )}
     >
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">

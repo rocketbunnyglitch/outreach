@@ -39,7 +39,7 @@ interface Props {
 export function WarmLeadsPanel({ cityName, campaignName, leads, cityCampaignId, crawls }: Props) {
   if (leads.length === 0) {
     return (
-      <section className="overflow-hidden rounded-2xl card-surface p-6">
+      <section className="card-surface overflow-hidden rounded-2xl p-6">
         <header className="mb-3 flex items-baseline gap-2">
           <Flame className="h-4 w-4 text-zinc-500" />
           <h2 className="font-semibold text-lg tracking-tight">Warm leads</h2>
@@ -60,7 +60,7 @@ export function WarmLeadsPanel({ cityName, campaignName, leads, cityCampaignId, 
   const promoteEnabled = !!cityCampaignId && !!crawls;
 
   return (
-    <section className="overflow-hidden card-surface">
+    <section className="card-surface overflow-hidden">
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-4 dark:border-zinc-800/40">
         <div className="flex items-baseline gap-2">
           <Flame className="h-4 w-4 text-amber-500" />

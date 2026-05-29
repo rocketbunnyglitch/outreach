@@ -23,10 +23,7 @@ export interface ConsumeResult {
  * link. Only the final atomic "mark accepted + write hash" commits
  * the consumption.
  */
-export async function consumeInvite(
-  _prev: unknown,
-  formData: FormData,
-): Promise<ConsumeResult> {
+export async function consumeInvite(_prev: unknown, formData: FormData): Promise<ConsumeResult> {
   const token = String(formData.get("token") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
@@ -82,7 +79,10 @@ export async function consumeInvite(
           .where(and(eq(inviteTokens.id, invite.id), isNull(inviteTokens.acceptedAt)))
           .returning({ id: inviteTokens.id });
         if (claimed.length === 0) {
-          return { ok: false as const, error: "This link was used by another tab. Try signing in." };
+          return {
+            ok: false as const,
+            error: "This link was used by another tab. Try signing in.",
+          };
         }
 
         let userId: string;

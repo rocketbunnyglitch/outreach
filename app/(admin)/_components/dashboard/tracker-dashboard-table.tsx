@@ -300,7 +300,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   }
 
   return (
-    <div className="overflow-hidden card-surface">
+    <div className="card-surface overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
         <div className="flex items-center gap-1">
           {(
@@ -392,7 +392,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           control below comfortable tap target. Cards stack the same
           editable cells vertically so everything is reachable with a
           thumb. */}
-      <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60 sm:hidden">
+      <ul className="divide-y divide-zinc-200/60 sm:hidden dark:divide-zinc-800/60">
         {rows.length === 0 ? (
           <li className="px-4 py-12 text-center text-sm text-zinc-500">
             No cities in this campaign yet.
@@ -1080,13 +1080,13 @@ function SlotPills({ slots }: { slots: SlotKind[] }) {
           className={cn(
             // Base pill — sized for the narrow tier. Wider tiers
             // override via @container queries below.
-            "inline-flex h-[18px] items-center font-medium font-mono text-[9px] uppercase tracking-[0.06em] tabular-nums whitespace-nowrap",
+            "inline-flex h-[18px] items-center whitespace-nowrap font-medium font-mono text-[9px] uppercase tabular-nums tracking-[0.06em]",
             // Padding scales with container width. middle_pair gets a
             // touch more inner space at every tier because it carries
             // the widest content ("Middle 1 + 2" / "M1+2").
             slot === "middle_pair"
-              ? "px-2 @[170px]:px-2.5 @[260px]:px-3"
-              : "px-1.5 @[170px]:px-2 @[260px]:px-2.5",
+              ? "@[170px]:px-2.5 @[260px]:px-3 px-2"
+              : "@[170px]:px-2 @[260px]:px-2.5 px-1.5",
             // Bigger text + slightly taller pill on the widest tier.
             "@[260px]:h-[20px] @[260px]:text-[10px] @[260px]:tracking-[0.08em]",
             SLOT_PILL_TONE[slot],
@@ -1101,7 +1101,7 @@ function SlotPills({ slots }: { slots: SlotKind[] }) {
               it's hidden in favor of the long label. */}
           <span className="@[170px]:hidden">{SLOT_PILL_LABEL[slot]}</span>
           {/* Long label — hidden by default; visible from 170px up. */}
-          <span className="hidden @[170px]:inline">{SLOT_PILL_LABEL_LONG[slot]}</span>
+          <span className="@[170px]:inline hidden">{SLOT_PILL_LABEL_LONG[slot]}</span>
         </span>
       ))}
     </div>

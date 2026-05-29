@@ -32,7 +32,7 @@ interface Props {
  */
 export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
   return (
-    <header className="rounded-2xl card-surface p-6">
+    <header className="card-surface rounded-2xl p-6">
       <div className="flex flex-col gap-1">
         <div className="flex items-start justify-between gap-3">
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em] dark:text-zinc-400">

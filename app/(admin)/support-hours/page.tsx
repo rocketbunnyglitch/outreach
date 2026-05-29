@@ -95,7 +95,7 @@ export default async function SupportHoursPage({ searchParams }: Props) {
       {data.missingCount > 0 && <MissingHoursBanner count={data.missingCount} />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 flex flex-col gap-4">
+        <div className="flex flex-col gap-4 lg:col-span-2">
           <CrawlMatrix rows={data.rows} />
         </div>
         <div className="flex flex-col gap-4">
@@ -294,7 +294,7 @@ function KvCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-0.5 leading-tight">
       <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-widest">{label}</span>
-      <span className="font-medium text-zinc-700 text-[12px] tabular-nums dark:text-zinc-200">
+      <span className="font-medium text-[12px] text-zinc-700 tabular-nums dark:text-zinc-200">
         {value}
       </span>
     </div>
@@ -310,7 +310,7 @@ function MissingHoursBanner({ count }: { count: number }) {
     <div className="card-surface flex items-center justify-between gap-4 p-4 ring-1 ring-rose-500/20">
       <div className="flex items-start gap-2.5">
         <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
-        <p className="text-sm text-rose-700 dark:text-rose-200">
+        <p className="text-rose-700 text-sm dark:text-rose-200">
           <span className="font-medium">
             {count} crawl{count === 1 ? "" : "s"} {count === 1 ? "is" : "are"} missing start/end
             times

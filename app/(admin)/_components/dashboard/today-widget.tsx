@@ -83,7 +83,7 @@ export function TodayWidget({ digest, currentCampaign }: Props) {
   }
 
   return (
-    <section className="overflow-hidden card-surface">
+    <section className="card-surface overflow-hidden">
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <div className="flex items-center gap-2">
           <Sunrise className="h-4 w-4 text-amber-500" />

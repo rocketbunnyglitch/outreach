@@ -641,7 +641,7 @@ export function ColdOutreachTable({
     <section
       ref={gridNavRef}
       className={cn(
-        "overflow-hidden card-surface",
+        "card-surface overflow-hidden",
         // Warm-mode visual cue: subtle emerald ring on the section so
         // the operator can spot it without reading the title. Same
         // signal as the "all confirmed" green outline on the crawl
@@ -1499,7 +1499,7 @@ function ColdRow({
           invalid family (invalid / spamtrap / abuse / do_not_mail),
           amber dot = catch_all / unknown, neutral dash = unchecked.
           Hover tooltip reveals the underlying ZeroBounce status name. */}
-      <td className="w-10 px-1 py-2 align-middle text-center">
+      <td className="w-10 px-1 py-2 text-center align-middle">
         <ZbIcon status={entry.zeroBounceStatus} />
       </td>
 

@@ -204,7 +204,7 @@ export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
   const someSelected = selected.size > 0 && selected.size < filtered.length;
 
   return (
-    <section className="overflow-hidden card-surface">
+    <section className="card-surface overflow-hidden">
       <header className="flex flex-col gap-3 border-zinc-200/60 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800/40">
         <div>
           <h2 className="font-semibold text-lg tracking-tight">All crawls</h2>
@@ -314,7 +314,7 @@ export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
               type="button"
               onClick={() => setCrawlFilter(n)}
               className={cn(
-                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] tabular-nums transition-all",
+                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tabular-nums tracking-[0.1em] transition-all",
                 crawlFilter === n
                   ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
                   : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-zinc-700",

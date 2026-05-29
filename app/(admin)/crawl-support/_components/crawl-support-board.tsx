@@ -768,7 +768,7 @@ function LogIssueModal({
         onClick={onClose}
         className="absolute inset-0 bg-black/40"
       />
-      <div className="relative w-full max-w-lg rounded-t-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950 sm:rounded-2xl">
+      <div className="relative w-full max-w-lg rounded-t-2xl border border-zinc-200 bg-white p-5 sm:rounded-2xl dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-lg">Log issue</h3>
           <button

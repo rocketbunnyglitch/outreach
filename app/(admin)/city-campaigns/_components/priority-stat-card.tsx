@@ -40,7 +40,7 @@ export function PriorityStatCard({
         title="Priority — 1 is highest, 10 is lowest. Change to re-rank this city."
         className={cn(
           "mt-2 w-14 appearance-none rounded-md border border-transparent bg-transparent font-mono text-lg tabular-nums transition-colors",
-          "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none dark:hover:border-zinc-700 dark:focus:border-zinc-600",
+          "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none dark:focus:border-zinc-600 dark:hover:border-zinc-700",
           pending && "opacity-50",
         )}
       >

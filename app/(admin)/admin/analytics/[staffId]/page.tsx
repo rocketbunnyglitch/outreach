@@ -80,7 +80,7 @@ function ProfileHeader({
   const isAdmin = profile.staff.role === "admin";
 
   return (
-    <section className="overflow-hidden card-surface">
+    <section className="card-surface overflow-hidden">
       <header className="flex items-center gap-4 border-zinc-200/60 border-b px-6 py-5 dark:border-zinc-800/40">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-zinc-200 to-zinc-300 font-mono font-semibold text-sm text-zinc-700 dark:from-zinc-700 dark:to-zinc-800 dark:text-zinc-200">
           {initials || "?"}

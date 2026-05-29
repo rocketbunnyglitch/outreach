@@ -74,7 +74,7 @@ export function InternalHostFlaggedCrawls({ rows }: { rows: FlaggedInternalCrawl
             <li key={row.crawlHostId}>
               <Link
                 href={`/city-campaigns/${row.cityCampaignId}`}
-                className="group flex flex-col gap-1.5 px-5 py-3 transition-colors hover:bg-zinc-50/60 dark:hover:bg-zinc-900/40 sm:flex-row sm:items-center sm:gap-4"
+                className="group flex flex-col gap-1.5 px-5 py-3 transition-colors hover:bg-zinc-50/60 sm:flex-row sm:items-center sm:gap-4 dark:hover:bg-zinc-900/40"
               >
                 {/* Left: city + when */}
                 <div className="min-w-0 flex-1">
