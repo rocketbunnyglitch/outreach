@@ -135,6 +135,7 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
   label: "Admin",
   items: [
     { href: "/admin", label: "Admin", icon: <ShieldCheck className="h-3.5 w-3.5" /> },
+    { href: "/admin/users", label: "Users", icon: <Users className="h-3.5 w-3.5" /> },
     { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3.5 w-3.5" /> },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3.5 w-3.5" /> },
