@@ -91,8 +91,18 @@ export async function updateTask(
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   const { staff } = await requireStaff();
-  const parsed = taskUpdateSchema.safeParse(formToObject(formData));
+  const raw = formToObject(formData);
+  const parsed = taskUpdateSchema.safeParse(raw);
   if (!parsed.success) {
+    // Log the raw FormData and the zod error so we can see what's
+    // failing parse if a user reports "Validation failed" with no
+    // visible reason. The form's defaultValues should always produce
+    // valid input; a parse failure here usually means a stale form
+    // (e.g. version column drifted) or a corrupted hidden input.
+    logger.warn(
+      { staffId: staff.id, raw, issues: parsed.error.flatten() },
+      "updateTask: validation failed",
+    );
     return {
       ok: false,
       error: "Validation failed.",
@@ -122,6 +132,14 @@ export async function updateTask(
     });
 
     if (!result) {
+      // Optimistic-lock miss — most common reason a save "looks like
+      // it didn't take" is that the version in the form drifted out of
+      // sync with the DB (someone else edited, or a prior save's
+      // revalidation didn't propagate to the form's hidden input).
+      logger.info(
+        { staffId: staff.id, taskId: input.id, formVersion: input.version },
+        "updateTask: optimistic lock miss",
+      );
       return {
         ok: false,
         error: "This task was modified by someone else. Refresh and try again.",

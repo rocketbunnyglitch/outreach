@@ -13,9 +13,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ActionResult } from "@/lib/form-utils";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useState } from "react";
 
 /**
  * Return `yyyy-MM-ddTHH:mm` for a Date in LOCAL time. Matches the
@@ -74,12 +75,29 @@ interface TaskFormProps {
 }
 
 export function TaskForm({ mode, staffList, currentUserId, initial, action }: TaskFormProps) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState<
     ActionResult<{ id: string }> | null,
     FormData
   >(action, null);
 
   const fieldErrors = state && !state.ok && state.fieldErrors ? state.fieldErrors : {};
+
+  // After a successful save, refresh the route so the server component
+  // upstream (task detail page or task list) re-runs its query and the
+  // user sees the new values reflected. Without this, the spinner just
+  // disappears with no visible change — making it look like the save
+  // didn't take. Also briefly show a "saved" badge so the user has
+  // explicit confirmation before the refresh.
+  const [savedFlash, setSavedFlash] = useState(false);
+  useEffect(() => {
+    if (state?.ok) {
+      setSavedFlash(true);
+      router.refresh();
+      const t = window.setTimeout(() => setSavedFlash(false), 2000);
+      return () => window.clearTimeout(t);
+    }
+  }, [state, router]);
 
   // Sort staff so the signed-in operator appears first (with "(you)"
   // suffix) and everyone else follows alphabetically. Mirrors the
@@ -253,6 +271,17 @@ export function TaskForm({ mode, staffList, currentUserId, initial, action }: Ta
           {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {mode === "create" ? "Create task" : "Save changes"}
         </Button>
+        {/* Brief "saved" confirmation — appears for 2s after a successful
+            update so the operator has explicit visual feedback. Without
+            it the spinner just disappeared and it looked like nothing
+            happened (the form values stayed the same because they're
+            what the operator just entered). */}
+        {savedFlash && !pending && (
+          <span className="inline-flex items-center gap-1 font-mono text-[10px] text-emerald-600 uppercase tracking-[0.12em] dark:text-emerald-400">
+            <CheckCircle2 className="h-3 w-3" />
+            Saved
+          </span>
+        )}
         <Link
           href="/tasks"
           className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
