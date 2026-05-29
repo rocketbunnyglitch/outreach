@@ -10,6 +10,33 @@ Per `DECISIONS.md#008`, every PR that changes behavior updates this file in the 
 
 ## [Unreleased]
 
+### Changed — Auth: email + password replaces Google login
+
+- **Login is now email + password** against `users.password_hash` (bcryptjs, cost 12). The Google sign-in button is gone. The `/api/auth/google/*` routes survive but only for CONNECTING Gmail inboxes (read + send mail). See commit `eca4157`.
+- **Admin impersonation** replaces `ENABLE_DEV_IMPERSONATION`. Click "Impersonate" on a row in `/admin/users` to issue a 60-second signed grant cookie (HMAC over `NEXTAUTH_SECRET`); NextAuth's `admin-impersonate` Credentials provider reads and verifies it. No env var needed; nobody is "always allowed to impersonate" any more.
+- **JWT carries `teamId`** in addition to the existing `staffId` + `role`. Used by the inbox surface for team scoping without an extra DB hop.
+- **`/set-password/[token]` flow** — invite + reset links land here. Race-safe token claim (`UPDATE invite_tokens SET accepted_at=now() WHERE accepted_at IS NULL RETURNING`). 7-day TTL for invites, 1-hour for resets. Tokens are SHA-256-hashed in DB; the raw value only exists in the URL.
+- **`/admin/users` UI** — admins invite (either "Set password now" or "Send invite link"), reset passwords, deactivate / reactivate, impersonate. Pending invites surfaced as an amber banner above the user table with relative expiry.
+- **Inbox is team-scoped by default**, with a "My inbox" toggle. The default scope (`connected_accounts.team_id = currentUser.teamId`) shows every team Gmail's threads so anyone can pick up a thread. `?mine=1` narrows to `connected_accounts.owner_user_id = currentUser.id`. Distinct from "Assigned to me" (`?staff=<id>`) which filters on the existing thread.assigned_staff_id. See commit `40425f9`.
+
+### Removed — Deprecated auth env vars
+- `GOOGLE_WORKSPACE_DOMAIN` — was the `hd` Google Workspace restriction on the OAuth login flow; obsolete with password auth.
+- `ENABLE_DEV_IMPERSONATION` — replaced by `/admin/users` impersonation backed by a signed grant cookie.
+
+### Added — Phase 7 auth refactor (commits 41cb9b5, eca4157, 40425f9, 9c62ee4)
+- `teams` table + `users.team_id` + `connected_accounts.team_id` for forward-compat multi-tenant scoping. Default team `00000000-0000-0000-0000-000000000001` (BarCrawlConnect) seeded by migration 0040.
+- `invite_tokens` table (migration 0044): single-use tokens for invite + reset flows.
+- `scripts/bootstrap-admin.ts` — one-time CLI to seed the first admin after migrations on a fresh DB. Refuses to run if `users` table is non-empty.
+- `lib/passwords.ts` (bcrypt cost 12, 10-char minimum), `lib/invite-tokens.ts` (32-byte token + SHA-256 hash), `lib/impersonation-cookie.ts` (HMAC, 60s TTL).
+
+### Removed — Cold-outreach send queue (commit 41cb9b5)
+- Removed ~4,200 lines: `lib/send-outreach.ts`, `lib/send-worker.ts`, `lib/outreach-sequences.ts`, `lib/cascade-sends.ts`, `lib/send-throttle.ts`, `lib/composer-data.ts`, `app/(admin)/send-queue/`, `app/api/cron/send-worker/`, public `/unsubscribe`, `SendComposer`, `BulkSendDialog`, `CadenceEditor`, `SendCapPill`.
+- Schema: dropped `scheduled_sends`, `outreach_cadence_steps`, `outreach_sequence_state`, 9 throttling columns from `connected_accounts`, `venues.unsubscribed_at`.
+- Inbox surface unchanged — still polls Gmail, still renders threads, still composes replies in-app.
+
+---
+
+
 ### Added — Deploy infrastructure
 - **`scripts/deploy.sh`** — one-command deploy script. Pulls from GitHub, runs migrations, builds, reloads PM2 with zero downtime, health-checks. Supports `--rollback` and `--skip-build` flags. Logs to `/var/log/outreach-deploy.log`.
 - **`DEPLOY.md`** — operator runbook for production. Covers common scenarios (deploy, rollback, debug, restart), disaster recovery, architecture diagram, port map, monitoring.

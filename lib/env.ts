@@ -33,16 +33,18 @@ const envSchema = z.object({
 
   // --- Phase 3: auth ---
   NEXTAUTH_SECRET: stringOptional,
+  // GOOGLE_OAUTH_CLIENT_ID / _SECRET still used by app/api/auth/google/*
+  // for CONNECTING Gmail inboxes (read + send mail). They are NOT used
+  // for login any more — that switched to email + password in commit
+  // eca4157. The OAuth flow is admin-initiated from /settings/inboxes.
   GOOGLE_OAUTH_CLIENT_ID: stringOptional,
   GOOGLE_OAUTH_CLIENT_SECRET: stringOptional,
-  GOOGLE_WORKSPACE_DOMAIN: stringOptional,
-  // Opt-in flag to enable the dev impersonation Credentials provider.
-  // Necessary because Next.js standalone hard-codes NODE_ENV=production
-  // at server.js startup, so we can't rely on NODE_ENV as the gate.
-  // Set ENABLE_DEV_IMPERSONATION=1 in non-prod environments only.
-  // NEVER set this in production — it lets anyone impersonate any staffer
-  // who knows their primary_email.
-  ENABLE_DEV_IMPERSONATION: stringOptional,
+  // Note: GOOGLE_WORKSPACE_DOMAIN and ENABLE_DEV_IMPERSONATION were
+  // removed when password auth replaced Google sign-in. The first was
+  // a Workspace `hd` restriction on the OAuth login flow that no
+  // longer exists; the second gated a dev-only Credentials provider
+  // that's been replaced by admin-issued impersonation via a signed
+  // grant cookie (see /admin/users in the UI + lib/impersonation-cookie.ts).
 
   // --- Phase 5: lead generation ---
   // SERVER key: used by lib/google-places.ts for Places/Geocoding fetches
