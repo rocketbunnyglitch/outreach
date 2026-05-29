@@ -1,29 +1,25 @@
 "use client";
 
 /**
- * ThemeToggle — three-state segmented toggle for light / system / dark.
+ * ThemeToggle — two-state pill for light / dark.
  *
  * Reads + writes localStorage 'theme-pref'. On change, dispatches a
  * 'theme-pref-change' event which the inline script in app/layout.tsx
  * listens for and re-applies the .light/.dark class on <html>.
  *
- * Why three states (not just light/dark)?
- *   - "system" follows the OS, which is what most operators want most of
- *     the time (their OS already matches their environment).
- *   - Operators who want to override per-device-or-task (light mode for
- *     a screenshare with a client, dark mode for late-night sends) can
- *     pin it.
- *
- * Styling: minimal pill matching the slim top bar. No icons inside the
- * pill — just the labels. Lucide sun/moon/laptop are still imported and
- * used as the bare-bones tooltip helper above each option.
+ * On first paint we render in an indeterminate state to avoid a server/
+ * client mismatch; once mounted we read the stored pref. If nothing is
+ * stored we fall back to the OS preference so dark-mode-only users
+ * don't see a white flash on first visit, but only "light" and "dark"
+ * are user-pickable values now — the explicit "match OS" option was
+ * removed at the operator's request.
  */
 
 import { cn } from "@/lib/cn";
-import { Laptop, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type ThemePref = "light" | "system" | "dark";
+type ThemePref = "light" | "dark";
 
 const OPTIONS: Array<{
   value: ThemePref;
@@ -31,19 +27,25 @@ const OPTIONS: Array<{
   icon: React.ComponentType<{ className?: string }>;
   title: string;
 }> = [
-  { value: "light", label: "Light", icon: Sun, title: "Force light mode" },
-  { value: "system", label: "Auto", icon: Laptop, title: "Match your OS" },
-  { value: "dark", label: "Dark", icon: Moon, title: "Force dark mode" },
+  { value: "light", label: "Light", icon: Sun, title: "Light mode" },
+  { value: "dark", label: "Dark", icon: Moon, title: "Dark mode" },
 ];
 
 export function ThemeToggle() {
-  // We render in an indeterminate state on first paint to avoid mismatching
-  // server (no localStorage) vs client. Once mounted we read the pref.
   const [pref, setPref] = useState<ThemePref | null>(null);
 
   useEffect(() => {
-    const stored = (localStorage.getItem("theme-pref") as ThemePref | null) ?? "system";
-    setPref(stored);
+    let stored = localStorage.getItem("theme-pref") as ThemePref | "system" | null;
+    // Migration: anyone with the old "system" value gets resolved to
+    // whatever their OS currently prefers so the pill doesn't render
+    // ambiguous. Subsequent picks overwrite this.
+    if (stored === "system" || stored === null) {
+      const prefersDark =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+      stored = prefersDark ? "dark" : "light";
+    }
+    setPref(stored as ThemePref);
   }, []);
 
   function choose(next: ThemePref) {

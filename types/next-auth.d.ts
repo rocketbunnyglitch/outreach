@@ -17,6 +17,9 @@ declare module "next-auth" {
   interface Session {
     user: {
       staffId?: string;
+      /** Role from staff_members.role — used by the middleware to
+       *  pick the right landing route when no campaign is scoped. */
+      role?: "admin" | "lead" | "outreach" | "readonly";
       name?: string | null;
       email?: string | null;
       image?: string | null;
@@ -29,6 +32,7 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     staffId?: string;
+    role?: "admin" | "lead" | "outreach" | "readonly";
     provider?: string;
   }
 }

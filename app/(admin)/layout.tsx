@@ -19,6 +19,7 @@ import { RealtimeRefresh } from "./_components/realtime-refresh";
 import { SendCapPill } from "./_components/send-cap-pill";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
+import { ThemeToggle } from "./_components/theme-toggle";
 import { TimezonePicker } from "./_components/timezone-picker";
 import { UserMenu } from "./_components/user-menu";
 
@@ -161,6 +162,7 @@ function TopBar({
           <div className="hidden sm:block">
             <TimezonePicker currentTimezone={staff.timezone ?? "America/Toronto"} />
           </div>
+          <ThemeToggle />
           <div className="hidden sm:block">
             <ShortcutsHintButton />
           </div>

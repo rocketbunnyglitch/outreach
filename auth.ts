@@ -118,7 +118,11 @@ if (devCredentialsEnabled) {
           id: staff.id,
           email: staff.primaryEmail,
           name: staff.displayName,
-        };
+          // Stash role so jwt callback can copy onto token without a
+          // second DB hit. NextAuth ignores fields it doesn't know
+          // about so this is safe.
+          role: staff.role,
+        } as { id: string; email: string; name: string; role: string };
       },
     }),
   );
@@ -173,25 +177,56 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // not the OAuth provider's account id.
       user.id = staff.id;
       user.name = staff.displayName;
+      // Stash role on the user object so the jwt callback below can copy
+      // it onto the token without a second DB hit. NextAuth passes
+      // arbitrary fields through this object.
+      (user as { role?: string }).role = staff.role;
       return true;
     },
 
     /**
      * Persist staff fields on the JWT. Runs on every sign-in and on every
-     * subsequent token refresh.
+     * subsequent token refresh. We also lazily upgrade existing sessions
+     * that don't have role yet — a one-shot DB lookup the first time the
+     * token is refreshed after this code ships.
      */
     async jwt({ token, user, account }) {
       if (user) {
         // First sign-in: persist staffId + provider on token.
         token.staffId = user.id;
         token.provider = account?.provider ?? "unknown";
+        const fromUser = (user as { role?: string }).role;
+        if (
+          fromUser === "admin" ||
+          fromUser === "lead" ||
+          fromUser === "outreach" ||
+          fromUser === "readonly"
+        ) {
+          token.role = fromUser;
+        }
+      }
+      // Lazy upgrade: existing sessions issued before this change have
+      // staffId but no role. Look it up once and stash it so the
+      // middleware can branch by role without forcing every operator to
+      // sign out + back in.
+      if (token.staffId && !token.role) {
+        try {
+          const rows = await db
+            .select({ role: staffMembers.role })
+            .from(staffMembers)
+            .where(eq(staffMembers.id, token.staffId))
+            .limit(1);
+          if (rows[0]?.role) token.role = rows[0].role;
+        } catch (err) {
+          logger.warn({ err }, "jwt: lazy role lookup failed");
+        }
       }
       return token;
     },
 
     /**
-     * Expose the staffId and provider on the session object available in
-     * Server Components / Server Actions via `await auth()`.
+     * Expose the staffId, role, and provider on the session object
+     * available in Server Components / Server Actions via `await auth()`.
      */
     async session({ session, token }) {
       if (token.staffId && typeof token.staffId === "string") {
@@ -199,6 +234,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           ...session.user,
           staffId: token.staffId,
         };
+      }
+      if (token.role) {
+        session.user = { ...session.user, role: token.role };
       }
       if (token.provider && typeof token.provider === "string") {
         session.provider = token.provider;

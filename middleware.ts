@@ -76,12 +76,16 @@ export default auth((req) => {
   }
 
   // Authenticated. If the route requires a campaign and none is set,
-  // bounce to /admin (the safe landing without campaign context). The
-  // cookie presence is a proxy for "operator has picked a campaign";
-  // a stale UUID gets caught at page-level (getCurrentCampaign returns
-  // null and the page can re-redirect).
+  // bounce to a safe landing route. Branch by role: admins land on
+  // /admin (they manage the campaigns + master data); everyone else
+  // lands on /campaigns so they can pick a campaign to scope into.
+  // The cookie presence is a proxy for "operator has picked a
+  // campaign"; a stale UUID gets caught at page-level
+  // (getCurrentCampaign returns null and the page can re-redirect).
   if (requiresCampaign(pathname) && !req.cookies.get(CAMPAIGN_COOKIE)?.value) {
-    return NextResponse.redirect(new URL("/admin", req.nextUrl));
+    const role = req.auth?.user?.role;
+    const landing = role === "admin" ? "/admin" : "/campaigns";
+    return NextResponse.redirect(new URL(landing, req.nextUrl));
   }
 
   return NextResponse.next();
