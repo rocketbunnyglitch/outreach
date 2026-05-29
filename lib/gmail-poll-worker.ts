@@ -75,12 +75,11 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
     last_history_id: string | null;
     email: string;
     staff_member_id: string;
-    outreach_brand_id: string;
   };
   const claimed = (await db.execute<ClaimedRow>(sql`
     SELECT id, gmail_oauth_refresh_token AS refresh_token,
            gmail_last_history_id AS last_history_id,
-           email_address AS email, owner_user_id AS staff_member_id, outreach_brand_id
+           email_address AS email, owner_user_id AS staff_member_id
     FROM connected_accounts
     WHERE gmail_oauth_refresh_token IS NOT NULL
     ORDER BY COALESCE(gmail_last_polled_at, '1970-01-01'::timestamptz) ASC
@@ -158,7 +157,6 @@ async function pollOneInbox(inbox: {
   last_history_id: string | null;
   email: string;
   staff_member_id: string;
-  outreach_brand_id: string;
 }): Promise<InboxPollResult> {
   const accessToken = await refreshAccessToken(inbox.refresh_token);
   let messageIds: string[];
@@ -244,7 +242,6 @@ async function ingestMessage(opts: {
     id: string;
     email: string;
     staff_member_id: string;
-    outreach_brand_id: string;
   };
 }): Promise<IngestResult | null> {
   const { messageId, accessToken, inbox } = opts;
@@ -341,7 +338,9 @@ async function ingestMessage(opts: {
         tx
           .insert(emailThreads)
           .values({
-            outreachBrandId: inbox.outreach_brand_id,
+            // outreachBrandId intentionally null — assigned post-ingest
+            // via the brand/campaign attribution UI. Schema dropped
+            // NOT NULL in migration 0045.
             staffOutreachEmailId: inbox.id,
             gmailThreadId,
             venueId,

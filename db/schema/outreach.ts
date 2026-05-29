@@ -104,9 +104,13 @@ export const emailThreads = pgTable(
       .notNull()
       .references(() => venues.id, { onDelete: "restrict" }),
 
-    outreachBrandId: uuid("outreach_brand_id")
-      .notNull()
-      .references(() => outreachBrands.id, { onDelete: "restrict" }),
+    // Nullable: threads ingest into the team's shared inbox WITHOUT a
+    // brand attribution. The brand (and/or campaign) gets attached
+    // later, after triage, via a dedicated assignment UI. Migration
+    // 0045 dropped the NOT NULL on the underlying column.
+    outreachBrandId: uuid("outreach_brand_id").references(() => outreachBrands.id, {
+      onDelete: "restrict",
+    }),
 
     staffOutreachEmailId: uuid("staff_outreach_email_id")
       .notNull()

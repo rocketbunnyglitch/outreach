@@ -145,7 +145,8 @@ export interface InboxThreadRow {
   venueId: string;
   venueName: string;
   cityName: string | null;
-  brandName: string;
+  /** null when the thread hasn't been attributed to a brand yet. */
+  brandName: string | null;
   cityCampaignId: string | null;
   campaignName: string | null;
   eventDayPart: string | null;
@@ -192,7 +193,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     .from(emailThreads)
     .innerJoin(venues, eq(venues.id, emailThreads.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
-    .innerJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
+    .leftJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
     .leftJoin(staffMembers, eq(staffMembers.id, emailThreads.assignedStaffId))
     .leftJoin(cityCampaigns, eq(cityCampaigns.id, emailThreads.cityCampaignId))
     .leftJoin(events, eq(events.id, emailThreads.eventId))
@@ -318,7 +319,8 @@ export interface InboxThreadDetail {
     venueName: string;
     cityName: string | null;
     cityId: string | null;
-    brandName: string;
+    /** null when the thread hasn't been attributed to a brand yet. */
+    brandName: string | null;
     cityCampaignId: string | null;
     campaignName: string | null;
     eventId: string | null;
@@ -383,7 +385,7 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
     .from(emailThreads)
     .innerJoin(venues, eq(venues.id, emailThreads.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
-    .innerJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
+    .leftJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
     .leftJoin(staffMembers, eq(staffMembers.id, emailThreads.assignedStaffId))
     .leftJoin(cityCampaigns, eq(cityCampaigns.id, emailThreads.cityCampaignId))
     .leftJoin(events, eq(events.id, emailThreads.eventId))

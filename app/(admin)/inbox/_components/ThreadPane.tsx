@@ -46,7 +46,7 @@ export function ThreadPane({
             {thread.venueName}
           </Link>
           {thread.cityName && <span>· {thread.cityName}</span>}
-          <span>· {thread.brandName}</span>
+          {thread.brandName && <span>· {thread.brandName}</span>}
           {thread.campaignName && <span>· {thread.campaignName}</span>}
         </p>
         {/* Triage classification + state actions */}
@@ -212,7 +212,7 @@ function VenueRail({
             </>
           )}
           <dt className="text-zinc-500">Outreach brand</dt>
-          <dd>{thread.brandName}</dd>
+          <dd>{thread.brandName ?? <span className="italic text-zinc-500">Unassigned</span>}</dd>
           {thread.campaignName && (
             <>
               <dt className="text-zinc-500">Campaign</dt>

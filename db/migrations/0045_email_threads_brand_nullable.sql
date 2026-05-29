@@ -1,0 +1,26 @@
+-- 0045_email_threads_brand_nullable.sql
+--
+-- Make email_threads.outreach_brand_id nullable.
+--
+-- Why: operators connect any number of Gmail accounts up front
+-- (settings/inboxes), and inbound threads are ingested into the
+-- team's shared inbox WITHOUT a per-thread brand picked at ingest
+-- time. The brand (and/or campaign) gets attached later, after
+-- triage, via a dedicated assignment UI. Until that step runs,
+-- outreach_brand_id is legitimately unknown.
+--
+-- This unblocks the gmail-poll cron, which was crashing every minute
+-- with `column "outreach_brand_id" does not exist` because the
+-- staff_outreach_emails -> connected_accounts rename dropped the
+-- column the worker was reading, and email_threads.outreach_brand_id
+-- being NOT NULL forced the worker to supply one at insert time.
+--
+-- The matching Drizzle change in db/schema/outreach.ts removes the
+-- .notNull() on emailThreads.outreachBrandId in the same commit.
+--
+-- The existing brand-state composite index keeps working: Postgres
+-- indexes nullable columns; nulls just sort at one end.
+--
+-- No data backfill needed — existing rows already have a brand.
+
+ALTER TABLE email_threads ALTER COLUMN outreach_brand_id DROP NOT NULL;
