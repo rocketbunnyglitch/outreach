@@ -293,7 +293,7 @@ export function BulkSendDialog({
                       {inbox.warmupDay !== null && ` · warm-up day ${inbox.warmupDay}/14`}
                     </p>
                     {exceedsCap && (
-                      <p className="mt-2 text-amber-700 dark:text-amber-300">
+                      <p className="mt-2 text-rose-700 dark:text-rose-300">
                         Batch ({selectedVenueIds.length}) exceeds remaining daily cap (
                         {remainingCap}). Worker will fire what fits and pause the rest until
                         tomorrow's window.

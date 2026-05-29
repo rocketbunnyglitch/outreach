@@ -43,12 +43,32 @@ export function WhosOnline({
   compact?: boolean;
 }) {
   const [present, setPresent] = useState<PresentUser[]>([]);
-  const [now, setNow] = useState(() => Date.now());
+  // Start `now` at 0 so server SSR + client first-render produce the
+  // SAME idle calculations (idle = now - lastActiveAt > IDLE_MS is
+  // always false when now === 0). The real timestamp gets set on
+  // mount, after hydration, so the first paint stays consistent
+  // between server and client.
+  //
+  // Previously this was `useState(() => Date.now())` which ran on the
+  // server at T1 and again on the client at T2 (typically 50-500ms
+  // later). When any viewer's `lastActiveAt` sat near the IDLE_MS
+  // threshold, the idle flag flipped between the two renders → the
+  // dot's className / opacity differed → React's hydration check
+  // threw the minified #418 ("Text content does not match server-
+  // rendered HTML") and tore down the tree. That broke the entire
+  // dashboard load for any browser profile where some viewer happened
+  // to be near the threshold at request time — explaining why the
+  // app worked in incognito (no stale presence data) but not in the
+  // regular profile.
+  const [now, setNow] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Set the real timestamp on mount — see the useState comment above
+    // for why this isn't the initial value.
+    setNow(Date.now());
     let alive = true;
     async function poll() {
       try {

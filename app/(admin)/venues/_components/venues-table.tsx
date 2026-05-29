@@ -470,8 +470,8 @@ export function VenuesTable({
           </div>
           {/* DNC reason input — only when prompted */}
           {reasonOpen && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950">
-              <p className="text-amber-800 text-xs dark:text-amber-300">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 dark:border-rose-900 dark:bg-rose-950">
+              <p className="text-rose-800 text-xs dark:text-rose-300">
                 Reason for DNC (required, will be saved on each venue):
               </p>
               <input
@@ -479,7 +479,7 @@ export function VenuesTable({
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="e.g. owner asked to stop contacting"
-                className="flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs dark:border-amber-700 dark:bg-zinc-900"
+                className="flex-1 rounded-md border border-rose-300 bg-white px-2 py-1 text-xs dark:border-rose-700 dark:bg-zinc-900"
               />
               <Button
                 size="sm"
@@ -732,7 +732,7 @@ function VenueTableRow({
         // Brief background flash when a teammate just changed this row.
         // The recentEdit prop is provided for ~3s then cleared by the parent's
         // expiry timer; the transition-colors above smooths the fade-out.
-        recentEdit && "bg-amber-50/60 dark:bg-amber-950/30",
+        recentEdit && "bg-rose-50/60 dark:bg-rose-950/30",
       )}
     >
       <td className="w-9 px-3 py-2">

@@ -38,6 +38,17 @@ export default function RootLayout({
       </head>
       <body
         className={cn("min-h-screen font-sans antialiased", "text-zinc-900 dark:text-zinc-100")}
+        // Suppress hydration warnings on the body element. Browser
+        // extensions (Grammarly, LanguageTool, password managers,
+        // ad-blockers) inject attributes like data-gramm,
+        // data-lt-installed, cz-shortcut-listen onto the body before
+        // React hydrates. Without this prop, React 19 treats those
+        // injected attrs as a hydration mismatch and throws #418,
+        // tearing down the entire app — explaining why some browser
+        // profiles couldn't load the site while incognito (clean
+        // extensions) worked fine. This only suppresses the warning
+        // for the body element itself, not its children.
+        suppressHydrationWarning
       >
         {children}
         <VersionFooter />

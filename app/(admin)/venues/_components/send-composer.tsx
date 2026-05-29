@@ -303,7 +303,7 @@ export function SendComposer({
             required
           />
           {!venueEmail && (
-            <span className="text-[11px] text-amber-600 dark:text-amber-400">
+            <span className="text-[11px] text-rose-600 dark:text-rose-400">
               No email on file for this venue — enter manually or update the venue first.
             </span>
           )}
@@ -411,7 +411,7 @@ export function SendComposer({
         <div className="flex flex-wrap items-center justify-between gap-3 border-zinc-200 border-t pt-4 dark:border-zinc-800">
           <div className="flex flex-col gap-1">
             {!canSend && inbox?.throttleMessage && (
-              <p className="inline-flex items-center gap-1.5 text-amber-600 text-xs dark:text-amber-400">
+              <p className="inline-flex items-center gap-1.5 text-rose-600 text-xs dark:text-rose-400">
                 <AlertCircle className="h-3 w-3" />
                 {inbox.throttleMessage}
               </p>
@@ -486,8 +486,8 @@ function InboxStatusBanner({
 
   if (!inbox.throttleOk) {
     return (
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-amber-950/20">
-        <p className="font-medium text-amber-900 dark:text-amber-200">
+      <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs dark:border-rose-900/40 dark:bg-rose-950/20">
+        <p className="font-medium text-rose-900 dark:text-rose-200">
           {inbox.throttleMessage ?? "Send blocked by throttle"}
         </p>
       </div>

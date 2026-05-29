@@ -216,15 +216,15 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
           />
         </div>
 
-        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50/30 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/30">
+        <div className="flex items-center justify-between gap-3 rounded-md border border-rose-200 bg-rose-50/30 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/30">
           <div className="flex flex-col gap-0.5">
             <label
               htmlFor="doNotContact"
-              className="font-medium text-amber-900 text-sm dark:text-amber-200"
+              className="font-medium text-rose-900 text-sm dark:text-rose-200"
             >
               Do not contact
             </label>
-            <p className="text-amber-800 text-xs dark:text-amber-300">
+            <p className="text-rose-800 text-xs dark:text-rose-300">
               Suppresses this venue from outreach campaigns entirely.
             </p>
           </div>
