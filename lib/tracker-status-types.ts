@@ -56,6 +56,18 @@ export interface CrawlNeed {
    * yellow (shipped), green (delivered).
    */
   wristbandStatus: "pending" | "ready_to_ship" | "shipped" | "delivered" | "issue" | null;
+  /**
+   * Slot-1 host kind for this crawl. Drives a per-crawl host icon
+   * shown beside the wristband icon in the dashboard breakdown:
+   *   - "internal" → person with down-arrow, blue (in-house host)
+   *   - "external" → person with out-arrow, orange (third-party host)
+   *   - "none"     → person with strike-through, grey (no host needed)
+   *
+   * Sourced from crawl_hosts where slot=1; absent crawl_hosts row
+   * means "no host needed" (the operator hasn't picked one OR the
+   * crawl genuinely doesn't need one — the icon reads the same).
+   */
+  hostType: "internal" | "external" | "none";
   /** Per-crawl operator note (events.notes). Edited inline from the
    *  tracker's expanded breakdown row. Empty string when not set. */
   notes: string;

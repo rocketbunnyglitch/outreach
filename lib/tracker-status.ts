@@ -24,9 +24,9 @@ import "server-only";
  *   - "outreach"         — all slots filled (default; engine in outreach mode)
  */
 
-import { events, venueEvents, wristbands } from "@/db/schema";
+import { events, crawlHosts, venueEvents, wristbands } from "@/db/schema";
 import { db } from "@/lib/db";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 export type {
   CityStatusPill,
@@ -116,6 +116,36 @@ export async function computeCityNeeds(
     rows = fallback.map((r) => ({ ...r, notes: null }));
   }
 
+  // Per-crawl host kind, sourced from crawl_hosts where slot=1. Done
+  // as a separate small query rather than another LEFT JOIN on the
+  // main events query — the main one already fans out across
+  // venue_events, and joining crawl_hosts on top would duplicate
+  // every row by an extra factor of 1-2. Keeping this separate keeps
+  // the math right + the SQL fast.
+  const eventIds = [...new Set(rows.map((r) => r.eventId))];
+  const hostTypeByEventId = new Map<string, "internal" | "external">();
+  if (eventIds.length > 0) {
+    try {
+      const hostRows = await db
+        .select({
+          eventId: crawlHosts.eventId,
+          hostType: crawlHosts.hostType,
+        })
+        .from(crawlHosts)
+        .where(and(inArray(crawlHosts.eventId, eventIds), eq(crawlHosts.slot, 1)));
+      for (const h of hostRows) {
+        if (h.hostType === "internal" || h.hostType === "external") {
+          hostTypeByEventId.set(h.eventId, h.hostType);
+        }
+      }
+    } catch (err) {
+      // Don't fail the whole dashboard if the host lookup hiccups —
+      // just render every crawl as "no host needed" until the next
+      // refresh succeeds.
+      console.warn("[tracker-status] crawl_hosts lookup failed", err);
+    }
+  }
+
   // Group by (city_campaign, day_part, crawl_number)
   type CrawlBucket = {
     eventId: string;
@@ -183,6 +213,7 @@ export async function computeCityNeeds(
       // pull when the integration lands.
       salesCents: b.ticketsSold * 3000,
       wristbandStatus: b.wristbandStatus,
+      hostType: hostTypeByEventId.get(b.eventId) ?? "none",
       notes: b.notes,
     };
     const list = byCC.get(b.cityCampaignId) ?? [];

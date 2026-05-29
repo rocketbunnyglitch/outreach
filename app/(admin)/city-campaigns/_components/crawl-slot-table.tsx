@@ -9,7 +9,17 @@ import {
 } from "@/lib/city-sheet-shared";
 import { cn } from "@/lib/cn";
 import type { NoteRow } from "@/lib/notes";
-import { Check, ExternalLink, Loader2, MessageSquare, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  Check,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -537,11 +547,57 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
     }
   }
 
+  // "All venues confirmed" — when every required slot row has a
+  // venue_event in a confirmed/contract_signed state. Drives a green
+  // outline + soft glow around the whole crawl section so the
+  // operator can see at a glance which crawls are fully booked.
+  //
+  // Logic: enumerate the slot rows that count as "required" (wristband
+  // + final are always required; middles are required only when there
+  // ISN'T a shared middle group, since shared groups have their own
+  // member roster that lives elsewhere). If all of those required
+  // rows have venueEventId AND status is confirmed/contract_signed,
+  // the crawl is fully locked.
+  const isConfirmedStatus = (s: string | null | undefined) =>
+    s === "confirmed" || s === "contract_signed";
+  const hasGroup = !!crawl.middleVenueGroupId;
+  const requiredSlots = crawl.slots.filter((s) => {
+    if (s.role === "wristband") return true;
+    if (s.role === "final" && s.slotPosition === 1) return true;
+    if (s.role === "middle" && !hasGroup) return true;
+    return false;
+  });
+  const hasMinSlots = hasGroup ? requiredSlots.length >= 2 : requiredSlots.length >= 4;
+  const allRequiredFilled =
+    hasMinSlots && requiredSlots.every((s) => !!s.venueEventId && isConfirmedStatus(s.status));
+  // When using a shared middle group, the group's own members must
+  // also be in a confirmed state for the crawl to count as locked.
+  const groupVenuesConfirmed = hasGroup
+    ? crawl.middleGroupMembers.length > 0 &&
+      crawl.middleGroupMembers.every((m) => isConfirmedStatus(m.status))
+    : true;
+  const allVenuesConfirmed = allRequiredFilled && groupVenuesConfirmed;
+
   return (
-    <section className="overflow-hidden card-surface">
+    <section
+      className={cn(
+        "overflow-hidden card-surface transition-shadow duration-300",
+        // Green outline + soft glow when the crawl is fully booked.
+        // Uses ring (so the existing card-surface background stays
+        // intact) + a same-color shadow for the glow effect.
+        allVenuesConfirmed &&
+          "ring-2 ring-emerald-500/60 shadow-[0_0_24px_-4px_rgba(16,185,129,0.35)] dark:ring-emerald-400/50 dark:shadow-[0_0_28px_-2px_rgba(16,185,129,0.4)]",
+      )}
+    >
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <CrawlHeader crawl={crawl} cityCampaignId={cityCampaignId} />
         <div className="flex items-center gap-3">
+          {allVenuesConfirmed && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] ring-1 ring-emerald-500/30 ring-inset dark:text-emerald-300">
+              <CheckCircle2 className="h-2.5 w-2.5" />
+              All confirmed
+            </span>
+          )}
           {crawl.ticketsSold > 0 && (
             <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
               <span className="font-semibold text-zinc-900 dark:text-zinc-100">

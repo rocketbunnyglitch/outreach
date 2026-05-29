@@ -1160,9 +1160,58 @@ function CrawlNoteInput({ eventId, initial }: { eventId: string; initial: string
   );
 }
 
-// Event-status (per-crawl) lifecycle values + display tones. Distinct
-// from the city-campaign status pill — these are the events.status
-// enum (planned → confirmed → contract_signed → completed; cancelled).
+// Per-crawl status override values. Operator request (session 19):
+// the override dropdown should be a simple binary — Active (the
+// default everyday state) or Cancelled — not the full lifecycle
+// (planned/confirmed/contract_signed/completed/cancelled). The
+// lifecycle enum is still what's stored in events.status, but the
+// dashboard's override surface maps to it like this:
+//   - "Active"    → events.status = "planned"   (the operating default;
+//                                                 if a crawl was previously
+//                                                 confirmed/contract_signed/
+//                                                 completed, picking Active
+//                                                 here drops it back to
+//                                                 planned, which is what
+//                                                 operators want when they
+//                                                 untoggle Cancelled)
+//   - "Cancelled" → events.status = "cancelled"
+// Full lifecycle progression (planned → confirmed → contract_signed →
+// completed) happens elsewhere as venues are booked and contracts
+// signed — it's NOT the operator's job to flip it manually on the
+// dashboard. The override exists only to mark a crawl Cancelled
+// without leaving the dashboard.
+const OVERRIDE_OPTIONS = ["active", "cancelled"] as const;
+type OverrideValue = (typeof OVERRIDE_OPTIONS)[number];
+
+const OVERRIDE_LABEL: Record<OverrideValue, string> = {
+  active: "Active",
+  cancelled: "Cancelled",
+};
+
+const OVERRIDE_TONE: Record<OverrideValue, string> = {
+  active:
+    "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
+  cancelled: "bg-zinc-500/8 text-zinc-500 ring-zinc-500/15 line-through dark:text-zinc-500",
+};
+
+// Map an events.status enum value (whatever the DB has) to the binary
+// override surface. Anything that isn't 'cancelled' reads as Active.
+function eventStatusToOverride(s: EventStatus): OverrideValue {
+  return s === "cancelled" ? "cancelled" : "active";
+}
+
+// Map a binary override surface value back to an events.status value
+// for writing. Active → planned (the lifecycle's default starting
+// point); Cancelled → cancelled.
+function overrideToEventStatus(v: OverrideValue): EventStatus {
+  return v === "cancelled" ? "cancelled" : "planned";
+}
+
+// Event-status (per-crawl) lifecycle values. The full enum lives here
+// because the override mapping helpers (eventStatusToOverride /
+// overrideToEventStatus) need to know what's possible. The display
+// tone + label tables were dropped — the dashboard's override surface
+// uses the binary OVERRIDE_LABEL / OVERRIDE_TONE tables instead.
 const EVENT_STATUS_OPTIONS = [
   "planned",
   "confirmed",
@@ -1171,25 +1220,6 @@ const EVENT_STATUS_OPTIONS = [
   "cancelled",
 ] as const;
 type EventStatus = (typeof EVENT_STATUS_OPTIONS)[number];
-
-const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
-  planned: "Planned",
-  confirmed: "Confirmed",
-  contract_signed: "Signed",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
-
-const EVENT_STATUS_TONE: Record<EventStatus, string> = {
-  planned: "bg-zinc-500/10 text-zinc-600 ring-zinc-500/20 dark:text-zinc-300",
-  confirmed:
-    "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
-  contract_signed:
-    "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:bg-blue-500/15 dark:text-blue-300",
-  completed:
-    "bg-violet-500/10 text-violet-700 ring-violet-500/20 dark:bg-violet-500/15 dark:text-violet-300",
-  cancelled: "bg-zinc-500/8 text-zinc-500 ring-zinc-500/15 line-through dark:text-zinc-500",
-};
 
 /**
  * Per-crawl status override on the expanded tracker row. Mirrors the
@@ -1250,14 +1280,15 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
     };
   }, [open]);
 
-  function setStatus(status: EventStatus) {
-    if (status === crawl.status) {
+  function setStatus(value: OverrideValue) {
+    const next = overrideToEventStatus(value);
+    if (next === crawl.status) {
       setOpen(false);
       return;
     }
     const fd = new FormData();
     fd.set("eventId", crawl.eventId);
-    fd.set("status", status);
+    fd.set("status", next);
     startTx(async () => {
       try {
         const result = await updateEventStatus(null, fd);
@@ -1272,7 +1303,16 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
     });
   }
 
-  const currentTone = EVENT_STATUS_TONE[crawl.status] ?? EVENT_STATUS_TONE.planned;
+  // The override surface is the binary view of events.status. The
+  // underlying enum can be planned/confirmed/contract_signed/completed
+  // — all of those collapse to "active" here; only "cancelled" reads
+  // as "cancelled". Picking Active when the DB is already on a
+  // lifecycle status > planned would regress it to planned, which is
+  // arguably wrong, so we DON'T fire a write when the user picks the
+  // option that already matches the override surface (the setStatus
+  // guard handles that — current override == picked override → no-op).
+  const currentOverride = eventStatusToOverride(crawl.status);
+  const currentTone = OVERRIDE_TONE[currentOverride];
 
   return (
     <div ref={containerRef} className="relative inline-block">
@@ -1296,7 +1336,7 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
         ) : saved ? (
           <Check className="h-2.5 w-2.5" />
         ) : null}
-        {EVENT_STATUS_LABEL[crawl.status] ?? crawl.status}
+        {OVERRIDE_LABEL[currentOverride]}
         <ChevronDown
           aria-hidden="true"
           className="-mr-0.5 h-2.5 w-2.5 opacity-50 transition-opacity duration-150 group-hover/pill:opacity-90"
@@ -1316,19 +1356,19 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
             <p className="px-2.5 pt-1 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
               Crawl status
             </p>
-            {EVENT_STATUS_OPTIONS.map((s) => (
+            {OVERRIDE_OPTIONS.map((v) => (
               <button
-                key={s}
+                key={v}
                 type="button"
-                onClick={() => setStatus(s)}
+                onClick={() => setStatus(v)}
                 className={cn(
                   "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
                   "hover:bg-zinc-100 dark:hover:bg-zinc-800",
-                  s === crawl.status && "bg-zinc-50 dark:bg-zinc-800/60",
+                  v === currentOverride && "bg-zinc-50 dark:bg-zinc-800/60",
                 )}
               >
-                <span>{EVENT_STATUS_LABEL[s]}</span>
-                {s === crawl.status && (
+                <span>{OVERRIDE_LABEL[v]}</span>
+                {v === currentOverride && (
                   <Check className="h-3 w-3 text-zinc-700 dark:text-zinc-300" />
                 )}
               </button>
@@ -1372,6 +1412,109 @@ function WristbandIcon({ status }: { status: CrawlNeed["wristbandStatus"] }) {
   );
 }
 
+/**
+ * Per-crawl host indicator. Sits beside the WristbandIcon in the
+ * breakdown row's leading area.
+ *
+ *   - "internal" → blue person-in-circle with a small down-arrow
+ *                  badge ("our staff coming in to host")
+ *   - "external" → orange person-in-circle with a small out-arrow
+ *                  badge ("third-party host going out to the venue")
+ *   - "none"     → grey person-in-circle with a strike-through
+ *                  ("no host needed / not yet assigned")
+ *
+ * All three icons share the same 14×14 footprint so they align with
+ * the WristbandIcon row. Tooltips spell out the meaning.
+ */
+function HostIcon({ hostType }: { hostType: CrawlNeed["hostType"] }) {
+  const { tone, label, accent } =
+    hostType === "internal"
+      ? {
+          tone: "text-blue-500 dark:text-blue-400",
+          label: "Internal host assigned",
+          accent: "internal" as const,
+        }
+      : hostType === "external"
+        ? {
+            tone: "text-orange-500 dark:text-orange-400",
+            label: "External host assigned",
+            accent: "external" as const,
+          }
+        : {
+            tone: "text-zinc-400 dark:text-zinc-500",
+            label: "No host needed",
+            accent: "none" as const,
+          };
+  return (
+    <span className={cn("inline-flex shrink-0", tone)} title={label} aria-label={label}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        {/* Outer circle */}
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          fill="currentColor"
+          fillOpacity="0.15"
+        />
+        {/* Head */}
+        <circle cx="12" cy="9.5" r="2.4" fill="currentColor" />
+        {/* Shoulders */}
+        <path
+          d="M5.5 18.5c1.2-3.2 4-4.6 6.5-4.6s5.3 1.4 6.5 4.6"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+        {accent === "none" && (
+          // Diagonal strike-through across the whole icon
+          <line
+            x1="4"
+            y1="20"
+            x2="20"
+            y2="4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        )}
+        {accent === "internal" && (
+          // Small down-arrow badge in the bottom-right (incoming = our
+          // staff coming IN to host)
+          <>
+            <circle cx="18.5" cy="18.5" r="3.6" fill="currentColor" />
+            <path
+              d="M18.5 16.5v3.6m0 0l-1.4-1.4m1.4 1.4l1.4-1.4"
+              stroke="white"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </>
+        )}
+        {accent === "external" && (
+          // Small out-arrow badge in the bottom-right (outgoing =
+          // third-party host going OUT to the venue)
+          <>
+            <circle cx="18.5" cy="18.5" r="3.6" fill="currentColor" />
+            <path
+              d="M16.7 20.3l3.6-3.6m0 0h-2m2 0v2"
+              stroke="white"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
+
 /** Mobile (<sm) breakdown — flat list inside the parent CityCard. */
 function CrawlBreakdownCard({
   crawl,
@@ -1387,10 +1530,19 @@ function CrawlBreakdownCard({
   else if (crawl.needsMiddle2) slots.push("middle_2");
   if (crawl.needsFinal) slots.push("final");
 
+  const allConfirmed =
+    !crawl.needsWristband && !crawl.needsMiddle1 && !crawl.needsMiddle2 && !crawl.needsFinal;
+
   return (
-    <li className="flex flex-col gap-1 py-1">
+    <li
+      className={cn(
+        "flex flex-col gap-1 rounded-md py-1",
+        allConfirmed && "bg-emerald-500/[0.06] px-2 dark:bg-emerald-500/[0.07]",
+      )}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <WristbandIcon status={crawl.wristbandStatus} />
+        <HostIcon hostType={crawl.hostType} />
         <Link
           href={`/city-campaigns/${cityCampaignId}#crawl-${crawl.eventId}`}
           title="Open this crawl on the city sheet"
@@ -1404,6 +1556,11 @@ function CrawlBreakdownCard({
           </span>
         )}
         <CrawlStatusOverride crawl={crawl} />
+        {allConfirmed && (
+          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] ring-1 ring-emerald-500/30 ring-inset dark:text-emerald-300">
+            Complete
+          </span>
+        )}
         <div className="ml-auto">
           <SlotPills slots={slots} />
         </div>
@@ -1431,15 +1588,24 @@ function CrawlBreakdownRow({
     (crawl.needsMiddle1 ? 1 : 0) +
     (crawl.needsMiddle2 ? 1 : 0) +
     (crawl.needsFinal ? 1 : 0);
-  const statusLabel = open === 0 ? "Outreach" : open === 1 ? "Need 1" : `Need ${open}`;
-  const statusTone =
-    open === 0
-      ? STATUS_PILL_TONE.outreach
-      : open === 1
-        ? STATUS_PILL_TONE.need_1_venue
-        : open === 2
-          ? STATUS_PILL_TONE.need_2_venues
-          : STATUS_PILL_TONE.need_3_venues;
+  const allConfirmed = open === 0;
+  // Per operator feedback (session 19): when all 4 venues are
+  // confirmed the row was showing "Outreach" — that's wrong; this
+  // crawl is fully booked and should read as Complete in green. The
+  // city-level pill mapping still uses STATUS_PILL_TONE.outreach for
+  // "no slots open across the whole city" since that surface has its
+  // own semantics (some cities legitimately are still in outreach
+  // mode with zero needs), but per-crawl Complete is unambiguous.
+  const statusLabel = allConfirmed ? "Complete" : open === 1 ? "Need 1" : `Need ${open}`;
+  const COMPLETE_TONE =
+    "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300";
+  const statusTone = allConfirmed
+    ? COMPLETE_TONE
+    : open === 1
+      ? STATUS_PILL_TONE.need_1_venue
+      : open === 2
+        ? STATUS_PILL_TONE.need_2_venues
+        : STATUS_PILL_TONE.need_3_venues;
 
   const slots: SlotKind[] = [];
   if (crawl.needsWristband) slots.push("wristband");
@@ -1451,7 +1617,14 @@ function CrawlBreakdownRow({
   return (
     <tr
       className={cn(
-        zebra ? "bg-zinc-200/40 dark:bg-zinc-800/15" : tone,
+        // Complete crawls get a subtle green wash that overrides the
+        // zebra striping — it's the same intent as the rose tint on
+        // a Cancelled row would be: a row-level signal, not a cell.
+        allConfirmed
+          ? "bg-emerald-500/[0.06] dark:bg-emerald-500/[0.07]"
+          : zebra
+            ? "bg-zinc-200/40 dark:bg-zinc-800/15"
+            : tone,
         "border-zinc-200/30 border-b dark:border-zinc-800/20",
         "animate-[fade-in_180ms_ease-out]",
       )}
@@ -1480,6 +1653,7 @@ function CrawlBreakdownRow({
       >
         <div className="flex items-center gap-2 pl-6">
           <WristbandIcon status={crawl.wristbandStatus} />
+          <HostIcon hostType={crawl.hostType} />
           <span className="h-1 w-1 rounded-full bg-zinc-400/60" />
           <Link
             href={`/city-campaigns/${cityCampaignId}#crawl-${crawl.eventId}`}
