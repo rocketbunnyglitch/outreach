@@ -175,7 +175,7 @@ async function loadStaleFollowUps(campaignId: string): Promise<StaleFollowUp[]> 
     JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
     JOIN cities c ON c.id = cc.city_id
     JOIN venues v ON v.id = coe.venue_id
-    LEFT JOIN staff_members sm ON sm.id = coe.assigned_staff_id
+    LEFT JOIN users sm ON sm.id = coe.assigned_staff_id
     WHERE cc.campaign_id = ${campaignId}
       AND coe.archived_at IS NULL
       AND coe.status IN ('email_sent', 'follow_up_due', 'called', 'voicemail', 'no_answer')

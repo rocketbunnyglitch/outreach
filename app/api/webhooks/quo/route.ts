@@ -358,7 +358,7 @@ async function findAttributableStaff(
   if (recentRows[0]?.staff_member_id) return recentRows[0].staff_member_id;
 
   const fallback = await db.execute<{ id: string }>(sql`
-    SELECT id FROM staff_members
+    SELECT id FROM users
     WHERE status = 'active'
     ORDER BY created_at ASC
     LIMIT 1

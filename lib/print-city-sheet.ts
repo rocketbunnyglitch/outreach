@@ -85,7 +85,7 @@ export async function loadPrintCitySheet(cityCampaignId: string): Promise<PrintC
       FROM city_campaigns cc
       JOIN cities c ON c.id = cc.city_id
       JOIN campaigns cm ON cm.id = cc.campaign_id
-      LEFT JOIN staff_members sm ON sm.id = cc.lead_staff_id
+      LEFT JOIN users sm ON sm.id = cc.lead_staff_id
       WHERE cc.id = ${cityCampaignId}
     `),
     db.execute<{

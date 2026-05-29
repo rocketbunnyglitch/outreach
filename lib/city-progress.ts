@@ -149,7 +149,7 @@ export async function loadCityCampaignProgress(campaignId: string): Promise<City
         sm.display_name AS lead_staff_name
       FROM city_campaigns cc
       JOIN cities c ON c.id = cc.city_id
-      LEFT JOIN staff_members sm ON sm.id = cc.lead_staff_id
+      LEFT JOIN users sm ON sm.id = cc.lead_staff_id
       WHERE cc.campaign_id = ${campaignId}
         AND cc.archived_at IS NULL
     ),

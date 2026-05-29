@@ -79,7 +79,7 @@ async function resolveMentions(handles: string[]): Promise<string[]> {
   const rawList = `ARRAY[${handles.map((h) => `'${h.replace(/'/g, "''")}'`).join(",")}]::text[]`;
   const rows = await db.execute<{ id: string }>(sql`
     SELECT id
-    FROM staff_members
+    FROM users
     WHERE archived_at IS NULL AND (
       lower(split_part(primary_email, '@', 1)) = ANY(${sql.raw(rawList)})
       OR lower(regexp_replace(display_name, '[^a-zA-Z0-9]+', '', 'g')) = ANY(${sql.raw(rawList)})

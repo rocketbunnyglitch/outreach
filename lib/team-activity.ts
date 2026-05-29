@@ -101,7 +101,7 @@ export async function loadTeamActivity(windowHours = 4): Promise<TeamActivitySum
           NULLIF(al.table_name, '')
         ) AS target_name
       FROM audit_log al
-      LEFT JOIN staff_members sm ON sm.id = al.changed_by
+      LEFT JOIN users sm ON sm.id = al.changed_by
       WHERE al.changed_at > NOW() - (${hours} || ' hours')::interval
         AND al.changed_by IS NOT NULL
         AND al.table_name IN (
@@ -119,7 +119,7 @@ export async function loadTeamActivity(windowHours = 4): Promise<TeamActivitySum
         ol.channel::text AS channel,
         v.name AS venue_name
       FROM outreach_log ol
-      JOIN staff_members sm ON sm.id = ol.staff_member_id
+      JOIN users sm ON sm.id = ol.staff_member_id
       JOIN venues v ON v.id = ol.venue_id
       WHERE ol.created_at > NOW() - (${hours} || ' hours')::interval
       ORDER BY ol.created_at DESC

@@ -111,7 +111,7 @@ export async function loadTeamAnalytics(
         COUNT(liw.staff_member_id) FILTER (
           WHERE liw.channel = 'viber'
         )::int AS day_viber
-      FROM staff_members sm
+      FROM users sm
       CROSS JOIN date_series ds
       LEFT JOIN log_in_window liw
         ON liw.staff_member_id = sm.id AND liw.day = ds.day
@@ -132,7 +132,7 @@ export async function loadTeamAnalytics(
         (psd.day_calls + psd.day_emails + psd.day_sms + psd.day_viber)
         ORDER BY psd.day ASC
       )::text AS daily
-    FROM staff_members sm
+    FROM users sm
     LEFT JOIN per_staff_day psd ON psd.staff_id = sm.id
     WHERE sm.status = 'active'
     GROUP BY sm.id, sm.display_name, sm.primary_email, sm.role
@@ -353,7 +353,7 @@ export async function loadStaffActivityProfile(opts: {
     status: string;
   }>(sql`
     SELECT id, display_name, primary_email, role::text AS role, status::text AS status
-    FROM staff_members
+    FROM users
     WHERE id = ${opts.staffId}
     LIMIT 1
   `);

@@ -80,8 +80,8 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
   const claimed = (await db.execute<ClaimedRow>(sql`
     SELECT id, gmail_oauth_refresh_token AS refresh_token,
            gmail_last_history_id AS last_history_id,
-           email_address AS email, staff_member_id, outreach_brand_id
-    FROM staff_outreach_emails
+           email_address AS email, owner_user_id AS staff_member_id, outreach_brand_id
+    FROM connected_accounts
     WHERE gmail_oauth_refresh_token IS NOT NULL
     ORDER BY COALESCE(gmail_last_polled_at, '1970-01-01'::timestamptz) ASC
     LIMIT ${BATCH_INBOX_LIMIT}
@@ -126,7 +126,7 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
     // re-trying the same inbox forever
     try {
       await db.execute(sql`
-        UPDATE staff_outreach_emails
+        UPDATE connected_accounts
         SET gmail_last_polled_at = NOW()
         WHERE id = ${inbox.id}
       `);
@@ -224,7 +224,7 @@ async function pollOneInbox(inbox: {
   // Bump the watchpoint after all messages are in.
   if (nextHistoryId && nextHistoryId !== inbox.last_history_id) {
     await db.execute(sql`
-      UPDATE staff_outreach_emails
+      UPDATE connected_accounts
       SET gmail_last_history_id = ${nextHistoryId}
       WHERE id = ${inbox.id}
     `);

@@ -149,7 +149,7 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
     tagAndCatch<StaffRow>("staff", () =>
       db.execute<StaffRow>(sql`
       SELECT id::text, display_name, primary_email
-      FROM staff_members
+      FROM users
       WHERE archived_at IS NULL
         AND status = 'active'
         AND (display_name ILIKE ${pattern} OR primary_email ILIKE ${pattern})

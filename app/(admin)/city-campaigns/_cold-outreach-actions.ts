@@ -1156,7 +1156,7 @@ export async function commitVenueField(
         v.phone_e164,
         sm.display_name AS updated_by_name
       FROM venues v
-      LEFT JOIN staff_members sm ON sm.id = v.updated_by
+      LEFT JOIN users sm ON sm.id = v.updated_by
       WHERE v.id = ${venueId}
       LIMIT 1
     `);

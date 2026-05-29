@@ -99,7 +99,7 @@ export async function loadRowActivity(params: {
       al.old_values,
       al.new_values
     FROM audit_log al
-    LEFT JOIN staff_members sm ON sm.id = al.changed_by
+    LEFT JOIN users sm ON sm.id = al.changed_by
     WHERE
       (al.table_name = ${params.table} AND al.record_id = ${params.recordId}::uuid)
       ${
@@ -157,7 +157,7 @@ export async function loadActivitySummary(params: {
       al.changed_at::text AS last_changed_at,
       sm.display_name
     FROM audit_log al
-    LEFT JOIN staff_members sm ON sm.id = al.changed_by
+    LEFT JOIN users sm ON sm.id = al.changed_by
     WHERE
       (al.table_name = ${params.table} AND al.record_id = ${params.recordId}::uuid)
       ${

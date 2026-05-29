@@ -463,7 +463,7 @@ export async function loadDashboardData(
         COALESCE(array_length(n.mentions, 1), 0) AS mention_count,
         n.created_at
       FROM notes n
-      JOIN staff_members sm ON sm.id = n.author_staff_id
+      JOIN users sm ON sm.id = n.author_staff_id
       LEFT JOIN venues v ON n.target_type = 'venue' AND v.id = n.target_id
       LEFT JOIN city_campaigns cc ON n.target_type = 'city_campaign' AND cc.id = n.target_id
       LEFT JOIN cities c ON c.id = cc.city_id

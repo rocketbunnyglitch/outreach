@@ -128,7 +128,7 @@ async function loadNeedsVenues(campaignId: string): Promise<NextBestAction[]> {
       o.days_until_min,
       sm.display_name AS lead_staff_name
     FROM open_per_cc o
-    LEFT JOIN staff_members sm ON sm.id = o.lead_staff_id
+    LEFT JOIN users sm ON sm.id = o.lead_staff_id
     WHERE o.open_slots >= 3
     ORDER BY o.days_until_min ASC, o.open_slots DESC
     LIMIT 4
