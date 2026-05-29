@@ -1,5 +1,6 @@
 import { requireStaff } from "@/lib/auth";
-import { loadInternalHosts } from "./_actions";
+import { loadInternalHostFlaggedCrawls, loadInternalHosts } from "./_actions";
+import { InternalHostFlaggedCrawls } from "./_components/flagged-crawls";
 import { InternalHostsTable } from "./_components/internal-hosts-table";
 
 export const metadata = { title: "Internal Hosts" };
@@ -7,7 +8,10 @@ export const dynamic = "force-dynamic";
 
 export default async function InternalHostsPage() {
   await requireStaff();
-  const hosts = await loadInternalHosts();
+  const [hosts, flagged] = await Promise.all([
+    loadInternalHosts(),
+    loadInternalHostFlaggedCrawls(),
+  ]);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6">
@@ -21,6 +25,14 @@ export default async function InternalHostsPage() {
       </header>
 
       <InternalHostsTable hosts={hosts} />
+
+      {/* Crawls flagged as having an internal host — surfaces what
+          still needs name / hours / rate filled in after the night-of.
+          Per operator: "I just need to mark it as internal and put
+          that info in after." Without this view they'd have to
+          remember which crawls were flagged and navigate to each city
+          sheet separately. */}
+      <InternalHostFlaggedCrawls rows={flagged} />
     </div>
   );
 }
