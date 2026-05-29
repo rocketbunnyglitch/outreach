@@ -470,6 +470,42 @@ const ROLE_TONE: Record<SlotRole, string> = {
 };
 
 /**
+ * Confirmed slot pill tone — green, applied when a slot's venue is
+ * locked in (status='confirmed' or 'contract_signed'). Replaces the
+ * role-specific yellow/orange/red so the operator can see at a glance
+ * which slots are done and which are still in progress without
+ * scanning the Status column.
+ *
+ * Same shape (alt_final keeps its ring affordance) so the swap reads
+ * as a state change rather than a layout change.
+ */
+const ROLE_TONE_CONFIRMED: Record<SlotRole, string> = {
+  wristband: "bg-emerald-500 text-emerald-50",
+  middle: "bg-emerald-500 text-emerald-50",
+  final: "bg-emerald-500 text-emerald-50",
+  alt_final: "bg-emerald-500/70 text-emerald-50 ring-1 ring-inset ring-emerald-500/40",
+};
+
+/**
+ * Pick the pill tone for a slot. When the slot has a venue assigned
+ * AND that venue_event is in a confirmed lifecycle state, return the
+ * green confirmed tone. Otherwise return the role-specific
+ * yellow/orange/red default.
+ *
+ * "Confirmed" = status is 'confirmed' or 'contract_signed' (both
+ * count as locked — contract_signed is the further-along state).
+ */
+function slotPillTone(slot: SlotRow): string {
+  if (
+    slot.venueEventId != null &&
+    (slot.status === "confirmed" || slot.status === "contract_signed")
+  ) {
+    return ROLE_TONE_CONFIRMED[slot.role];
+  }
+  return ROLE_TONE[slot.role];
+}
+
+/**
  * Single crawl's slot table.
  *
  * Layout — 9 columns, spreadsheet feel:
@@ -844,7 +880,7 @@ function SlotTableRow({
           <span
             className={cn(
               "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
-              ROLE_TONE[slot.role],
+              slotPillTone(slot),
             )}
           >
             {slotLabel}
@@ -1006,7 +1042,7 @@ function SlotTableRow({
           <span
             className={cn(
               "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
-              ROLE_TONE[slot.role],
+              slotPillTone(slot),
             )}
           >
             {slotLabel}
