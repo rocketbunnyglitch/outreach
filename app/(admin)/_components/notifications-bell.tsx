@@ -50,8 +50,8 @@ const KIND_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 const KIND_TONES: Record<string, string> = {
   reply: "text-emerald-600 dark:text-emerald-400",
   mention: "text-blue-600 dark:text-blue-400",
-  email_invalid: "text-amber-600 dark:text-amber-400",
-  ai_draft_failed: "text-violet-600 dark:text-violet-400",
+  email_invalid: "text-rose-600 dark:text-rose-400",
+  ai_draft_failed: "text-rose-600 dark:text-rose-400",
   edit_conflict: "text-rose-600 dark:text-rose-400",
   admin_message: "text-zinc-600 dark:text-zinc-400",
 };

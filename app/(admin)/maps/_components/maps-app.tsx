@@ -213,7 +213,7 @@ export function MapsApp({
   }
   if (loadError) {
     return (
-      <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <div className="rounded-lg border border-rose-300 bg-rose-50 p-6 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
         Map failed to load: {loadError.message}
       </div>
     );

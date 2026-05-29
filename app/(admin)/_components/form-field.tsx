@@ -36,7 +36,7 @@ export function FieldShell({
       </Label>
       {children}
       {error ? (
-        <p className="text-amber-700 text-xs dark:text-amber-400">{error}</p>
+        <p className="text-rose-700 text-xs dark:text-rose-400">{error}</p>
       ) : hint ? (
         <p className="text-xs text-zinc-500">{hint}</p>
       ) : null}

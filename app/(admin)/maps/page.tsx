@@ -21,7 +21,7 @@ export default async function MapsPage() {
     return (
       <div className="flex flex-col gap-3">
         <h1 className="font-semibold text-3xl tracking-tight">Maps</h1>
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 text-sm dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+        <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 text-rose-900 text-sm dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
           Google Maps API isn&apos;t configured. Set GOOGLE_MAPS_BROWSER_KEY (preferred) or
           GOOGLE_MAPS_API_KEY in the env, then restart.
         </div>
