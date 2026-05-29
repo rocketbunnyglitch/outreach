@@ -720,6 +720,7 @@ function VenueTableRow({
   } | null;
 }) {
   const nameCellId = `venue:${venue.id}:name`;
+  const addressCellId = `venue:${venue.id}:address`;
   const capacityCellId = `venue:${venue.id}:capacity`;
   return (
     <tr
@@ -779,12 +780,28 @@ function VenueTableRow({
       {/* City — not editable from here (would require cityId join with all cities) */}
       <td className="w-40 px-2 py-2 text-xs text-zinc-600 dark:text-zinc-400">{venue.cityName}</td>
 
-      {/* Address — display only (full edit is on the detail page since address
-          + coordinates + Google Place ID need to stay in sync) */}
+      {/* Address — inline-editable. Editing here does NOT re-geocode
+          coordinates; that still happens on the detail page's address
+          autocomplete. Empty input clears the address. */}
       <td className="px-2 py-2 text-xs text-zinc-600 dark:text-zinc-400">
-        <span className="line-clamp-1" title={venue.address ?? undefined}>
-          {venue.address ?? <span className="text-zinc-400">—</span>}
-        </span>
+        <InlineCell
+          cellId={addressCellId}
+          gridRow={rowIndex}
+          gridCol={1}
+          onFocusChange={onCellFocusChange}
+          peerFocus={peerFocusByCell.get(addressCellId) ?? null}
+          value={venue.address ?? ""}
+          placeholder="—"
+          label="Address"
+          onCommit={async (next) => {
+            const fd = new FormData();
+            fd.set("venueId", venue.id);
+            fd.set("field", "address");
+            fd.set("value", next);
+            const result = await commitVenueListField(null, fd);
+            return result.ok ? { ok: true } : { ok: false, error: result.error };
+          }}
+        />
       </td>
 
       {/* Capacity — inline-editable number */}
@@ -792,7 +809,7 @@ function VenueTableRow({
         <InlineCell
           cellId={capacityCellId}
           gridRow={rowIndex}
-          gridCol={1}
+          gridCol={2}
           onFocusChange={onCellFocusChange}
           peerFocus={peerFocusByCell.get(capacityCellId) ?? null}
           value={venue.capacity == null ? "" : String(venue.capacity)}

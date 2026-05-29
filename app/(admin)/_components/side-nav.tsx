@@ -135,13 +135,22 @@ export function SideNav({
   hasCurrentCampaign,
 }: {
   isAdmin: boolean;
-  /** True when a specific campaign is scoped (not "all"). Used to default
-   *  the Admin nav group to collapsed — when you're inside a campaign,
-   *  admin views are usually noise. */
+  /** True when a specific campaign is scoped (not "all"). When false,
+   *  Current Crawl + Operate are hidden entirely — the operator needs
+   *  to pick a campaign first. Also defaults the Admin group to
+   *  collapsed when a campaign IS scoped (admin views are usually
+   *  noise inside a campaign). */
   hasCurrentCampaign: boolean;
 }) {
   const pathname = usePathname();
-  const sections = isAdmin ? [...SECTIONS, ADMIN_SECTION] : SECTIONS;
+  // Without a campaign, the campaign-scoped sections (Current Crawl,
+  // Operate) are hidden from the nav. The pages themselves redirect to
+  // /admin via the middleware, so the user can't reach them by URL
+  // either. Data, Settings, and Admin remain available.
+  const visibleSections = hasCurrentCampaign
+    ? SECTIONS
+    : SECTIONS.filter((s) => s.label !== "Current Crawl" && s.label !== "Operate");
+  const sections = isAdmin ? [...visibleSections, ADMIN_SECTION] : visibleSections;
 
   // Active match: exact `/`, otherwise prefix match. So /venues/abc-123
   // highlights "Venues".

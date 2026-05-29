@@ -7,6 +7,7 @@ import { loadTeamActivity } from "@/lib/team-activity";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { CitiesCompletedKpi } from "./_components/dashboard/cities-completed-kpi";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
@@ -49,6 +50,13 @@ export default async function DashboardHome({
   const { staff } = await requireStaff();
 
   const currentCampaign = await getCurrentCampaign();
+  // No campaign selected → bounce to /admin. The middleware also catches
+  // this for direct URL access but we re-check here in case the cookie
+  // is set but references a stale/archived campaign (which makes
+  // getCurrentCampaign() return null while the cookie is still present).
+  if (!currentCampaign && !allCampaigns) {
+    redirect("/admin");
+  }
   // If the operator picked a campaign in the switcher AND hasn't opted into
   // "all campaigns" via the URL, scope the dashboard to that campaign.
   const campaignId = !allCampaigns && currentCampaign ? currentCampaign.campaign.id : null;

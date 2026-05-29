@@ -19,7 +19,6 @@ import { RealtimeRefresh } from "./_components/realtime-refresh";
 import { SendCapPill } from "./_components/send-cap-pill";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
-import { ThemeToggle } from "./_components/theme-toggle";
 import { TimezonePicker } from "./_components/timezone-picker";
 import { UserMenu } from "./_components/user-menu";
 
@@ -61,7 +60,10 @@ export default async function AdminLayout({
               under the TopBar at < lg viewports; hidden at lg+ where
               SideNav takes over. Replaces the old hamburger drawer
               (operator session 11). */}
-          <MobileSectionNav isAdmin={staff.role === "admin"} />
+          <MobileSectionNav
+            isAdmin={staff.role === "admin"}
+            hasCurrentCampaign={hasCurrentCampaign}
+          />
           <div className="flex flex-1">
             <SideNav isAdmin={staff.role === "admin"} hasCurrentCampaign={hasCurrentCampaign} />
             <main className="min-w-0 flex-1 px-6 py-10 sm:px-10 sm:py-14">{children}</main>
@@ -159,7 +161,6 @@ function TopBar({
           <div className="hidden sm:block">
             <TimezonePicker currentTimezone={staff.timezone ?? "America/Toronto"} />
           </div>
-          <ThemeToggle />
           <div className="hidden sm:block">
             <ShortcutsHintButton />
           </div>

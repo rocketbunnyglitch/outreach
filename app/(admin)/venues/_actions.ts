@@ -562,6 +562,7 @@ export async function bulkUpdateVenues(
 //
 // Fields supported:
 //   name        — string, non-empty
+//   address     — string or empty (clears)
 //   capacity    — integer or empty (clears)
 //   doNotContact — boolean (the bulk action also exists; this is the
 //                  single-row toggle from the table)
@@ -569,7 +570,7 @@ export async function bulkUpdateVenues(
 
 const commitVenueListFieldSchema = z.object({
   venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
-  field: z.enum(["name", "capacity", "doNotContact"]),
+  field: z.enum(["name", "address", "capacity", "doNotContact"]),
   value: z.string().max(500),
 });
 
@@ -592,6 +593,12 @@ export async function commitVenueListField(
   if (field === "name") {
     if (trimmed.length === 0) return { ok: false, error: "Venue name can't be empty." };
     patch.name = trimmed;
+  } else if (field === "address") {
+    // Empty clears. Note: editing the address from the table does NOT
+    // re-geocode coordinates — full re-geocode happens via the detail
+    // page's address autocomplete. The user's intent here is a quick
+    // typo-fix or pasted-from-Maps cleanup.
+    patch.address = trimmed.length === 0 ? null : trimmed;
   } else if (field === "capacity") {
     if (trimmed.length === 0) {
       patch.capacity = null;

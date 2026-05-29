@@ -155,6 +155,7 @@ const ADMIN_SECTION: Section = {
 
 interface Props {
   isAdmin?: boolean;
+  hasCurrentCampaign?: boolean;
 }
 
 function isActiveRoute(href: string, pathname: string): boolean {
@@ -172,9 +173,17 @@ function findActiveSectionIndex(sections: Section[], pathname: string): number {
   return 0;
 }
 
-export function MobileSectionNav({ isAdmin = false }: Props) {
+export function MobileSectionNav({ isAdmin = false, hasCurrentCampaign = true }: Props) {
   const pathname = usePathname();
-  const sections = useMemo(() => (isAdmin ? [...SECTIONS, ADMIN_SECTION] : SECTIONS), [isAdmin]);
+  const sections = useMemo(() => {
+    // Without a campaign, hide the campaign-scoped sections — mirrors
+    // SideNav. The middleware also redirects URLs in those sections to
+    // /admin, so a user can't access them directly either.
+    const visible = hasCurrentCampaign
+      ? SECTIONS
+      : SECTIONS.filter((s) => s.label !== "Current Crawl" && s.label !== "Operate");
+    return isAdmin ? [...visible, ADMIN_SECTION] : visible;
+  }, [isAdmin, hasCurrentCampaign]);
 
   // The currently-displayed section in the sub-strip. Auto-tracks the
   // route on first paint AND whenever the route changes (so navigating

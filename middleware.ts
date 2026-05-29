@@ -17,6 +17,35 @@ import authConfig from "./auth.config";
 
 const { auth } = NextAuth(authConfig);
 
+const CAMPAIGN_COOKIE = "crawl_engine_current_campaign";
+
+// Paths that require a campaign to be scoped. These are the "Current
+// Crawl" + "Operate" groups in the side nav. Without a campaign, the
+// nav hides them and the middleware redirects direct URL access to
+// /admin so the operator picks a campaign first.
+const CAMPAIGN_GATED_PREFIXES = [
+  "/tracker",
+  "/inbox",
+  "/tasks",
+  "/all-crawls",
+  "/crawl-support",
+  "/crawl-matrix",
+  "/calendar",
+  "/send-queue",
+  "/wristbands",
+  "/support-hours",
+  "/event-submission",
+  "/discover",
+  "/maps",
+];
+
+function requiresCampaign(pathname: string): boolean {
+  // Root (the dashboard) is also campaign-scoped but matched as an
+  // exact path so we don't accidentally redirect every URL.
+  if (pathname === "/") return true;
+  return CAMPAIGN_GATED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 export default auth((req) => {
   const isAuthenticated = !!req.auth;
   const { pathname, search } = req.nextUrl;
@@ -44,6 +73,15 @@ export default auth((req) => {
     // Preserve the original destination so we can bounce back after sign-in.
     loginUrl.searchParams.set("from", pathname + search);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Authenticated. If the route requires a campaign and none is set,
+  // bounce to /admin (the safe landing without campaign context). The
+  // cookie presence is a proxy for "operator has picked a campaign";
+  // a stale UUID gets caught at page-level (getCurrentCampaign returns
+  // null and the page can re-redirect).
+  if (requiresCampaign(pathname) && !req.cookies.get(CAMPAIGN_COOKIE)?.value) {
+    return NextResponse.redirect(new URL("/admin", req.nextUrl));
   }
 
   return NextResponse.next();
