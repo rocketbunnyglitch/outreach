@@ -15,7 +15,7 @@
 import { bigint, date, index, pgTable, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, idColumn, versionColumn } from "../types";
 import { goalMetric, goalScope } from "./enums";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const goals = pgTable(
   "goals",

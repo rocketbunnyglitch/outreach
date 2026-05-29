@@ -123,6 +123,10 @@ async function seedCrawlBrands() {
 async function seedStaff() {
   // Email addresses are placeholders. Replace with real values once
   // OutreachBrand domains are confirmed in OPEN_QUESTIONS.md#Q005.
+  // teamId defaults to the seeded BarCrawlConnect team — see
+  // db/schema/teams.ts. Once multi-team support lands, seed extra
+  // rows in teams + branch by team here.
+  const TEAM_ID = "00000000-0000-0000-0000-000000000001";
   await db
     .insert(staffMembers)
     .values([
@@ -131,24 +135,28 @@ async function seedStaff() {
         primaryEmail: "bryle@example.local",
         role: "lead",
         timezone: "America/Toronto",
+        teamId: TEAM_ID,
       },
       {
         displayName: "JC",
         primaryEmail: "jc@example.local",
         role: "outreach",
         timezone: "America/Toronto",
+        teamId: TEAM_ID,
       },
       {
         displayName: "Yasue",
         primaryEmail: "yasue@example.local",
         role: "outreach",
         timezone: "America/Toronto",
+        teamId: TEAM_ID,
       },
       {
         displayName: "Brandon",
         primaryEmail: "brandon@example.local",
         role: "outreach",
         timezone: "America/Toronto",
+        teamId: TEAM_ID,
       },
     ])
     .onConflictDoNothing({ target: staffMembers.primaryEmail });

@@ -22,7 +22,6 @@
  */
 
 import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
-import type { queueBulkSend } from "@/app/(admin)/send-queue/_actions";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -47,17 +46,7 @@ import {
 import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { cn } from "@/lib/cn";
-import type { OutreachPhase } from "@/lib/outreach-phase";
-import {
-  AlertTriangle,
-  Archive,
-  Loader2,
-  Send,
-  Shield,
-  ShieldOff,
-  Sparkles,
-  Wifi,
-} from "lucide-react";
+import { AlertTriangle, Archive, Loader2, Shield, ShieldOff, Sparkles, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -67,7 +56,6 @@ import {
   commitVenueListField,
   createVenueFromRow,
 } from "../_actions";
-import { BulkSendDialog } from "./bulk-send-dialog";
 
 interface VenueRow {
   id: string;
@@ -92,24 +80,6 @@ interface Props {
   addRowCities: Array<{ id: string; name: string }>;
   /** Used by the realtime hook to suppress self-originated events. */
   currentStaffId: string;
-  /** Bulk-send dialog data — when provided, the Queue bulk send button shows */
-  bulkSend?: {
-    brands: Array<{ id: string; displayName: string; outreachPhase: OutreachPhase }>;
-    brandConfig: Record<
-      string,
-      {
-        templates: Array<{ id: string; name: string; stage: string }>;
-        inbox: {
-          inboxId: string | null;
-          minSecondsBetweenSends: number;
-          effectiveDailyCap: number;
-          sent24h: number;
-          warmupDay: number | null;
-        } | null;
-      }
-    >;
-    queueAction: typeof queueBulkSend;
-  };
 }
 
 export function VenuesTable({
@@ -117,7 +87,6 @@ export function VenuesTable({
   bulkAction,
   cityOptions,
   addRowCities,
-  bulkSend,
   currentStaffId,
 }: Props) {
   const router = useRouter();
@@ -126,7 +95,6 @@ export function VenuesTable({
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [bulkSendOpen, setBulkSendOpen] = useState(false);
 
   // -----------------------------------------------------------------
   // Realtime: refresh the page when another operator changes a venue.
@@ -423,16 +391,6 @@ export function VenuesTable({
               </button>
             </div>
             <div className="flex items-center gap-2">
-              {bulkSend && (
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={() => setBulkSendOpen(true)}
-                  disabled={isPending}
-                >
-                  <Send className="h-3 w-3" /> Queue bulk send
-                </Button>
-              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -665,16 +623,6 @@ export function VenuesTable({
         <div className="rounded-md border border-zinc-200 border-dashed p-8 text-center text-sm text-zinc-500 dark:border-zinc-800">
           {rows.length === 0 ? "No venues yet." : "No venues match the current filters."}
         </div>
-      )}
-
-      {bulkSend && bulkSendOpen && (
-        <BulkSendDialog
-          selectedVenueIds={Array.from(selected)}
-          brands={bulkSend.brands}
-          brandConfig={bulkSend.brandConfig}
-          queueAction={bulkSend.queueAction}
-          onClose={() => setBulkSendOpen(false)}
-        />
       )}
     </div>
   );

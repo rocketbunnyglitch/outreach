@@ -1,4 +1,4 @@
-import { staffOutreachEmails } from "@/db/schema";
+import { connectedAccounts } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { withAuditContext } from "@/lib/db";
@@ -14,19 +14,26 @@ import type { NextRequest } from "next/server";
  *
  * Google redirects here after the user consents. Query params:
  *   code  — the authorization code (use once)
- *   state — opaque round-trip value containing CSRF + staff_member_id +
- *           outreach_brand_id (base64 JSON we built in /start)
+ *   state — opaque round-trip value containing CSRF + ownerUserId +
+ *           teamId (base64 JSON built in /start)
  *   error — present if the user denied
  *
  * On success:
  *   1. Validate CSRF cookie matches state.csrf
- *   2. Exchange code for tokens
- *   3. Fetch the connected Gmail address (so we know the from-address)
- *   4. Encrypt refresh token and upsert into staff_outreach_emails
- *   5. Redirect back to /settings/inboxes with ?connected=email
+ *   2. Validate ownerUserId in state matches the signed-in user
+ *   3. Exchange code for tokens
+ *   4. Fetch the connected Gmail address
+ *   5. Encrypt refresh token and upsert into connected_accounts
+ *      keyed on (owner_user_id, email_address)
+ *   6. Redirect back to /settings/inboxes with ?connected=email
  *
- * Audit trail: the upsert uses withAuditContext so the connection event
- * is logged.
+ * Brand scoping was removed in the send-queue decommission — a
+ * connected Gmail is no longer pinned to a specific outreach brand.
+ * The user can connect any number of Gmail addresses; each becomes
+ * one connected_accounts row.
+ *
+ * Audit trail: the upsert uses withAuditContext so the connection
+ * event is logged.
  */
 export async function GET(req: NextRequest) {
   const { staff } = await requireStaff();
@@ -50,7 +57,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Validate CSRF
-  let state: { csrf: string; staffMemberId: string; outreachBrandId: string };
+  let state: { csrf: string; ownerUserId: string; teamId: string };
   try {
     state = JSON.parse(Buffer.from(stateB64, "base64").toString("utf8"));
   } catch {
@@ -64,8 +71,16 @@ export async function GET(req: NextRequest) {
   }
   cookieJar.delete("gmail_oauth_csrf");
 
-  if (state.staffMemberId !== staff.id) {
+  if (state.ownerUserId !== staff.id) {
     // The user who started the flow must be the user who completes it.
+    return NextResponse.redirect(new URL("/settings/inboxes?error=staff_mismatch", req.url));
+  }
+
+  // Defensive: the team_id encoded in state must match the user's
+  // current team. (Today everyone is on one team so this is always
+  // true; once invites + multiple teams land, this guards against
+  // a stale OAuth flow.)
+  if (state.teamId !== staff.teamId) {
     return NextResponse.redirect(new URL("/settings/inboxes?error=staff_mismatch", req.url));
   }
 
@@ -99,26 +114,28 @@ export async function GET(req: NextRequest) {
 
   try {
     await withAuditContext(staff.id, async (tx) => {
-      // Upsert keyed on (staff, email address): reconnecting the SAME account
-      // refreshes its token (and re-points it at the brand just chosen); a NEW
-      // address inserts a fresh row that coexists with the staffer's other
-      // inboxes for this brand. Email address is globally unique (see schema).
+      // Upsert keyed on (owner_user_id, email_address): reconnecting
+      // the SAME Gmail refreshes the existing row's token; a NEW
+      // address inserts a fresh row that coexists with the user's
+      // other connected accounts. Email address is globally unique
+      // (see schema) so reconnecting an address that belongs to
+      // ANOTHER user is blocked by the unique index — that's the
+      // intended behaviour.
       const existing = await tx
-        .select({ id: staffOutreachEmails.id })
-        .from(staffOutreachEmails)
+        .select({ id: connectedAccounts.id })
+        .from(connectedAccounts)
         .where(
           and(
-            eq(staffOutreachEmails.staffMemberId, staff.id),
-            eq(staffOutreachEmails.emailAddress, connectedEmail),
+            eq(connectedAccounts.ownerUserId, staff.id),
+            eq(connectedAccounts.emailAddress, connectedEmail),
           ),
         )
         .limit(1);
 
       if (existing[0]) {
         await tx
-          .update(staffOutreachEmails)
+          .update(connectedAccounts)
           .set({
-            outreachBrandId: state.outreachBrandId,
             emailAddress: connectedEmail,
             gmailOauthRefreshToken: encryptedRefresh,
             gmailOauthScopes: scopesGranted,
@@ -126,20 +143,16 @@ export async function GET(req: NextRequest) {
             lastSyncedAt: new Date(),
             updatedBy: staff.id,
           })
-          .where(eq(staffOutreachEmails.id, existing[0].id));
+          .where(eq(connectedAccounts.id, existing[0].id));
       } else {
-        await tx.insert(staffOutreachEmails).values({
-          staffMemberId: staff.id,
-          outreachBrandId: state.outreachBrandId,
+        await tx.insert(connectedAccounts).values({
+          teamId: staff.teamId,
+          ownerUserId: staff.id,
           emailAddress: connectedEmail,
           gmailOauthRefreshToken: encryptedRefresh,
           gmailOauthScopes: scopesGranted,
           status: "connected",
           lastSyncedAt: new Date(),
-          // Start warm-up ramp NOW for newly-connected inboxes. Existing
-          // inboxes (already-warmed) keep whatever warmup_started_at they
-          // had — reconnecting after a token expiry doesn't reset.
-          warmupStartedAt: new Date(),
           createdBy: staff.id,
           updatedBy: staff.id,
         });

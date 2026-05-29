@@ -11,7 +11,7 @@
 
 import { boolean, index, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, idColumn, versionColumn } from "../types";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const savedFilters = pgTable(
   "saved_filters",

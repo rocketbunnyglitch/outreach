@@ -8,7 +8,7 @@
 import { index, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, idColumn } from "../types";
 import { noteTargetType } from "./enums";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const notes = pgTable(
   "notes",

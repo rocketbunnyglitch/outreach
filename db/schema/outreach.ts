@@ -25,7 +25,7 @@ import {
   threadState,
 } from "./enums";
 import { events } from "./events";
-import { staffMembers, staffOutreachEmails } from "./staff";
+import { staffMembers, staffOutreachEmails } from "./users";
 import { venueEvents } from "./venue-events";
 import { venues } from "./venues";
 

@@ -34,8 +34,8 @@ import { cityCampaigns } from "@/db/schema/city-campaigns";
 import { coldOutreachEntries } from "@/db/schema/cold-outreach";
 import { cities } from "@/db/schema/geography";
 import { notifications } from "@/db/schema/notifications";
-import { staffMembers, staffOutreachEmails } from "@/db/schema/staff";
 import { tasks } from "@/db/schema/tasks";
+import { staffMembers, staffOutreachEmails } from "@/db/schema/users";
 import { venues } from "@/db/schema/venues";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
@@ -278,7 +278,7 @@ async function sendEscalationEmail(opts: {
       .from(staffOutreachEmails)
       .where(
         and(
-          eq(staffOutreachEmails.staffMemberId, opts.escalatorStaffId),
+          eq(staffOutreachEmails.ownerUserId, opts.escalatorStaffId),
           eq(staffOutreachEmails.status, "connected"),
         ),
       )

@@ -477,11 +477,11 @@ export async function fetchInboxAliases(opts: {
       id: staffOutreachEmails.id,
       emailAddress: staffOutreachEmails.emailAddress,
       staffDisplayName: staffMembers.displayName,
-      ownerStaffId: staffOutreachEmails.staffMemberId,
+      ownerStaffId: staffOutreachEmails.ownerUserId,
       status: staffOutreachEmails.status,
     })
     .from(staffOutreachEmails)
-    .leftJoin(staffMembers, eq(staffMembers.id, staffOutreachEmails.staffMemberId));
+    .leftJoin(staffMembers, eq(staffMembers.id, staffOutreachEmails.ownerUserId));
 
   // status filter and ownership filter in JS — the alias list is small
   // (under ~20 rows even at full team size) so the savings of pushing

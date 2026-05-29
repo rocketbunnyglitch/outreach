@@ -12,7 +12,7 @@ import { auditColumns, idColumn, versionColumn } from "../types";
 import { cityCampaigns } from "./city-campaigns";
 import { crawlIssueSeverity, crawlIssueStatus, crawlIssueType } from "./enums";
 import { events } from "./events";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 import { venues } from "./venues";
 
 export const crawlIssues = pgTable(

@@ -12,7 +12,7 @@ import { auditColumns, idColumn, versionColumn } from "../types";
 import { campaigns } from "./campaigns";
 import { cityCampaignStatus } from "./enums";
 import { cities } from "./geography";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const cityCampaigns = pgTable(
   "city_campaigns",

@@ -10,7 +10,7 @@
  */
 
 import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const notificationKind = pgEnum("notification_kind", [
   "reply",

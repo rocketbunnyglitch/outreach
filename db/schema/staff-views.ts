@@ -10,7 +10,7 @@
  */
 
 import { index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const staffViews = pgTable(
   "staff_views",

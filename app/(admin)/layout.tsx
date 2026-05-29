@@ -4,7 +4,6 @@ import { ToastProvider } from "@/components/ui/toast";
 import { requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { getCurrentCampaign } from "@/lib/current-campaign";
-import { getStaffSendCapStatus } from "@/lib/send-cap-status";
 import { ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,7 +15,6 @@ import { MountCommandPalette } from "./_components/mount-command-palette";
 import { NotificationsBell } from "./_components/notifications-bell";
 import { PrimeTimePill } from "./_components/prime-time-pill";
 import { RealtimeRefresh } from "./_components/realtime-refresh";
-import { SendCapPill } from "./_components/send-cap-pill";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
 import { ThemeToggle } from "./_components/theme-toggle";
@@ -42,9 +40,6 @@ export default async function AdminLayout({
 }) {
   const { staff, provider } = await requireStaff();
   const isDevImpersonation = provider === "dev-staff-impersonate";
-  // Fetch send cap status server-side so the pill renders at SSR time
-  // and stays in sync with the throttle. Cheap query (~5ms typical).
-  const sendCap = await getStaffSendCapStatus(staff.id);
   // Used to default the Admin nav group to collapsed when a campaign
   // is scoped — admin views are usually irrelevant per-campaign.
   const currentCampaign = await getCurrentCampaign();
@@ -56,7 +51,7 @@ export default async function AdminLayout({
         <GlobalPresence staffId={staff.id} />
         <div className="flex min-h-screen flex-col">
           {isDevImpersonation && <DevModeBanner />}
-          <TopBar staff={staff} provider={provider} sendCap={sendCap} />
+          <TopBar staff={staff} provider={provider} />
           {/* Mobile-only horizontal section + sub-nav strips. Renders
               under the TopBar at < lg viewports; hidden at lg+ where
               SideNav takes over. Replaces the old hamburger drawer
@@ -100,11 +95,9 @@ function DevModeBanner() {
 function TopBar({
   staff,
   provider,
-  sendCap,
 }: {
   staff: Awaited<ReturnType<typeof requireStaff>>["staff"];
   provider: string;
-  sendCap: Awaited<ReturnType<typeof getStaffSendCapStatus>>;
 }) {
   return (
     <header className="sticky top-0 z-40 border-zinc-200 border-b bg-[color:var(--color-canvas)]/85 backdrop-blur-md dark:border-zinc-800 dark:bg-[color:var(--color-canvas-dark)]/85">
@@ -151,12 +144,6 @@ function TopBar({
           {/* Capacity/timing pills carry the most width — show only on wide screens */}
           <div className="hidden items-center gap-2 lg:flex">
             <PrimeTimePill timezone={staff.timezone ?? "America/Toronto"} />
-            <SendCapPill
-              inboxes={sendCap.inboxes}
-              totalSent={sendCap.totalSent24h}
-              totalCap={sendCap.totalCap}
-              allMaxed={sendCap.allMaxed}
-            />
           </div>
           <NotificationsBell />
           <div className="hidden sm:block">

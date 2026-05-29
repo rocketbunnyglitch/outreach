@@ -26,7 +26,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { messageKind, threadDirection } from "./enums";
 import { emailThreads } from "./outreach";
-import { staffMembers, staffOutreachEmails } from "./staff";
+import { staffMembers, staffOutreachEmails } from "./users";
 
 // =========================================================================
 // email_messages

@@ -13,7 +13,7 @@
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, idColumn, versionColumn } from "../types";
 import { taskSource, taskStatus, taskTargetType } from "./enums";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 
 export const tasks = pgTable(
   "tasks",

@@ -27,8 +27,9 @@
  */
 
 export * from "./enums";
+export * from "./teams";
 export * from "./brands";
-export * from "./staff";
+export * from "./users";
 export * from "./geography";
 export * from "./call-logs";
 export * from "./campaigns";
@@ -46,8 +47,6 @@ export * from "./venue-events";
 export * from "./outreach";
 export * from "./email-messages";
 export * from "./cold-outreach";
-export * from "./outreach-sequences";
-export * from "./scheduled-sends";
 export * from "./wristbands";
 export * from "./tasks";
 export * from "./notes";

@@ -2,13 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cities, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
-import { listOutreachBrands } from "@/lib/brand-context";
-import { loadComposerData } from "@/lib/composer-data";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { Plus, Upload } from "lucide-react";
 import Link from "next/link";
-import { queueBulkSend } from "./../send-queue/_actions";
 import { bulkUpdateVenues } from "./_actions";
 import { VenuesTable } from "./_components/venues-table";
 
@@ -66,39 +63,6 @@ export default async function VenuesListPage() {
     .orderBy(asc(cities.name));
   const addRowCities = allCities.map((c) => ({ id: c.id, name: c.name }));
 
-  // Bulk-send dialog data — brands + templates + inbox throttle status per
-  // brand for the logged-in staffer. Shape is what BulkSendDialog needs.
-  const outreachBrandsList = await listOutreachBrands();
-  const composerData = await loadComposerData({
-    staffMemberId: staff.id,
-    outreachBrandIds: outreachBrandsList.map((b) => b.id),
-  });
-
-  // Reshape: composer returns full inbox status; bulk dialog only needs
-  // a subset (min spacing + cap + counters). Null out brands without a
-  // connected inbox.
-  const bulkBrandConfig = Object.fromEntries(
-    outreachBrandsList.map((b) => {
-      const c = composerData[b.id];
-      const inbox = c?.inbox;
-      return [
-        b.id,
-        {
-          templates: c?.templates ?? [],
-          inbox: inbox?.inboxId
-            ? {
-                inboxId: inbox.inboxId,
-                minSecondsBetweenSends: 90, // default; composer doesn't surface it
-                effectiveDailyCap: inbox.effectiveDailyCap ?? 30,
-                sent24h: inbox.sent24h ?? 0,
-                warmupDay: inbox.warmupDay ?? null,
-              }
-            : null,
-        },
-      ];
-    }),
-  );
-
   return (
     <div className="flex flex-col gap-8">
       <header className="flex items-end justify-between gap-4">
@@ -141,15 +105,6 @@ export default async function VenuesListPage() {
           addRowCities={addRowCities}
           bulkAction={bulkUpdateVenues}
           currentStaffId={staff.id}
-          bulkSend={{
-            brands: outreachBrandsList.map((b) => ({
-              id: b.id,
-              displayName: b.displayName,
-              outreachPhase: (b.outreachPhase as 1 | 2 | 3 | 4) ?? 1,
-            })),
-            brandConfig: bulkBrandConfig,
-            queueAction: queueBulkSend,
-          }}
         />
       )}
     </div>

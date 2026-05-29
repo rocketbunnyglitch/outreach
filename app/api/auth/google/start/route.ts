@@ -8,17 +8,22 @@ import type { NextRequest } from "next/server";
 /**
  * GET /api/auth/google/start
  *
- * Kicks off the Gmail OAuth flow. Required query param:
- *   outreachBrandId — which OutreachBrand this inbox is for
+ * Kicks off the Gmail OAuth flow for connecting an inbox to the
+ * signed-in user. No query params — brand scoping was removed in
+ * the send-queue decommission, so the only thing the state needs
+ * to carry is the user's identity (so we can verify on callback
+ * that the same user completes the flow) and a CSRF token.
  *
- * Generates a random CSRF token, sets it in a short-lived cookie, and
- * embeds it in the OAuth state alongside the staff_member_id + brand_id.
- * The callback validates the cookie matches the state to prevent CSRF.
+ * Generates a random CSRF token, sets it in a short-lived cookie,
+ * and embeds it in the OAuth state alongside the user_id + team_id.
+ * The callback validates the cookie matches the state to prevent
+ * CSRF.
  *
- * If GOOGLE_OAUTH_CLIENT_ID isn't configured, returns 503 — the page that
- * links here should already be guarded with isGmailOAuthConfigured.
+ * If GOOGLE_OAUTH_CLIENT_ID isn't configured, returns 503 — the
+ * page that links here should already be guarded with
+ * isGmailOAuthConfigured.
  */
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const { staff } = await requireStaff();
 
   if (!isGmailOAuthConfigured()) {
@@ -28,18 +33,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const url = new URL(req.url);
-  const outreachBrandId = url.searchParams.get("outreachBrandId");
-  if (!outreachBrandId) {
-    return NextResponse.json({ error: "Missing outreachBrandId" }, { status: 400 });
-  }
-
-  // CSRF token: random, set as httpOnly cookie + embedded in state
   const csrf = randomBytes(16).toString("hex");
   const state = JSON.stringify({
     csrf,
-    staffMemberId: staff.id,
-    outreachBrandId,
+    ownerUserId: staff.id,
+    teamId: staff.teamId,
   });
 
   const cookieJar = await cookies();

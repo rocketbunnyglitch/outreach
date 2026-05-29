@@ -44,7 +44,6 @@ import {
   LayoutGrid,
   LifeBuoy,
   Map as MapIcon,
-  Send,
   ShieldCheck,
   Table2,
   Tag,
@@ -102,7 +101,6 @@ const SECTIONS: Array<{
         label: "External Hosts",
         icon: <Users className="h-3.5 w-3.5" />,
       },
-      { href: "/send-queue", label: "Send Queue", icon: <Send className="h-3.5 w-3.5" /> },
       {
         href: "/event-submission",
         label: "Event Submission",

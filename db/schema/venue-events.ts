@@ -23,7 +23,7 @@ import {
 import { auditColumns, idColumn, versionColumn } from "../types";
 import { venueEventStatus, venueRole } from "./enums";
 import { events } from "./events";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 import { venues } from "./venues";
 
 export const venueEvents = pgTable(

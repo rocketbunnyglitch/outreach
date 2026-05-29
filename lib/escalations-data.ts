@@ -24,7 +24,7 @@
 import { cityCampaigns } from "@/db/schema/city-campaigns";
 import { coldOutreachEntries } from "@/db/schema/cold-outreach";
 import { cities } from "@/db/schema/geography";
-import { staffMembers } from "@/db/schema/staff";
+import { staffMembers } from "@/db/schema/users";
 import { venues } from "@/db/schema/venues";
 import { db } from "@/lib/db";
 import { and, desc, eq, notInArray } from "drizzle-orm";

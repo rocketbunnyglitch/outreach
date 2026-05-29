@@ -10,7 +10,7 @@
 import { index, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn } from "../types";
 import { cityCampaigns } from "./city-campaigns";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 import { venues } from "./venues";
 
 export const coldOutreachStatus = pgEnum("cold_outreach_status", [

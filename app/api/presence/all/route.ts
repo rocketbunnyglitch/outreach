@@ -25,7 +25,6 @@ function staticLabel(route: string): string {
   if (route.startsWith("/crawl-matrix")) return "Crawl Matrix";
   if (route.startsWith("/crawl-support")) return "Crawl Support";
   if (route.startsWith("/all-crawls")) return "All Crawls";
-  if (route.startsWith("/send-queue")) return "Send Queue";
   if (route.startsWith("/calendar")) return "Calendar";
   if (route.startsWith("/support-hours")) return "Support Hours";
   if (route.startsWith("/admin")) return "Admin";

@@ -11,7 +11,7 @@
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { auditColumns, idColumn } from "../types";
 import { callDirection, callMatchType } from "./enums";
-import { staffMembers } from "./staff";
+import { staffMembers } from "./users";
 import { venues } from "./venues";
 
 export const callLogs = pgTable(

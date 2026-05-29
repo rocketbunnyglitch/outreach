@@ -67,7 +67,6 @@ import {
   LayoutGrid,
   LifeBuoy,
   Map as MapIcon,
-  Send,
   ShieldCheck,
   Table2,
   Tag,
@@ -112,7 +111,6 @@ const SECTIONS: Section[] = [
       { href: "/wristbands", label: "Wristbands", icon: <Tag className="h-3 w-3" /> },
       { href: "/internal-hosts", label: "Internal Hosts", icon: <Users className="h-3 w-3" /> },
       { href: "/external-hosts", label: "External Hosts", icon: <Users className="h-3 w-3" /> },
-      { href: "/send-queue", label: "Send Queue", icon: <Send className="h-3 w-3" /> },
       {
         href: "/event-submission",
         label: "Event Submission",
