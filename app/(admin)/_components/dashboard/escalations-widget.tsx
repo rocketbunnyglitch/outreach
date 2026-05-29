@@ -44,13 +44,13 @@ export function EscalationsWidget({ escalations, staffFirstName }: Props) {
     <section className="card-surface overflow-hidden">
       <header className="flex items-start justify-between gap-3 px-6 py-4">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-500" />
+          <AlertTriangle className="mt-0.5 h-5 w-5 text-rose-500" />
           <div>
             <h2 className="font-semibold text-lg tracking-tight">
               {count > 0 ? (
                 <>
                   {staffFirstName}, you have{" "}
-                  <span className="text-amber-700 dark:text-amber-300">
+                  <span className="text-rose-700 dark:text-rose-300">
                     {count} escalation{count === 1 ? "" : "s"}
                   </span>
                 </>
@@ -80,7 +80,7 @@ export function EscalationsWidget({ escalations, staffFirstName }: Props) {
 
 function EscalationRow({ escalation }: { escalation: PendingEscalation }) {
   return (
-    <li className="px-6 py-4 transition-colors hover:bg-amber-500/[0.04] dark:hover:bg-amber-500/[0.06]">
+    <li className="px-6 py-4 transition-colors hover:bg-rose-500/[0.04] dark:hover:bg-rose-500/[0.06]">
       {/* Top row: venue + city + status + meta */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -120,7 +120,7 @@ function EscalationRow({ escalation }: { escalation: PendingEscalation }) {
 
       {/* Operator's verbatim notes — the heart of the escalation.
           Bordered block so it visually reads as "the venue said this". */}
-      <blockquote className="mt-2 rounded-md border-amber-500/20 border-l-2 bg-amber-50/40 px-3 py-2 text-sm text-zinc-700 dark:bg-amber-950/20 dark:text-zinc-300">
+      <blockquote className="mt-2 rounded-md border-rose-500/20 border-l-2 bg-rose-50/40 px-3 py-2 text-sm text-zinc-700 dark:bg-rose-950/20 dark:text-zinc-300">
         <p className="whitespace-pre-wrap">{escalation.escalationNotes}</p>
       </blockquote>
 
@@ -173,10 +173,10 @@ function StatusPill({ status }: { status: string }) {
 const STATUS_TONE: Record<string, string> = {
   not_contacted: "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20",
   email_sent: "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300",
-  follow_up_due: "bg-amber-400/15 text-amber-800 ring-amber-400/25 dark:text-amber-200",
+  follow_up_due: "bg-rose-400/15 text-rose-800 ring-rose-400/25 dark:text-rose-200",
   called: "bg-blue-500/10 text-blue-700 ring-blue-500/20 dark:text-blue-300",
-  voicemail: "bg-amber-400/15 text-amber-800 ring-amber-400/25 dark:text-amber-200",
-  no_answer: "bg-amber-400/15 text-amber-800 ring-amber-400/25 dark:text-amber-200",
+  voicemail: "bg-rose-400/15 text-rose-800 ring-rose-400/25 dark:text-rose-200",
+  no_answer: "bg-rose-400/15 text-rose-800 ring-rose-400/25 dark:text-rose-200",
   interested: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300",
   bad_email: "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300",
   wrong_number: "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300",

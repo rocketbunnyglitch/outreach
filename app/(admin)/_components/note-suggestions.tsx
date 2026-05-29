@@ -35,7 +35,7 @@ const ACTION_TYPE_TONE: Record<string, string> = {
   follow_up_email: "text-teal-500 bg-teal-500/10 ring-teal-500/20",
   confirmation_reminder: "text-emerald-500 bg-emerald-500/10 ring-emerald-500/20",
   poster_send: "text-violet-500 bg-violet-500/10 ring-violet-500/20",
-  wristband_task: "text-amber-500 bg-amber-500/10 ring-amber-500/20",
+  wristband_task: "text-rose-500 bg-rose-500/10 ring-rose-500/20",
   missing_info_task: "text-rose-500 bg-rose-500/10 ring-rose-500/20",
   reminder: "text-zinc-500 bg-zinc-500/10 ring-zinc-500/20",
   custom: "text-zinc-500 bg-zinc-500/10 ring-zinc-500/20",
@@ -46,7 +46,7 @@ export function NoteSuggestions({ suggestions, acceptAction, dismissAction }: Pr
   return (
     <div className="mt-2 flex flex-col gap-2 border-zinc-200 border-t pt-2 dark:border-zinc-800/60">
       <p className="inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-        <Sparkles className="h-3 w-3 text-amber-500" />
+        <Sparkles className="h-3 w-3 text-rose-500" />
         Suggested action{suggestions.length > 1 ? "s" : ""}
       </p>
       {suggestions.map((s) => (
@@ -94,7 +94,7 @@ function SuggestionRow({
     : "no time set";
 
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+    <div className="rounded-md border border-rose-200 bg-rose-50/60 p-3 dark:border-rose-900/40 dark:bg-rose-950/20">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">

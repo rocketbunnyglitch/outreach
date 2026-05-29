@@ -66,7 +66,7 @@ export function GoalRow({
         : pct >= 75
           ? "text-blue-600 dark:text-blue-400"
           : pct >= 50
-            ? "text-amber-600 dark:text-amber-400"
+            ? "text-rose-600 dark:text-rose-400"
             : "text-rose-600 dark:text-rose-400";
   }
 

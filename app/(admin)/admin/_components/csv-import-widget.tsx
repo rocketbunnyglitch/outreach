@@ -255,7 +255,7 @@ function PreviewPanel({
           <strong className="font-semibold">{summary.citiesResolved} resolved</strong>
         </span>
         {summary.citiesUnresolved > 0 && (
-          <span className="text-amber-700 dark:text-amber-400">
+          <span className="text-rose-700 dark:text-rose-400">
             <strong className="font-semibold">{summary.citiesUnresolved}</strong> unresolved
           </span>
         )}
@@ -294,7 +294,7 @@ function PreviewPanel({
                 "flex items-center gap-3 rounded-md px-2.5 py-1.5 text-xs transition-colors",
                 r.resolvedCityId
                   ? "bg-emerald-500/[0.06] text-emerald-900 dark:bg-emerald-500/[0.08] dark:text-emerald-100"
-                  : "bg-amber-500/[0.06] text-amber-900 dark:bg-amber-500/[0.08] dark:text-amber-100",
+                  : "bg-rose-500/[0.06] text-rose-900 dark:bg-rose-500/[0.08] dark:text-rose-100",
               )}
             >
               <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
@@ -319,13 +319,13 @@ function PreviewPanel({
                   <CheckCircle2 className="h-3 w-3 text-emerald-600" />
                 ) : r.suggestion ? (
                   <span
-                    className="font-mono text-[10px] text-amber-700 dark:text-amber-300"
+                    className="font-mono text-[10px] text-rose-700 dark:text-rose-300"
                     title={`Did you mean ${r.suggestion.label}? (${Math.round(r.suggestion.similarity * 100)}% match)`}
                   >
                     did you mean {r.suggestion.label}?
                   </span>
                 ) : (
-                  <AlertTriangle className="h-3 w-3 text-amber-600" />
+                  <AlertTriangle className="h-3 w-3 text-rose-600" />
                 )}
               </span>
             </li>

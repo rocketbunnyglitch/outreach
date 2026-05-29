@@ -145,7 +145,7 @@ function AddStepForm({
   return (
     <form
       action={doSubmit}
-      className="mt-3 flex flex-col gap-3 rounded-md border border-amber-200 bg-amber-50/40 p-3 dark:border-amber-900/40 dark:bg-amber-950/10"
+      className="mt-3 flex flex-col gap-3 rounded-md border border-rose-200 bg-rose-50/40 p-3 dark:border-rose-900/40 dark:bg-rose-950/10"
     >
       <input type="hidden" name="outreachBrandId" value={brandId} />
       <input type="hidden" name="stepNumber" value={stepNumber} />

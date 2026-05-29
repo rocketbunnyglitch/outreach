@@ -1,10 +1,11 @@
 import { outreachBrands, staffMembers, staffOutreachEmails } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
 import { canSendNow } from "@/lib/send-throttle";
 import { asc, eq, isNull } from "drizzle-orm";
-import { AlertCircle, CheckCircle2, Mail, Unplug } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Mail, Unplug } from "lucide-react";
 import Link from "next/link";
 import { disconnectInbox } from "./_actions";
 import { InboxBrandSelect } from "./_components/inbox-brand-select";
@@ -135,7 +136,7 @@ export default async function InboxesPage({ searchParams }: Props) {
       {!oauthReady && (
         <section className="card-surface p-5">
           <header className="mb-3 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <AlertCircle className="h-4 w-4 text-rose-500" />
             <h2 className="font-semibold text-lg tracking-tight">Gmail OAuth not configured</h2>
           </header>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -157,13 +158,42 @@ export default async function InboxesPage({ searchParams }: Props) {
             Walkthrough: console.cloud.google.com → New project → Enable Gmail API → OAuth consent
             (External, Testing) → Add scopes (gmail.send, gmail.readonly, gmail.modify,
             userinfo.email, openid) → Add test users (your staff Gmail addresses) → Create OAuth
-            Client (Web app) → Redirect URI{" "}
-            <code className="rounded bg-zinc-100 px-1 py-0.5 text-[10px] dark:bg-zinc-800">
-              https://outreach.barcrawlconnect.com/api/auth/google/callback
-            </code>
+            Client (Web app) → Redirect URI shown below.
           </p>
         </section>
       )}
+
+      {/* Authorized redirect URI — shown always, not just when OAuth isn't
+          configured. The "redirect_uri_mismatch" error happens when the URL
+          we send to Google doesn't match what's registered in the Cloud
+          Console. Surfacing it here lets the operator copy-paste it
+          verbatim into Google's OAuth client config. */}
+      <section className="card-surface p-5">
+        <header className="mb-3 flex items-center gap-2">
+          <Info className="h-4 w-4 text-zinc-500" />
+          <h2 className="font-semibold text-base tracking-tight">
+            Authorized redirect URI (Google Cloud Console)
+          </h2>
+        </header>
+        <p className="text-xs text-zinc-600 dark:text-zinc-400">
+          If you see{" "}
+          <code className="rounded bg-rose-50 px-1 py-0.5 text-[11px] text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+            Error 400: redirect_uri_mismatch
+          </code>{" "}
+          when clicking Connect, the URL below isn&apos;t listed verbatim under your OAuth
+          client&apos;s &quot;Authorized redirect URIs&quot;. Copy this exact value (including the
+          protocol and no trailing slash) into the Google Cloud Console for the OAuth client whose
+          ID + secret are in the server&apos;s .env.
+        </p>
+        <code className="mt-3 block break-all rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-[11px] dark:border-zinc-800 dark:bg-zinc-900">
+          {env.APP_URL}/api/auth/google/callback
+        </code>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          The URL is derived from the <code>APP_URL</code> env var (currently{" "}
+          <code>{env.APP_URL}</code>). If this is wrong, the server is misconfigured; fix APP_URL in
+          .env and restart, then re-register the redirect URI in Google Cloud Console.
+        </p>
+      </section>
 
       {/* My inboxes — per brand */}
       <section className="flex flex-col gap-3">

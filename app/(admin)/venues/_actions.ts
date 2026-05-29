@@ -571,7 +571,11 @@ export async function bulkUpdateVenues(
 const commitVenueListFieldSchema = z.object({
   venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
   field: z.enum(["name", "address", "capacity", "doNotContact"]),
-  value: z.string().max(500),
+  // Allow undefined so an empty value (clearing the field) parses
+  // successfully. formToObject in lib/form-utils.ts maps "" → undefined
+  // to support .optional() on most schemas; for inline-edit cells we
+  // want "" to mean "clear the column" instead of failing the parse.
+  value: z.union([z.string().max(500), z.undefined()]).transform((v) => v ?? ""),
 });
 
 export async function commitVenueListField(

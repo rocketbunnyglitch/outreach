@@ -115,7 +115,7 @@ export function EscalationPopover({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="inline-flex items-center gap-2 font-semibold text-base tracking-tight">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <AlertTriangle className="h-4 w-4 text-rose-500" />
               Escalate to senior staff
             </h3>
             <p className="mt-0.5 truncate text-xs text-zinc-500">{venueName}</p>

@@ -50,7 +50,7 @@ export function SendCapPill({ inboxes, totalSent, totalCap, allMaxed }: Props) {
     allMaxed || pct >= 0.95
       ? "text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-300 dark:bg-rose-950/40 dark:border-rose-900/60"
       : pct >= 0.7
-        ? "text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-900/60"
+        ? "text-rose-700 bg-rose-50 border-rose-200 dark:text-rose-300 dark:bg-rose-950/40 dark:border-rose-900/60"
         : "text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900/60";
 
   return (
@@ -90,7 +90,7 @@ export function SendCapPill({ inboxes, totalSent, totalCap, allMaxed }: Props) {
                 : inboxPct >= 0.95
                   ? "bg-rose-500"
                   : inboxPct >= 0.7
-                    ? "bg-amber-500"
+                    ? "bg-rose-500"
                     : "bg-emerald-500";
               return (
                 <li key={ib.staffOutreachEmailId} className="flex flex-col gap-1">
@@ -117,7 +117,7 @@ export function SendCapPill({ inboxes, totalSent, totalCap, allMaxed }: Props) {
                         paused{ib.pausedReason ? ` · ${ib.pausedReason.slice(0, 32)}` : ""}
                       </span>
                     ) : ib.warmupDay !== null ? (
-                      <span className="text-amber-700 dark:text-amber-400">
+                      <span className="text-rose-700 dark:text-rose-400">
                         warm-up day {ib.warmupDay + 1}
                       </span>
                     ) : (

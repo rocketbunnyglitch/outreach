@@ -115,7 +115,7 @@ export function AllCrawlsSummary({
               className={cn(
                 "font-mono text-[10px] uppercase tracking-[0.08em]",
                 notConfigured
-                  ? "text-amber-700 dark:text-amber-300"
+                  ? "text-rose-700 dark:text-rose-300"
                   : "text-zinc-600 dark:text-zinc-400",
               )}
             >
@@ -150,13 +150,13 @@ export function AllCrawlsSummary({
       </div>
 
       {notConfigured && (
-        <div className="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/95 p-3 text-xs dark:border-amber-900/40 dark:bg-amber-950/80">
-          <p className="font-medium text-amber-900 dark:text-amber-200">
+        <div className="mt-3 rounded-lg border border-rose-200/80 bg-rose-50/95 p-3 text-xs dark:border-rose-900/40 dark:bg-rose-950/80">
+          <p className="font-medium text-rose-900 dark:text-rose-200">
             Eventbrite isn't configured yet
           </p>
-          <p className="mt-1 text-amber-800/80 dark:text-amber-300/80">
+          <p className="mt-1 text-rose-800/80 dark:text-rose-300/80">
             Add{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[10px] dark:bg-amber-900/40">
+            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-[10px] dark:bg-rose-900/40">
               EVENTBRITE_PRIVATE_TOKEN
             </code>{" "}
             to the server env to enable sync.
@@ -184,7 +184,7 @@ function StatCard({
     zinc: "text-zinc-900 dark:text-zinc-100",
     emerald: "text-emerald-700 dark:text-emerald-400",
     orange: "text-orange-700 dark:text-orange-400",
-    amber: "text-amber-700 dark:text-amber-400",
+    amber: "text-rose-700 dark:text-rose-400",
   };
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200/80 bg-white p-3 shadow-sm shadow-zinc-200/30 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">

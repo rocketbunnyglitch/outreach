@@ -113,19 +113,19 @@ export function DuplicateWarning({
   if (matches.length === 0 && !loading) return null;
 
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-950/30">
+    <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-xs dark:border-rose-900/50 dark:bg-rose-950/30">
       <div className="flex items-start gap-2">
         {loading ? (
-          <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-amber-700 dark:text-amber-300" />
+          <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-rose-700 dark:text-rose-300" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-300" />
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-700 dark:text-rose-300" />
         )}
         <div className="min-w-0 flex-1">
           {loading ? (
-            <p className="font-mono text-amber-800 dark:text-amber-300">checking for duplicates…</p>
+            <p className="font-mono text-rose-800 dark:text-rose-300">checking for duplicates…</p>
           ) : (
             <>
-              <p className="font-medium text-amber-900 dark:text-amber-200">
+              <p className="font-medium text-rose-900 dark:text-rose-200">
                 {matches.length === 1
                   ? "1 venue looks similar — check before creating a duplicate"
                   : `${matches.length} venues look similar — check before creating a duplicate`}
@@ -136,11 +136,11 @@ export function DuplicateWarning({
                     <Link
                       href={`/venues/${m.id}`}
                       target="_blank"
-                      className="min-w-0 truncate text-amber-900 underline hover:no-underline dark:text-amber-200"
+                      className="min-w-0 truncate text-rose-900 underline hover:no-underline dark:text-rose-200"
                     >
                       {m.name}
                       {m.address && (
-                        <span className="ml-2 text-amber-700/80 dark:text-amber-300/80">
+                        <span className="ml-2 text-rose-700/80 dark:text-rose-300/80">
                           · {m.address.split(",")[0]}
                         </span>
                       )}
@@ -150,7 +150,7 @@ export function DuplicateWarning({
                         </span>
                       )}
                     </Link>
-                    <span className="shrink-0 font-mono text-[10px] text-amber-700 tabular-nums dark:text-amber-300">
+                    <span className="shrink-0 font-mono text-[10px] text-rose-700 tabular-nums dark:text-rose-300">
                       {Math.round(m.bestScore * 100)}% match
                     </span>
                   </li>

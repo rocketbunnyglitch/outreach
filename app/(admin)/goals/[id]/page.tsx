@@ -98,7 +98,7 @@ export default async function GoalDetailPage({ params }: Props) {
                 progress.pct >= 80
                   ? "h-full rounded-full bg-emerald-500 transition-all"
                   : progress.pct >= 40
-                    ? "h-full rounded-full bg-amber-500 transition-all"
+                    ? "h-full rounded-full bg-rose-500 transition-all"
                     : "h-full rounded-full bg-zinc-500 transition-all"
               }
               style={{ width: `${progress.pct}%` }}
@@ -137,12 +137,12 @@ export default async function GoalDetailPage({ params }: Props) {
           "use server";
           await deleteGoal(null, fd);
         }}
-        className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950"
+        className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
       >
         <input type="hidden" name="id" value={goal.id} />
         <div>
-          <p className="font-medium text-amber-900 text-sm dark:text-amber-200">Delete this goal</p>
-          <p className="mt-1 text-amber-800 text-xs dark:text-amber-300">
+          <p className="font-medium text-rose-900 text-sm dark:text-rose-200">Delete this goal</p>
+          <p className="mt-1 text-rose-800 text-xs dark:text-rose-300">
             Goals are deleted outright (no undo via UI). Audit log keeps the record.
           </p>
         </div>

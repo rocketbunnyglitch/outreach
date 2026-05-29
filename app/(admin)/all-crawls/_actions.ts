@@ -693,3 +693,169 @@ function escapeHtmlForBulk(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// =========================================================================
+// Bulk set event start/end times across selected crawls
+// =========================================================================
+
+/**
+ * Apply a start time + end time (HH:MM clock-of-day) to many events at
+ * once. Each event keeps its own date; the action computes the actual
+ * timestamp by combining the date with the time-of-day in the city's
+ * IANA timezone — so "22:00 / 02:00" applied to a New York and a
+ * Toronto event yields different UTC instants, both correctly anchored
+ * to local time.
+ *
+ * End time earlier than start time is treated as the NEXT calendar day
+ * (e.g. start 22:00, end 02:00 → end lands on day+1 02:00 local), which
+ * is the common "crawl runs past midnight" case.
+ *
+ * Operator workflow:
+ *   1. Filter the all-crawls table to a single crawl number (e.g. all
+ *      "Crawl 1" events for Halloween).
+ *   2. Select all + click "Set times".
+ *   3. Popover takes start + end HH:MM, hits this action.
+ *   4. Every event's startsAt/endsAt is rewritten in one transaction.
+ *
+ * Pass startTime/endTime as "" to clear (sets NULL). Both fields can be
+ * sent independently — passing only startTime leaves endsAt unchanged.
+ */
+const bulkSetTimesSchema = z.object({
+  eventIds: z.array(uuid).min(1).max(500),
+  /** "HH:MM" 24-hour, or "" to clear. Optional means "don't touch". */
+  startTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$|^$/)
+    .optional(),
+  endTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$|^$/)
+    .optional(),
+});
+
+export async function bulkSetEventTimes(
+  input: z.infer<typeof bulkSetTimesSchema>,
+): Promise<ActionResult<{ updated: number; skipped: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkSetTimesSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid times payload." };
+  }
+  const { eventIds, startTime, endTime } = parsed.data;
+  if (startTime === undefined && endTime === undefined) {
+    return { ok: false, error: "Provide at least one of start or end time." };
+  }
+
+  // Pull each event's date + its city's timezone in one query so we
+  // can build per-row local timestamps. Skip events without a date —
+  // can't compute a timestamp without one.
+  const rows = await db.execute<{
+    id: string;
+    event_date: string | null;
+    timezone: string;
+  }>(sql`
+    SELECT e.id::text AS id,
+           e.event_date::text AS event_date,
+           c.timezone AS timezone
+      FROM events e
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+     WHERE e.id IN (${sql.join(
+       eventIds.map((id) => sql`${id}::uuid`),
+       sql`, `,
+     )})
+  `);
+
+  type Row = { id: string; event_date: string | null; timezone: string };
+  const list: Row[] = Array.isArray(rows)
+    ? (rows as unknown as Row[])
+    : ((rows as unknown as { rows: Row[] }).rows ?? []);
+
+  let updated = 0;
+  let skipped = 0;
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      for (const r of list) {
+        if (!r.event_date) {
+          skipped += 1;
+          continue;
+        }
+        const patch: { startsAt?: Date | null; endsAt?: Date | null; updatedBy?: string } = {
+          updatedBy: staff.id,
+        };
+        if (startTime !== undefined) {
+          patch.startsAt =
+            startTime === "" ? null : zonedTimestamp(r.event_date, startTime, r.timezone);
+        }
+        if (endTime !== undefined) {
+          if (endTime === "") {
+            patch.endsAt = null;
+          } else {
+            // If endTime < startTime (or there's no startTime baseline
+            // and we still want to be sane), treat end as next day.
+            const startForCmp = startTime !== undefined && startTime !== "" ? startTime : null;
+            const rollover = startForCmp !== null && endTime < startForCmp ? 1 : 0;
+            patch.endsAt = zonedTimestamp(r.event_date, endTime, r.timezone, rollover);
+          }
+        }
+        await tx.update(events).set(patch).where(eq(events.id, r.id));
+        updated += 1;
+      }
+    });
+    return { ok: true, data: { updated, skipped } };
+  } catch (err) {
+    logger.error({ err }, "bulkSetEventTimes failed");
+    return { ok: false, error: "Bulk update failed. Try again." };
+  }
+}
+
+/**
+ * Combine an ISO event_date ("YYYY-MM-DD"), a clock time ("HH:MM"),
+ * and an IANA timezone into a Date that represents that wall-clock
+ * moment in that zone. Optionally add `dayOffset` calendar days to
+ * support the "crawl ends past midnight" case.
+ *
+ * Implementation: assemble an ISO string with the date+time, ask
+ * Intl.DateTimeFormat (timeZone: 'UTC' against the zoned time) what
+ * offset that zone had on that date, and apply the inverse. Pure JS,
+ * no extra deps.
+ */
+function zonedTimestamp(isoDate: string, hhmm: string, timeZone: string, dayOffset = 0): Date {
+  const [year, month, day] = isoDate.split("-").map((n) => Number.parseInt(n, 10));
+  const [hh, mm] = hhmm.split(":").map((n) => Number.parseInt(n, 10));
+  if (year == null || month == null || day == null || hh == null || mm == null) {
+    return new Date(Number.NaN);
+  }
+  // Build a UTC date with the requested wall-clock values + dayOffset,
+  // then determine what offset the target zone had at that moment and
+  // shift to align UTC with local.
+  const naiveUtc = new Date(Date.UTC(year, month - 1, day + dayOffset, hh, mm, 0));
+  // Use Intl to find what local time `naiveUtc` produces in timeZone;
+  // the gap between requested local time and what timeZone reports is
+  // the offset we need to subtract from naiveUtc.
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = dtf.formatToParts(naiveUtc).reduce<Record<string, string>>((acc, p) => {
+    if (p.type !== "literal") acc[p.type] = p.value;
+    return acc;
+  }, {});
+  const reportedAsUtc = Date.UTC(
+    Number.parseInt(parts.year ?? "0", 10),
+    Number.parseInt(parts.month ?? "1", 10) - 1,
+    Number.parseInt(parts.day ?? "1", 10),
+    Number.parseInt(parts.hour === "24" ? "0" : (parts.hour ?? "0"), 10),
+    Number.parseInt(parts.minute ?? "0", 10),
+    Number.parseInt(parts.second ?? "0", 10),
+  );
+  const offsetMs = reportedAsUtc - naiveUtc.getTime();
+  return new Date(naiveUtc.getTime() - offsetMs);
+}

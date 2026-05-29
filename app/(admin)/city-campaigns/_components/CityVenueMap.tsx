@@ -375,7 +375,7 @@ export function CityVenueMap({ cityCampaignId, cityId, googleMapsApiKey }: Props
                 )}
                 {selectedPlace.rating != null && (
                   <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-700">
-                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                    <Star className="h-3 w-3 fill-rose-400 text-rose-400" />
                     {selectedPlace.rating.toFixed(1)}
                     {selectedPlace.userRatingCount != null && (
                       <span className="text-zinc-500">
@@ -537,7 +537,7 @@ function InfoBanner({
 }) {
   if (tone === "error") {
     return (
-      <div className="border-amber-300 border-b bg-amber-50 px-4 py-2 text-amber-900 text-xs dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <div className="border-rose-300 border-b bg-rose-50 px-4 py-2 text-rose-900 text-xs dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
         {children}
       </div>
     );

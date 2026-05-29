@@ -105,8 +105,8 @@ export function PhaseSwitcher({ brandId, currentPhase, setAt }: Props) {
                 {PHASE_DESCRIPTIONS[phase]}
               </p>
               {isConfirming && (
-                <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 dark:border-amber-900/40 dark:bg-amber-950/20">
-                  <p className="font-medium text-amber-900 text-xs dark:text-amber-200">
+                <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 p-2 dark:border-rose-900/40 dark:bg-rose-950/20">
+                  <p className="font-medium text-rose-900 text-xs dark:text-rose-200">
                     Raising the phase enables more automation. Sure?
                   </p>
                   <div className="mt-2 flex items-center gap-2">

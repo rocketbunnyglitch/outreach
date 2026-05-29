@@ -1081,7 +1081,12 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
 const commitVenueFieldSchema = z.object({
   venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
   field: z.enum(["name", "email", "phoneE164"]),
-  value: z.string().max(500),
+  // value can be "" → clears the email/phone field. formToObject in
+  // lib/form-utils.ts maps empty strings to undefined to support
+  // .optional() on most schemas, which made clearing this field via the
+  // inline cell fail with "Invalid payload." We treat undefined as ""
+  // here so deletes work through the same code path as edits.
+  value: z.union([z.string().max(500), z.undefined()]).transform((v) => v ?? ""),
   cityCampaignId: z
     .string()
     .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),

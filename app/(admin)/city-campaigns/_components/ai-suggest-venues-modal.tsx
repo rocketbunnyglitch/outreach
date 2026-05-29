@@ -200,8 +200,8 @@ export function AiSuggestVenuesModal({
           )}
 
           {state.kind === "notConfigured" && (
-            <div className="rounded-md border border-amber-200 bg-amber-50/60 px-4 py-3 dark:border-amber-900 dark:bg-amber-950/30">
-              <p className="text-amber-800 text-sm dark:text-amber-200">
+            <div className="rounded-md border border-rose-200 bg-rose-50/60 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/30">
+              <p className="text-rose-800 text-sm dark:text-rose-200">
                 {state.reason === "places" ? (
                   <>
                     Places API isn't configured. Set{" "}
@@ -245,7 +245,7 @@ export function AiSuggestVenuesModal({
           {state.kind === "ready" && state.suggestions.length > 0 && (
             <ul className="space-y-3">
               {state.noticeKey === "ai_not_configured" && (
-                <li className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-amber-800 text-xs dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                <li className="rounded-md border border-rose-200 bg-rose-50/60 px-3 py-2 text-rose-800 text-xs dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
                   Showing rating-sorted candidates without AI ranking. Set ANTHROPIC_API_KEY for
                   Claude reasoning.
                 </li>
@@ -341,7 +341,7 @@ function SuggestionCard({
             </span>
             <h3 className="truncate font-semibold text-sm tracking-tight">{suggestion.name}</h3>
             {suggestion.rating !== null && (
-              <span className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[10px] text-amber-600 dark:text-amber-400">
+              <span className="inline-flex shrink-0 items-center gap-0.5 font-mono text-[10px] text-rose-600 dark:text-rose-400">
                 <Star className="h-2.5 w-2.5 fill-current" />
                 {suggestion.rating.toFixed(1)}
                 {suggestion.userRatingCount !== null && (

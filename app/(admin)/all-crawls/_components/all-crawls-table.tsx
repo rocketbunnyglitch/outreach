@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import {
   Calendar,
   ChevronDown,
+  Clock,
   Loader2,
   RefreshCw,
   Search,
@@ -24,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   bulkPushEventbriteDescriptions,
+  bulkSetEventTimes,
   bulkSyncEventbriteSales,
   bulkUnlinkEventbrite,
 } from "../_actions";
@@ -92,6 +94,10 @@ function matchesFilter(row: AllCrawlsRow, filter: FilterKey): boolean {
 export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
+  /** Optional crawl-number filter (null = all). Drives the new chips
+   *  row beneath the existing filter chips and scopes bulk actions to
+   *  a single crawl number when set. */
+  const [crawlFilter, setCrawlFilter] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("city");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -141,8 +147,22 @@ export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
     return counts;
   }, [rows]);
 
+  // Distinct crawl numbers present in the dataset — drives the Crawl-#
+  // filter chips. Sorted ascending so "Crawl 1" sits to the left of
+  // "Crawl 2".
+  const availableCrawlNumbers = useMemo(() => {
+    const set = new Set<number>();
+    for (const r of rows) {
+      if (r.crawlNumber != null) set.add(r.crawlNumber);
+    }
+    return Array.from(set).sort((a, b) => a - b);
+  }, [rows]);
+
   const filtered = useMemo(() => {
     let result = rows.filter((r) => matchesFilter(r, filter));
+    if (crawlFilter !== null) {
+      result = result.filter((r) => r.crawlNumber === crawlFilter);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter(
@@ -162,7 +182,7 @@ export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [rows, search, filter, sortKey, sortDir]);
+  }, [rows, search, filter, crawlFilter, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -264,6 +284,45 @@ export function AllCrawlsTable({ campaignId, rows, currentStaffId }: Props) {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Crawl-number filter chips — only rendered when more than one
+          distinct crawl number is present. Scopes both the visible rows
+          AND the bulk-action targets so "Set times for Crawl 1" lands
+          on just the Crawl-1 events. */}
+      {availableCrawlNumbers.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-zinc-200/40 border-b bg-zinc-50/30 px-5 py-2.5 dark:border-zinc-800/30 dark:bg-zinc-900/20">
+          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+            Crawl #
+          </span>
+          <button
+            type="button"
+            onClick={() => setCrawlFilter(null)}
+            className={cn(
+              "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] transition-all",
+              crawlFilter === null
+                ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-zinc-700",
+            )}
+          >
+            All
+          </button>
+          {availableCrawlNumbers.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setCrawlFilter(n)}
+              className={cn(
+                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.1em] tabular-nums transition-all",
+                crawlFilter === n
+                  ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-zinc-700",
+              )}
+            >
+              Crawl {n}
+            </button>
+          ))}
         </div>
       )}
 
@@ -676,8 +735,14 @@ function BulkActionBar({
   const [pendingSync, startSync] = useTransition();
   const [pendingPush, startPush] = useTransition();
   const [pendingUnlink, startUnlink] = useTransition();
+  const [pendingTimes, startTimes] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Times popover is open + holds the operator's draft start/end. */
+  const [timesOpen, setTimesOpen] = useState(false);
+  const [draftStart, setDraftStart] = useState("");
+  const [draftEnd, setDraftEnd] = useState("");
+  const router = useRouter();
 
   useEffect(() => {
     if (!toast) return;
@@ -753,10 +818,37 @@ function BulkActionBar({
     });
   }
 
-  const busy = pendingSync || pendingPush || pendingUnlink;
+  async function runSetTimes() {
+    setError(null);
+    if (!draftStart && !draftEnd) {
+      setError("Enter a start time, an end time, or both.");
+      return;
+    }
+    startTimes(async () => {
+      const result = await bulkSetEventTimes({
+        eventIds: selectedIds,
+        startTime: draftStart || undefined,
+        endTime: draftEnd || undefined,
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Couldn't update times.");
+        return;
+      }
+      const { updated, skipped } = result.data;
+      const skipNote = skipped > 0 ? `, ${skipped} skipped (no date)` : "";
+      setToast(`Updated ${updated} crawl${updated === 1 ? "" : "s"}${skipNote}`);
+      setTimesOpen(false);
+      setDraftStart("");
+      setDraftEnd("");
+      onComplete();
+      router.refresh();
+    });
+  }
+
+  const busy = pendingSync || pendingPush || pendingUnlink || pendingTimes;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-blue-200/60 border-b bg-blue-50/60 px-5 py-2.5 dark:border-blue-900/40 dark:bg-blue-950/30">
+    <div className="relative flex flex-wrap items-center justify-between gap-3 border-blue-200/60 border-b bg-blue-50/60 px-5 py-2.5 dark:border-blue-900/40 dark:bg-blue-950/30">
       <div className="flex items-center gap-2">
         <span className="font-medium font-mono text-[11px] text-blue-700 uppercase tracking-[0.08em] dark:text-blue-300">
           {selectedIds.length} selected
@@ -771,6 +863,16 @@ function BulkActionBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setTimesOpen((o) => !o)}
+          disabled={busy}
+          aria-expanded={timesOpen}
+        >
+          <Clock className="h-3 w-3" /> Set times
+        </Button>
         <Button type="button" size="sm" variant="ghost" onClick={runSync} disabled={busy}>
           {pendingSync ? (
             <>
@@ -812,6 +914,72 @@ function BulkActionBar({
           )}
         </Button>
       </div>
+
+      {/* Times popover. Sits below the bar. The action takes the
+          selected IDs as-is — the operator scopes to a specific crawl
+          number BEFORE selecting (via the Crawl # chip row above the
+          table) so this popover doesn't need its own filter. */}
+      {timesOpen && (
+        <div className="absolute top-full left-5 z-30 mt-1 w-80 rounded-lg border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+          <p className="font-medium text-sm">
+            Set start & end time for {selectedIds.length} crawl
+            {selectedIds.length === 1 ? "" : "s"}
+          </p>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            Times are 24-hour and are interpreted in each crawl&apos;s city timezone. Leave a field
+            blank to skip that side. End earlier than start rolls to the next day (e.g. 22:00 →
+            02:00).
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]">
+                Start (HH:MM)
+              </span>
+              <input
+                type="time"
+                value={draftStart}
+                onChange={(e) => setDraftStart(e.target.value)}
+                className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                disabled={pendingTimes}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]">
+                End (HH:MM)
+              </span>
+              <input
+                type="time"
+                value={draftEnd}
+                onChange={(e) => setDraftEnd(e.target.value)}
+                className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+                disabled={pendingTimes}
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setTimesOpen(false)}
+              disabled={pendingTimes}
+            >
+              Cancel
+            </Button>
+            <Button type="button" size="sm" onClick={runSetTimes} disabled={pendingTimes}>
+              {pendingTimes ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+                </>
+              ) : (
+                <>
+                  <Clock className="h-3 w-3" /> Apply
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="w-full font-mono text-[10px] text-rose-600 dark:text-rose-400">{error}</p>

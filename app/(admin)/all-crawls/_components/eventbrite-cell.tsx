@@ -285,14 +285,12 @@ export function EventbriteCell({
 
       {/* Mismatch confirmation popover */}
       {confirmMismatch && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-80 rounded-lg border border-amber-200 bg-amber-50/95 p-3 shadow-lg dark:border-amber-900/40 dark:bg-amber-950/80">
+        <div className="absolute top-full left-0 z-50 mt-1 w-80 rounded-lg border border-rose-200 bg-rose-50/95 p-3 shadow-lg dark:border-rose-900/40 dark:bg-rose-950/80">
           <div className="mb-2 flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
             <div className="flex-1">
-              <p className="font-medium text-amber-900 text-xs dark:text-amber-100">
-                City mismatch
-              </p>
-              <p className="mt-1 text-[11px] text-amber-800 leading-relaxed dark:text-amber-200">
+              <p className="font-medium text-rose-900 text-xs dark:text-rose-100">City mismatch</p>
+              <p className="mt-1 text-[11px] text-rose-800 leading-relaxed dark:text-rose-200">
                 The Eventbrite event <strong className="italic">{confirmMismatch.ebName}</strong> is
                 in <strong>{confirmMismatch.eventCity}</strong>, but this crawl is for{" "}
                 <strong>{confirmMismatch.crawlCity}</strong>. Link anyway?

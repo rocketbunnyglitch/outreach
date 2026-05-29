@@ -253,7 +253,7 @@ function LiveCoverageCard({ data }: { data: SupportHoursData }) {
   return (
     <div className="card-surface flex flex-col gap-3 p-5">
       <div className="flex items-center gap-2">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-amber-500 dark:bg-zinc-800/60 dark:text-amber-400">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 text-rose-500 dark:bg-zinc-800/60 dark:text-rose-400">
           <Activity className="h-4 w-4" />
         </span>
         <span className="font-semibold text-sm">Live Coverage</span>
@@ -307,15 +307,15 @@ function KvCell({ label, value }: { label: string; value: string }) {
 
 function MissingHoursBanner({ count }: { count: number }) {
   return (
-    <div className="card-surface flex items-center justify-between gap-4 p-4 ring-1 ring-amber-500/20">
+    <div className="card-surface flex items-center justify-between gap-4 p-4 ring-1 ring-rose-500/20">
       <div className="flex items-start gap-2.5">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-        <p className="text-sm text-amber-700 dark:text-amber-200">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+        <p className="text-sm text-rose-700 dark:text-rose-200">
           <span className="font-medium">
             {count} crawl{count === 1 ? "" : "s"} {count === 1 ? "is" : "are"} missing start/end
             times
           </span>{" "}
-          <span className="text-amber-700/80 dark:text-amber-300/80">
+          <span className="text-rose-700/80 dark:text-rose-300/80">
             and are excluded from support totals.
           </span>
         </p>
@@ -523,7 +523,7 @@ function CoverageTipsCard({ data }: { data: SupportHoursData }) {
   return (
     <div className="card-surface flex flex-col gap-3 p-5">
       <div className="flex items-center gap-2">
-        <Lightbulb className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+        <Lightbulb className="h-4 w-4 text-rose-500 dark:text-rose-400" />
         <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
           Coverage Tips
         </span>

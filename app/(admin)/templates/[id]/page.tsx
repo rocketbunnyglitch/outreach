@@ -117,13 +117,13 @@ export default async function EditTemplatePage({ params, searchParams }: PagePro
 
       <form
         action={boundArchive}
-        className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950"
+        className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
       >
         <div>
-          <p className="font-medium text-amber-900 text-sm dark:text-amber-200">
+          <p className="font-medium text-rose-900 text-sm dark:text-rose-200">
             Archive this template
           </p>
-          <p className="mt-1 text-amber-800 text-xs dark:text-amber-300">
+          <p className="mt-1 text-rose-800 text-xs dark:text-rose-300">
             Hides it from lists and from automation. Past sends keep their reference.
           </p>
         </div>
