@@ -50,6 +50,7 @@ export * from "./email-send-events";
 export * from "./email-suppression";
 export * from "./email-soft-bounces";
 export * from "./inbox-daily-stats";
+export * from "./inbox-alerts";
 export * from "./team-labels";
 export * from "./campaign-connected-accounts";
 export * from "./email-messages";

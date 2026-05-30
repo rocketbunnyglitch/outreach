@@ -54,6 +54,7 @@ import { cn } from "@/lib/cn";
 import {
   Archive,
   BarChart3,
+  Bell,
   Boxes,
   Briefcase,
   Building2,
@@ -155,6 +156,7 @@ const ADMIN_SECTION: Section = {
       label: "Suppression",
       icon: <ShieldOff className="h-3 w-3" />,
     },
+    { href: "/admin/alerts", label: "Alerts", icon: <Bell className="h-3 w-3" /> },
     { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3 w-3" /> },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3 w-3" /> },
