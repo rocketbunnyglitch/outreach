@@ -1,8 +1,10 @@
+import type { CampaignSuggestion } from "@/lib/campaign-matcher";
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
 import Link from "next/link";
+import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
@@ -24,11 +26,13 @@ export function ThreadPane({
   outreachHistory,
   threadLabels,
   allTeamLabels,
+  campaignSuggestions,
 }: {
   detail: InboxThreadDetail;
   outreachHistory: VenueOutreachHistoryEntry[];
   threadLabels: ThreadLabelRow[];
   allTeamLabels: TeamLabelSummary[];
+  campaignSuggestions: CampaignSuggestion[];
 }) {
   const { thread, messages } = detail;
 
@@ -90,6 +94,11 @@ export function ThreadPane({
           applied={threadLabels}
           allTeamLabels={allTeamLabels}
         />
+        {/* Smart-detection: rule-based matcher suggests an active
+            city_campaign for unattributed threads. Empty list = no
+            suggestion meets the confidence threshold; component
+            returns null in that case. */}
+        <CampaignSuggestionRow threadId={thread.id} suggestions={campaignSuggestions} />
       </header>
 
       {/* Messages */}

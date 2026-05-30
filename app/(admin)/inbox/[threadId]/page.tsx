@@ -1,4 +1,5 @@
 import { requireStaff } from "@/lib/auth";
+import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
 import {
   FOLDER_LABELS,
   type InboxFolder,
@@ -94,9 +95,20 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // Labels applied to THIS thread + the full team-label catalogue so
   // the inline picker can render checked/unchecked state without an
   // extra round trip. Both queries are small (single-team scope).
-  const [threadLabels, teamLabelsAll] = await Promise.all([
+  // Smart-detection runs in parallel: rule-based scorer that surfaces
+  // the most plausible active city_campaign for the thread. Returns
+  // empty list when the thread is already attributed or nothing
+  // crosses the confidence threshold.
+  const [threadLabels, teamLabelsAll, campaignSuggestions] = await Promise.all([
     listThreadLabels(threadId),
     listTeamLabels(currentStaff.teamId),
+    suggestCampaignsForThread({
+      threadId,
+      currentCityCampaignId: detail.thread.cityCampaignId,
+      venueId: detail.thread.venueId,
+      subject: detail.thread.subject,
+      teamId: currentStaff.teamId,
+    }),
   ]);
 
   const preservedQuery = new URLSearchParams();
@@ -147,6 +159,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           outreachHistory={outreachHistory}
           threadLabels={threadLabels}
           allTeamLabels={teamLabelsAll}
+          campaignSuggestions={campaignSuggestions}
         />
       }
     />
