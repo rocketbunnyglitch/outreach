@@ -14,10 +14,10 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { Loader2, Send, X } from "lucide-react";
+import { Loader2, Send, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { sendThreadReply } from "../_actions";
+import { draftAiReplyAction, sendThreadReply } from "../_actions";
 
 interface Props {
   threadId: string;
@@ -34,6 +34,10 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
    *  needs an explicit ack to bypass. */
   const [duplicateBlocked, setDuplicateBlocked] = useState(false);
   const [pending, startTx] = useTransition();
+  /** Separate transition for the AI-draft button so it doesn't
+   *  share pending state with Send (operator can still cancel/edit
+   *  during a long draft). */
+  const [aiPending, startAiTx] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
 
@@ -87,6 +91,40 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
       setCapBlocked(false);
       setDuplicateBlocked(false);
       router.refresh();
+    });
+  }
+
+  /**
+   * Generate an AI draft reply for this thread. Overwrites the current
+   * body (after confirm when body has content) with the Claude
+   * response. Operator always reviews + edits before sending — this
+   * never auto-sends.
+   *
+   * Failure modes surfaced inline as errors:
+   *   - "ANTHROPIC_API_KEY is not set on the server" → operator
+   *     needs to activate the AI integration
+   *   - "No inbound message on this thread to reply to" → defensive,
+   *     shouldn't normally hit since the button only renders when
+   *     the thread has been classified (which requires inbound).
+   */
+  function runAiDraft() {
+    setError(null);
+    if (body.trim() && !confirm("Replace current draft with AI-generated reply?")) {
+      return;
+    }
+    startAiTx(async () => {
+      const result = await draftAiReplyAction(threadId);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setBody(result.data.body);
+      // Keep focus on the textarea so the operator can edit immediately.
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        // Cursor at end of inserted draft.
+        textareaRef.current.setSelectionRange(result.data.body.length, result.data.body.length);
+      }
     });
   }
 
@@ -159,6 +197,24 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
           Cancel
         </button>
         <div className="flex items-center gap-2">
+          {/* AI draft — opt-in. Disabled while a send is in flight
+              or another draft is being generated. Violet accent
+              matches the suggested-next-action row (the engine's
+              convention for AI-assisted affordances). */}
+          <button
+            type="button"
+            onClick={runAiDraft}
+            disabled={pending || aiPending}
+            title="Generate a draft reply with AI (you'll review + edit before sending)"
+            className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-white px-2.5 py-1 font-medium text-violet-700 text-xs hover:bg-violet-50 disabled:opacity-50 dark:border-violet-700/60 dark:bg-zinc-950 dark:text-violet-200 dark:hover:bg-violet-950/40"
+          >
+            {aiPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            AI draft
+          </button>
           {capBlocked && isAdmin && (
             <Button
               variant="outline"

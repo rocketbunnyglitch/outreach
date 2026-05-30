@@ -13,6 +13,7 @@
  */
 
 import { emailMessages, emailThreads, staffOutreachEmails, teamLabels } from "@/db/schema";
+import { draftReply } from "@/lib/ai-reply";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { clearCadenceOnAction } from "@/lib/follow-up-cadence";
@@ -598,4 +599,25 @@ export async function removeLabelFromThreadAction(
   revalidatePath(`/inbox/${threadId}`);
   revalidatePath("/inbox");
   return { ok: true, data: { threadId, labelId: teamLabelId } };
+}
+
+/**
+ * AI-assisted reply drafter — wraps lib/ai-reply.draftReply in a
+ * server-action contract the ReplyComposer can call from the client.
+ *
+ * Always requires staff auth (via the underlying loader). Returns
+ * either { ok: true, body } or { ok: false, message }. The UI
+ * shows the failure message inline; the most common case is
+ * "ANTHROPIC_API_KEY not set" when the operator hasn't activated
+ * the AI integration on the server yet.
+ */
+export async function draftAiReplyAction(
+  threadId: string,
+): Promise<ActionResult<{ body: string }>> {
+  await requireStaff();
+  const result = await draftReply({ threadId });
+  if (!result.ok) {
+    return { ok: false, error: result.message };
+  }
+  return { ok: true, data: result.data };
 }
