@@ -30,10 +30,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ staffId:
   const { staffId } = await params;
   const { searchParams } = new URL(req.url);
   const windowDays = Number(searchParams.get("window") ?? "30");
+  const from = searchParams.get("from") ?? undefined;
+  const to = searchParams.get("to") ?? undefined;
 
   const profile = await loadStaffActivityProfile({
     staffId,
     windowDays: Number.isFinite(windowDays) ? windowDays : 30,
+    from: from || undefined,
+    to: to || undefined,
   });
   if (!profile) {
     return new NextResponse("Staff not found", { status: 404 });

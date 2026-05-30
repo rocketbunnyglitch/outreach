@@ -256,8 +256,25 @@ export interface StaffDailyDetail {
 export async function loadStaffDailyDetail(opts: {
   staffId: string;
   windowDays?: number;
+  from?: string;
+  to?: string;
 }): Promise<StaffDailyDetail[]> {
-  const windowDays = Math.min(Math.max(opts.windowDays ?? 30, 1), 365);
+  const useExplicitRange = Boolean(
+    opts.from && opts.to && isValidIsoDate(opts.from) && isValidIsoDate(opts.to),
+  );
+  let windowDays: number;
+  let fromIso: string;
+  let toIso: string;
+  if (useExplicitRange) {
+    fromIso = opts.from as string;
+    toIso = opts.to as string;
+    const rawDays = Math.floor((Date.parse(toIso) - Date.parse(fromIso)) / 86_400_000) + 1;
+    windowDays = Math.min(Math.max(rawDays, 1), 365);
+  } else {
+    windowDays = Math.min(Math.max(opts.windowDays ?? 30, 1), 365);
+    fromIso = "";
+    toIso = "";
+  }
 
   const result = await db.execute<{
     day: string;
@@ -268,8 +285,8 @@ export async function loadStaffDailyDetail(opts: {
   }>(sql`
     WITH date_series AS (
       SELECT generate_series(
-        (CURRENT_DATE - (${windowDays - 1} || ' days')::interval)::date,
-        CURRENT_DATE,
+        ${useExplicitRange ? sql`${fromIso}::date` : sql`(CURRENT_DATE - (${windowDays - 1} || ' days')::interval)::date`},
+        ${useExplicitRange ? sql`${toIso}::date` : sql`CURRENT_DATE`},
         '1 day'::interval
       )::date AS day
     )
@@ -384,8 +401,23 @@ export interface StaffActivityProfile {
 export async function loadStaffActivityProfile(opts: {
   staffId: string;
   windowDays?: number;
+  from?: string;
+  to?: string;
 }): Promise<StaffActivityProfile | null> {
-  const windowDays = Math.min(Math.max(opts.windowDays ?? 30, 1), 365);
+  const useExplicitRange = Boolean(
+    opts.from && opts.to && isValidIsoDate(opts.from) && isValidIsoDate(opts.to),
+  );
+  let windowDays: number;
+  let fromIso = "";
+  let toIso = "";
+  if (useExplicitRange) {
+    fromIso = opts.from as string;
+    toIso = opts.to as string;
+    const rawDays = Math.floor((Date.parse(toIso) - Date.parse(fromIso)) / 86_400_000) + 1;
+    windowDays = Math.min(Math.max(rawDays, 1), 365);
+  } else {
+    windowDays = Math.min(Math.max(opts.windowDays ?? 30, 1), 365);
+  }
 
   // Staff metadata
   const staffResult = await db.execute<{
@@ -415,7 +447,12 @@ export async function loadStaffActivityProfile(opts: {
 
   // Parallel: daily, top venues, recent feed
   const [daily, topVenues, recentActivity] = await Promise.all([
-    loadStaffDailyDetail({ staffId: opts.staffId, windowDays }),
+    loadStaffDailyDetail({
+      staffId: opts.staffId,
+      windowDays,
+      from: useExplicitRange ? fromIso : undefined,
+      to: useExplicitRange ? toIso : undefined,
+    }),
     loadTopVenuesForStaff(opts.staffId, windowDays),
     loadRecentActivityForStaff(opts.staffId, 30),
   ]);
@@ -430,8 +467,14 @@ export async function loadStaffActivityProfile(opts: {
   };
 
   const today = new Date();
-  const windowStart = new Date(today);
-  windowStart.setDate(windowStart.getDate() - (windowDays - 1));
+  const windowStartIso = useExplicitRange
+    ? fromIso
+    : (() => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (windowDays - 1));
+        return d.toISOString().slice(0, 10);
+      })();
+  const windowEndIso = useExplicitRange ? toIso : today.toISOString().slice(0, 10);
 
   return {
     staff: {
@@ -442,8 +485,8 @@ export async function loadStaffActivityProfile(opts: {
       status: staffRow.status,
     },
     windowDays,
-    windowStart: windowStart.toISOString().slice(0, 10),
-    windowEnd: today.toISOString().slice(0, 10),
+    windowStart: windowStartIso,
+    windowEnd: windowEndIso,
     daily,
     totals,
     topVenues,

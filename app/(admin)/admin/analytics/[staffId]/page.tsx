@@ -3,6 +3,7 @@ import { loadStaffActivityProfile } from "@/lib/team-analytics";
 import { ChevronLeft, Download, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DateRangePicker } from "../_components/date-range-picker";
 import { ActivityFeed } from "./_components/activity-feed";
 import { DailyChart } from "./_components/daily-chart";
 import { TopVenuesTable } from "./_components/top-venues-table";
@@ -27,7 +28,7 @@ export default async function StaffAnalyticsPage({
   searchParams,
 }: {
   params: Promise<{ staffId: string }>;
-  searchParams: Promise<{ window?: string }>;
+  searchParams: Promise<{ window?: string; from?: string; to?: string }>;
 }) {
   await requireAdmin();
   const { staffId } = await params;
@@ -36,6 +37,8 @@ export default async function StaffAnalyticsPage({
   const profile = await loadStaffActivityProfile({
     staffId,
     windowDays: Number.isFinite(windowDays) ? windowDays : 30,
+    from: sp.from,
+    to: sp.to,
   });
   if (!profile) notFound();
 
@@ -48,7 +51,7 @@ export default async function StaffAnalyticsPage({
         <ChevronLeft className="h-3 w-3" /> Team analytics
       </Link>
 
-      <ProfileHeader profile={profile} />
+      <ProfileHeader profile={profile} activeFrom={sp.from} activeTo={sp.to} />
 
       <div className="mt-6 grid gap-6">
         <DailyChart daily={profile.daily} windowDays={profile.windowDays} />
@@ -68,8 +71,12 @@ export default async function StaffAnalyticsPage({
 
 function ProfileHeader({
   profile,
+  activeFrom,
+  activeTo,
 }: {
   profile: NonNullable<Awaited<ReturnType<typeof loadStaffActivityProfile>>>;
+  activeFrom?: string;
+  activeTo?: string;
 }) {
   const initials = profile.staff.displayName
     .split(/\s+/)
@@ -100,7 +107,12 @@ function ProfileHeader({
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`/api/admin/analytics/${profile.staff.staffId}/export.csv?window=${profile.windowDays}`}
+            href={(() => {
+              if (activeFrom && activeTo) {
+                return `/api/admin/analytics/${profile.staff.staffId}/export.csv?from=${activeFrom}&to=${activeTo}`;
+              }
+              return `/api/admin/analytics/${profile.staff.staffId}/export.csv?window=${profile.windowDays}`;
+            })()}
             download
             className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-3 py-1.5 font-mono text-[11px] text-zinc-600 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
           >
@@ -108,6 +120,11 @@ function ProfileHeader({
             Download CSV
           </a>
           <WindowSelector currentWindow={profile.windowDays} staffId={profile.staff.staffId} />
+          <DateRangePicker
+            activeFrom={activeFrom}
+            activeTo={activeTo}
+            staffId={profile.staff.staffId}
+          />
         </div>
       </header>
 

@@ -24,9 +24,13 @@ interface Props {
   activeFrom?: string;
   /** Currently-applied to date (ISO YYYY-MM-DD), if any. */
   activeTo?: string;
+  /** Optional staff id — when set, routes to /admin/analytics/[staffId]
+   *  instead of /admin/analytics so the picker can be re-used on the
+   *  per-staff drill-down. */
+  staffId?: string;
 }
 
-export function DateRangePicker({ activeFrom, activeTo }: Props) {
+export function DateRangePicker({ activeFrom, activeTo, staffId }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState(activeFrom ?? defaultFrom());
@@ -44,14 +48,16 @@ export function DateRangePicker({ activeFrom, activeTo }: Props) {
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
 
+  const basePath = staffId ? `/admin/analytics/${staffId}` : "/admin/analytics";
+
   function apply() {
     setOpen(false);
-    router.push(`/admin/analytics?from=${from}&to=${to}`);
+    router.push(`${basePath}?from=${from}&to=${to}`);
   }
 
   function clear() {
     setOpen(false);
-    router.push("/admin/analytics");
+    router.push(basePath);
   }
 
   const isCustomActive = Boolean(activeFrom && activeTo);
