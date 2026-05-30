@@ -2,6 +2,7 @@ import { requireAdmin } from "@/lib/auth";
 import { loadTeamAnalytics } from "@/lib/team-analytics";
 import { Download } from "lucide-react";
 import Link from "next/link";
+import { DateRangePicker } from "./_components/date-range-picker";
 import { TeamAnalyticsTable } from "./_components/team-analytics-table";
 
 export const dynamic = "force-dynamic";
@@ -28,13 +29,15 @@ export const dynamic = "force-dynamic";
 export default async function TeamAnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ window?: string }>;
+  searchParams: Promise<{ window?: string; from?: string; to?: string }>;
 }) {
   await requireAdmin();
   const params = await searchParams;
   const windowDays = Number(params.window ?? "7");
   const data = await loadTeamAnalytics({
     windowDays: Number.isFinite(windowDays) ? windowDays : 7,
+    from: params.from,
+    to: params.to,
   });
 
   return (
@@ -51,10 +54,16 @@ export default async function TeamAnalyticsPage({
         </div>
         <div className="flex items-center gap-2">
           <DownloadCsvLink
-            href={`/api/admin/analytics/export.csv?window=${data.windowDays}`}
+            href={(() => {
+              if (params.from && params.to) {
+                return `/api/admin/analytics/export.csv?from=${params.from}&to=${params.to}`;
+              }
+              return `/api/admin/analytics/export.csv?window=${data.windowDays}`;
+            })()}
             label="Download CSV"
           />
           <WindowSelector currentWindow={data.windowDays} />
+          <DateRangePicker activeFrom={params.from} activeTo={params.to} />
         </div>
       </header>
 

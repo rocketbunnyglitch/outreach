@@ -25,9 +25,13 @@ export async function GET(req: Request) {
   await requireAdmin();
   const { searchParams } = new URL(req.url);
   const windowDays = Number(searchParams.get("window") ?? "7");
+  const from = searchParams.get("from") ?? undefined;
+  const to = searchParams.get("to") ?? undefined;
 
   const data = await loadTeamAnalytics({
     windowDays: Number.isFinite(windowDays) ? windowDays : 7,
+    from: from || undefined,
+    to: to || undefined,
   });
 
   // Generate per-day date headers (oldest first, matching the daily array)

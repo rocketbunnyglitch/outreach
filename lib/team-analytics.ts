@@ -59,9 +59,37 @@ export interface TeamAnalytics {
 export async function loadTeamAnalytics(
   opts: {
     windowDays?: number;
+    /** ISO date string YYYY-MM-DD. When BOTH from + to are provided
+     *  they override windowDays — used by the explicit date-range
+     *  picker. Inclusive on both ends. */
+    from?: string;
+    to?: string;
   } = {},
 ): Promise<TeamAnalytics> {
-  const windowDays = Math.min(Math.max(opts.windowDays ?? 7, 1), 90);
+  // Compute the effective window. If explicit from + to provided
+  // we honor them (clamped to a 365-day max so the SQL doesn't
+  // blow up on accidental year-long ranges); otherwise we use
+  // the windowDays preset.
+  const useExplicitRange = Boolean(
+    opts.from && opts.to && isValidIsoDate(opts.from) && isValidIsoDate(opts.to),
+  );
+  let windowDays: number;
+  let fromIso: string;
+  let toIso: string;
+  if (useExplicitRange) {
+    fromIso = opts.from as string;
+    toIso = opts.to as string;
+    // Re-derive windowDays for the per-row sparkline (each entry's
+    // daily[] is sized to windowDays).
+    const fromTs = Date.parse(fromIso);
+    const toTs = Date.parse(toIso);
+    const rawDays = Math.floor((toTs - fromTs) / 86_400_000) + 1;
+    windowDays = Math.min(Math.max(rawDays, 1), 365);
+  } else {
+    windowDays = Math.min(Math.max(opts.windowDays ?? 7, 1), 90);
+    fromIso = "";
+    toIso = "";
+  }
 
   // One query: join staff_members LEFT outreach_log over the window,
   // aggregate counts + a daily-bucket array for the sparkline.
@@ -79,8 +107,8 @@ export async function loadTeamAnalytics(
   }>(sql`
     WITH date_series AS (
       SELECT generate_series(
-        (CURRENT_DATE - (${windowDays - 1} || ' days')::interval)::date,
-        CURRENT_DATE,
+        ${useExplicitRange ? sql`${fromIso}::date` : sql`(CURRENT_DATE - (${windowDays - 1} || ' days')::interval)::date`},
+        ${useExplicitRange ? sql`${toIso}::date` : sql`CURRENT_DATE`},
         '1 day'::interval
       )::date AS day
     ),
@@ -91,7 +119,8 @@ export async function loadTeamAnalytics(
         ol.outcome::text AS outcome,
         ol.created_at::date AS day
       FROM outreach_log ol
-      WHERE ol.created_at >= CURRENT_DATE - (${windowDays - 1} || ' days')::interval
+      WHERE ol.created_at >= ${useExplicitRange ? sql`${fromIso}::date` : sql`CURRENT_DATE - (${windowDays - 1} || ' days')::interval`}
+        ${useExplicitRange ? sql`AND ol.created_at < ${toIso}::date + '1 day'::interval` : sql``}
     ),
     per_staff_day AS (
       SELECT
@@ -185,16 +214,30 @@ export async function loadTeamAnalytics(
   };
 
   const today = new Date();
-  const windowStart = new Date(today);
-  windowStart.setDate(windowStart.getDate() - (windowDays - 1));
+  const windowStartIso = useExplicitRange
+    ? fromIso
+    : (() => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (windowDays - 1));
+        return d.toISOString().slice(0, 10);
+      })();
+  const windowEndIso = useExplicitRange ? toIso : today.toISOString().slice(0, 10);
 
   return {
     windowDays,
-    windowStart: windowStart.toISOString().slice(0, 10),
-    windowEnd: today.toISOString().slice(0, 10),
+    windowStart: windowStartIso,
+    windowEnd: windowEndIso,
     rows: composed,
     totals,
   };
+}
+
+function isValidIsoDate(s: string): boolean {
+  // Strict YYYY-MM-DD plus a sanity-check via Date.parse so something
+  // like "2025-13-99" doesn't slip through.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const ts = Date.parse(s);
+  return Number.isFinite(ts);
 }
 
 /**
