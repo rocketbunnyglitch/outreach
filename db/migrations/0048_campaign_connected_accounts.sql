@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS campaign_connected_accounts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   campaign_id uuid NOT NULL REFERENCES campaigns (id) ON DELETE CASCADE,
   connected_account_id uuid NOT NULL
-    REFERENCES staff_outreach_emails (id) ON DELETE CASCADE,
+    REFERENCES connected_accounts (id) ON DELETE CASCADE,
   assigned_by uuid REFERENCES users (id) ON DELETE SET NULL,
   assigned_at timestamptz NOT NULL DEFAULT now()
 );
