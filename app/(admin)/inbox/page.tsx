@@ -17,6 +17,7 @@ import { InboxFilterBar } from "./_components/InboxFilterBar";
 import { InboxPresenceBar } from "./_components/InboxPresenceBar";
 import { InboxShell } from "./_components/InboxShell";
 import { ThreadListWithBulk } from "./_components/ThreadListWithBulk";
+import { UserPreferencesHydrator } from "./_components/UserPreferencesHydrator";
 import { InboxKeyboardNav } from "./_components/inbox-keyboard-nav";
 
 export const metadata = { title: "Inbox" };
@@ -134,71 +135,74 @@ export default async function InboxPage({ searchParams }: Props) {
   if (params.q) preservedQuery.set("q", params.q);
 
   return (
-    <InboxShell
-      left={
-        <div className="flex h-full flex-col">
-          <FolderList
-            activeFolder={folder}
-            counts={counts}
-            mineOnly={mineAssigned}
-            currentStaffId={currentStaff.id}
-            facets={facets}
-            activeBrandId={params.brand}
-            activeCampaignId={params.campaign}
-            activeLabelId={params.label}
-            gmailLabels={gmailLabels}
-            preservedQueryBase={(() => {
-              // Strip folder/brand/campaign/label since FolderList sets
-              // them per-chip. Preserve mine, staff, alias, q.
-              const p = new URLSearchParams(preservedQuery.toString());
-              p.delete("folder");
-              p.delete("brand");
-              p.delete("campaign");
-              p.delete("label");
-              return p.toString();
-            })()}
-          />
-          <InboxPresenceBar currentStaffId={currentStaff.id} />
-        </div>
-      }
-      middle={
-        <div className="flex h-full flex-col">
-          <InboxFilterBar
-            aliases={aliases}
-            currentStaffId={currentStaff.id}
-            mineAssigned={mineAssigned}
-            mineInbox={mine}
-            activeAliasId={params.alias}
-            initialSearch={params.q}
-          />
-          <div className="flex-1 overflow-y-auto">
-            {isDraftFolder ? (
-              <DraftList
-                drafts={drafts}
-                mode={folder === "scheduled" ? "scheduled" : "drafts"}
-                folderLabel={FOLDER_LABELS[folder]}
-              />
-            ) : (
-              <ThreadListWithBulk
-                threads={threads}
-                activeThreadId={null}
-                folderLabel={FOLDER_LABELS[folder]}
-                preservedQuery={preservedQuery.toString()}
-                isTrashView={folder === "trash"}
-              />
-            )}
-            {/* Mounts at the bottom so it's always rendered but
-                contributes no layout. j/k navigation + help. */}
-            <InboxKeyboardNav
-              threadIds={threads.map((t) => t.id)}
-              activeThreadId={null}
-              preservedQuery={preservedQuery.toString()}
+    <>
+      <UserPreferencesHydrator userId={currentStaff.id} />
+      <InboxShell
+        left={
+          <div className="flex h-full flex-col">
+            <FolderList
+              activeFolder={folder}
+              counts={counts}
+              mineOnly={mineAssigned}
+              currentStaffId={currentStaff.id}
+              facets={facets}
+              activeBrandId={params.brand}
+              activeCampaignId={params.campaign}
+              activeLabelId={params.label}
+              gmailLabels={gmailLabels}
+              preservedQueryBase={(() => {
+                // Strip folder/brand/campaign/label since FolderList sets
+                // them per-chip. Preserve mine, staff, alias, q.
+                const p = new URLSearchParams(preservedQuery.toString());
+                p.delete("folder");
+                p.delete("brand");
+                p.delete("campaign");
+                p.delete("label");
+                return p.toString();
+              })()}
             />
+            <InboxPresenceBar currentStaffId={currentStaff.id} />
           </div>
-        </div>
-      }
-      right={<EmptyRightPane />}
-    />
+        }
+        middle={
+          <div className="flex h-full flex-col">
+            <InboxFilterBar
+              aliases={aliases}
+              currentStaffId={currentStaff.id}
+              mineAssigned={mineAssigned}
+              mineInbox={mine}
+              activeAliasId={params.alias}
+              initialSearch={params.q}
+            />
+            <div className="flex-1 overflow-y-auto">
+              {isDraftFolder ? (
+                <DraftList
+                  drafts={drafts}
+                  mode={folder === "scheduled" ? "scheduled" : "drafts"}
+                  folderLabel={FOLDER_LABELS[folder]}
+                />
+              ) : (
+                <ThreadListWithBulk
+                  threads={threads}
+                  activeThreadId={null}
+                  folderLabel={FOLDER_LABELS[folder]}
+                  preservedQuery={preservedQuery.toString()}
+                  isTrashView={folder === "trash"}
+                />
+              )}
+              {/* Mounts at the bottom so it's always rendered but
+                contributes no layout. j/k navigation + help. */}
+              <InboxKeyboardNav
+                threadIds={threads.map((t) => t.id)}
+                activeThreadId={null}
+                preservedQuery={preservedQuery.toString()}
+              />
+            </div>
+          </div>
+        }
+        right={<EmptyRightPane />}
+      />
+    </>
   );
 }
 

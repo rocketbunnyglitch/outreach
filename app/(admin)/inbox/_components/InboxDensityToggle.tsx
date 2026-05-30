@@ -1,23 +1,30 @@
 "use client";
 
 /**
- * InboxDensityToggle — operator-side density preference for the
- * inbox. Persists to localStorage (key `inbox-density`) and applies
- * a data-attribute on the inbox shell which the row CSS targets to
- * tighten or loosen padding.
+ * InboxDensityToggle — operator-side display preferences.
+ *
+ * Persists to BOTH:
+ *   - localStorage (instant, no-flicker on the same device)
+ *   - server (user_preferences table — cross-device sync)
+ *
+ * The local key is the source of truth for the *current* paint;
+ * the server is the source of truth for *new sessions* on other
+ * devices (the InboxShell reads the server pref + writes it back
+ * to localStorage on mount so the cache stays in sync).
  *
  * Three densities (Gmail uses the same three):
  *   default      — current spacing (py-3 on rows, py-5 on messages)
  *   comfortable  — extra breathing room (py-4 / py-6)
  *   compact      — denser (py-1.5 / py-3)
  *
- * No DB round trip: the preference is per-device per-browser, same
- * as Gmail's surface. A future server-side preferences table can
- * back this up if cross-device sync becomes a need.
+ * Server writes go through updateUserPreferences with the single
+ * key being changed; we don't bundle both fields so two devices
+ * editing simultaneously don't stomp each other.
  */
 
 import { Rows3, Rows4, Settings, Sidebar } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { updateUserPreferences } from "../../_actions/user-preferences";
 
 export type InboxDensity = "compact" | "default" | "comfortable";
 export type ReadingPanePosition = "right" | "bottom" | "none";
@@ -61,12 +68,17 @@ export function InboxDensityToggle() {
     setDensity(d);
     localStorage.setItem(DENSITY_KEY, d);
     applyDensity(d);
+    // Best-effort server sync — failures here just mean the choice
+    // doesn't propagate to other devices until the operator tweaks
+    // it again. Don't surface errors; the local change still works.
+    updateUserPreferences({ inboxDensity: d }).catch(() => {});
   }
 
   function pickReadingPane(p: ReadingPanePosition) {
     setReadingPane(p);
     localStorage.setItem(READING_PANE_KEY, p);
     applyReadingPane(p);
+    updateUserPreferences({ inboxReadingPane: p }).catch(() => {});
   }
 
   return (

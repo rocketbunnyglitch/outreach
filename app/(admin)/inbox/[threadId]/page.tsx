@@ -20,6 +20,7 @@ import { InboxPresenceBar } from "../_components/InboxPresenceBar";
 import { InboxShell } from "../_components/InboxShell";
 import { ThreadListWithBulk } from "../_components/ThreadListWithBulk";
 import { ThreadPane } from "../_components/ThreadPane";
+import { UserPreferencesHydrator } from "../_components/UserPreferencesHydrator";
 import { InboxKeyboardNav } from "../_components/inbox-keyboard-nav";
 
 export const metadata = { title: "Inbox" };
@@ -133,70 +134,73 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (search.q) preservedQuery.set("q", search.q);
 
   return (
-    <InboxShell
-      left={
-        <div className="flex h-full flex-col">
-          <FolderList
-            activeFolder={folder}
-            counts={counts}
-            mineOnly={mineAssigned}
-            currentStaffId={currentStaff.id}
-            facets={facets}
-            activeBrandId={search.brand}
-            activeCampaignId={search.campaign}
-            activeLabelId={search.label}
-            gmailLabels={gmailLabels}
-            preservedQueryBase={(() => {
-              const p = new URLSearchParams(preservedQuery.toString());
-              p.delete("folder");
-              p.delete("brand");
-              p.delete("campaign");
-              p.delete("label");
-              return p.toString();
-            })()}
-          />
-          <InboxPresenceBar currentStaffId={currentStaff.id} />
-        </div>
-      }
-      middle={
-        <div className="flex h-full flex-col">
-          <InboxFilterBar
-            aliases={aliases}
-            currentStaffId={currentStaff.id}
-            mineAssigned={mineAssigned}
-            mineInbox={mine}
-            activeAliasId={search.alias}
-            initialSearch={search.q}
-          />
-          <div className="flex-1 overflow-y-auto">
-            <ThreadListWithBulk
-              threads={threads}
-              activeThreadId={threadId}
-              folderLabel={FOLDER_LABELS[folder]}
-              preservedQuery={preservedQuery.toString()}
-              isTrashView={folder === "trash"}
+    <>
+      <UserPreferencesHydrator userId={currentStaff.id} />
+      <InboxShell
+        left={
+          <div className="flex h-full flex-col">
+            <FolderList
+              activeFolder={folder}
+              counts={counts}
+              mineOnly={mineAssigned}
+              currentStaffId={currentStaff.id}
+              facets={facets}
+              activeBrandId={search.brand}
+              activeCampaignId={search.campaign}
+              activeLabelId={search.label}
+              gmailLabels={gmailLabels}
+              preservedQueryBase={(() => {
+                const p = new URLSearchParams(preservedQuery.toString());
+                p.delete("folder");
+                p.delete("brand");
+                p.delete("campaign");
+                p.delete("label");
+                return p.toString();
+              })()}
             />
-            {/* j/k navigation between threads in the current folder
+            <InboxPresenceBar currentStaffId={currentStaff.id} />
+          </div>
+        }
+        middle={
+          <div className="flex h-full flex-col">
+            <InboxFilterBar
+              aliases={aliases}
+              currentStaffId={currentStaff.id}
+              mineAssigned={mineAssigned}
+              mineInbox={mine}
+              activeAliasId={search.alias}
+              initialSearch={search.q}
+            />
+            <div className="flex-1 overflow-y-auto">
+              <ThreadListWithBulk
+                threads={threads}
+                activeThreadId={threadId}
+                folderLabel={FOLDER_LABELS[folder]}
+                preservedQuery={preservedQuery.toString()}
+                isTrashView={folder === "trash"}
+              />
+              {/* j/k navigation between threads in the current folder
                 + ? for the shortcut help dialog. Mounts here so it
                 runs from the detail view too. */}
-            <InboxKeyboardNav
-              threadIds={threads.map((t) => t.id)}
-              activeThreadId={threadId}
-              preservedQuery={preservedQuery.toString()}
-            />
+              <InboxKeyboardNav
+                threadIds={threads.map((t) => t.id)}
+                activeThreadId={threadId}
+                preservedQuery={preservedQuery.toString()}
+              />
+            </div>
           </div>
-        </div>
-      }
-      right={
-        <ThreadPane
-          detail={detail}
-          outreachHistory={outreachHistory}
-          threadLabels={threadLabels}
-          allTeamLabels={teamLabelsAll}
-          campaignSuggestions={campaignSuggestions}
-          isAdmin={currentStaff.role === "admin"}
-        />
-      }
-    />
+        }
+        right={
+          <ThreadPane
+            detail={detail}
+            outreachHistory={outreachHistory}
+            threadLabels={threadLabels}
+            allTeamLabels={teamLabelsAll}
+            campaignSuggestions={campaignSuggestions}
+            isAdmin={currentStaff.role === "admin"}
+          />
+        }
+      />
+    </>
   );
 }
