@@ -20,10 +20,18 @@
  * actions or refinements to existing ones.
  */
 
-import { ExternalLink, Loader2, Mail, MoreVertical, Printer, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  Loader2,
+  Mail,
+  MoreVertical,
+  Printer,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { markThreadUnread, setThreadTrash } from "../_actions";
+import { markThreadUnread, reportThreadSpam, setThreadTrash } from "../_actions";
 
 interface Props {
   threadId: string;
@@ -93,6 +101,31 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
     });
   }
 
+  function handleReportSpam() {
+    setOpen(false);
+    if (
+      !confirm(
+        "Report this thread as spam? It will be marked as spam in Gmail (which trains the spam filter against this sender) and removed from your inbox here.",
+      )
+    )
+      return;
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("threadId", threadId);
+      const res = await reportThreadSpam(null, fd);
+      if (res.ok) {
+        if (res.data && !res.data.gmailReported) {
+          alert(
+            "Moved to spam locally, but the Gmail spam label couldn't be applied (token may be expired). Mark as spam in Gmail's web UI to train the filter.",
+          );
+        }
+        router.push("/inbox");
+      } else {
+        alert(res.error);
+      }
+    });
+  }
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -128,6 +161,12 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
           />
           <MenuItem icon={<Printer className="h-3 w-3" />} label="Print" onClick={handlePrint} />
           <div className="my-1 border-zinc-200/70 border-t dark:border-zinc-800" />
+          <MenuItem
+            icon={<ShieldAlert className="h-3 w-3" />}
+            label="Report as spam"
+            onClick={handleReportSpam}
+            tone="rose"
+          />
           <MenuItem
             icon={<Trash2 className="h-3 w-3" />}
             label="Move to Trash"

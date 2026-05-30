@@ -25,7 +25,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { clearCadenceOnAction } from "@/lib/follow-up-cadence";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
-import { sendGmailMessage } from "@/lib/gmail";
+import { modifyGmailThreadLabels, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
@@ -524,6 +524,92 @@ export async function setThreadTrash(
   } catch (err) {
     logger.error({ err, threadId, trashed }, "setThreadTrash failed");
     return { ok: false, error: "Couldn't move thread to trash." };
+  }
+}
+
+/**
+ * reportThreadSpam — apply Gmail's SPAM label to a thread + soft-delete
+ * on our side so it stops showing in the inbox.
+ *
+ * Two-step:
+ *   1. Call Gmail's threads.modify to addLabel SPAM + removeLabel INBOX
+ *      so the operator's Gmail also reflects the spam classification.
+ *      This is what trains Gmail's spam classifier for future
+ *      messages from the same sender domain.
+ *   2. Soft-delete our row (deletedAt = NOW) so the thread leaves
+ *      every mailbox view immediately. Trash view will still surface
+ *      it under the existing isTrashView path.
+ *
+ * Gmail call is best-effort: if it fails (revoked token, network),
+ * we still complete the local soft-delete and return ok with a
+ * `gmailReported: false` flag. The operator can manually mark as
+ * spam in Gmail's web UI as fallback.
+ *
+ * Auth: requireStaff + team-scoped.
+ */
+export async function reportThreadSpam(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ gmailReported: boolean }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+
+  try {
+    const [row] = await db
+      .select({
+        teamId: connectedAccounts.teamId,
+        gmailThreadId: emailThreads.gmailThreadId,
+        refreshToken: connectedAccounts.gmailOauthRefreshToken,
+      })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, threadId))
+      .limit(1);
+    if (!row || row.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+
+    // Best-effort Gmail SPAM label mutation.
+    let gmailReported = false;
+    if (row.refreshToken && row.gmailThreadId) {
+      try {
+        await modifyGmailThreadLabels({
+          encryptedRefreshToken: row.refreshToken,
+          gmailThreadId: row.gmailThreadId,
+          addLabelIds: ["SPAM"],
+          removeLabelIds: ["INBOX"],
+        });
+        gmailReported = true;
+      } catch (err) {
+        // Don't fail the whole action; log + continue with the local
+        // soft-delete so the operator's view stays clean.
+        logger.warn({ err, threadId }, "reportThreadSpam: Gmail label mutation failed");
+      }
+    }
+
+    // Soft-delete locally so the thread leaves every mailbox view.
+    await db
+      .update(emailThreads)
+      .set({
+        deletedAt: new Date(),
+        updatedBy: staff.id,
+      })
+      .where(eq(emailThreads.id, threadId));
+
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return { ok: true, data: { gmailReported } };
+  } catch (err) {
+    logger.error({ err, threadId }, "reportThreadSpam failed");
+    return { ok: false, error: "Couldn't report thread as spam." };
   }
 }
 
