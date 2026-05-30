@@ -22,7 +22,9 @@
 import {
   cities,
   connectedAccounts,
+  emailMessages,
   emailTemplates,
+  emailThreads,
   outreachBrands,
   users,
   venues,
@@ -33,7 +35,7 @@ import { logger } from "@/lib/logger";
 import type { SendUsage } from "@/lib/send-cap";
 import type { DncBlock, DuplicateWarning, SuppressionBlock } from "@/lib/send-safety";
 import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
-import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -307,4 +309,208 @@ export async function setInboxSignature(input: {
     logger.error({ err, connectedAccountId: input.connectedAccountId }, "setInboxSignature failed");
     return { ok: false, error: "Couldn't save signature." };
   }
+}
+
+/**
+ * Save a draft's current subject + body as a new email template.
+ *
+ * Admin-only — operators on the team can use existing templates but
+ * shouldn't be able to add to the canonical template library without
+ * curation. Stage defaults to 'custom' since composer-saved templates
+ * aren't part of any automatic cadence.
+ *
+ * Outreach brand is inferred from the inbox's team. If the team has
+ * multiple outreach brands, the operator must pass outreachBrandId
+ * explicitly; otherwise we auto-pick the single one. (Per
+ * DECISIONS.md#010 emails go BY outreach brands, so every team has
+ * at least one.)
+ */
+export async function saveDraftAsTemplate(input: {
+  name: string;
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string | null;
+  outreachBrandId?: string | null;
+  stage?: "cold" | "follow_up_1" | "follow_up_2" | "custom";
+}): Promise<{ ok: true; templateId: string } | { ok: false; error: string }> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Only admins can save templates." };
+  }
+
+  const name = input.name.trim();
+  const subject = input.subject.trim();
+  const body = input.bodyText.trim();
+  if (!name) return { ok: false, error: "Template name is required." };
+  if (!subject) return { ok: false, error: "Template subject is required." };
+  if (!body) return { ok: false, error: "Template body is empty." };
+  if (name.length > 100) return { ok: false, error: "Template name too long (100 char max)." };
+
+  // Pick the outreach brand. Brands are global (not team-scoped), so
+  // an admin saving a template must specify which brand it belongs to
+  // when more than one exists. Auto-pick when only one is configured.
+  let brandId = input.outreachBrandId ?? null;
+  if (!brandId) {
+    const brands = await db.select({ id: outreachBrands.id }).from(outreachBrands).limit(2);
+    if (brands.length === 0) {
+      return { ok: false, error: "No outreach brand configured." };
+    }
+    if (brands.length > 1) {
+      return {
+        ok: false,
+        error: "Multiple outreach brands — pick one explicitly.",
+      };
+    }
+    brandId = brands[0]?.id ?? null;
+    if (!brandId) {
+      return { ok: false, error: "Could not resolve outreach brand." };
+    }
+  } else {
+    const [b] = await db
+      .select({ id: outreachBrands.id })
+      .from(outreachBrands)
+      .where(eq(outreachBrands.id, brandId))
+      .limit(1);
+    if (!b) return { ok: false, error: "Brand not found." };
+  }
+
+  const stage = input.stage ?? "custom";
+
+  try {
+    const [row] = await db
+      .insert(emailTemplates)
+      .values({
+        outreachBrandId: brandId,
+        stage,
+        name,
+        subjectTemplate: subject,
+        bodyTemplateText: body,
+        bodyTemplateHtml: input.bodyHtml ?? null,
+        isDefaultForStage: false,
+        createdBy: staff.id,
+        updatedBy: staff.id,
+      })
+      .returning({ id: emailTemplates.id });
+    if (!row) throw new Error("emailTemplates insert returned no rows");
+    return { ok: true, templateId: row.id };
+  } catch (err) {
+    // Unique-constraint violation on (brand, stage, name) is the
+    // most likely failure — surface a clearer message.
+    if (err instanceof Error && /unique/i.test(err.message)) {
+      return {
+        ok: false,
+        error: "A template with that name + stage already exists for this brand.",
+      };
+    }
+    logger.error({ err, name, brandId }, "saveDraftAsTemplate failed");
+    return { ok: false, error: "Couldn't save template." };
+  }
+}
+
+/**
+ * Suggest recipient addresses for the composer's autocomplete.
+ *
+ * Sources, in order:
+ *   1) Venue primary email + alternate_emails when venueId is given
+ *   2) Previously-emailed addresses from email_threads on this venue
+ *      (most-recent first, deduped against #1)
+ *   3) Most-recent outbound addresses across the operator's team
+ *      (top 20) when no venueId — generic "people you've emailed"
+ *
+ * Returns at most LIMIT (15) addresses to keep the popover scannable.
+ *
+ * Auth: requireStaff. Team-scoped for non-venue results so we never
+ * leak addresses across teams.
+ */
+export async function suggestRecipients(input: {
+  venueId?: string | null;
+  query?: string;
+}): Promise<
+  Array<{
+    email: string;
+    /** Where this address came from — drives the row icon. */
+    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent";
+    /** Optional display label (venue name / contact label). */
+    label?: string | null;
+  }>
+> {
+  const LIMIT = 15;
+  const { staff } = await requireStaff();
+  const queryLower = (input.query ?? "").trim().toLowerCase();
+
+  const seen = new Set<string>();
+  const results: Array<{
+    email: string;
+    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent";
+    label?: string | null;
+  }> = [];
+
+  function tryAdd(
+    email: string | null | undefined,
+    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent",
+    label?: string | null,
+  ) {
+    if (!email) return;
+    const e = email.trim();
+    if (!e) return;
+    const key = e.toLowerCase();
+    if (seen.has(key)) return;
+    if (queryLower && !key.includes(queryLower)) return;
+    if (results.length >= LIMIT) return;
+    seen.add(key);
+    results.push({ email: e, source, label });
+  }
+
+  if (input.venueId && UUID_RE.test(input.venueId)) {
+    const [v] = await db
+      .select({
+        email: venues.email,
+        alternateEmails: venues.alternateEmails,
+        name: venues.name,
+      })
+      .from(venues)
+      .where(eq(venues.id, input.venueId))
+      .limit(1);
+    if (v) {
+      tryAdd(v.email, "venue_primary", v.name);
+      for (const alt of v.alternateEmails ?? []) tryAdd(alt, "venue_alt", v.name);
+    }
+
+    // Previously-emailed addresses on this venue.
+    const recentThreads = await db
+      .select({
+        to: emailMessages.toAddresses,
+        cc: emailMessages.ccAddresses,
+      })
+      .from(emailMessages)
+      .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+      .where(and(eq(emailThreads.venueId, input.venueId), eq(emailMessages.direction, "outbound")))
+      .orderBy(desc(emailMessages.sentAt))
+      .limit(20);
+    for (const r of recentThreads) {
+      for (const addr of r.to ?? []) tryAdd(addr, "venue_thread");
+      for (const addr of r.cc ?? []) tryAdd(addr, "venue_thread");
+    }
+  }
+
+  // Fill remaining slots with most-recent team-wide outbound addresses.
+  if (results.length < LIMIT) {
+    const recent = await db
+      .select({
+        to: emailMessages.toAddresses,
+      })
+      .from(emailMessages)
+      .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(
+        and(eq(connectedAccounts.teamId, staff.teamId), eq(emailMessages.direction, "outbound")),
+      )
+      .orderBy(desc(emailMessages.sentAt))
+      .limit(40);
+    for (const r of recent) {
+      for (const addr of r.to ?? []) tryAdd(addr, "team_recent");
+    }
+  }
+
+  return results;
 }

@@ -18,7 +18,7 @@
  */
 
 import { cn } from "@/lib/cn";
-import { Calendar, ChevronDown, Eye, FileText, Inbox, Send } from "lucide-react";
+import { BookmarkPlus, Calendar, ChevronDown, Eye, FileText, Inbox, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -30,6 +30,9 @@ interface Props {
   onSendTest: () => void;
   onSaveAsDraft: () => void;
   onPreview: () => void;
+  /** Admin-only — shows a "Save as template…" item when true. */
+  showSaveAsTemplate?: boolean;
+  onSaveAsTemplate?: () => void;
 }
 
 export function SendMenu({
@@ -41,6 +44,8 @@ export function SendMenu({
   onSendTest,
   onSaveAsDraft,
   onPreview,
+  showSaveAsTemplate,
+  onSaveAsTemplate,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [showDateInput, setShowDateInput] = useState(false);
@@ -158,6 +163,16 @@ export function SendMenu({
               onPreview();
             }}
           />
+          {showSaveAsTemplate && onSaveAsTemplate && (
+            <MenuItem
+              icon={<BookmarkPlus className="h-3 w-3" />}
+              label="Save as template…"
+              onClick={() => {
+                setOpen(false);
+                onSaveAsTemplate();
+              }}
+            />
+          )}
         </div>
       )}
     </div>

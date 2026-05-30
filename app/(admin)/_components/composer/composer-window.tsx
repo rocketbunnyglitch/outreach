@@ -377,6 +377,47 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     close(instance.id);
   }
 
+  function handleSaveAsTemplate() {
+    // Prompt for a name. v1 uses window.prompt; a fancier dialog is
+    // possible later (stage picker, brand picker, default checkbox)
+    // but for the common case of an admin saving the current draft
+    // as a reusable starting point, prompt() is fine + fast.
+    const name = prompt("Template name (visible in the picker)");
+    if (!name) return;
+    void (async () => {
+      const mod = await import("../../_actions/compose-and-send");
+      const res = await mod.saveDraftAsTemplate({
+        name,
+        subject: instance.subject,
+        bodyText: instance.bodyText,
+        bodyHtml: instance.bodyHtml,
+      });
+      if (res.ok) {
+        setSendError(null);
+        alert(`Template "${name}" saved.`);
+      } else {
+        setSendError(res.error);
+      }
+    })();
+  }
+
+  /**
+   * Recipient autocomplete callback shared by the To/Cc/Bcc chip
+   * inputs. Returns up to 15 matches across venue contacts +
+   * previously-emailed addresses; dedupe + filter against the
+   * current chip value happens inside RecipientChips.
+   */
+  const fetchSuggestions = useCallback(
+    async (query: string) => {
+      const mod = await import("../../_actions/compose-and-send");
+      return mod.suggestRecipients({
+        venueId: instance.venueId,
+        query,
+      });
+    },
+    [instance.venueId],
+  );
+
   // Cmd/Ctrl + Enter sends.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -562,6 +603,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             onChange={(next) => setField(instance.id, { to: next.join(", ") })}
             placeholder="recipient@example.com"
             ariaLabel="To recipients"
+            suggestions={fetchSuggestions}
           />
           <div className="flex shrink-0 items-center gap-1 pt-0.5">
             {!instance.showCc && (
@@ -592,6 +634,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               value={ccList}
               onChange={(next) => setField(instance.id, { cc: next.join(", ") })}
               ariaLabel="Cc recipients"
+              suggestions={fetchSuggestions}
             />
           </div>
         )}
@@ -603,6 +646,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               value={bccList}
               onChange={(next) => setField(instance.id, { bcc: next.join(", ") })}
               ariaLabel="Bcc recipients"
+              suggestions={fetchSuggestions}
             />
           </div>
         )}
@@ -700,6 +744,8 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             onSendTest={handleSendTest}
             onSaveAsDraft={handleSaveAsDraft}
             onPreview={() => setShowPreview(true)}
+            showSaveAsTemplate={instance.isAdmin}
+            onSaveAsTemplate={handleSaveAsTemplate}
           />
           {capBlocked && instance.isAdmin && (
             <button
