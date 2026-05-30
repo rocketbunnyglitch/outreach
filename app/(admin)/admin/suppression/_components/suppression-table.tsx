@@ -1,7 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { Loader2, Trash2 } from "lucide-react";
+import { ExternalLink, Loader2, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { removeSuppression } from "../_actions";
 
@@ -10,6 +11,10 @@ interface Row {
   email: string;
   reason: string;
   notes: string | null;
+  /** Thread that triggered this block (manual via the inbox three-dot
+   *  menu). Null for entries that came from another source — operator
+   *  add-form, bounce processing, unsubscribe webhook. */
+  sourceThreadId: string | null;
   createdAt: Date;
   createdByName: string | null;
 }
@@ -90,7 +95,17 @@ function SuppressionRow({ row, onError }: { row: Row; onError: (msg: string | nu
         </span>
       </td>
       <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-400">
-        {row.notes ?? <span className="text-zinc-400">—</span>}
+        {row.notes ? <span>{row.notes}</span> : <span className="text-zinc-400">—</span>}
+        {row.sourceThreadId && (
+          <Link
+            href={`/inbox/${row.sourceThreadId}`}
+            className="ml-2 inline-flex items-center gap-0.5 font-mono text-[10px] text-blue-600 uppercase tracking-widest hover:underline dark:text-blue-400"
+            title="Open the thread that triggered this block"
+          >
+            <ExternalLink className="h-2.5 w-2.5" />
+            thread
+          </Link>
+        )}
       </td>
       <td className="px-4 py-2.5 text-xs text-zinc-500">
         {row.createdAt instanceof Date ? row.createdAt.toLocaleDateString() : ""}

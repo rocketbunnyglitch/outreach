@@ -32,6 +32,7 @@ export default async function SuppressionPage() {
       email: emailSuppression.email,
       reason: emailSuppression.reason,
       notes: emailSuppression.notes,
+      sourceThreadId: emailSuppression.sourceThreadId,
       createdAt: emailSuppression.createdAt,
       createdByName: users.displayName,
     })
