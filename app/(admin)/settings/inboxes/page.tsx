@@ -19,6 +19,7 @@ import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
 import { classifyHealth, loadInboxAnalytics } from "@/lib/inbox-analytics";
+import { loadInboxDailyStats } from "@/lib/inbox-daily-stats";
 import { loadSendUsage } from "@/lib/send-cap";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Unplug } from "lucide-react";
@@ -106,6 +107,20 @@ export default async function InboxesPage({ searchParams }: Props) {
     // Log but render — analytics is supplementary, the page still works
     // without it. The inboxes list is the operationally important part.
     console.warn("loadInboxAnalytics failed; rendering without analytics", err);
+  }
+
+  // 14-day time series for inline sparklines. Separate try/catch so
+  // a missing inbox_daily_stats table (e.g. before the cron has run)
+  // doesn't break the page — the strip just falls back to no
+  // sparkline rendering.
+  let dailyStatsByInbox = new Map<
+    string,
+    Awaited<ReturnType<typeof loadInboxDailyStats>> extends Map<string, infer V> ? V : never
+  >();
+  try {
+    dailyStatsByInbox = await loadInboxDailyStats(allInboxIds, { days: 14 });
+  } catch (err) {
+    console.warn("loadInboxDailyStats failed; rendering without sparklines", err);
   }
 
   return (
@@ -274,7 +289,11 @@ export default async function InboxesPage({ searchParams }: Props) {
                   </div>
                   {/* Per-inbox 30-day deliverability rollup. Health pill
                       derives from status + sync freshness + bounce rate. */}
-                  <InboxAnalyticsStrip analytics={analytics} health={health} />
+                  <InboxAnalyticsStrip
+                    analytics={analytics}
+                    health={health}
+                    dailyStats={dailyStatsByInbox.get(inbox.id) ?? []}
+                  />
                 </li>
               );
             })}
@@ -326,7 +345,11 @@ export default async function InboxesPage({ searchParams }: Props) {
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        <InboxAnalyticsStrip analytics={analytics} health={health} />
+                        <InboxAnalyticsStrip
+                          analytics={analytics}
+                          health={health}
+                          dailyStats={dailyStatsByInbox.get(c.id) ?? []}
+                        />
                       </td>
                     </tr>
                   );

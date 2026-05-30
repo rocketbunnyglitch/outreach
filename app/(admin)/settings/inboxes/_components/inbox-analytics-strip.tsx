@@ -13,8 +13,10 @@
  * failure.
  */
 
+import { Sparkline } from "@/components/ui/sparkline";
 import { cn } from "@/lib/cn";
 import type { HealthTier, InboxAnalytics } from "@/lib/inbox-analytics";
+import type { DailyStatPoint } from "@/lib/inbox-daily-stats";
 import { AlertTriangle, CheckCircle2, Sparkles, Unplug } from "lucide-react";
 
 const PCT = new Intl.NumberFormat("en-US", {
@@ -25,10 +27,16 @@ const PCT = new Intl.NumberFormat("en-US", {
 interface Props {
   analytics: InboxAnalytics;
   health: HealthTier;
+  /** Optional daily-stats time series; renders inline sparklines
+   *  when present. Empty array still renders (zeroed baseline). */
+  dailyStats?: DailyStatPoint[];
 }
 
-export function InboxAnalyticsStrip({ analytics, health }: Props) {
+export function InboxAnalyticsStrip({ analytics, health, dailyStats }: Props) {
   const tooFewSends = analytics.coldSends < 10;
+  const coldSeries = dailyStats?.map((d) => d.coldSends) ?? [];
+  const replySeries = dailyStats?.map((d) => d.replies) ?? [];
+  const bounceSeries = dailyStats?.map((d) => d.bounces) ?? [];
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] text-zinc-500">
@@ -40,12 +48,17 @@ export function InboxAnalyticsStrip({ analytics, health }: Props) {
         </span>
       ) : (
         <>
+          <span className="inline-flex items-center gap-1 text-zinc-500">
+            <span className="text-zinc-400">sends</span>
+            {dailyStats && <Sparkline values={coldSeries} color="#71717a" label="Cold sends/day" />}
+          </span>
           <Stat
             label="reply"
             value={PCT.format(analytics.replyRate)}
             tone={analytics.replyRate >= 0.1 ? "good" : "neutral"}
             title={`${analytics.replies} replies on ${analytics.coldSends} cold sends (30d)`}
           />
+          {dailyStats && <Sparkline values={replySeries} color="#10b981" label="Replies/day" />}
           <Stat
             label="bounce"
             value={PCT.format(analytics.bounceRate)}
@@ -54,6 +67,7 @@ export function InboxAnalyticsStrip({ analytics, health }: Props) {
             }
             title={`${analytics.bounces} bounced on ${analytics.coldSends} cold sends (30d)`}
           />
+          {dailyStats && <Sparkline values={bounceSeries} color="#f43f5e" label="Bounces/day" />}
         </>
       )}
 

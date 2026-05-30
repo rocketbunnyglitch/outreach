@@ -810,18 +810,39 @@ async function maybeAutoSuppressBounce(opts: {
   // Classify hard vs soft. Soft bounces are logged but NOT suppressed
   // — the address may come back after a temporary issue (greylist,
   // full mailbox, DNS hiccup). Hard bounces and unknown classification
-  // suppress permanently.
+  // suppress permanently. A persistent soft bouncer escalates to hard
+  // after CONSECUTIVE_SOFT_THRESHOLD attempts (see escalateOrSkip).
   const severity = classifyBounce({ subject: opts.subject, bodyText: opts.bodyText });
   if (severity === "soft") {
-    logger.info(
-      { email, teamId: opts.teamId, subject: opts.subject },
-      "soft bounce detected; logged but NOT suppressed (address may recover)",
+    const escalated = await trackSoftBounceAndMaybeEscalate({
+      teamId: opts.teamId,
+      email,
+      subject: opts.subject,
+    });
+    if (!escalated) {
+      logger.info(
+        { email, teamId: opts.teamId, subject: opts.subject },
+        "soft bounce tracked (under escalation threshold); not suppressed",
+      );
+      return;
+    }
+    // Escalation tripped — fall through to the hard-bounce path
+    // below. The notes string distinguishes this from a primary
+    // hard bounce so operators reviewing /admin/suppression can
+    // see what happened.
+    logger.warn(
+      { email, teamId: opts.teamId },
+      "soft bounce escalated to hard after consecutive failures",
     );
-    return;
   }
 
   // Capture a short diagnostic from the subject for operator context.
-  const notes = `Auto-suppressed from bounce: ${opts.subject ?? "(no subject)"}`.slice(0, 280);
+  // When a soft escalation triggers a hard suppress, mark it so the
+  // operator can tell apart "this bounced hard immediately" from
+  // "this kept softly bouncing until we gave up".
+  const escalationPrefix =
+    severity === "soft" ? "Escalated soft bounces: " : "Auto-suppressed from bounce: ";
+  const notes = `${escalationPrefix}${opts.subject ?? "(no subject)"}`.slice(0, 280);
 
   await db.execute(sql`
     INSERT INTO email_suppression (team_id, email, reason, notes, source_thread_id)
@@ -871,4 +892,49 @@ async function maybeAutoSuppressBounce(opts: {
     // important guarantee. Log and move on.
     logger.warn({ err, email }, "bounce: failed to close original thread (non-fatal)");
   }
+}
+
+/**
+ * Track a single soft-bounce occurrence on the per-(team, email)
+ * counter. Returns `true` when the consecutive count crosses the
+ * escalation threshold (and the caller should proceed to hard
+ * suppression), `false` when we're still under threshold and the
+ * caller should skip suppression for this round.
+ *
+ * Threshold = 3 consecutive soft bounces. After the 3rd attempt,
+ * the deliverability hit dominates the "might-still-recover" upside
+ * and we promote to hard.
+ *
+ * The counter is reset OUTSIDE this function — see the inbound
+ * delivery success path in clearSoftBounceCounter (currently unused;
+ * a follow-up could reset when a successful send to the address
+ * completes, but v1 just lets the row sit until it's superseded
+ * by a hard suppression which clears via the email_suppression
+ * unique constraint logic). For v1, escalation is sticky: once an
+ * address has bounced softly 3 times, we don't give it another
+ * chance until an operator manually un-suppresses it.
+ */
+const CONSECUTIVE_SOFT_THRESHOLD = 3;
+
+async function trackSoftBounceAndMaybeEscalate(opts: {
+  teamId: string;
+  email: string;
+  subject: string | null;
+}): Promise<boolean> {
+  // Upsert the per-(team, email) row, incrementing consecutive_count.
+  // Returns the new count via RETURNING.
+  const result = await db.execute<{ consecutive_count: number }>(sql`
+    INSERT INTO email_soft_bounces (team_id, email, consecutive_count, last_subject, last_seen_at, first_seen_at)
+    VALUES (${opts.teamId}, ${opts.email}, 1, ${opts.subject}, now(), now())
+    ON CONFLICT (team_id, email) DO UPDATE
+      SET consecutive_count = email_soft_bounces.consecutive_count + 1,
+          last_subject = EXCLUDED.last_subject,
+          last_seen_at = now()
+    RETURNING consecutive_count
+  `);
+  const rows = Array.isArray(result)
+    ? (result as Array<{ consecutive_count: number }>)
+    : ((result as unknown as { rows: Array<{ consecutive_count: number }> }).rows ?? []);
+  const count = rows[0]?.consecutive_count ?? 1;
+  return count >= CONSECUTIVE_SOFT_THRESHOLD;
 }
