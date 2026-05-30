@@ -41,6 +41,7 @@ import {
   Globe,
   Globe2,
   Inbox,
+  Info,
   LayoutGrid,
   LifeBuoy,
   Map as MapIcon,
@@ -71,6 +72,11 @@ const SECTIONS: Array<{
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3.5 w-3.5" /> },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3.5 w-3.5" /> },
+      {
+        href: "/campaign-info",
+        label: "Campaign Info",
+        icon: <Info className="h-3.5 w-3.5" />,
+      },
       { href: "/tasks", label: "Tasks", icon: <CheckSquare className="h-3.5 w-3.5" /> },
       // Calendar lives here (alongside Maps) per operator: both are
       // "where + when this campaign is happening" views, not
