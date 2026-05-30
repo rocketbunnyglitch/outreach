@@ -12,6 +12,7 @@ import { ClassificationPicker } from "./ClassificationPicker";
 import { ReplyComposer } from "./ReplyComposer";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
+import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 
 /**
@@ -136,6 +137,11 @@ export function ThreadPane({
           sendThreadReply and the daily cold-send cap is enforced
           server-side (admins see a Bypass button on cap-block). */}
       <ReplyComposer threadId={thread.id} isAdmin={isAdmin} />
+
+      {/* History — audit timeline. Collapsed by default; renders
+          null when no audited events exist for the thread or
+          linked venue. Server component, fires its own DB query. */}
+      <ThreadHistoryPanel threadId={thread.id} venueId={thread.venueId} />
 
       {/* CRM rail */}
       <div className="border-zinc-200/80 border-t bg-zinc-50/50 px-6 py-6 dark:border-zinc-800/60 dark:bg-zinc-950/40">
