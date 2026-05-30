@@ -19,7 +19,16 @@
  * sending from.
  */
 
-import { connectedAccounts, emailMessages, emailThreads, users } from "@/db/schema";
+import {
+  cities,
+  connectedAccounts,
+  emailMessages,
+  emailTemplates,
+  emailThreads,
+  outreachBrands,
+  users,
+  venues,
+} from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendGmailMessage } from "@/lib/gmail";
@@ -33,7 +42,7 @@ import {
   runSendSafety,
 } from "@/lib/send-safety";
 import { type TeamLabelSummary, applyLabelToThread, listTeamLabels } from "@/lib/team-labels";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -105,16 +114,108 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
  * round trip so the compose modal doesn't have to make two calls
  * the first time it opens.
  */
-export async function listComposeContext(): Promise<{
+export interface ComposeTemplate {
+  id: string;
+  name: string;
+  stage: string;
+  brandId: string;
+  brandName: string;
+  isDefaultForStage: boolean;
+  /** Raw subject template (Mustache-style merge fields). */
+  subjectTemplate: string;
+  /** Raw text body template. */
+  bodyTemplateText: string;
+}
+
+export interface ComposeRenderContext {
+  /** Mirrors lib/template-render RenderContext but trimmed for the
+   *  fields we can populate from a venue + staff. */
+  venue?: {
+    name?: string;
+    city?: string;
+    phone?: string | null;
+    email?: string | null;
+    website?: string | null;
+  };
+  staff?: { displayName?: string; primaryEmail?: string };
+}
+
+export async function listComposeContext(opts: { venueId?: string | null } = {}): Promise<{
   inboxes: ConnectedAccountOption[];
   labels: TeamLabelSummary[];
+  templates: ComposeTemplate[];
+  renderContext: ComposeRenderContext;
 }> {
   const { staff } = await requireStaff();
-  const [inboxes, labels] = await Promise.all([
+  const [inboxes, labels, templateRows] = await Promise.all([
     listSendableInboxes(),
     listTeamLabels(staff.teamId),
+    // Templates are scoped to outreach_brands, which are global (not
+    // team-scoped — every team picks among the same brand catalog).
+    // We surface every non-archived template; the picker UI groups by
+    // (brand, stage) so the operator finds the right one fast.
+    db
+      .select({
+        id: emailTemplates.id,
+        name: emailTemplates.name,
+        stage: emailTemplates.stage,
+        brandId: emailTemplates.outreachBrandId,
+        brandName: outreachBrands.displayName,
+        isDefaultForStage: emailTemplates.isDefaultForStage,
+        subjectTemplate: emailTemplates.subjectTemplate,
+        bodyTemplateText: emailTemplates.bodyTemplateText,
+      })
+      .from(emailTemplates)
+      .innerJoin(outreachBrands, eq(outreachBrands.id, emailTemplates.outreachBrandId))
+      .where(isNull(emailTemplates.archivedAt))
+      .orderBy(
+        asc(outreachBrands.displayName),
+        asc(emailTemplates.stage),
+        // Default-first within each (brand, stage) group so the
+        // picker's first entry is the recommended one.
+        desc(emailTemplates.isDefaultForStage),
+        asc(emailTemplates.name),
+      ),
   ]);
-  return { inboxes, labels };
+
+  // Build the render context. Staff always populates; venue only
+  // when the caller passed venueId. Fields the template references
+  // but we can't resolve will render as `[??field.path??]` markers
+  // — that's the desired UX so the operator sees broken merges
+  // before they hit Send.
+  const renderContext: ComposeRenderContext = {
+    staff: {
+      displayName: staff.displayName ?? undefined,
+      primaryEmail: staff.primaryEmail ?? undefined,
+    },
+  };
+
+  if (opts.venueId && UUID_RE.test(opts.venueId)) {
+    const venueRow = await db
+      .select({
+        name: venues.name,
+        cityName: cities.name,
+        phone: venues.phoneE164,
+        email: venues.email,
+        website: venues.websiteUrl,
+      })
+      .from(venues)
+      .leftJoin(cities, eq(cities.id, venues.cityId))
+      .where(eq(venues.id, opts.venueId))
+      .limit(1);
+    const v = venueRow[0];
+    if (v) {
+      renderContext.venue = {
+        name: v.name ?? undefined,
+        city: v.cityName ?? undefined,
+        phone: v.phone,
+        email: v.email,
+        website: v.website,
+      };
+    }
+  }
+
+  return { inboxes, labels, templates: templateRows, renderContext };
 }
 
 export type ComposeResult =

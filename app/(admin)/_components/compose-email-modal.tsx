@@ -28,10 +28,13 @@
  *   </ComposeEmailModal>
  */
 
+import { renderTemplate } from "@/lib/template-render";
 import { Loader2, Tag, X } from "lucide-react";
-import { type ReactNode, useEffect, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import {
+  type ComposeRenderContext,
+  type ComposeTemplate,
   type ConnectedAccountOption,
   composeAndSend,
   listComposeContext,
@@ -90,6 +93,11 @@ export function ComposeEmailModal({
   const [to, setTo] = useState(defaultTo);
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState(defaultBody);
+  /** Templates available to this team + the render context that
+   *  resolves their merge fields. Populated by listComposeContext on
+   *  modal open. Null = still loading. */
+  const [templates, setTemplates] = useState<ComposeTemplate[] | null>(null);
+  const [renderContext, setRenderContext] = useState<ComposeRenderContext>({});
   const [error, setError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
   /** Server returned duplicate-outreach warnings. When non-empty the
@@ -111,10 +119,12 @@ export function ComposeEmailModal({
     setSent(false);
     setSelectedLabelIds([]);
     if (inboxes !== null) return; // already loaded
-    listComposeContext()
+    listComposeContext({ venueId })
       .then((ctx) => {
         setInboxes(ctx.inboxes);
         setLabels(ctx.labels);
+        setTemplates(ctx.templates);
+        setRenderContext(ctx.renderContext);
         // Default-select the first "mine" inbox if one exists; otherwise
         // the first available team inbox. The user can change before
         // sending.
@@ -283,6 +293,17 @@ export function ComposeEmailModal({
                       className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
                     />
                   </label>
+
+                  {templates && templates.length > 0 && (
+                    <TemplatePicker
+                      templates={templates}
+                      renderContext={renderContext}
+                      onPick={(rendered) => {
+                        setSubject(rendered.subject);
+                        setBody(rendered.body);
+                      }}
+                    />
+                  )}
 
                   <label className="flex flex-col gap-1">
                     <span className="font-medium text-xs">Subject</span>
@@ -495,4 +516,87 @@ function formatWarningTime(d: Date | string): string {
   if (hr < 24) return `${hr}h ago`;
   const d2 = Math.floor(hr / 24);
   return `${d2}d ago`;
+}
+
+/**
+ * TemplatePicker — dropdown for applying an email template to the
+ * compose modal.
+ *
+ * Behavior:
+ *   - Single <select> grouped by brand → stage. Each option label
+ *     reads "<template name> (<stage>)" so the operator can scan
+ *     for the right one even within one brand.
+ *   - Picking a template fires onPick(rendered) with the resolved
+ *     subject + body using the render context that came down from
+ *     the server (venue + staff fields). Unresolved fields render
+ *     as visible `[??field.path??]` markers per renderTemplate
+ *     (lib/template-render.ts), so the operator sees what's
+ *     missing before sending.
+ *   - "— Pick a template —" is the no-op option; selecting it
+ *     leaves subject + body untouched.
+ *
+ * We DO NOT auto-apply a default template on mount. The operator
+ * might be composing a one-off, and silently overwriting their
+ * current subject/body would be hostile. They opt in explicitly.
+ */
+function TemplatePicker({
+  templates,
+  renderContext,
+  onPick,
+}: {
+  templates: ComposeTemplate[];
+  renderContext: ComposeRenderContext;
+  onPick: (rendered: { subject: string; body: string }) => void;
+}) {
+  // Group templates by brand for the <optgroup> layout.
+  const byBrand = useMemo(() => {
+    const map = new Map<string, ComposeTemplate[]>();
+    for (const t of templates) {
+      const arr = map.get(t.brandName) ?? [];
+      arr.push(t);
+      map.set(t.brandName, arr);
+    }
+    return map;
+  }, [templates]);
+
+  function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value;
+    e.target.value = ""; // reset so picking the same template twice still fires
+    if (!id) return;
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    // renderTemplate substitutes {{venue.name}} etc. and marks any
+    // unresolved paths inline so the operator notices missing
+    // context before sending.
+    const subjectRender = renderTemplate(t.subjectTemplate, renderContext);
+    const bodyRender = renderTemplate(t.bodyTemplateText, renderContext);
+    onPick({ subject: subjectRender.output, body: bodyRender.output });
+  }
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-medium text-xs">Template</span>
+      <select
+        defaultValue=""
+        onChange={onChange}
+        className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
+      >
+        <option value="">— Pick a template —</option>
+        {Array.from(byBrand.entries()).map(([brandName, brandTemplates]) => (
+          <optgroup key={brandName} label={brandName}>
+            {brandTemplates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({prettyStage(t.stage)}){t.isDefaultForStage ? " ★" : ""}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Stage values are snake_case enums; pretty them for the picker label. */
+function prettyStage(stage: string): string {
+  return stage.replace(/_/g, " ");
 }
