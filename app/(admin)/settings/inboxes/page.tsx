@@ -18,11 +18,13 @@ import { connectedAccounts, users } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
+import { classifyHealth, loadInboxAnalytics } from "@/lib/inbox-analytics";
 import { loadSendUsage } from "@/lib/send-cap";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Unplug } from "lucide-react";
 import { disconnectInbox, resyncInbox } from "./_actions";
 import { CapEditor } from "./_components/cap-editor";
+import { InboxAnalyticsStrip } from "./_components/inbox-analytics-strip";
 
 export const metadata = { title: "Email Connection" };
 export const dynamic = "force-dynamic";
@@ -77,6 +79,7 @@ export default async function InboxesPage({ searchParams }: Props) {
       id: connectedAccounts.id,
       emailAddress: connectedAccounts.emailAddress,
       status: connectedAccounts.status,
+      lastSyncedAt: connectedAccounts.lastSyncedAt,
       ownerName: users.displayName,
       ownerEmail: users.primaryEmail,
       dailyColdSendCap: connectedAccounts.dailyColdSendCap,
@@ -87,6 +90,23 @@ export default async function InboxesPage({ searchParams }: Props) {
       and(eq(connectedAccounts.teamId, staff.teamId), ne(connectedAccounts.ownerUserId, staff.id)),
     )
     .orderBy(asc(users.displayName), asc(connectedAccounts.emailAddress));
+
+  // Per-inbox 30-day analytics. One batched query keyed by every
+  // inbox id the page renders (mine + team). Failures here degrade
+  // gracefully — each row falls back to zero-analytics + the
+  // health pill shows what we can derive from status + sync time.
+  const allInboxIds = [...myInboxes.map((i) => i.id), ...teamInboxes.map((i) => i.id)];
+  let analyticsByInbox = new Map<
+    string,
+    Awaited<ReturnType<typeof loadInboxAnalytics>> extends Map<string, infer V> ? V : never
+  >();
+  try {
+    analyticsByInbox = await loadInboxAnalytics(allInboxIds);
+  } catch (err) {
+    // Log but render — analytics is supplementary, the page still works
+    // without it. The inboxes list is the operationally important part.
+    console.warn("loadInboxAnalytics failed; rendering without analytics", err);
+  }
 
   return (
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
@@ -172,75 +192,92 @@ export default async function InboxesPage({ searchParams }: Props) {
           </p>
         ) : (
           <ul className="card-surface flex flex-col divide-y divide-zinc-200/80 dark:divide-zinc-800/40">
-            {myInboxes.map((inbox) => (
-              <li key={inbox.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <CheckCircle2
-                    className={`h-3.5 w-3.5 shrink-0 ${
-                      inbox.status === "connected" ? "text-emerald-500" : "text-zinc-400"
-                    }`}
-                  />
-                  <span className="truncate font-mono text-sm">{inbox.emailAddress}</span>
-                  {inbox.lastSyncedAt && (
-                    <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-                      · synced {inbox.lastSyncedAt.toLocaleString()}
-                    </span>
-                  )}
-                  {/* Cold-send cap editor — click the count to edit.
-                      Owner can edit own; admin can edit any (server
-                      re-checks). */}
-                  <span className="font-mono text-[10px] text-zinc-500">·</span>
-                  <CapEditor
-                    inboxId={inbox.id}
-                    initialCap={inbox.dailyColdSendCap}
-                    usedToday={inbox.usedToday}
-                  />
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {inbox.status === "connected" && (
-                    <form
-                      action={async (fd: FormData) => {
-                        "use server";
-                        await resyncInbox(null, fd);
-                      }}
-                    >
-                      <input type="hidden" name="id" value={inbox.id} />
-                      <button
-                        type="submit"
-                        title="Pull new Gmail messages now (bypasses the 5-min cron cadence)"
-                        className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            {myInboxes.map((inbox) => {
+              const analytics = analyticsByInbox.get(inbox.id) ?? {
+                coldSends: 0,
+                replies: 0,
+                bounces: 0,
+                staleThreads: 0,
+                replyRate: 0,
+                bounceRate: 0,
+              };
+              const health = classifyHealth({
+                status: inbox.status,
+                lastSyncedAt: inbox.lastSyncedAt,
+                analytics,
+              });
+              return (
+                <li key={inbox.id} className="flex flex-col gap-2 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <CheckCircle2
+                        className={`h-3.5 w-3.5 shrink-0 ${
+                          inbox.status === "connected" ? "text-emerald-500" : "text-zinc-400"
+                        }`}
+                      />
+                      <span className="truncate font-mono text-sm">{inbox.emailAddress}</span>
+                      {inbox.lastSyncedAt && (
+                        <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
+                          · synced {inbox.lastSyncedAt.toLocaleString()}
+                        </span>
+                      )}
+                      <span className="font-mono text-[10px] text-zinc-500">·</span>
+                      <CapEditor
+                        inboxId={inbox.id}
+                        initialCap={inbox.dailyColdSendCap}
+                        usedToday={inbox.usedToday}
+                      />
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {inbox.status === "connected" && (
+                        <form
+                          action={async (fd: FormData) => {
+                            "use server";
+                            await resyncInbox(null, fd);
+                          }}
+                        >
+                          <input type="hidden" name="id" value={inbox.id} />
+                          <button
+                            type="submit"
+                            title="Pull new Gmail messages now (bypasses the 5-min cron cadence)"
+                            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            Resync
+                          </button>
+                        </form>
+                      )}
+                      {oauthReady && (
+                        <a
+                          href="/api/auth/google/start"
+                          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                        >
+                          Reconnect
+                        </a>
+                      )}
+                      <form
+                        action={async (fd: FormData) => {
+                          "use server";
+                          await disconnectInbox(null, fd);
+                        }}
                       >
-                        <RefreshCw className="h-3 w-3" />
-                        Resync
-                      </button>
-                    </form>
-                  )}
-                  {oauthReady && (
-                    <a
-                      href="/api/auth/google/start"
-                      className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                    >
-                      Reconnect
-                    </a>
-                  )}
-                  <form
-                    action={async (fd: FormData) => {
-                      "use server";
-                      await disconnectInbox(null, fd);
-                    }}
-                  >
-                    <input type="hidden" name="id" value={inbox.id} />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 text-xs hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
-                    >
-                      <Unplug className="h-3 w-3" />
-                      Disconnect
-                    </button>
-                  </form>
-                </div>
-              </li>
-            ))}
+                        <input type="hidden" name="id" value={inbox.id} />
+                        <button
+                          type="submit"
+                          className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-rose-700 text-xs hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                        >
+                          <Unplug className="h-3 w-3" />
+                          Disconnect
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                  {/* Per-inbox 30-day deliverability rollup. Health pill
+                      derives from status + sync freshness + bounce rate. */}
+                  <InboxAnalyticsStrip analytics={analytics} health={health} />
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -254,39 +291,46 @@ export default async function InboxesPage({ searchParams }: Props) {
                 <tr className="border-zinc-200 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-widest dark:border-zinc-800/60">
                   <th className="px-4 py-2.5">Owner</th>
                   <th className="px-4 py-2.5">Email</th>
-                  <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5">Daily cap</th>
+                  <th className="px-4 py-2.5">Health · 30d</th>
                 </tr>
               </thead>
               <tbody>
-                {teamInboxes.map((c, i) => (
-                  <tr key={c.id} className={i % 2 === 1 ? "dark:bg-white/[0.015]" : ""}>
-                    <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-400">{c.ownerName}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{c.emailAddress}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`font-mono text-[10px] uppercase tracking-widest ${
-                          c.status === "connected"
-                            ? "text-emerald-500"
-                            : c.status === "disconnected"
-                              ? "text-zinc-500"
-                              : "text-rose-500"
-                        }`}
-                      >
-                        {c.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {staff.role === "admin" ? (
-                        <CapEditor inboxId={c.id} initialCap={c.dailyColdSendCap} />
-                      ) : (
-                        <span className="font-mono text-[11px] text-zinc-500 tabular-nums">
-                          {c.dailyColdSendCap}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {teamInboxes.map((c, i) => {
+                  const analytics = analyticsByInbox.get(c.id) ?? {
+                    coldSends: 0,
+                    replies: 0,
+                    bounces: 0,
+                    staleThreads: 0,
+                    replyRate: 0,
+                    bounceRate: 0,
+                  };
+                  const health = classifyHealth({
+                    status: c.status,
+                    lastSyncedAt: c.lastSyncedAt,
+                    analytics,
+                  });
+                  return (
+                    <tr key={c.id} className={i % 2 === 1 ? "dark:bg-white/[0.015]" : ""}>
+                      <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-400">
+                        {c.ownerName}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-xs">{c.emailAddress}</td>
+                      <td className="px-4 py-2.5">
+                        {staff.role === "admin" ? (
+                          <CapEditor inboxId={c.id} initialCap={c.dailyColdSendCap} />
+                        ) : (
+                          <span className="font-mono text-[11px] text-zinc-500 tabular-nums">
+                            {c.dailyColdSendCap}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <InboxAnalyticsStrip analytics={analytics} health={health} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
