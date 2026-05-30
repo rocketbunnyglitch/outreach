@@ -12,7 +12,13 @@
  * non-form helpers (markThreadRead, archiveThread) take typed args.
  */
 
-import { emailMessages, emailThreads, staffOutreachEmails, teamLabels } from "@/db/schema";
+import {
+  connectedAccounts,
+  emailMessages,
+  emailThreads,
+  staffOutreachEmails,
+  teamLabels,
+} from "@/db/schema";
 import { draftReply } from "@/lib/ai-reply";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
@@ -27,6 +33,8 @@ import { clearStaleOnAction } from "@/lib/stale-tagger";
 import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { z } from "zod";
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
@@ -371,6 +379,63 @@ export async function setThreadState(
 // =========================================================================
 // Helpers
 // =========================================================================
+
+/**
+ * setThreadStar — toggle the Gmail-style star on a thread. Engine-side
+ * only in v1; a future cron can two-way sync to Gmail using the OAuth
+ * creds on the connected_account.
+ *
+ * Auth: requireStaff + team-scoped (thread's connected account must be
+ * on the operator's team). No role gating — anyone on the team can
+ * star/unstar shared threads, same as Gmail.
+ */
+export async function setThreadStar(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ isStarred: boolean }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const starredRaw = String(formData.get("starred") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (starredRaw !== "true" && starredRaw !== "false") {
+    return { ok: false, error: "Invalid star state." };
+  }
+  const isStarred = starredRaw === "true";
+
+  try {
+    // Verify the thread is on the operator's team before updating.
+    const [row] = await db
+      .select({
+        teamId: connectedAccounts.teamId,
+      })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, threadId))
+      .limit(1);
+    if (!row || row.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+
+    await db
+      .update(emailThreads)
+      .set({ isStarred, updatedBy: staff.id })
+      .where(eq(emailThreads.id, threadId));
+
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return { ok: true, data: { isStarred } };
+  } catch (err) {
+    logger.error({ err, threadId, isStarred }, "setThreadStar failed");
+    return { ok: false, error: "Couldn't update star." };
+  }
+}
 
 function extractEmail(headerVal: string): string | null {
   const m = headerVal.match(/<([^>]+)>/) ?? headerVal.match(/([\w.\-+]+@[\w.\-]+)/);

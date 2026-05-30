@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { StarToggle } from "./StarToggle";
 
 /**
  * Middle pane — the thread list. Rows are Gmail-shaped: sender / subject
@@ -111,14 +112,17 @@ function ThreadRow({
         )}
       >
         <div className="flex items-baseline justify-between gap-2">
-          <p
-            className={cn(
-              "min-w-0 flex-1 truncate text-sm",
-              thread.unreadCount > 0 ? "font-semibold" : "font-medium",
-            )}
-          >
-            {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
-          </p>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <StarToggle threadId={thread.id} initialStarred={thread.isStarred} size="sm" />
+            <p
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm",
+                thread.unreadCount > 0 ? "font-semibold" : "font-medium",
+              )}
+            >
+              {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
+            </p>
+          </div>
           <time
             dateTime={thread.lastMessageAt.toISOString()}
             className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"

@@ -200,6 +200,8 @@ export interface InboxThreadRow {
   isStale: boolean;
   /** Short reason string the UI shows as a tooltip on the stale chip. */
   staleReason: string | null;
+  /** Gmail-style star. Operator can toggle via the star button. */
+  isStarred: boolean;
   /** Team labels applied to this thread. */
   labels: Array<{ id: string; name: string; color: string | null }>;
 }
@@ -307,6 +309,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       eventCrawlNumber: events.crawlNumber,
       isStale: emailThreads.isStale,
       staleReason: emailThreads.staleReason,
+      isStarred: emailThreads.isStarred,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
