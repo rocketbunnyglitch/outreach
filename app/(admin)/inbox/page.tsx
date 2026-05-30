@@ -13,6 +13,7 @@ import { InboxFilterBar } from "./_components/InboxFilterBar";
 import { InboxPresenceBar } from "./_components/InboxPresenceBar";
 import { InboxShell } from "./_components/InboxShell";
 import { ThreadList } from "./_components/ThreadList";
+import { InboxKeyboardNav } from "./_components/inbox-keyboard-nav";
 
 export const metadata = { title: "Inbox" };
 export const dynamic = "force-dynamic";
@@ -137,6 +138,13 @@ export default async function InboxPage({ searchParams }: Props) {
               threads={threads}
               activeThreadId={null}
               folderLabel={FOLDER_LABELS[folder]}
+              preservedQuery={preservedQuery.toString()}
+            />
+            {/* Mounts at the bottom so it's always rendered but
+                contributes no layout. j/k navigation + help. */}
+            <InboxKeyboardNav
+              threadIds={threads.map((t) => t.id)}
+              activeThreadId={null}
               preservedQuery={preservedQuery.toString()}
             />
           </div>

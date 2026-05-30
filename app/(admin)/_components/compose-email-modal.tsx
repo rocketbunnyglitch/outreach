@@ -43,6 +43,15 @@ interface TeamLabel {
   color: string | null;
 }
 
+interface DuplicateWarning {
+  threadId: string;
+  subject: string | null;
+  lastMessageAt: Date | string;
+  lastSenderName: string | null;
+  inboxEmail: string | null;
+  ownerDisplayName: string | null;
+}
+
 interface Props {
   /** What renders as the click target (icon, button, anything). */
   children: ReactNode;
@@ -83,6 +92,9 @@ export function ComposeEmailModal({
   const [body, setBody] = useState(defaultBody);
   const [error, setError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
+  /** Server returned duplicate-outreach warnings. When non-empty the
+   *  modal shows a confirm step instead of the regular Send flow. */
+  const [duplicateWarnings, setDuplicateWarnings] = useState<DuplicateWarning[]>([]);
   const [sent, setSent] = useState(false);
   const [isPending, startTx] = useTransition();
 
@@ -95,6 +107,7 @@ export function ComposeEmailModal({
     setBody(defaultBody);
     setError(null);
     setCapBlocked(false);
+    setDuplicateWarnings([]);
     setSent(false);
     setSelectedLabelIds([]);
     if (inboxes !== null) return; // already loaded
@@ -144,7 +157,10 @@ export function ComposeEmailModal({
     // Don't reset inboxes — keep them cached for subsequent opens.
   }
 
-  function handleSubmit(e: React.FormEvent | null, bypass = false) {
+  function handleSubmit(
+    e: React.FormEvent | null,
+    opts: { bypass?: boolean; ackDuplicates?: boolean } = {},
+  ) {
     if (e) e.preventDefault();
     setError(null);
     const fd = new FormData();
@@ -154,15 +170,20 @@ export function ComposeEmailModal({
     fd.set("body", body);
     if (venueId) fd.set("venueId", venueId);
     if (selectedLabelIds.length > 0) fd.set("labelIds", selectedLabelIds.join(","));
-    if (bypass) fd.set("bypassCap", "1");
+    if (opts.bypass) fd.set("bypassCap", "1");
+    if (opts.ackDuplicates) fd.set("ackDuplicates", "1");
     startTx(async () => {
       const result = await composeAndSend(null, fd);
       if (result.ok) {
         setSent(true);
         setCapBlocked(false);
+        setDuplicateWarnings([]);
       } else {
         setError(result.error);
         setCapBlocked(Boolean(result.capBlocked));
+        // If server returned dup warnings, capture them and surface
+        // the confirm step (rather than just an error string).
+        setDuplicateWarnings((result.duplicateWarnings as DuplicateWarning[] | undefined) ?? []);
       }
     });
   }
@@ -338,11 +359,13 @@ export function ComposeEmailModal({
                     />
                   </label>
 
-                  {error && (
+                  {duplicateWarnings.length > 0 ? (
+                    <DuplicateConfirmPanel warnings={duplicateWarnings} />
+                  ) : error ? (
                     <div className="rounded-md bg-rose-50 px-3 py-2 text-rose-700 text-xs dark:bg-rose-950/40 dark:text-rose-300">
                       {error}
                     </div>
-                  )}
+                  ) : null}
 
                   <div className="mt-1 flex justify-end gap-2">
                     <button
@@ -355,7 +378,7 @@ export function ComposeEmailModal({
                     {capBlocked && isAdmin && (
                       <button
                         type="button"
-                        onClick={() => handleSubmit(null, true)}
+                        onClick={() => handleSubmit(null, { bypass: true })}
                         disabled={isPending || !fromAccountId}
                         className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800 text-sm hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
                       >
@@ -363,14 +386,26 @@ export function ComposeEmailModal({
                         Bypass cap
                       </button>
                     )}
-                    <button
-                      type="submit"
-                      disabled={isPending || !fromAccountId}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-zinc-50 hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                    >
-                      {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      Send
-                    </button>
+                    {duplicateWarnings.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSubmit(null, { ackDuplicates: true })}
+                        disabled={isPending || !fromAccountId}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-sm text-white hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-400"
+                      >
+                        {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Send anyway
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={isPending || !fromAccountId}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-zinc-50 hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                      >
+                        {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Send
+                      </button>
+                    )}
                   </div>
                 </form>
               )}
@@ -402,4 +437,62 @@ function FromOptions({ inboxes }: { inboxes: ConnectedAccountOption[] }) {
       {team.length > 0 && <optgroup label="Team inboxes">{team.map(renderOption)}</optgroup>}
     </>
   );
+}
+
+/**
+ * DuplicateConfirmPanel — when the server detects open threads to
+ * the same recipient on the same team, this panel lists them so the
+ * operator can decide:
+ *   - open the existing thread (linked subject)
+ *   - send anyway (the "Send anyway" amber button in the footer)
+ *   - cancel
+ *
+ * The panel itself is informational; the action buttons live in the
+ * modal footer so they're consistent with the regular Send flow.
+ */
+function DuplicateConfirmPanel({ warnings }: { warnings: DuplicateWarning[] }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/40 dark:bg-amber-950/30">
+      <p className="font-medium text-amber-900 text-xs dark:text-amber-200">
+        {warnings.length === 1
+          ? "1 open thread already exists to this address."
+          : `${warnings.length} open threads already exist to this address.`}{" "}
+        Review before sending a duplicate.
+      </p>
+      <ul className="flex flex-col gap-1">
+        {warnings.map((w) => (
+          <li
+            key={w.threadId}
+            className="rounded border border-amber-200 bg-white px-2 py-1.5 text-xs dark:border-amber-900/40 dark:bg-zinc-950"
+          >
+            <a
+              href={`/inbox/${w.threadId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="block truncate font-medium text-amber-900 underline-offset-2 hover:underline dark:text-amber-200"
+            >
+              {w.subject ?? "(no subject)"}
+            </a>
+            <p className="mt-0.5 truncate text-[10px] text-zinc-600 dark:text-zinc-400">
+              {w.ownerDisplayName ? `${w.ownerDisplayName} · ` : ""}
+              {w.inboxEmail ? `${w.inboxEmail} · ` : ""}
+              last activity {formatWarningTime(w.lastMessageAt)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function formatWarningTime(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  const now = Date.now();
+  const ms = now - date.getTime();
+  if (ms < 0) return "in the future";
+  const hr = Math.floor(ms / 3_600_000);
+  if (hr < 1) return "moments ago";
+  if (hr < 24) return `${hr}h ago`;
+  const d2 = Math.floor(hr / 24);
+  return `${d2}d ago`;
 }

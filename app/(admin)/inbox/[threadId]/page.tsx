@@ -18,6 +18,7 @@ import { InboxPresenceBar } from "../_components/InboxPresenceBar";
 import { InboxShell } from "../_components/InboxShell";
 import { ThreadList } from "../_components/ThreadList";
 import { ThreadPane } from "../_components/ThreadPane";
+import { InboxKeyboardNav } from "../_components/inbox-keyboard-nav";
 
 export const metadata = { title: "Inbox" };
 export const dynamic = "force-dynamic";
@@ -148,6 +149,14 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
               threads={threads}
               activeThreadId={threadId}
               folderLabel={FOLDER_LABELS[folder]}
+              preservedQuery={preservedQuery.toString()}
+            />
+            {/* j/k navigation between threads in the current folder
+                + ? for the shortcut help dialog. Mounts here so it
+                runs from the detail view too. */}
+            <InboxKeyboardNav
+              threadIds={threads.map((t) => t.id)}
+              activeThreadId={threadId}
               preservedQuery={preservedQuery.toString()}
             />
           </div>

@@ -310,6 +310,39 @@ async function ingestMessage(opts: {
         })
       : null;
 
+  // Auto-suppress: inbound messages whose body/subject screams
+  // "unsubscribe" or "STOP" get the sender's address pushed into
+  // email_suppression with reason='unsubscribe'. Future sends from
+  // anyone on the team to that address will hard-block.
+  //
+  // We only auto-suppress on a clean STOP signal — not on any reply
+  // that happens to contain the word. The patterns inside
+  // maybeAutoSuppressInbound match explicit unsubscribe asks (first
+  // body line OR exact subject). Conservative on purpose.
+  if (direction === "inbound") {
+    try {
+      // Resolve the team_id for this inbox. Cheap lookup; only runs
+      // when we have a candidate STOP signal at the helper level.
+      const teamRow = await db
+        .select({ teamId: staffOutreachEmails.teamId })
+        .from(staffOutreachEmails)
+        .where(eq(staffOutreachEmails.id, inbox.id))
+        .limit(1);
+      const teamId = teamRow[0]?.teamId;
+      if (teamId) {
+        await maybeAutoSuppressInbound({
+          teamId,
+          fromAddress: fromHeader,
+          subject,
+          bodyText,
+          sourceThreadId: null,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, gmailThreadId }, "auto-suppress check failed (non-fatal)");
+    }
+  }
+
   // Find or create the thread.
   let threadId: string;
   let threadCreated = false;
@@ -573,4 +606,52 @@ async function gmailFetch(endpoint: string, accessToken: string): Promise<Record
     throw new Error(`Gmail API ${res.status}: ${body.slice(0, 500)}`);
   }
   return (await res.json()) as Record<string, unknown>;
+}
+
+// =========================================================================
+// Auto-suppression on inbound STOP/unsubscribe
+// =========================================================================
+
+const UNSUBSCRIBE_BODY_RE = /^[\s>"']*(unsubscribe|remove me|stop|opt\s*out|please remove)\b/i;
+const UNSUBSCRIBE_SUBJECT_RE = /^\s*(unsubscribe|stop|remove me|opt\s*out)\s*$/i;
+
+/**
+ * Inspect an inbound message; if its first body line / subject is an
+ * explicit unsubscribe request, push the sender's address into
+ * email_suppression with reason='unsubscribe'. Idempotent via the
+ * unique index on (team_id, lower(email)).
+ *
+ * Conservative on purpose — we'd rather miss the edge case "STOP
+ * sending me ads but reply about my booking" than over-suppress
+ * legitimate addresses.
+ */
+async function maybeAutoSuppressInbound(opts: {
+  teamId: string;
+  fromAddress: string;
+  subject: string | null;
+  bodyText: string | null;
+  sourceThreadId: string | null;
+}): Promise<void> {
+  const bodyFirstLine = (opts.bodyText ?? "").split(/\r?\n/, 1)[0] ?? "";
+  const subjectMatch = opts.subject ? UNSUBSCRIBE_SUBJECT_RE.test(opts.subject) : false;
+  const bodyMatch = bodyFirstLine ? UNSUBSCRIBE_BODY_RE.test(bodyFirstLine) : false;
+  if (!subjectMatch && !bodyMatch) return;
+
+  // Extract bare email out of the From header (handles "Name <a@b>").
+  const angle = opts.fromAddress.match(/<([^>]+)>/);
+  const email = (angle?.[1] ?? opts.fromAddress).trim().toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+
+  // The schema barrel re-exports emailSuppression; we use a raw SQL
+  // INSERT here to avoid importing the schema module from a worker
+  // hot path with already heavy imports. onConflictDoNothing via
+  // ON CONFLICT DO NOTHING preserves idempotency.
+  await db.execute(sql`
+    INSERT INTO email_suppression (team_id, email, reason, notes, source_thread_id)
+    VALUES (${opts.teamId}, ${email}, 'unsubscribe',
+            'Auto-suppressed from inbound STOP/unsubscribe reply.',
+            ${opts.sourceThreadId})
+    ON CONFLICT (team_id, email) DO NOTHING
+  `);
+  logger.info({ email, teamId: opts.teamId }, "auto-suppressed address from inbound unsubscribe");
 }

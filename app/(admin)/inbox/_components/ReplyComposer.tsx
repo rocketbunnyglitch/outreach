@@ -30,6 +30,9 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
+  /** True when the server returned a duplicate-outreach warning that
+   *  needs an explicit ack to bypass. */
+  const [duplicateBlocked, setDuplicateBlocked] = useState(false);
   const [pending, startTx] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
@@ -40,7 +43,7 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
     }
   }, [expanded]);
 
-  function send(bypass = false) {
+  function send(opts: { bypass?: boolean; ackDuplicates?: boolean } = {}) {
     setError(null);
     if (!body.trim()) {
       setError("Reply body can't be empty.");
@@ -50,18 +53,22 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
       const fd = new FormData();
       fd.set("threadId", threadId);
       fd.set("body", body);
-      if (bypass) fd.set("bypassCap", "1");
+      if (opts.bypass) fd.set("bypassCap", "1");
+      if (opts.ackDuplicates) fd.set("ackDuplicates", "1");
       const result = await sendThreadReply(null, fd);
       if (!result.ok) {
         setError(result.error);
-        // Heuristic: "Daily cold-send cap reached" is the prefix the
-        // server returns on a cap block. Surface the bypass affordance.
+        // Heuristic prefixes from the server messages — let the UI
+        // surface the right confirm affordance without leaking a
+        // structured error object across the action boundary.
         setCapBlocked(result.error.startsWith("Daily cold-send cap reached"));
+        setDuplicateBlocked(result.error.startsWith("Possible duplicate outreach"));
         return;
       }
       setBody("");
       setExpanded(false);
       setCapBlocked(false);
+      setDuplicateBlocked(false);
       router.refresh();
     });
   }
@@ -101,7 +108,11 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            send();
+            // Cmd+Enter sends — if a duplicate ack is currently
+            // required, the operator clicks "Send anyway" deliberately
+            // instead of the keyboard shortcut (avoids silent send
+            // anyway via muscle memory).
+            if (!duplicateBlocked) send();
           } else if (e.key === "Escape" && !body.trim()) {
             setExpanded(false);
           }
@@ -122,6 +133,7 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
             setBody("");
             setExpanded(false);
             setCapBlocked(false);
+            setDuplicateBlocked(false);
           }}
           disabled={pending}
           className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-widest transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"
@@ -134,17 +146,37 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => send(true)}
+              onClick={() => send({ bypass: true })}
               disabled={pending || !body.trim()}
               className="text-amber-700 dark:text-amber-300"
             >
               Bypass cap
             </Button>
           )}
-          <Button onClick={() => send(false)} disabled={pending || !body.trim()} size="sm">
-            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-            Send reply
-          </Button>
+          {duplicateBlocked ? (
+            <Button
+              onClick={() => send({ ackDuplicates: true })}
+              disabled={pending || !body.trim()}
+              size="sm"
+              className="bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+            >
+              {pending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              Send anyway
+            </Button>
+          ) : (
+            <Button onClick={() => send({})} disabled={pending || !body.trim()} size="sm">
+              {pending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              Send reply
+            </Button>
+          )}
         </div>
       </div>
     </div>
