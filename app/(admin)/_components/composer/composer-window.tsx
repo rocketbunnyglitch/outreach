@@ -326,7 +326,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     }
     if (!instance.subject.trim() && !confirm("Send with an empty subject?")) return;
     if (instance.scheduledFor) {
-      // Scheduled drafts: store the timestamp + close. Cron is TODO.
+      // Scheduled drafts: store the timestamp + close. The 5-minute
+      // /api/cron/scheduled-sends cron picks them up at the configured
+      // time and routes through the same composeAndSend pipeline.
       handleSaveAsDraft();
       return;
     }

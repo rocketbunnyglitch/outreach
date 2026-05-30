@@ -58,6 +58,7 @@ import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { BulkPasteModal } from "./bulk-paste-modal";
 import { EscalationPopover } from "./escalation-popover";
+import { EscalationStatusPopover } from "./escalation-status-popover";
 import { FindEmailButton } from "./find-email-button";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
@@ -992,6 +993,9 @@ function ColdRow({
 }) {
   const [pending, startTx] = useTransition();
   const [escalationOpen, setEscalationOpen] = useState(false);
+  // Anchor + open state for the "Escalated to X" pill click-through
+  // that lets the operator view notes + un-escalate.
+  const [escalationStatusAnchor, setEscalationStatusAnchor] = useState<DOMRect | null>(null);
   // Smart-remark follow-up suggestion. Set when a remark commit
   // detects a future-dated time phrase; cleared on schedule/dismiss.
   const [followUp, setFollowUp] = useState<{
@@ -1569,16 +1573,31 @@ function ColdRow({
         />
         {/* Escalation pill — renders only when this entry IS currently
             escalated. Surfaces "with X since DATE" so every staffer can
-            see what's parked with whom. Click to view + un-escalate
-            (TODO: future iteration; popover currently fire-and-forget). */}
+            see what's parked with whom. Click to view notes + un-escalate. */}
         {entry.escalatedToName && (
-          <div
-            className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/[0.10] px-2 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] ring-1 ring-amber-500/30 ring-inset dark:text-amber-300"
+          <button
+            type="button"
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              setEscalationStatusAnchor(r);
+            }}
+            className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/[0.10] px-2 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] ring-1 ring-amber-500/30 ring-inset hover:bg-amber-500/[0.18] dark:text-amber-300"
             title={entry.escalationNotes ?? undefined}
           >
             <AlertTriangle className="h-2.5 w-2.5" />
             Escalated to {entry.escalatedToName}
-          </div>
+          </button>
+        )}
+        {escalationStatusAnchor && entry.escalatedToName && (
+          <EscalationStatusPopover
+            entryId={entry.entryId}
+            escalatedToName={entry.escalatedToName}
+            escalatedAt={entry.escalatedAt}
+            escalationNotes={entry.escalationNotes}
+            anchorRect={escalationStatusAnchor}
+            onClose={() => setEscalationStatusAnchor(null)}
+            onCleared={() => router.refresh()}
+          />
         )}
         {/* EscalationPopover renders via createPortal so it can stay
             in the row's DOM tree (here, attached to the Remarks <td>)
