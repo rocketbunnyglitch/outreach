@@ -1,15 +1,15 @@
 import type { CampaignSuggestion } from "@/lib/campaign-matcher";
-import { cn } from "@/lib/cn";
 import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
 import { type ThreadState, suggestNextAction } from "@/lib/suggested-next-action";
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import type { Classification } from "@/lib/triage-classifier";
-import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
+import { MailOpen, User } from "lucide-react";
 import Link from "next/link";
 import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
+import { MessageCard } from "./MessageCard";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
@@ -134,11 +134,27 @@ export function ThreadPane({
         <CampaignSuggestionRow threadId={thread.id} suggestions={campaignSuggestions} />
       </header>
 
-      {/* Messages */}
+      {/* Messages — long threads collapse older messages by default.
+          When there are 3+ messages, all but the most recent render
+          as a one-line summary; click to expand. Newest message is
+          always shown expanded. Matches Gmail's conversation view. */}
       <ol className="flex flex-col">
-        {messages.map((m, i) => (
-          <MessageCard key={m.id} message={m} isLast={i === messages.length - 1} />
-        ))}
+        {messages.map((m, i) => {
+          const isNewest = i === messages.length - 1;
+          // Auto-collapse: only when there are 3+ messages, and only
+          // for messages that aren't the newest one. Single-message
+          // and two-message threads stay fully expanded — collapsing
+          // them just hides useful context.
+          const defaultCollapsed = messages.length >= 3 && !isNewest;
+          return (
+            <MessageCard
+              key={m.id}
+              message={m}
+              isLast={isNewest}
+              defaultCollapsed={defaultCollapsed}
+            />
+          );
+        })}
       </ol>
 
       {/* Reply triggers — Reply / Reply All / Forward all hand off
@@ -158,98 +174,6 @@ export function ThreadPane({
         <VenueRail thread={thread} outreachHistory={outreachHistory} />
       </div>
     </div>
-  );
-}
-
-function MessageCard({
-  message,
-  isLast,
-}: {
-  message: InboxThreadDetail["messages"][number];
-  isLast: boolean;
-}) {
-  const isInbound = message.direction === "inbound";
-  return (
-    <li
-      className={cn("border-zinc-200/40 px-6 py-5 dark:border-zinc-800/30", !isLast && "border-b")}
-    >
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-sm">
-            {isInbound ? (
-              <ArrowLeft className="h-3.5 w-3.5 text-emerald-500" />
-            ) : (
-              <ArrowRight className="h-3.5 w-3.5 text-blue-500" />
-            )}
-            <span className="font-medium">{message.fromName ?? message.fromAddress}</span>
-            {message.fromName && (
-              <span className="text-xs text-zinc-500">&lt;{message.fromAddress}&gt;</span>
-            )}
-          </p>
-          {message.toAddresses.length > 0 && (
-            <p className="mt-0.5 text-xs text-zinc-500">
-              to {message.toAddresses.join(", ")}
-              {message.ccAddresses.length > 0 && (
-                <span> · cc {message.ccAddresses.join(", ")}</span>
-              )}
-            </p>
-          )}
-        </div>
-        <time
-          dateTime={message.sentAt.toISOString()}
-          className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
-        >
-          {message.sentAt.toLocaleString([], {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </time>
-      </header>
-
-      <div className="mt-3">
-        {/*
-          Render priority:
-            1. bodySafeHtml — server-sanitized inbound HTML. Newsletters,
-               replies with formatting, threaded-quote markup all render
-               correctly here. The sanitizer in lib/email-sanitize.ts
-               strips scripts/iframes/event-handlers; what reaches the
-               client is safe to inject via dangerouslySetInnerHTML.
-            2. bodyText — plain-text fallback when HTML is absent or
-               stripped to nothing.
-            3. "(empty body)" — both null.
-
-          The wrapper applies inbox-prose styles (a minimal hand-rolled
-          alternative to @tailwindcss/typography since the plugin isn't
-          installed in this project). Constraints:
-            - max-width on the body so newsletter tables don't explode
-              the right column
-            - links inherit our accent colour and underline
-            - quoted text (Gmail-style "On ... wrote:") gets a left
-              border so the operator can see the boundary
-        */}
-        {message.bodySafeHtml ? (
-          <div
-            className="inbox-prose max-w-prose text-sm text-zinc-800 dark:text-zinc-200"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized server-side via DOMPurify; see lib/email-sanitize.ts
-            dangerouslySetInnerHTML={{ __html: message.bodySafeHtml }}
-          />
-        ) : message.bodyText ? (
-          <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-800 dark:text-zinc-200">
-            {message.bodyText}
-          </pre>
-        ) : (
-          <p className="text-xs text-zinc-500 italic">(empty body)</p>
-        )}
-      </div>
-
-      {message.sentByStaffName && !isInbound && (
-        <p className="mt-3 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-          Sent by {message.sentByStaffName}
-        </p>
-      )}
-    </li>
   );
 }
 
