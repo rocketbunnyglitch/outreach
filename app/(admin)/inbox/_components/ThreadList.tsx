@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { StarToggle } from "./StarToggle";
+import { ThreadRowHoverActions } from "./ThreadRowHoverActions";
 
 /**
  * Middle pane — the thread list. Rows are Gmail-shaped: checkbox /
@@ -35,6 +36,7 @@ export function ThreadList({
   preservedQuery,
   selectedIds,
   onToggleSelect,
+  isTrashView,
 }: {
   threads: InboxThreadRow[];
   activeThreadId: string | null;
@@ -48,6 +50,8 @@ export function ThreadList({
   selectedIds?: Set<string>;
   /** Per-row checkbox handler. Omit for read-only mode. */
   onToggleSelect?: (threadId: string) => void;
+  /** Trash view shows Restore-style hover actions instead of Archive/Trash. */
+  isTrashView?: boolean;
 }) {
   if (threads.length === 0) {
     return (
@@ -69,6 +73,7 @@ export function ThreadList({
           preservedQuery={preservedQuery}
           isSelected={selectedIds?.has(t.id) ?? false}
           onToggleSelect={onToggleSelect}
+          isTrashView={isTrashView}
         />
       ))}
     </ul>
@@ -103,12 +108,14 @@ function ThreadRow({
   preservedQuery,
   isSelected,
   onToggleSelect,
+  isTrashView,
 }: {
   thread: InboxThreadRow;
   isActive: boolean;
   preservedQuery: string;
   isSelected: boolean;
   onToggleSelect?: (threadId: string) => void;
+  isTrashView?: boolean;
 }) {
   const href = preservedQuery ? `/inbox/${thread.id}?${preservedQuery}` : `/inbox/${thread.id}`;
 
@@ -117,7 +124,7 @@ function ThreadRow({
       <Link
         href={href}
         className={cn(
-          "block border-zinc-200/60 border-b px-4 py-3 transition-colors",
+          "group/row block border-zinc-200/60 border-b px-4 py-3 transition-colors",
           "dark:border-zinc-800/40",
           isActive
             ? "bg-zinc-100 dark:bg-zinc-900"
@@ -150,12 +157,19 @@ function ThreadRow({
               {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
             </p>
           </div>
-          <time
-            dateTime={thread.lastMessageAt.toISOString()}
-            className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
-          >
-            {formatTime(thread.lastMessageAt)}
-          </time>
+          <div className="shrink-0">
+            <time
+              dateTime={thread.lastMessageAt.toISOString()}
+              className="block font-mono text-[10px] text-zinc-500 tabular-nums group-hover/row:hidden"
+            >
+              {formatTime(thread.lastMessageAt)}
+            </time>
+            <ThreadRowHoverActions
+              threadId={thread.id}
+              snoozeUntil={thread.snoozeUntil}
+              isTrashView={isTrashView}
+            />
+          </div>
         </div>
 
         {thread.subject && (

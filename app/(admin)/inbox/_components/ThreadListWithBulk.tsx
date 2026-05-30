@@ -200,6 +200,7 @@ export function ThreadListWithBulk({
         preservedQuery={preservedQuery}
         selectedIds={selected}
         onToggleSelect={toggleOne}
+        isTrashView={isTrashView}
       />
     </>
   );

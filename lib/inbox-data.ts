@@ -203,6 +203,9 @@ export interface InboxThreadRow {
   staleReason: string | null;
   /** Gmail-style star. Operator can toggle via the star button. */
   isStarred: boolean;
+  /** ISO snooze timestamp if the thread is snoozed; null otherwise.
+   *  Surfaced so the row hover actions can show a current snooze state. */
+  snoozeUntil: string | null;
   /** Team labels applied to this thread. */
   labels: Array<{ id: string; name: string; color: string | null }>;
 }
@@ -311,6 +314,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       isStale: emailThreads.isStale,
       staleReason: emailThreads.staleReason,
       isStarred: emailThreads.isStarred,
+      snoozeUntilDate: emailThreads.snoozeUntil,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
@@ -394,12 +398,16 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     labelsByThread.set(lr.threadId, arr);
   }
 
-  return rows.map((r) => ({
-    ...(r as Omit<InboxThreadRow, "slaBreached" | "labels">),
-    labels: labelsByThread.get(r.id) ?? [],
-    slaBreached:
-      r.state === "needs_reply" && r.lastInboundAt != null && r.lastInboundAt < slaCutoff,
-  }));
+  return rows.map((r) => {
+    const { snoozeUntilDate, ...rest } = r;
+    return {
+      ...(rest as Omit<InboxThreadRow, "slaBreached" | "labels" | "snoozeUntil">),
+      snoozeUntil: snoozeUntilDate ? snoozeUntilDate.toISOString() : null,
+      labels: labelsByThread.get(r.id) ?? [],
+      slaBreached:
+        r.state === "needs_reply" && r.lastInboundAt != null && r.lastInboundAt < slaCutoff,
+    };
+  });
 }
 
 // =========================================================================
