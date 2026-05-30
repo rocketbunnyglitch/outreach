@@ -22,6 +22,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useComposer } from "./composer-store";
 import { ComposerWindow } from "./composer-window";
+import { useDraftHydration } from "./use-draft-hydration";
 
 const MAX_DOCKED_COMPOSERS = 3;
 const MOBILE_BREAKPOINT_PX = 640;
@@ -29,6 +30,10 @@ const MOBILE_BREAKPOINT_PX = 640;
 export function ComposerHost() {
   const { composers, setMode } = useComposer();
   const [isMobile, setIsMobile] = useState(false);
+
+  // Hydrate any not-yet-sent drafts from the server on first mount
+  // so a tab refresh doesn't lose in-progress work.
+  useDraftHydration();
 
   // Track viewport width for mobile-vs-desktop layout switch.
   useEffect(() => {
