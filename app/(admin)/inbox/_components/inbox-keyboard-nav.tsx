@@ -52,6 +52,21 @@ export function InboxKeyboardNav({ threadIds, activeThreadId, preservedQuery }: 
   useInboxShortcuts({
     next: () => navigate(1),
     prev: () => navigate(-1),
+    // 'r' / 'e' only do anything on the detail view (we need a
+    // thread to reply to / archive). On the list view they're
+    // no-ops by design — the operator picks a thread first.
+    reply: activeThreadId
+      ? () =>
+          document.dispatchEvent(
+            new CustomEvent("inbox-reply", { detail: { threadId: activeThreadId } }),
+          )
+      : undefined,
+    archive: activeThreadId
+      ? () =>
+          document.dispatchEvent(
+            new CustomEvent("inbox-archive", { detail: { threadId: activeThreadId } }),
+          )
+      : undefined,
     showHelp: () => setShowHelp(true),
   });
 

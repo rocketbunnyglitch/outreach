@@ -128,3 +128,68 @@ export async function resyncInbox(
     return { ok: false, error: `Resync failed: ${msg}` };
   }
 }
+
+/**
+ * Set the daily cold-send cap on a connected inbox.
+ *
+ * Permissions:
+ *   - Owner of the inbox can edit their own cap
+ *   - Admin can edit ANY inbox on the team (typically used when a
+ *     new account is warming up and needs a lower cap)
+ *
+ * Caps below 0 are coerced to 0 (effectively pauses cold sends);
+ * caps above 200 are rejected as a sanity guard against typos
+ * ("3000 -> 30 oops").
+ */
+export async function setInboxCap(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string; cap: number }>> {
+  const { staff } = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  const capRaw = String(formData.get("cap") ?? "");
+  if (!id) return { ok: false, error: "Missing inbox id" };
+
+  const cap = Number.parseInt(capRaw, 10);
+  if (!Number.isFinite(cap) || cap < 0) {
+    return { ok: false, error: "Cap must be 0 or greater." };
+  }
+  if (cap > 200) {
+    return { ok: false, error: "Cap above 200 looks like a typo — pick a smaller number." };
+  }
+
+  // Load to check ownership + team scope.
+  const rows = await db
+    .select({
+      id: connectedAccounts.id,
+      ownerUserId: connectedAccounts.ownerUserId,
+      teamId: connectedAccounts.teamId,
+    })
+    .from(connectedAccounts)
+    .where(eq(connectedAccounts.id, id))
+    .limit(1);
+  const inbox = rows[0];
+  if (!inbox) return { ok: false, error: "Inbox not found." };
+  if (inbox.teamId !== staff.teamId) {
+    return { ok: false, error: "That inbox isn't on your team." };
+  }
+  const isAdmin = staff.role === "admin";
+  const isOwner = inbox.ownerUserId === staff.id;
+  if (!isAdmin && !isOwner) {
+    return { ok: false, error: "Only the inbox owner or an admin can change the cap." };
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(connectedAccounts)
+        .set({ dailyColdSendCap: cap, updatedBy: staff.id })
+        .where(eq(connectedAccounts.id, id));
+    });
+    revalidatePath("/settings/inboxes");
+    return { ok: true, data: { id, cap } };
+  } catch (err) {
+    logger.error({ err, id, cap }, "setInboxCap failed");
+    return { ok: false, error: "Couldn't update cap. See server logs." };
+  }
+}

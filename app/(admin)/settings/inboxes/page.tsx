@@ -18,9 +18,11 @@ import { connectedAccounts, users } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
+import { loadSendUsage } from "@/lib/send-cap";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Unplug } from "lucide-react";
 import { disconnectInbox, resyncInbox } from "./_actions";
+import { CapEditor } from "./_components/cap-editor";
 
 export const metadata = { title: "Email Connection" };
 export const dynamic = "force-dynamic";
@@ -49,16 +51,26 @@ export default async function InboxesPage({ searchParams }: Props) {
   const { staff } = await requireStaff();
   const oauthReady = isGmailOAuthConfigured();
 
-  const myInboxes = await db
+  const myInboxesRaw = await db
     .select({
       id: connectedAccounts.id,
       emailAddress: connectedAccounts.emailAddress,
       status: connectedAccounts.status,
       lastSyncedAt: connectedAccounts.lastSyncedAt,
+      dailyColdSendCap: connectedAccounts.dailyColdSendCap,
     })
     .from(connectedAccounts)
     .where(eq(connectedAccounts.ownerUserId, staff.id))
     .orderBy(asc(connectedAccounts.emailAddress));
+
+  // Load today's usage for each of my inboxes so the row can render
+  // "18 / 30 today". Sequential — list is small (typically 1-3).
+  const myInboxes = await Promise.all(
+    myInboxesRaw.map(async (ib) => {
+      const usage = await loadSendUsage(ib.id);
+      return { ...ib, usedToday: usage.used };
+    }),
+  );
 
   const teamInboxes = await db
     .select({
@@ -67,6 +79,7 @@ export default async function InboxesPage({ searchParams }: Props) {
       status: connectedAccounts.status,
       ownerName: users.displayName,
       ownerEmail: users.primaryEmail,
+      dailyColdSendCap: connectedAccounts.dailyColdSendCap,
     })
     .from(connectedAccounts)
     .innerJoin(users, eq(users.id, connectedAccounts.ownerUserId))
@@ -173,6 +186,15 @@ export default async function InboxesPage({ searchParams }: Props) {
                       · synced {inbox.lastSyncedAt.toLocaleString()}
                     </span>
                   )}
+                  {/* Cold-send cap editor — click the count to edit.
+                      Owner can edit own; admin can edit any (server
+                      re-checks). */}
+                  <span className="font-mono text-[10px] text-zinc-500">·</span>
+                  <CapEditor
+                    inboxId={inbox.id}
+                    initialCap={inbox.dailyColdSendCap}
+                    usedToday={inbox.usedToday}
+                  />
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {inbox.status === "connected" && (
@@ -233,6 +255,7 @@ export default async function InboxesPage({ searchParams }: Props) {
                   <th className="px-4 py-2.5">Owner</th>
                   <th className="px-4 py-2.5">Email</th>
                   <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">Daily cap</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,6 +275,15 @@ export default async function InboxesPage({ searchParams }: Props) {
                       >
                         {c.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {staff.role === "admin" ? (
+                        <CapEditor inboxId={c.id} initialCap={c.dailyColdSendCap} />
+                      ) : (
+                        <span className="font-mono text-[11px] text-zinc-500 tabular-nums">
+                          {c.dailyColdSendCap}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

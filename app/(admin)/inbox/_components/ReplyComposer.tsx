@@ -43,6 +43,23 @@ export function ReplyComposer({ threadId, isAdmin = false }: Props) {
     }
   }, [expanded]);
 
+  // Keyboard binding bridge: 'r' from InboxKeyboardNav dispatches
+  // 'inbox-reply' on the document with the current threadId. We
+  // listen here so pressing 'r' expands + focuses this composer
+  // without ReplyComposer needing to be lifted into a parent ref.
+  useEffect(() => {
+    function onReply(e: Event) {
+      const detail = (e as CustomEvent<{ threadId: string }>).detail;
+      if (detail?.threadId !== threadId) return;
+      setExpanded(true);
+      // Focus happens via the expanded-effect above, but if already
+      // expanded the effect won't re-fire — focus directly.
+      if (textareaRef.current) textareaRef.current.focus();
+    }
+    document.addEventListener("inbox-reply", onReply);
+    return () => document.removeEventListener("inbox-reply", onReply);
+  }, [threadId]);
+
   function send(opts: { bypass?: boolean; ackDuplicates?: boolean } = {}) {
     setError(null);
     if (!body.trim()) {

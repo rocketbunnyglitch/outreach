@@ -48,6 +48,26 @@ export function ThreadActions({ threadId, currentState, unreadCount }: Props) {
     });
   }
 
+  // Keyboard binding bridge: InboxKeyboardNav dispatches a custom
+  // event on the document when the operator presses 'e'. We listen
+  // here so this thread's archive action runs without ThreadActions
+  // needing to be lifted into a parent. The event carries the
+  // threadId so multiple panes (unlikely but defensive) don't fire
+  // each other's archive.
+  useEffect(() => {
+    function onArchive(e: Event) {
+      const detail = (e as CustomEvent<{ threadId: string }>).detail;
+      if (detail?.threadId !== threadId) return;
+      changeState("archived");
+    }
+    document.addEventListener("inbox-archive", onArchive);
+    return () => document.removeEventListener("inbox-archive", onArchive);
+    // changeState closes over threadId + currentState, both stable
+    // for the lifetime of this component (the parent unmounts the
+    // pane on thread change).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, currentState]);
+
   return (
     <div className="flex items-center gap-2">
       <Button
