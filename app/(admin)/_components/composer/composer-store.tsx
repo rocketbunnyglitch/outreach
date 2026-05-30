@@ -253,9 +253,16 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
   // CustomEvent on window to hand off an AI-drafted email. The old
   // ComposeEmailModal listened for it; we maintain the same contract
   // here so callers don't need to be rewritten.
+  //
+  // Additional contract: when detail.draftId is set, the event means
+  // "expand the existing draft" rather than "create a new one." Used
+  // by the inbox Drafts/Scheduled list when the operator clicks
+  // Resume — the draft is already in the store (hydrated on mount)
+  // so we just flip the mode to 'docked'.
   useEffect(() => {
     function onCompose(e: Event) {
       const ce = e as CustomEvent<{
+        draftId?: string;
         to?: string;
         subject?: string;
         body?: string;
@@ -267,6 +274,15 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         isAdmin?: boolean;
       }>;
       const d = ce.detail ?? {};
+      if (d.draftId) {
+        // Resume an existing draft. If it's not in the store yet
+        // (hydration slow or never ran), fall through to open()
+        // which creates a fresh instance with empty fields — the
+        // autosave will then sync against the existing row id once
+        // the operator starts typing.
+        setMode(d.draftId, "docked");
+        return;
+      }
       open({
         to: d.to,
         subject: d.subject,
@@ -280,7 +296,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     }
     window.addEventListener("compose-email", onCompose);
     return () => window.removeEventListener("compose-email", onCompose);
-  }, [open]);
+  }, [open, setMode]);
 
   const value = useMemo<ComposerStoreValue>(
     () => ({ composers, open, close, setMode, setField, setStatus, hydrate }),

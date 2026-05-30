@@ -20,6 +20,7 @@ import {
   cities,
   cityCampaigns,
   connectedAccounts,
+  emailDrafts,
   emailMessages,
   emailThreads,
   outreachBrands,
@@ -30,7 +31,7 @@ import {
 } from "@/db/schema";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
-import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 // =========================================================================
 // Folders
@@ -869,4 +870,87 @@ export async function fetchInboxFilterFacets(opts: {
 function formatCampaignLabel(city: string | null, campaignName: string | null): string {
   if (city && campaignName) return `${city} · ${campaignName}`;
   return city ?? campaignName ?? "(unnamed)";
+}
+
+// =========================================================================
+// Drafts + Scheduled list (Gmail-style mailbox views)
+// =========================================================================
+
+export interface DraftListRow {
+  id: string;
+  subject: string;
+  /** First non-empty body line — Gmail-style snippet. */
+  snippet: string;
+  toAddresses: string[];
+  updatedAt: Date;
+  scheduledFor: Date | null;
+  /** Display name of the From inbox if connected_account_id is set. */
+  fromEmailAddress: string | null;
+  /** Composer auto-attached venue (when opened from a venue context). */
+  venueName: string | null;
+}
+
+/**
+ * List drafts visible to the operator. Two modes:
+ *   - mode='drafts'    — sent_at IS NULL AND scheduled_for IS NULL
+ *   - mode='scheduled' — sent_at IS NULL AND scheduled_for IS NOT NULL
+ *
+ * Owner-scoped (drafts are private to their creator, like Gmail). Team
+ * admins could see other staff's drafts in a future iteration, but v1
+ * keeps the privacy model conservative.
+ */
+export async function fetchDraftList(opts: {
+  currentUserId: string;
+  currentTeamId: string;
+  mode: "drafts" | "scheduled";
+}): Promise<DraftListRow[]> {
+  const rows = await db
+    .select({
+      id: emailDrafts.id,
+      subject: emailDrafts.subject,
+      bodyText: emailDrafts.bodyText,
+      toAddresses: emailDrafts.toAddresses,
+      updatedAt: emailDrafts.updatedAt,
+      scheduledFor: emailDrafts.scheduledFor,
+      fromEmailAddress: connectedAccounts.emailAddress,
+      venueName: venues.name,
+    })
+    .from(emailDrafts)
+    .leftJoin(connectedAccounts, eq(connectedAccounts.id, emailDrafts.connectedAccountId))
+    .leftJoin(venues, eq(venues.id, emailDrafts.venueId))
+    .where(
+      and(
+        eq(emailDrafts.ownerUserId, opts.currentUserId),
+        eq(emailDrafts.teamId, opts.currentTeamId),
+        isNull(emailDrafts.sentAt),
+        opts.mode === "scheduled"
+          ? sql`${emailDrafts.scheduledFor} IS NOT NULL`
+          : isNull(emailDrafts.scheduledFor),
+      ),
+    )
+    .orderBy(
+      // Scheduled view sorts by send-time ascending (next-to-go first);
+      // Drafts view sorts by recency descending.
+      opts.mode === "scheduled" ? asc(emailDrafts.scheduledFor) : desc(emailDrafts.updatedAt),
+    )
+    .limit(200);
+
+  return rows.map((r) => ({
+    id: r.id,
+    subject: r.subject || "(no subject)",
+    snippet: firstLine(r.bodyText),
+    toAddresses: r.toAddresses ?? [],
+    updatedAt: r.updatedAt,
+    scheduledFor: r.scheduledFor,
+    fromEmailAddress: r.fromEmailAddress,
+    venueName: r.venueName,
+  }));
+}
+
+function firstLine(s: string | null): string {
+  if (!s) return "";
+  const stripped = s.trim();
+  if (!stripped) return "";
+  const eol = stripped.indexOf("\n");
+  return (eol === -1 ? stripped : stripped.slice(0, eol)).slice(0, 140);
 }

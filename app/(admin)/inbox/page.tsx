@@ -2,6 +2,7 @@ import { requireStaff } from "@/lib/auth";
 import {
   FOLDER_LABELS,
   type InboxFolder,
+  fetchDraftList,
   fetchFolderCounts,
   fetchInboxAliases,
   fetchInboxFilterFacets,
@@ -9,6 +10,7 @@ import {
   isInboxFolder,
 } from "@/lib/inbox-data";
 import { Inbox as InboxIcon } from "lucide-react";
+import { DraftList } from "./_components/DraftList";
 import { FolderList } from "./_components/FolderList";
 import { InboxFilterBar } from "./_components/InboxFilterBar";
 import { InboxPresenceBar } from "./_components/InboxPresenceBar";
@@ -79,7 +81,9 @@ export default async function InboxPage({ searchParams }: Props) {
         : undefined;
   const mineAssigned = assignedStaffId === currentStaff.id;
 
-  const [threads, counts, aliases, facets] = await Promise.all([
+  const isDraftFolder = folder === "drafts" || folder === "scheduled";
+
+  const [threads, counts, aliases, facets, drafts] = await Promise.all([
     fetchInboxThreads({
       folder,
       currentTeamId: currentStaff.teamId,
@@ -105,6 +109,13 @@ export default async function InboxPage({ searchParams }: Props) {
       currentUserId: currentStaff.id,
       mine,
     }),
+    isDraftFolder
+      ? fetchDraftList({
+          currentUserId: currentStaff.id,
+          currentTeamId: currentStaff.teamId,
+          mode: folder === "scheduled" ? "scheduled" : "drafts",
+        })
+      : Promise.resolve([]),
   ]);
 
   const preservedQuery = new URLSearchParams();
@@ -152,13 +163,21 @@ export default async function InboxPage({ searchParams }: Props) {
             initialSearch={params.q}
           />
           <div className="flex-1 overflow-y-auto">
-            <ThreadListWithBulk
-              threads={threads}
-              activeThreadId={null}
-              folderLabel={FOLDER_LABELS[folder]}
-              preservedQuery={preservedQuery.toString()}
-              isTrashView={folder === "trash"}
-            />
+            {isDraftFolder ? (
+              <DraftList
+                drafts={drafts}
+                mode={folder === "scheduled" ? "scheduled" : "drafts"}
+                folderLabel={FOLDER_LABELS[folder]}
+              />
+            ) : (
+              <ThreadListWithBulk
+                threads={threads}
+                activeThreadId={null}
+                folderLabel={FOLDER_LABELS[folder]}
+                preservedQuery={preservedQuery.toString()}
+                isTrashView={folder === "trash"}
+              />
+            )}
             {/* Mounts at the bottom so it's always rendered but
                 contributes no layout. j/k navigation + help. */}
             <InboxKeyboardNav
