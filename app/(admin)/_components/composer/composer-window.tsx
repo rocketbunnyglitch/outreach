@@ -795,8 +795,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <AttachmentList
+            draftId={instance.id}
             attachments={instance.attachments}
-            onChange={(next) => setField(instance.id, { attachments: next })}
+            onChange={(updater) =>
+              setField(instance.id, {
+                attachments:
+                  typeof updater === "function" ? updater(instance.attachments) : updater,
+              })
+            }
           />
           <button
             type="button"

@@ -21,8 +21,9 @@ import "server-only";
  */
 
 import { connectedAccounts, emailMessages, emailThreads } from "@/db/schema";
+import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
 import { db } from "@/lib/db";
-import { sendGmailMessage } from "@/lib/gmail";
+import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
@@ -79,6 +80,38 @@ export async function composeAndSendImpl(
   const replyToMessageIdRaw = String(formData.get("replyToMessageId") ?? "").trim();
   const replyToMessageId =
     replyToMessageIdRaw && UUID_RE.test(replyToMessageIdRaw) ? replyToMessageIdRaw : null;
+
+  // Attachments — sendDraftAsUser packs the draft's attachments JSONB
+  // (filtered to those with storage_key) as JSON. We fetch the bytes
+  // from object storage right before send so a scheduled draft picks
+  // up the bytes at dispatch time rather than at autosave.
+  const attachmentsRaw = String(formData.get("attachments") ?? "");
+  let attachmentRefs: Array<{
+    name: string;
+    mime: string;
+    storage_key?: string;
+  }> = [];
+  if (attachmentsRaw) {
+    try {
+      const parsed = JSON.parse(attachmentsRaw);
+      if (Array.isArray(parsed)) {
+        attachmentRefs = parsed
+          .filter(
+            (a): a is { name: string; mime: string; storage_key: string } =>
+              typeof a === "object" &&
+              a !== null &&
+              typeof a.name === "string" &&
+              typeof a.mime === "string" &&
+              typeof a.storage_key === "string" &&
+              isValidStorageKey(a.storage_key, staff.teamId),
+          )
+          .slice(0, 10); // Gmail's hard limit is 25MB total; cap at 10 files defensively
+      }
+    } catch {
+      // Ignore malformed attachments payload — silent drop is safer
+      // than blocking the send entirely on a parse error.
+    }
+  }
 
   if (!UUID_RE.test(fromAccountId)) return { ok: false, error: "Pick a From inbox." };
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
@@ -203,6 +236,26 @@ export async function composeAndSendImpl(
     }
   }
 
+  // Resolve attachment bytes from object storage before send.
+  // Failures here block the send — sending a draft that THINKS it
+  // has attachments but actually doesn't is worse than failing loud.
+  const gmailAttachments: GmailAttachment[] = [];
+  for (const ref of attachmentRefs) {
+    if (!ref.storage_key) continue;
+    const bytes = await fetchAttachmentBytes(ref.storage_key);
+    if (!bytes) {
+      logger.error(
+        { storageKey: ref.storage_key, fromAccountId },
+        "composeAndSend: attachment bytes missing",
+      );
+      return {
+        ok: false,
+        error: `Couldn't load attachment "${ref.name}" — storage may be misconfigured or the file was deleted.`,
+      };
+    }
+    gmailAttachments.push({ filename: ref.name, mimeType: ref.mime, data: bytes });
+  }
+
   let sent: { id: string; threadId: string };
   try {
     sent = await sendGmailMessage({
@@ -214,6 +267,7 @@ export async function composeAndSendImpl(
       textBody: body,
       threadId: replyThreadGmailId ?? undefined,
       replyToMessageId: replyMessageRfc822Id ?? undefined,
+      attachments: gmailAttachments.length > 0 ? gmailAttachments : undefined,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, to }, "composeAndSend: gmail send failed");

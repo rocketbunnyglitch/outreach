@@ -172,13 +172,25 @@ export async function fetchUserEmail(accessToken: string): Promise<string> {
 /**
  * Sends an email via the Gmail API as the authenticated user.
  *
- * Gmail's send endpoint takes a base64url-encoded RFC 5322 message. We
- * construct a minimal multipart/alternative message with HTML + plain
- * text fallbacks.
+ * Gmail's send endpoint takes a base64url-encoded RFC 5322 message.
+ *
+ * Message structure varies by content:
+ *   - No attachments:  multipart/alternative { text, html }
+ *   - With attachments: multipart/mixed {
+ *                          multipart/alternative { text, html },
+ *                          ...each attachment as base64 part
+ *                       }
  *
  * threadId is optional — when set, Gmail nests the message in an existing
  * thread (so a "reply" stays threaded on the venue's side).
  */
+export interface GmailAttachment {
+  filename: string;
+  mimeType: string;
+  /** Raw file bytes — base64-encoded into the multipart part. */
+  data: Buffer;
+}
+
 export async function sendGmailMessage(opts: {
   encryptedRefreshToken: string;
   from: string;
@@ -188,37 +200,73 @@ export async function sendGmailMessage(opts: {
   textBody?: string;
   threadId?: string;
   replyToMessageId?: string;
+  attachments?: GmailAttachment[];
 }): Promise<{ id: string; threadId: string }> {
   const accessToken = await refreshAccessToken(opts.encryptedRefreshToken);
 
   // Construct RFC 5322 message
-  const boundary = `==BOUNDARY_${Date.now()}==`;
+  const altBoundary = `==ALT_${Date.now()}==`;
+  const mixedBoundary = `==MIX_${Date.now()}==`;
+  const hasAttachments = (opts.attachments?.length ?? 0) > 0;
+
   const headers = [
     `From: ${opts.from}`,
     `To: ${opts.to}`,
     `Subject: ${opts.subject}`,
     "MIME-Version: 1.0",
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    hasAttachments
+      ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`
+      : `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
   ];
   if (opts.replyToMessageId) {
     headers.push(`In-Reply-To: ${opts.replyToMessageId}`);
     headers.push(`References: ${opts.replyToMessageId}`);
   }
-  const message = [
-    headers.join("\r\n"),
-    "",
-    `--${boundary}`,
+
+  const altPart = [
+    `--${altBoundary}`,
     "Content-Type: text/plain; charset=UTF-8",
     "",
     opts.textBody ?? stripHtml(opts.htmlBody),
     "",
-    `--${boundary}`,
+    `--${altBoundary}`,
     "Content-Type: text/html; charset=UTF-8",
     "",
     opts.htmlBody,
     "",
-    `--${boundary}--`,
+    `--${altBoundary}--`,
   ].join("\r\n");
+
+  let bodyParts: string[];
+  if (!hasAttachments) {
+    bodyParts = [headers.join("\r\n"), "", altPart];
+  } else {
+    bodyParts = [
+      headers.join("\r\n"),
+      "",
+      `--${mixedBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      "",
+      altPart,
+      "",
+    ];
+    for (const att of opts.attachments ?? []) {
+      // Base64-encode + chunk into 76-char lines (RFC 2045 §6.8).
+      const b64 = att.data.toString("base64").replace(/(.{76})/g, "$1\r\n");
+      bodyParts.push(
+        `--${mixedBoundary}`,
+        `Content-Type: ${att.mimeType}; name="${quoteHeaderValue(att.filename)}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${quoteHeaderValue(att.filename)}"`,
+        "",
+        b64,
+        "",
+      );
+    }
+    bodyParts.push(`--${mixedBoundary}--`);
+  }
+
+  const message = bodyParts.join("\r\n");
 
   const raw = Buffer.from(message)
     .toString("base64")
@@ -242,6 +290,11 @@ export async function sendGmailMessage(opts: {
     throw new Error(`Gmail send failed (${res.status}): ${text}`);
   }
   return (await res.json()) as { id: string; threadId: string };
+}
+
+/** Escape backslash + quote for the filename in a header parameter. */
+function quoteHeaderValue(v: string): string {
+  return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function stripHtml(html: string): string {

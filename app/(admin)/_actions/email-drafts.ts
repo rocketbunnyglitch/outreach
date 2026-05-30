@@ -20,6 +20,7 @@
  */
 
 import { type EmailDraftAttachment, emailDrafts } from "@/db/schema";
+import { createSignedUpload, deleteAttachment, isValidStorageKey } from "@/lib/attachment-storage";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -215,6 +216,22 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
     return { ok: false, error: "Invalid draft id." };
   }
   try {
+    // Fetch the draft first so we can clean up any uploaded
+    // attachments. Best-effort: failures here log but don't block
+    // the row delete.
+    const [draft] = await db
+      .select({ attachments: emailDrafts.attachments })
+      .from(emailDrafts)
+      .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)))
+      .limit(1);
+    if (draft?.attachments) {
+      const list = draft.attachments as EmailDraftAttachment[] | null;
+      for (const att of list ?? []) {
+        if (att.storage_key) {
+          await deleteAttachment(att.storage_key);
+        }
+      }
+    }
     await db
       .delete(emailDrafts)
       .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)));
@@ -307,6 +324,16 @@ async function sendDraftAsUser(input: {
   if (draft.replyToThreadId) fd.set("replyToThreadId", draft.replyToThreadId);
   if (draft.replyToMessageId) fd.set("replyToMessageId", draft.replyToMessageId);
   if (draft.mode) fd.set("composeMode", draft.mode);
+  // Attachments — pass the JSONB array as JSON so composeAndSendImpl
+  // can resolve storage keys + fetch bytes for the multipart build.
+  // Only forward entries that have a storage_key (memory-only chips
+  // can't be sent, and we already surfaced that to the operator in
+  // the composer).
+  const attachmentsToSend =
+    (draft.attachments as EmailDraftAttachment[] | null)?.filter((a) => a.storage_key) ?? [];
+  if (attachmentsToSend.length > 0) {
+    fd.set("attachments", JSON.stringify(attachmentsToSend));
+  }
   // Admin-bypass marker — composeAndSend re-checks the operator's
   // role server-side; we just surface the form-field convention here.
   if (input.bypassCap) fd.set("bypassCap", "1");
@@ -337,4 +364,110 @@ async function sendDraftAsUser(input: {
   }
   revalidatePath("/inbox");
   return { ok: true, data: { threadId: result.threadId } };
+}
+
+/**
+ * Create a signed upload URL for a draft attachment. The browser then
+ * PUTs the file directly to object storage; on success, the client
+ * calls upsertDraft with the new attachment row including
+ * storage_key.
+ *
+ * Auth: requireStaff + draft ownership check. The draft must exist
+ * and belong to the current user (so a malicious client can't upload
+ * into another user's draft namespace).
+ *
+ * Falls back to { enabled: false } when ATTACHMENTS_ENABLED is unset
+ * — the composer keeps its existing memory-only path.
+ */
+export async function createAttachmentUpload(input: {
+  draftId: string;
+  filename: string;
+  mime: string;
+  sizeBytes: number;
+}): Promise<
+  ActionResult<
+    | {
+        enabled: true;
+        uploadUrl: string;
+        storageKey: string;
+        contentType: string;
+        expiresAt: string;
+      }
+    | { enabled: false }
+  >
+> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(input.draftId)) {
+    return { ok: false, error: "Invalid draft id." };
+  }
+  if (!input.filename || input.filename.length > 200) {
+    return { ok: false, error: "Invalid filename." };
+  }
+  if (!input.mime || !/^[\w\-+./]+$/.test(input.mime)) {
+    return { ok: false, error: "Invalid MIME type." };
+  }
+  if (!Number.isFinite(input.sizeBytes) || input.sizeBytes <= 0) {
+    return { ok: false, error: "Invalid size." };
+  }
+  if (input.sizeBytes > 25 * 1024 * 1024) {
+    return { ok: false, error: "File exceeds 25 MB limit." };
+  }
+
+  // Verify the draft belongs to the current user. We allow uploads
+  // even before the draft row exists by lazy-creating an empty draft
+  // (otherwise the client would have to two-step: upsert empty draft
+  // then upload). Idempotent.
+  const existing = await db
+    .select({ id: emailDrafts.id })
+    .from(emailDrafts)
+    .where(and(eq(emailDrafts.id, input.draftId), eq(emailDrafts.ownerUserId, staff.id)))
+    .limit(1);
+  if (existing.length === 0) {
+    try {
+      await db.insert(emailDrafts).values({
+        id: input.draftId,
+        ownerUserId: staff.id,
+        teamId: staff.teamId,
+      });
+    } catch (err) {
+      logger.error({ err, draftId: input.draftId }, "createAttachmentUpload: lazy-create failed");
+      return { ok: false, error: "Couldn't prepare upload." };
+    }
+  }
+
+  try {
+    const result = await createSignedUpload({
+      teamId: staff.teamId,
+      draftId: input.draftId,
+      staffId: staff.id,
+      filename: input.filename,
+      mime: input.mime,
+      sizeBytes: input.sizeBytes,
+    });
+    return { ok: true, data: result };
+  } catch (err) {
+    logger.error({ err, draftId: input.draftId }, "createAttachmentUpload failed");
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Couldn't prepare upload.",
+    };
+  }
+}
+
+/**
+ * Best-effort delete of a draft attachment from storage. The
+ * attachments JSONB array on the draft is updated separately via
+ * upsertDraft; this just removes the bytes.
+ *
+ * Validates the key belongs to the operator's team before deleting.
+ */
+export async function deleteAttachmentObject(
+  storageKey: string,
+): Promise<ActionResult<{ deleted: boolean }>> {
+  const { staff } = await requireStaff();
+  if (!isValidStorageKey(storageKey, staff.teamId)) {
+    return { ok: false, error: "Invalid storage key." };
+  }
+  await deleteAttachment(storageKey);
+  return { ok: true, data: { deleted: true } };
 }
