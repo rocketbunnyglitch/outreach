@@ -47,6 +47,7 @@ export * from "./venues";
 export * from "./venue-events";
 export * from "./outreach";
 export * from "./email-send-events";
+export * from "./email-suppression";
 export * from "./team-labels";
 export * from "./campaign-connected-accounts";
 export * from "./email-messages";

@@ -25,6 +25,13 @@ import { db } from "@/lib/db";
 import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { type SendUsage, preflightSend, recordSendEvent } from "@/lib/send-cap";
+import {
+  type DncBlock,
+  type DuplicateWarning,
+  type SuppressionBlock,
+  describeBlock,
+  runSendSafety,
+} from "@/lib/send-safety";
 import { type TeamLabelSummary, applyLabelToThread, listTeamLabels } from "@/lib/team-labels";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -119,6 +126,14 @@ export type ComposeResult =
        *  a "Bypass cap" button (admins only). */
       capBlocked?: boolean;
       usage?: SendUsage;
+      /** Set when a hard block (suppression or DNC) blocked the send.
+       *  No bypass — operator must fix the underlying state
+       *  (un-suppress / clear DNC) before retrying. */
+      safetyBlock?: SuppressionBlock | DncBlock;
+      /** Set when the send is OK but there are duplicate-outreach
+       *  warnings the operator must acknowledge. UI shows a confirm
+       *  step that re-submits with ackDuplicates=1. */
+      duplicateWarnings?: DuplicateWarning[];
     };
 
 /**
@@ -180,6 +195,34 @@ export async function composeAndSend(_prev: unknown, formData: FormData): Promis
     return {
       ok: false,
       error: "That inbox is disconnected. Reconnect it in Settings then try again.",
+    };
+  }
+
+  // Send-safety: suppression + DNC are HARD blocks (no admin
+  // override). Duplicate-outreach is a warning the operator must
+  // explicitly acknowledge via the dismissDuplicateWarning form
+  // field. Compose is always for a NEW thread, so we don't pass
+  // excludeThreadId.
+  const safety = await runSendSafety({
+    teamId: staff.teamId,
+    to,
+    venueId,
+  });
+  if (!safety.ok) {
+    return {
+      ok: false,
+      error: describeBlock(safety.block),
+      safetyBlock: safety.block,
+    };
+  }
+  // Warnings present + operator hasn't acknowledged → surface them
+  // so the modal can render the confirm step.
+  const acknowledgedDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
+  if (safety.warnings.length > 0 && !acknowledgedDuplicates) {
+    return {
+      ok: false,
+      error: `Possible duplicate outreach (${safety.warnings.length} open thread${safety.warnings.length === 1 ? "" : "s"} already to this address).`,
+      duplicateWarnings: safety.warnings,
     };
   }
 

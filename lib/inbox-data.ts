@@ -155,9 +155,11 @@ export interface InboxThreadRow {
   eventDayPart: string | null;
   eventCrawlNumber: number | null;
   slaBreached: boolean;
-  /** Team labels applied to this thread. Synced two-way with Gmail.
-   *  Display order is whatever the underlying query returns; UI may
-   *  sort by name. Empty array when no labels. */
+  /** True when the stale-tagger has flagged this thread. */
+  isStale: boolean;
+  /** Short reason string the UI shows as a tooltip on the stale chip. */
+  staleReason: string | null;
+  /** Team labels applied to this thread. */
   labels: Array<{ id: string; name: string; color: string | null }>;
 }
 
@@ -196,6 +198,8 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       >`(SELECT name FROM campaigns WHERE id = ${cityCampaigns.campaignId})`.as("campaign_name"),
       eventDayPart: events.dayPart,
       eventCrawlNumber: events.crawlNumber,
+      isStale: emailThreads.isStale,
+      staleReason: emailThreads.staleReason,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))

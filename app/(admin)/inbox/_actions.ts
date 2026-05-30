@@ -20,6 +20,8 @@ import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
+import { describeBlock, runSendSafety } from "@/lib/send-safety";
+import { clearStaleOnAction } from "@/lib/stale-tagger";
 import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -99,6 +101,27 @@ export async function sendThreadReply(
   const recipient = extractEmail(lastInbound[0]?.from ?? "");
   if (!recipient) {
     return { ok: false, error: "Couldn't determine where to send the reply." };
+  }
+
+  // Send-safety on the recipient. Replies to suppressed/DNC
+  // addresses are hard-blocked just like compose. Duplicate-outreach
+  // detection excludes THIS thread (a reply on the thread isn't a
+  // duplicate of itself).
+  const safety = await runSendSafety({
+    teamId: staff.teamId,
+    to: recipient,
+    excludeThreadId: threadId,
+    venueId: row.thread.venueId ?? null,
+  });
+  if (!safety.ok) {
+    return { ok: false, error: describeBlock(safety.block) };
+  }
+  const ackDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
+  if (safety.warnings.length > 0 && !ackDuplicates) {
+    return {
+      ok: false,
+      error: `Possible duplicate outreach (${safety.warnings.length} other open thread${safety.warnings.length === 1 ? "" : "s"} to this address). Re-send to confirm.`,
+    };
   }
 
   // Build the Re: subject
@@ -221,6 +244,14 @@ export async function sendThreadReply(
     logger.error({ err, threadId }, "sendThreadReply: recordSendEvent failed");
   }
 
+  // Operator action — clear stale immediately rather than waiting
+  // for the next stale-tagger cron run.
+  try {
+    await clearStaleOnAction(threadId);
+  } catch (err) {
+    logger.error({ err, threadId }, "sendThreadReply: clearStaleOnAction failed");
+  }
+
   revalidatePath(`/inbox/${threadId}`);
   revalidatePath("/inbox");
   publishRealtime({
@@ -303,6 +334,11 @@ export async function setThreadState(
         state,
         archivedAt: state === "archived" ? new Date() : null,
         updatedBy: staff.id,
+        // State change is operator action; clear stale immediately
+        // so the inbox UI reflects it without waiting for cron.
+        isStale: false,
+        staleSince: null,
+        staleReason: null,
       })
       .where(eq(emailThreads.id, threadId));
     revalidatePath(`/inbox/${threadId}`);

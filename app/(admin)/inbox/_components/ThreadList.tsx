@@ -175,11 +175,26 @@ function ThreadRow({
             </Chip>
           )}
 
-          {/* SLA breach badge */}
+          {/* SLA breach badge (recency-based, ad-hoc heuristic) */}
           {thread.slaBreached && (
             <span className="inline-flex items-center gap-1 font-mono text-[10px] text-rose-500 uppercase tracking-widest">
               <AlertTriangle className="h-3 w-3" />
               SLA
+            </span>
+          )}
+
+          {/* Stale badge — persisted by the stale-tagger cron.
+              Distinct from SLA: SLA is "thread breached its window";
+              stale is "tagged stale by background scan with reason
+              attached". Shown together when both apply (the rare
+              "really overdue" case). */}
+          {thread.isStale && (
+            <span
+              className="inline-flex items-center gap-1 font-mono text-[10px] text-amber-600 uppercase tracking-widest dark:text-amber-400"
+              title={thread.staleReason ?? "Stale"}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              Stale
             </span>
           )}
 

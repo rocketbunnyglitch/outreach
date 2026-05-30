@@ -12,7 +12,16 @@
  *   "stale replies" alerts.
  */
 
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { outreachBrands } from "./brands";
 import { cityCampaigns } from "./city-campaigns";
@@ -149,6 +158,19 @@ export const emailThreads = pgTable(
 
     /** Updated on every reply we send. */
     lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
+
+    /** True when the stale-tagger has flagged this thread as past SLA.
+     *  Set by lib/stale-tagger.ts on a periodic scan; cleared on
+     *  operator action (reply sent, archive, state change). Migration 0050. */
+    isStale: boolean("is_stale").notNull().default(false),
+
+    /** When the thread first crossed the SLA threshold. Null when
+     *  is_stale=false. */
+    staleSince: timestamp("stale_since", { withTimezone: true }),
+
+    /** Short human-readable reason the thread is stale. Used as a
+     *  tooltip on the stale chip. */
+    staleReason: text("stale_reason"),
 
     /** ~140-char preview of the latest message body, denormalized. */
     snippet: text("snippet"),
