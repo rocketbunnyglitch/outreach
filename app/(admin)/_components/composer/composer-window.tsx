@@ -32,6 +32,7 @@
  *         can resume from listMyDrafts (future feature)
  */
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { AlertCircle, Loader2, Maximize2, Minimize2, Minus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -126,6 +127,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
   const [sending, startSendTx] = useTransition();
+  const toast = useToast();
   /** undo-window timer: when non-null, we're in the queued-send window
    *  and the operator can cancel. */
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -303,9 +305,19 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       if (!sendRes.ok) {
         setSendError(sendRes.error);
         setCapBlocked(sendRes.capBlocked ?? false);
+        toast.show({
+          kind: "error",
+          message: sendRes.capBlocked
+            ? "Daily cold send cap reached."
+            : `Send failed: ${sendRes.error}`,
+        });
         return;
       }
       setSentThreadId(sendRes.data.threadId);
+      toast.show({
+        kind: "success",
+        message: opts.testOnly ? "Test sent to your inbox." : "Message sent.",
+      });
       // Skip follow-up prompt on test sends.
       if (!opts.testOnly) {
         setShowFollowUp(true);
@@ -330,6 +342,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       // /api/cron/scheduled-sends cron picks them up at the configured
       // time and routes through the same composeAndSend pipeline.
       handleSaveAsDraft();
+      toast.show({
+        kind: "success",
+        message: `Scheduled to send ${new Date(instance.scheduledFor).toLocaleString()}.`,
+      });
       return;
     }
     if (undoActive) return; // already queued
@@ -345,6 +361,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       undoTimerRef.current = null;
     }
     setUndoActive(false);
+    toast.show({ kind: "info", message: "Send canceled — message stays as a draft." });
   }
 
   function handleSendTest() {
@@ -396,9 +413,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       });
       if (res.ok) {
         setSendError(null);
-        alert(`Template "${name}" saved.`);
+        toast.show({ kind: "success", message: `Template "${name}" saved.` });
       } else {
         setSendError(res.error);
+        toast.show({ kind: "error", message: res.error });
       }
     })();
   }
