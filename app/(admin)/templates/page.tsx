@@ -5,8 +5,9 @@ import { emailTemplates, outreachBrands } from "@/db/schema";
 import { db } from "@/lib/db";
 import { STAGE_LABELS } from "@/lib/validation/email-templates";
 import { asc, eq, isNull } from "drizzle-orm";
-import { Mail, Plus, Star } from "lucide-react";
+import { AlertTriangle, Mail, Plus, Star } from "lucide-react";
 import Link from "next/link";
+import { MakeDefaultButton } from "./_components/make-default-button";
 
 export const metadata = { title: "Email templates" };
 export const dynamic = "force-dynamic";
@@ -77,36 +78,52 @@ export default async function TemplatesListPage() {
                 {bg.brandName}
               </h2>
               <div className="flex flex-col gap-6">
-                {Array.from(bg.stages.values()).map((sg) => (
-                  <div key={sg.stage} className="flex flex-col gap-2">
-                    <h3 className="font-medium text-sm text-zinc-700 dark:text-zinc-300">
-                      {STAGE_LABELS[sg.stage as keyof typeof STAGE_LABELS] ?? sg.stage}
-                    </h3>
-                    <ol className="flex flex-col gap-1.5">
-                      {sg.templates.map((row) => (
-                        <li key={row.template.id}>
-                          <Link href={`/templates/${row.template.id}`} className="group block">
-                            <Card className="flex items-center justify-between gap-4 p-3 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
-                              <div className="flex items-center gap-2.5">
-                                {row.template.isDefaultForStage && (
-                                  <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                                )}
-                                <span className="font-medium">{row.template.name}</span>
-                                <span className="font-mono text-xs text-zinc-500">
-                                  {row.template.subjectTemplate.slice(0, 60)}
-                                  {row.template.subjectTemplate.length > 60 ? "…" : ""}
-                                </span>
-                              </div>
-                              {row.template.isDefaultForStage && (
-                                <Badge tone="success">default</Badge>
-                              )}
-                            </Card>
-                          </Link>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                ))}
+                {Array.from(bg.stages.values()).map((sg) => {
+                  const hasDefault = sg.templates.some((r) => r.template.isDefaultForStage);
+                  return (
+                    <div key={sg.stage} className="flex flex-col gap-2">
+                      <h3 className="flex items-center gap-2 font-medium text-sm text-zinc-700 dark:text-zinc-300">
+                        {STAGE_LABELS[sg.stage as keyof typeof STAGE_LABELS] ?? sg.stage}
+                        {!hasDefault && sg.templates.length > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[10px] text-amber-700 normal-case tracking-normal dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+                            title="No default template set for this stage. The cadence engine + future auto-draft step will have nothing to pick."
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                            no default set
+                          </span>
+                        )}
+                      </h3>
+                      <ol className="flex flex-col gap-1.5">
+                        {sg.templates.map((row) => (
+                          <li key={row.template.id}>
+                            <Link href={`/templates/${row.template.id}`} className="group block">
+                              <Card className="flex items-center justify-between gap-4 p-3 transition-colors group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  {row.template.isDefaultForStage && (
+                                    <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                                  )}
+                                  <span className="font-medium">{row.template.name}</span>
+                                  <span className="font-mono text-xs text-zinc-500 truncate">
+                                    {row.template.subjectTemplate.slice(0, 60)}
+                                    {row.template.subjectTemplate.length > 60 ? "…" : ""}
+                                  </span>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  {row.template.isDefaultForStage ? (
+                                    <Badge tone="success">default</Badge>
+                                  ) : (
+                                    <MakeDefaultButton templateId={row.template.id} />
+                                  )}
+                                </div>
+                              </Card>
+                            </Link>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           ))}

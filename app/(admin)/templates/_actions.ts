@@ -174,3 +174,56 @@ export async function archiveEmailTemplate(id: string): Promise<void> {
   revalidatePath("/templates");
   redirect("/templates");
 }
+
+/**
+ * Promote a single template to be its (brand, stage)'s default —
+ * clearing the flag on any sibling that previously held it. Used by
+ * the inline "Make default" button on the templates list, so admins
+ * don't have to open the edit page just to flip a flag.
+ *
+ * Returns the id so the caller can revalidate, but the call is also
+ * idempotent — calling on an already-default template just no-ops.
+ */
+export async function setTemplateAsDefault(id: string): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const [existing] = await db
+    .select({
+      outreachBrandId: emailTemplates.outreachBrandId,
+      stage: emailTemplates.stage,
+      isDefaultForStage: emailTemplates.isDefaultForStage,
+    })
+    .from(emailTemplates)
+    .where(eq(emailTemplates.id, id))
+    .limit(1);
+  if (!existing) {
+    return { ok: false, error: "Template not found." };
+  }
+  if (existing.isDefaultForStage) {
+    return { ok: true, data: { id } };
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      // Clear any existing default in the same (brand, stage) group.
+      await tx
+        .update(emailTemplates)
+        .set({ isDefaultForStage: false, updatedBy: staff.id })
+        .where(
+          and(
+            eq(emailTemplates.outreachBrandId, existing.outreachBrandId),
+            eq(emailTemplates.stage, existing.stage),
+            eq(emailTemplates.isDefaultForStage, true),
+          ),
+        );
+      // Set this one.
+      await tx
+        .update(emailTemplates)
+        .set({ isDefaultForStage: true, updatedBy: staff.id })
+        .where(eq(emailTemplates.id, id));
+    });
+    revalidatePath("/templates");
+    return { ok: true, data: { id } };
+  } catch (err) {
+    return wrapDbError(err, "set template as default");
+  }
+}

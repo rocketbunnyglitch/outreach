@@ -695,6 +695,52 @@ const ORIGINAL_RECIPIENT_RE = /Original-Recipient:\s*(?:rfc822;\s*)?([^\s<>]+@[^
 const INLINE_FAILED_RE =
   /(?:could not be delivered|delivery to the following recipient(?:s)? failed|<([^<>\s]+@[^<>\s]+)>:?\s*(?:5\d{2}|user unknown|address rejected|recipient address rejected))/i;
 
+/** RFC 3464 Status: line, e.g. "Status: 5.1.1" — first digit = class.
+ *  4.x.x = persistent transient (soft); 5.x.x = permanent failure (hard). */
+const DSN_STATUS_RE = /^\s*Status:\s*([2-5])\.\d+\.\d+/im;
+
+/** Inline 3-digit SMTP code like "550 user unknown" or "421 too many connections". */
+const INLINE_SMTP_CODE_RE = /\b([2-5])\d{2}\b/;
+
+/** Classify a bounce as 'hard' (permanent — suppress) or 'soft'
+ *  (transient — don't suppress on a single occurrence).
+ *
+ *  Sources tried in order:
+ *    1. RFC 3464 Status: header in the body
+ *    2. Any 3-digit SMTP code near the recipient line in the body
+ *    3. Subject keywords (rare — most subjects don't carry a code)
+ *
+ *  Defaults to 'hard' when we can't tell. Better to occasionally
+ *  suppress a temporarily-undeliverable address than to keep
+ *  emailing dead inboxes.
+ */
+function classifyBounce(opts: {
+  subject: string | null;
+  bodyText: string | null;
+}): "hard" | "soft" {
+  const body = opts.bodyText ?? "";
+
+  // 1. DSN Status: line — most reliable.
+  const dsn = body.match(DSN_STATUS_RE);
+  if (dsn?.[1]) {
+    return dsn[1] === "4" ? "soft" : "hard";
+  }
+
+  // 2. Inline SMTP code.
+  const inline = body.match(INLINE_SMTP_CODE_RE);
+  if (inline?.[1]) {
+    return inline[1] === "4" ? "soft" : "hard";
+  }
+
+  // 3. Subject keywords as last resort. Most "delayed delivery" /
+  //    "deferred" subjects are soft; "undeliverable" / "rejected" /
+  //    "user unknown" are hard.
+  const subject = (opts.subject ?? "").toLowerCase();
+  if (/\bdelayed?\b|\bdeferred\b|\btemporarily\b/i.test(subject)) return "soft";
+
+  return "hard";
+}
+
 /**
  * Detect a bounce; if confident, extract the failed recipient and
  * suppress them with reason='bounced'. Notes capture the bounce
@@ -709,6 +755,10 @@ const INLINE_FAILED_RE =
  * We require AT LEAST ONE high-confidence signal plus an extracted
  * recipient. A subject like "Mail Delivery Subsystem" alone without
  * a recipient address doesn't suppress anyone (we wouldn't know who).
+ *
+ * Soft bounces (4.x.x or 4xx SMTP code) are LOGGED but NOT suppressed
+ * — the address may come back. Hard bounces (5.x.x) and unknown
+ * classification suppress + close the thread.
  */
 async function maybeAutoSuppressBounce(opts: {
   teamId: string;
@@ -756,11 +806,19 @@ async function maybeAutoSuppressBounce(opts: {
 
   const email = recipient.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
-  // Don't auto-suppress the inbox's own address (defensive against
-  // mis-extraction).
-  // No inbox.email available here — callers pre-checked direction
-  // so a self-bounce would be very unusual. The unique index also
-  // protects against duplicates if we mis-extract.
+
+  // Classify hard vs soft. Soft bounces are logged but NOT suppressed
+  // — the address may come back after a temporary issue (greylist,
+  // full mailbox, DNS hiccup). Hard bounces and unknown classification
+  // suppress permanently.
+  const severity = classifyBounce({ subject: opts.subject, bodyText: opts.bodyText });
+  if (severity === "soft") {
+    logger.info(
+      { email, teamId: opts.teamId, subject: opts.subject },
+      "soft bounce detected; logged but NOT suppressed (address may recover)",
+    );
+    return;
+  }
 
   // Capture a short diagnostic from the subject for operator context.
   const notes = `Auto-suppressed from bounce: ${opts.subject ?? "(no subject)"}`.slice(0, 280);
