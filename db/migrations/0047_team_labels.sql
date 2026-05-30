@@ -62,10 +62,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS team_labels_team_name_unique
 CREATE TABLE IF NOT EXISTS team_label_gmail_links (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   team_label_id uuid NOT NULL REFERENCES team_labels (id) ON DELETE CASCADE,
-  -- staff_outreach_emails == connected_accounts in the renamed table.
-  -- Reference the renamed table directly.
+  -- staff_outreach_emails was RENAMED to connected_accounts in migration
+  -- 0042; the old name was dropped, not aliased. Reference the current
+  -- name or the FK creation fails with relation-does-not-exist.
   connected_account_id uuid NOT NULL
-    REFERENCES staff_outreach_emails (id) ON DELETE CASCADE,
+    REFERENCES connected_accounts (id) ON DELETE CASCADE,
   gmail_label_id text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
