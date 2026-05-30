@@ -4,6 +4,7 @@ import {
   type InboxFolder,
   fetchFolderCounts,
   fetchInboxAliases,
+  fetchInboxFilterFacets,
   fetchInboxThreads,
   isInboxFolder,
 } from "@/lib/inbox-data";
@@ -78,7 +79,7 @@ export default async function InboxPage({ searchParams }: Props) {
         : undefined;
   const mineAssigned = assignedStaffId === currentStaff.id;
 
-  const [threads, counts, aliases] = await Promise.all([
+  const [threads, counts, aliases, facets] = await Promise.all([
     fetchInboxThreads({
       folder,
       currentTeamId: currentStaff.teamId,
@@ -98,6 +99,11 @@ export default async function InboxPage({ searchParams }: Props) {
     fetchInboxAliases({
       currentTeamId: currentStaff.teamId,
       currentUserId: currentStaff.id,
+    }),
+    fetchInboxFilterFacets({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
     }),
   ]);
 
@@ -119,6 +125,18 @@ export default async function InboxPage({ searchParams }: Props) {
             counts={counts}
             mineOnly={mineAssigned}
             currentStaffId={currentStaff.id}
+            facets={facets}
+            activeBrandId={params.brand}
+            activeCampaignId={params.campaign}
+            preservedQueryBase={(() => {
+              // Strip folder/brand/campaign since FolderList sets
+              // them per-chip. Preserve mine, staff, alias, q.
+              const p = new URLSearchParams(preservedQuery.toString());
+              p.delete("folder");
+              p.delete("brand");
+              p.delete("campaign");
+              return p.toString();
+            })()}
           />
           <InboxPresenceBar currentStaffId={currentStaff.id} />
         </div>

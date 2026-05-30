@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import { FOLDER_LABELS, INBOX_FOLDERS, type InboxFolder } from "@/lib/inbox-data";
+import type { InboxFilterFacets } from "@/lib/inbox-data";
 import {
   CheckCheck,
   CheckCircle2,
@@ -8,6 +9,8 @@ import {
   MailOpen,
   RotateCcw,
   Settings,
+  Tag,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -29,11 +32,23 @@ export function FolderList({
   counts,
   mineOnly,
   currentStaffId,
+  facets,
+  activeBrandId,
+  activeCampaignId,
+  preservedQueryBase,
 }: {
   activeFolder: InboxFolder;
   counts: Record<InboxFolder, number>;
   mineOnly: boolean;
   currentStaffId: string;
+  /** Active brand + campaign facets with open-thread counts. */
+  facets?: InboxFilterFacets;
+  /** Currently-applied brand filter (URL param). */
+  activeBrandId?: string;
+  /** Currently-applied campaign filter (URL param). */
+  activeCampaignId?: string;
+  /** Other URL params to preserve when building chip hrefs. */
+  preservedQueryBase?: string;
 }) {
   return (
     <nav aria-label="Inbox folders" className="flex flex-col gap-4">
@@ -122,11 +137,71 @@ export function FolderList({
               Mine only
             </ChipLink>
           </li>
-          {/*
-            Brand / campaign / city chips ship in the next iteration once
-            we have settings to choose from. Keeping the visual slot here
-            so the layout doesn't shift when they land.
-          */}
+          {/* Brand + campaign chips — facets are scoped to threads
+              with at least one open conversation, so a dead brand
+              with 0 unread threads doesn't waste a row. Up to
+              MAX_CHIPS per group; overflow falls into a "+N more"
+              link to the full filter modal (TODO, not yet built;
+              the operator can use URL params directly meanwhile). */}
+          {facets?.brands && facets.brands.length > 0 && (
+            <>
+              <li className="mt-2 px-2 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+                Brand
+              </li>
+              {facets.brands.slice(0, 6).map((f) => (
+                <li key={f.id}>
+                  <FilterChip
+                    href={buildChipHref({
+                      activeFolder,
+                      preservedQueryBase,
+                      brandId: activeBrandId === f.id ? undefined : f.id,
+                      campaignId: activeCampaignId,
+                    })}
+                    active={activeBrandId === f.id}
+                    icon={<Tag className="h-3 w-3" />}
+                    count={f.count}
+                  >
+                    {f.label}
+                  </FilterChip>
+                </li>
+              ))}
+            </>
+          )}
+          {facets?.campaigns && facets.campaigns.length > 0 && (
+            <>
+              <li className="mt-2 px-2 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+                Campaign
+              </li>
+              {facets.campaigns.slice(0, 8).map((f) => (
+                <li key={f.id}>
+                  <FilterChip
+                    href={buildChipHref({
+                      activeFolder,
+                      preservedQueryBase,
+                      brandId: activeBrandId,
+                      campaignId: activeCampaignId === f.id ? undefined : f.id,
+                    })}
+                    active={activeCampaignId === f.id}
+                    icon={<Tag className="h-3 w-3" />}
+                    count={f.count}
+                  >
+                    {f.label}
+                  </FilterChip>
+                </li>
+              ))}
+            </>
+          )}
+          {(activeBrandId || activeCampaignId) && (
+            <li className="mt-2">
+              <Link
+                href={`/inbox?folder=${activeFolder}${mineOnly ? `&staff=${currentStaffId}` : ""}`}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-500 uppercase tracking-widest hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              >
+                <X className="h-2.5 w-2.5" />
+                Clear filters
+              </Link>
+            </li>
+          )}
         </ul>
       </div>
     </nav>
@@ -158,4 +233,80 @@ function ChipLink({
       <span className="flex-1 truncate">{children}</span>
     </Link>
   );
+}
+
+/**
+ * Filter chip with a count badge. Visually similar to ChipLink but
+ * carries a right-aligned count of matching open threads. Active
+ * state uses a contrast pill since chip "active" means "filter
+ * applied" (clicking again unsets it).
+ */
+function FilterChip({
+  href,
+  active,
+  icon,
+  count,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  icon: React.ReactNode;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
+        active
+          ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900",
+      )}
+    >
+      <span
+        className={cn("shrink-0", active ? "text-zinc-200 dark:text-zinc-700" : "text-zinc-500")}
+      >
+        {icon}
+      </span>
+      <span className="flex-1 truncate">{children}</span>
+      {count > 0 && (
+        <span
+          className={cn(
+            "shrink-0 font-mono text-[10px] tabular-nums",
+            active ? "text-zinc-300 dark:text-zinc-700" : "text-zinc-500",
+          )}
+        >
+          {count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+/**
+ * Build a /inbox URL with the given folder + filters. Toggling a
+ * chip works by passing undefined for the active id, which removes
+ * the param. Other preserved params (mine, staff, search) come in
+ * via preservedQueryBase so the existing scope is maintained.
+ */
+function buildChipHref(opts: {
+  activeFolder: InboxFolder;
+  preservedQueryBase?: string;
+  brandId?: string;
+  campaignId?: string;
+}): string {
+  const params = new URLSearchParams(opts.preservedQueryBase ?? "");
+  params.set("folder", opts.activeFolder);
+  if (opts.brandId) {
+    params.set("brand", opts.brandId);
+  } else {
+    params.delete("brand");
+  }
+  if (opts.campaignId) {
+    params.set("campaign", opts.campaignId);
+  } else {
+    params.delete("campaign");
+  }
+  return `/inbox?${params.toString()}`;
 }

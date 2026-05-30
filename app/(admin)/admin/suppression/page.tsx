@@ -4,7 +4,10 @@
  *
  * Hard-blocks at send time on any address in this list. Reasons:
  *   manual       operator marked
- *   bounced      hard-bounce (from bounce handler — not yet wired)
+ *   bounced      hard-bounce (auto-populated by the Gmail poll worker
+ *                via lib/gmail-poll-worker.ts → classifyBounce; soft
+ *                bounces also escalate here after 3 consecutive
+ *                failures per migration 0053)
  *   complained   spam complaint
  *   unsubscribe  RFC 8058 List-Unsubscribe click / inbound STOP reply
  *                 (the auto-detector populates this from the poll worker)

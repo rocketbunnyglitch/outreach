@@ -16,6 +16,7 @@
 
 import {
   events,
+  campaigns,
   cities,
   cityCampaigns,
   connectedAccounts,
@@ -29,7 +30,7 @@ import {
 } from "@/db/schema";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 // =========================================================================
 // Folders
@@ -590,4 +591,98 @@ export async function fetchInboxAliases(opts: {
       staffDisplayName: r.staffDisplayName,
     }))
     .sort((a, b) => a.emailAddress.localeCompare(b.emailAddress));
+}
+
+export interface InboxFilterFacet {
+  id: string;
+  label: string;
+  /** Open-thread count for this facet on the current scope. */
+  count: number;
+}
+
+export interface InboxFilterFacets {
+  campaigns: InboxFilterFacet[];
+  brands: InboxFilterFacet[];
+}
+
+/**
+ * Build the campaign + brand filter chips for the inbox left rail.
+ *
+ * Scoping rules:
+ *   - Only facets that have at least one OPEN thread are returned
+ *     (no point showing a dead brand with zero unread threads)
+ *   - Open threads are everything except `archived`. The folder
+ *     definitions in FOLDER_TO_STATES draw the same boundary.
+ *   - Team-scoped via connected_accounts.team_id (same path as
+ *     fetchInboxThreads — threads have no direct teamId)
+ *   - When opts.mine is true, narrow to threads on the user's
+ *     own connected_accounts only — matches the "Mine" toggle.
+ *
+ * Returned arrays are sorted by descending count (most-active
+ * brand/campaign first), tie-broken by name. Caller decides
+ * truncation; we don't cap here.
+ */
+export async function fetchInboxFilterFacets(opts: {
+  currentTeamId: string;
+  currentUserId: string;
+  mine?: boolean;
+}): Promise<InboxFilterFacets> {
+  // One query each — joins to the brand/campaign rows so we can
+  // surface display names + ids together.
+  const campaignRows = await db
+    .select({
+      id: cityCampaigns.id,
+      city: cities.name,
+      campaignName: campaigns.name,
+      count: sql<number>`count(${emailThreads.id})::int`,
+    })
+    .from(emailThreads)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, emailThreads.cityCampaignId))
+    .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .where(
+      and(
+        eq(connectedAccounts.teamId, opts.currentTeamId),
+        opts.mine ? eq(connectedAccounts.ownerUserId, opts.currentUserId) : undefined,
+        ne(emailThreads.state, "archived"),
+      ),
+    )
+    .groupBy(cityCampaigns.id, cities.name, campaigns.name);
+
+  const brandRows = await db
+    .select({
+      id: outreachBrands.id,
+      displayName: outreachBrands.displayName,
+      count: sql<number>`count(${emailThreads.id})::int`,
+    })
+    .from(emailThreads)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .innerJoin(outreachBrands, eq(outreachBrands.id, emailThreads.outreachBrandId))
+    .where(
+      and(
+        eq(connectedAccounts.teamId, opts.currentTeamId),
+        opts.mine ? eq(connectedAccounts.ownerUserId, opts.currentUserId) : undefined,
+        ne(emailThreads.state, "archived"),
+      ),
+    )
+    .groupBy(outreachBrands.id, outreachBrands.displayName);
+
+  return {
+    campaigns: campaignRows
+      .map((r) => ({
+        id: r.id,
+        label: formatCampaignLabel(r.city, r.campaignName),
+        count: r.count,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+    brands: brandRows
+      .map((r) => ({ id: r.id, label: r.displayName, count: r.count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+  };
+}
+
+function formatCampaignLabel(city: string | null, campaignName: string | null): string {
+  if (city && campaignName) return `${city} · ${campaignName}`;
+  return city ?? campaignName ?? "(unnamed)";
 }
