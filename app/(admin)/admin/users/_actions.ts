@@ -488,3 +488,84 @@ export async function updateUserPassword(
     return { ok: false, error: "Could not save password." };
   }
 }
+
+/**
+ * Revoke a pending invite. Deletes the invite_tokens row AND, if the
+ * row was kind='invite' (i.e. created a placeholder user that hasn't
+ * accepted yet), soft-deletes the placeholder user too so the email
+ * can be re-invited without "already exists" friction.
+ *
+ * Auth: admin only. Team-scoped — admins can only revoke invites on
+ * their own team.
+ *
+ * Idempotent: if the invite was already accepted or expired and
+ * cleaned up, returns ok=true with a noop status.
+ */
+export async function revokePendingInvite(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ inviteId: string }>> {
+  const ctx = await requireAdmin();
+  const inviteId = String(formData.get("inviteId") ?? "");
+  if (!inviteId) return { ok: false, error: "Missing invite id." };
+
+  try {
+    const result = await withAuditContext(ctx.staff.id, async (tx) => {
+      const [row] = await tx
+        .select({
+          id: inviteTokens.id,
+          teamId: inviteTokens.teamId,
+          kind: inviteTokens.kind,
+          targetUserId: inviteTokens.targetUserId,
+          acceptedAt: inviteTokens.acceptedAt,
+        })
+        .from(inviteTokens)
+        .where(eq(inviteTokens.id, inviteId))
+        .limit(1);
+      if (!row) {
+        return { noRow: true } as const;
+      }
+      if (row.teamId !== ctx.staff.teamId) {
+        return { offTeam: true } as const;
+      }
+      if (row.acceptedAt) {
+        return { alreadyAccepted: true } as const;
+      }
+
+      // Drop the token row.
+      await tx.delete(inviteTokens).where(eq(inviteTokens.id, inviteId));
+      // For 'invite' kind, also soft-disable the placeholder user
+      // (preserves audit history but allows re-invite of the email).
+      // For 'reset' kind we leave the user alone — the existing user
+      // just hasn't completed their reset.
+      if (row.kind === "invite" && row.targetUserId) {
+        await tx
+          .update(users)
+          .set({ status: "inactive", updatedBy: ctx.staff.id })
+          .where(eq(users.id, row.targetUserId));
+      }
+      return { ok: true, kind: row.kind, targetUserId: row.targetUserId } as const;
+    });
+
+    if ("noRow" in result) {
+      // Already deleted — idempotent success.
+      return { ok: true, data: { inviteId } };
+    }
+    if ("offTeam" in result) {
+      return { ok: false, error: "Invite not on your team." };
+    }
+    if ("alreadyAccepted" in result) {
+      return { ok: false, error: "Invite has already been accepted." };
+    }
+
+    revalidatePath("/admin/users");
+    logger.info(
+      { adminId: ctx.staff.id, inviteId, kind: result.kind, targetUserId: result.targetUserId },
+      "revokePendingInvite: revoked",
+    );
+    return { ok: true, data: { inviteId } };
+  } catch (err) {
+    logger.error({ err, inviteId }, "revokePendingInvite failed");
+    return { ok: false, error: "Could not revoke invite." };
+  }
+}
