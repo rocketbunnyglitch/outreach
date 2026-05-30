@@ -120,7 +120,7 @@ export function AssignmentPicker({ threadId, currentAssignedStaffId, currentAssi
                   disabled={pending}
                   className="flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-800"
                 >
-                  <span className="italic text-zinc-500">Unassign</span>
+                  <span className="text-zinc-500 italic">Unassign</span>
                   {currentAssignedStaffId === null && (
                     <Check className="h-3 w-3 text-emerald-500" />
                   )}

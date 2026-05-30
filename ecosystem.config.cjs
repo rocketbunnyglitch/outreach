@@ -34,7 +34,14 @@ module.exports = {
       },
 
       // Restart policy.
-      max_memory_restart: "1G",
+      // Bumped 1G -> 2G after the VPS RAM upgrade (2GB -> 6GB). 1G was a
+      // conservative cap for the 2GB box where promoter + system had to
+      // coexist; on 6GB we leave ~3GB free even with both engines and
+      // outreach-ws running. The real ceiling is concurrent SSE
+      // subscribers (each ~1-2MB) — 2G fits hundreds of operators
+      // without restarts. Drop back to 1G if multiple new services
+      // land on the same box.
+      max_memory_restart: "2G",
       max_restarts: 10,
       min_uptime: "10s",
       restart_delay: 2000,
@@ -57,7 +64,10 @@ module.exports = {
       cwd: "/var/www/outreach",
       instances: 1,
       exec_mode: "fork",
-      max_memory_restart: "300M",
+      // Bumped 300M -> 512M alongside the outreach app cap. The WS
+      // server holds a small buffer per connected client; 512M handles
+      // well over the operator count we'd ever realistically have.
+      max_memory_restart: "512M",
       env: { NODE_ENV: "production", WS_PORT: "3002" },
       // PM2 env_file is not honored in this PM2 version; use Node 20+ --env-file
       // so NEXTAUTH_SECRET (read by the WS auth check) loads from /var/www/outreach/.env.

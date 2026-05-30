@@ -104,7 +104,7 @@ export default async function TemplatesListPage() {
                                     <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
                                   )}
                                   <span className="font-medium">{row.template.name}</span>
-                                  <span className="font-mono text-xs text-zinc-500 truncate">
+                                  <span className="truncate font-mono text-xs text-zinc-500">
                                     {row.template.subjectTemplate.slice(0, 60)}
                                     {row.template.subjectTemplate.length > 60 ? "…" : ""}
                                   </span>
