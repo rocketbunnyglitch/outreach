@@ -11,7 +11,7 @@
  *   • Send test to myself
  *   • Save as draft (forces immediate upsertDraft + closes the
  *                    composer; row stays in email_drafts)
- *   • Preview final email   (TODO — not wired yet)
+ *   • Preview final email (modal with the rendered final shape)
  *
  * Discard is the trash icon in the footer (a destructive action
  * deserves to stand on its own + carry confirm).
@@ -29,6 +29,7 @@ interface Props {
   onSchedule: (iso: string | null) => void;
   onSendTest: () => void;
   onSaveAsDraft: () => void;
+  onPreview: () => void;
 }
 
 export function SendMenu({
@@ -39,6 +40,7 @@ export function SendMenu({
   onSchedule,
   onSendTest,
   onSaveAsDraft,
+  onPreview,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [showDateInput, setShowDateInput] = useState(false);
@@ -150,9 +152,11 @@ export function SendMenu({
           />
           <MenuItem
             icon={<Eye className="h-3 w-3" />}
-            label="Preview (TODO)"
-            disabled
-            onClick={() => {}}
+            label="Preview final email"
+            onClick={() => {
+              setOpen(false);
+              onPreview();
+            }}
           />
         </div>
       )}

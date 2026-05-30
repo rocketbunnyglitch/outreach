@@ -168,6 +168,14 @@ export const connectedAccounts = pgTable(
      *  migration 0049. */
     dailyColdSendCap: integer("daily_cold_send_cap").notNull().default(30),
 
+    /** Optional HTML signature appended to outbound mail sent from
+     *  this inbox. Edited from /settings/inboxes. The global composer
+     *  appends it to the body if the operator hasn't already inlined
+     *  a different signature in the draft.
+     *
+     *  Added in migration 0056. */
+    signatureHtml: text("signature_html"),
+
     ...auditColumns,
     ...versionColumn,
   },

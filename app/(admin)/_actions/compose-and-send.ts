@@ -29,6 +29,7 @@ import {
 } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import type { SendUsage } from "@/lib/send-cap";
 import type { DncBlock, DuplicateWarning, SuppressionBlock } from "@/lib/send-safety";
 import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
@@ -44,6 +45,10 @@ export interface ConnectedAccountOption {
    *  to group + sort the dropdown so the user's own accounts come first. */
   scope: "mine" | "team";
   status: "connected" | "needs_reauth" | "disconnected";
+  /** Optional signature HTML configured for this inbox. The composer
+   *  auto-appends it on send if the operator hasn't already inlined
+   *  a different signature in the draft. NULL = no signature. */
+  signatureHtml: string | null;
 }
 
 /**
@@ -60,6 +65,7 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
       emailAddress: connectedAccounts.emailAddress,
       ownerUserId: connectedAccounts.ownerUserId,
       status: connectedAccounts.status,
+      signatureHtml: connectedAccounts.signatureHtml,
     })
     .from(connectedAccounts)
     .where(eq(connectedAccounts.teamId, staff.teamId));
@@ -88,6 +94,7 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
     ownerDisplayName: r.ownerUserId ? (ownerNameMap.get(r.ownerUserId) ?? null) : null,
     scope: r.ownerUserId === staff.id ? "mine" : "team",
     status: r.status as ConnectedAccountOption["status"],
+    signatureHtml: r.signatureHtml ?? null,
   }));
 
   opts.sort((a, b) => {
@@ -245,4 +252,59 @@ export async function composeAndSend(_prev: unknown, formData: FormData): Promis
   const { staff } = await requireStaff();
   const { composeAndSendImpl } = await import("@/lib/compose-send-impl");
   return composeAndSendImpl(staff, formData);
+}
+
+/**
+ * Update the signature for a connected inbox.
+ *
+ * Auth: must be the inbox owner OR a team admin. The action checks
+ * both via the joined query rather than two separate fetches.
+ *
+ * Returns the new signature (passed back so the UI can confirm
+ * without re-fetching).
+ */
+export async function setInboxSignature(input: {
+  connectedAccountId: string;
+  signatureHtml: string | null;
+}): Promise<{ ok: true; signatureHtml: string | null } | { ok: false; error: string }> {
+  const { staff } = await requireStaff();
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID.test(input.connectedAccountId)) {
+    return { ok: false, error: "Invalid inbox id." };
+  }
+
+  const [row] = await db
+    .select({
+      id: connectedAccounts.id,
+      teamId: connectedAccounts.teamId,
+      ownerUserId: connectedAccounts.ownerUserId,
+    })
+    .from(connectedAccounts)
+    .where(eq(connectedAccounts.id, input.connectedAccountId))
+    .limit(1);
+  if (!row || row.teamId !== staff.teamId) {
+    return { ok: false, error: "Inbox not on your team." };
+  }
+  // Owner of the inbox OR admin on the team.
+  if (row.ownerUserId !== staff.id && staff.role !== "admin") {
+    return { ok: false, error: "Only the inbox owner or an admin can edit this signature." };
+  }
+
+  // Sanitise + cap the size — signatures shouldn't be giant. 16KB is
+  // generous (gmail's typical signature is < 2KB).
+  const value = (input.signatureHtml ?? "").trim();
+  if (value.length > 16_384) {
+    return { ok: false, error: "Signature too large (16KB max)." };
+  }
+
+  try {
+    await db
+      .update(connectedAccounts)
+      .set({ signatureHtml: value === "" ? null : value, updatedAt: new Date() })
+      .where(eq(connectedAccounts.id, input.connectedAccountId));
+    return { ok: true, signatureHtml: value === "" ? null : value };
+  } catch (err) {
+    logger.error({ err, connectedAccountId: input.connectedAccountId }, "setInboxSignature failed");
+    return { ok: false, error: "Couldn't save signature." };
+  }
 }

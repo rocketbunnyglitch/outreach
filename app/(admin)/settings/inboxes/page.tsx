@@ -26,6 +26,7 @@ import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Unplug } from "lucide
 import { disconnectInbox, resyncInbox } from "./_actions";
 import { CapEditor } from "./_components/cap-editor";
 import { InboxAnalyticsStrip } from "./_components/inbox-analytics-strip";
+import { SignatureEditor } from "./_components/signature-editor";
 
 export const metadata = { title: "Email Connection" };
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export default async function InboxesPage({ searchParams }: Props) {
       status: connectedAccounts.status,
       lastSyncedAt: connectedAccounts.lastSyncedAt,
       dailyColdSendCap: connectedAccounts.dailyColdSendCap,
+      signatureHtml: connectedAccounts.signatureHtml,
     })
     .from(connectedAccounts)
     .where(eq(connectedAccounts.ownerUserId, staff.id))
@@ -294,6 +296,12 @@ export default async function InboxesPage({ searchParams }: Props) {
                     health={health}
                     dailyStats={dailyStatsByInbox.get(inbox.id) ?? []}
                   />
+                  <div className="mt-2">
+                    <SignatureEditor
+                      connectedAccountId={inbox.id}
+                      initialSignatureHtml={inbox.signatureHtml}
+                    />
+                  </div>
                 </li>
               );
             })}

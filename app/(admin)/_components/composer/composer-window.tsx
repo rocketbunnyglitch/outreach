@@ -45,6 +45,7 @@ import { deleteDraft, sendDraft, upsertDraft } from "../../_actions/email-drafts
 import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
 import { FollowUpPrompt } from "./follow-up-prompt";
+import { PreviewModal } from "./preview-modal";
 import { RecipientChips } from "./recipient-chips";
 import { RichTextEditor } from "./rich-text-editor";
 import { SendMenu } from "./send-menu";
@@ -101,6 +102,21 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Strip a previously-auto-appended signature block from HTML. The
+ * composer wraps auto-appended signatures in
+ * <!--composer-signature--> ... <!--/composer-signature--> so we can
+ * cleanly swap them when the operator changes From inbox.
+ *
+ * Manually-edited signatures (operator deleted the markers or typed
+ * their own) are LEFT ALONE — we only strip blocks we own.
+ */
+function stripSignatureBlock(html: string): string {
+  return html
+    .replace(/(?:<br\s*\/?>\s*)?<!--composer-signature-->[\s\S]*?<!--\/composer-signature-->/gi, "")
+    .replace(/\s+$/, "");
+}
+
 export function ComposerWindow({ instance, isMobile }: Props) {
   const { close, setMode, setField, setStatus } = useComposer();
   const [inboxes, setInboxes] = useState<ConnectedAccountOption[] | null>(null);
@@ -116,6 +132,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [undoActive, setUndoActive] = useState(false);
   const [sentThreadId, setSentThreadId] = useState<string | null>(null);
   const [showFollowUp, setShowFollowUp] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Recipient parsed lists kept as derived arrays for the chip
   // components. The store still holds the canonical CSV string.
@@ -138,7 +155,15 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setTemplates(ctx.templates);
         setRenderContext(ctx.renderContext);
         if (!instance.fromAccountId && ctx.inboxes[0]) {
-          setField(instance.id, { fromAccountId: ctx.inboxes[0].id });
+          const first = ctx.inboxes[0];
+          const patch: Partial<typeof instance> = { fromAccountId: first.id };
+          // If the default inbox has a signature, seed the body with it.
+          // Skip if the operator already typed content (initial-load
+          // would have an empty body normally; defensive).
+          if (first.signatureHtml && !instance.bodyHtml && !instance.bodyText.trim()) {
+            patch.bodyHtml = `<!--composer-signature-->\n<br>\n${first.signatureHtml}\n<!--/composer-signature-->`;
+          }
+          setField(instance.id, patch);
         }
       })
       .catch((err) => {
@@ -498,7 +523,23 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           ) : (
             <select
               value={instance.fromAccountId}
-              onChange={(e) => setField(instance.id, { fromAccountId: e.target.value })}
+              onChange={(e) => {
+                const newId = e.target.value;
+                const newInbox = inboxes.find((x) => x.id === newId);
+                // Swap signature in place: strip the previous inbox's
+                // signature block (marked by <!--composer-signature-->)
+                // and append the new one. Idempotent if the operator
+                // hasn't inlined a different signature.
+                const patch: Partial<typeof instance> = { fromAccountId: newId };
+                const stripped = stripSignatureBlock(instance.bodyHtml ?? "");
+                const newSig = newInbox?.signatureHtml ?? null;
+                if (newSig) {
+                  patch.bodyHtml = `${stripped}<!--composer-signature-->\n<br>\n${newSig}\n<!--/composer-signature-->`;
+                } else {
+                  patch.bodyHtml = stripped || null;
+                }
+                setField(instance.id, patch);
+              }}
               className="flex-1 bg-transparent text-xs outline-none"
             >
               <option value="">— Select an inbox —</option>
@@ -506,6 +547,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 <option key={inbox.id} value={inbox.id}>
                   {inbox.emailAddress}
                   {inbox.status !== "connected" ? ` (${inbox.status})` : ""}
+                  {inbox.signatureHtml ? " · ✎" : ""}
                 </option>
               ))}
             </select>
@@ -657,6 +699,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             onSchedule={(iso) => setField(instance.id, { scheduledFor: iso })}
             onSendTest={handleSendTest}
             onSaveAsDraft={handleSaveAsDraft}
+            onPreview={() => setShowPreview(true)}
           />
           {capBlocked && instance.isAdmin && (
             <button
@@ -690,6 +733,15 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           </button>
         </div>
       </footer>
+      {showPreview && (
+        <PreviewModal
+          instance={instance}
+          fromEmailAddress={
+            inboxes?.find((x) => x.id === instance.fromAccountId)?.emailAddress ?? null
+          }
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </div>
   );
 }
