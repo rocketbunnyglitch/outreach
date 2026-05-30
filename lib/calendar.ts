@@ -53,7 +53,7 @@ export interface CalendarItem {
   description: string;
   status: "pending" | "in_progress" | "completed" | "cancelled";
   source: "auto" | "manual" | "smart_note";
-  targetType: "venue_event" | "venue" | "city_campaign" | "wristband" | "misc";
+  targetType: "venue_event" | "venue" | "city_campaign" | "wristband" | "misc" | "email_thread";
   targetId: string | null;
   assignedStaffId: string | null;
   assignedStaffName: string | null;

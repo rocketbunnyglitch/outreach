@@ -64,7 +64,7 @@ interface TaskFormProps {
     title: string;
     description: string;
     status?: "pending" | "in_progress" | "completed" | "cancelled";
-    targetType?: "venue_event" | "venue" | "city_campaign" | "wristband" | "misc";
+    targetType?: "venue_event" | "venue" | "city_campaign" | "wristband" | "misc" | "email_thread";
     targetId?: string | null;
     assignedStaffId?: string | null;
     dueAt?: string | null; // datetime-local string

@@ -15,6 +15,7 @@
 import { emailMessages, emailThreads, staffOutreachEmails, teamLabels } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
+import { clearCadenceOnAction } from "@/lib/follow-up-cadence";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
@@ -244,12 +245,16 @@ export async function sendThreadReply(
     logger.error({ err, threadId }, "sendThreadReply: recordSendEvent failed");
   }
 
-  // Operator action — clear stale immediately rather than waiting
-  // for the next stale-tagger cron run.
+  // Operator action — clear stale + cadence immediately rather than
+  // waiting for the next cron tick. A reply (outbound) shouldn't
+  // immediately clear cadence (it's still cold-no-reply until inbound),
+  // but the act of operator engagement resets the timer: re-bootstrap
+  // happens on the next cadence pass from the new lastOutboundAt.
   try {
     await clearStaleOnAction(threadId);
+    await clearCadenceOnAction(threadId);
   } catch (err) {
-    logger.error({ err, threadId }, "sendThreadReply: clearStaleOnAction failed");
+    logger.error({ err, threadId }, "sendThreadReply: clear-stale/cadence failed");
   }
 
   revalidatePath(`/inbox/${threadId}`);
@@ -334,11 +339,16 @@ export async function setThreadState(
         state,
         archivedAt: state === "archived" ? new Date() : null,
         updatedBy: staff.id,
-        // State change is operator action; clear stale immediately
-        // so the inbox UI reflects it without waiting for cron.
+        // State change is operator action; clear stale + cadence
+        // immediately so the inbox UI reflects it without waiting
+        // for cron. If the new state is still 'open' (waiting/
+        // needs_reply), the next cadence pass will re-bootstrap;
+        // for closed states, cadence stays cleared (terminal).
         isStale: false,
         staleSince: null,
         staleReason: null,
+        followUpStage: 0,
+        followUpNextDueAt: null,
       })
       .where(eq(emailThreads.id, threadId));
     revalidatePath(`/inbox/${threadId}`);

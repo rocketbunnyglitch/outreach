@@ -77,6 +77,14 @@ export default async function TaskDetailPage({ params }: PageProps) {
             {task.targetType !== "misc" && (
               <Badge tone="muted">{task.targetType.replace("_", " ")}</Badge>
             )}
+            {task.targetType === "email_thread" && task.targetId && (
+              <Link
+                href={`/inbox/${task.targetId}`}
+                className="font-mono text-[11px] text-blue-600 underline-offset-2 hover:underline dark:text-blue-400"
+              >
+                open thread →
+              </Link>
+            )}
             {task.completedAt && (
               <span className="font-mono text-xs text-zinc-500">
                 completed {task.completedAt.toLocaleString()}

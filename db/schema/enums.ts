@@ -151,6 +151,7 @@ export const taskTargetType = pgEnum("task_target_type", [
   "city_campaign",
   "wristband",
   "misc",
+  "email_thread",
 ]);
 
 // =========================================================================

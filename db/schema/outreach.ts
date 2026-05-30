@@ -17,6 +17,7 @@ import {
   index,
   integer,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -171,6 +172,21 @@ export const emailThreads = pgTable(
     /** Short human-readable reason the thread is stale. Used as a
      *  tooltip on the stale chip. */
     staleReason: text("stale_reason"),
+
+    /** Follow-up cadence stage. 0=initial cold send, 1=follow_up_due
+     *  flipped by cadence cron, 2=call task auto-created. Reset to 0
+     *  when an operator action (reply, state change) interrupts the
+     *  cadence. Added in migration 0051. */
+    followUpStage: smallint("follow_up_stage").notNull().default(0),
+
+    /** When the next cadence step should fire for this thread. NULL
+     *  means no pending cadence (replied, closed, or reached the
+     *  terminal stage). The cadence cron scans for rows with
+     *  follow_up_next_due_at <= NOW(). */
+    followUpNextDueAt: timestamp("follow_up_next_due_at", { withTimezone: true }),
+
+    /** When the last cadence advance happened. Audit / debugging. */
+    followUpLastAdvancedAt: timestamp("follow_up_last_advanced_at", { withTimezone: true }),
 
     /** ~140-char preview of the latest message body, denormalized. */
     snippet: text("snippet"),
