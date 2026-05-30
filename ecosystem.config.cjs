@@ -16,8 +16,13 @@
 module.exports = {
   apps: [
     {
-      name: "crawl-engine",
-      cwd: "/var/www/crawl-engine",
+      // Live pm2 name is "outreach"; the prod tree lives at
+      // /var/www/outreach (the box hosts both this engine and the
+      // separate promoter/referral engine). The stale "crawl-engine"
+      // values left over from the rename caused a fresh `pm2 start`
+      // to look for /var/www/crawl-engine/.next/... and exit.
+      name: "outreach",
+      cwd: "/var/www/outreach",
       script: ".next/standalone/server.js",
       // Single instance for now. Cluster mode can be enabled when CPU-bound;
       // be careful about BullMQ workers if you do — duplicate workers will
@@ -25,13 +30,17 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
 
-      // Environment: PM2 doesn't load .env automatically. We load it at the
-      // top of server code via dotenv, OR via a wrapper. Simpler: rely on
-      // the user environment having .env vars exported, OR use --update-env
-      // when restarting after .env changes. For now, document it.
+      // Environment: PM2 doesn't load .env automatically. Use Node 20+
+      // --env-file (we're on Node 22) so the standalone server.js sees
+      // PORT, HOSTNAME, DATABASE_URL, NEXTAUTH_SECRET, etc. without a
+      // dotenv import. Without this a fresh `pm2 start` ignored
+      // /var/www/outreach/.env and Next defaulted to 0.0.0.0:3000 —
+      // which collides with the sibling promoter engine and EADDRINUSE
+      // crash-loops the outreach process.
       env: {
         NODE_ENV: "production",
       },
+      node_args: ["--env-file=/var/www/outreach/.env"],
 
       // Restart policy.
       // Bumped 1G -> 2G after the VPS RAM upgrade (2GB -> 6GB). 1G was a
