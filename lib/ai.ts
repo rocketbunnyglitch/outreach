@@ -233,6 +233,71 @@ export async function generateCompletion(opts: {
 }
 
 /**
+ * Streaming variant of generateCompletion.
+ *
+ * Returns an AsyncIterable<string> of text deltas (or null when AI
+ * isn't configured). The caller is responsible for assembling the
+ * full response and any cleanup; this helper just yields tokens as
+ * they arrive from the SDK.
+ *
+ * Error handling: errors are CAUGHT inside the iterator and yielded
+ * as a final {kind:'error', message} sentinel so streaming consumers
+ * (SSE routes) can serialize them across the wire without dropping
+ * the connection mid-flight. Successful streams end naturally when
+ * the SDK closes the iterator.
+ */
+export type StreamChunk =
+  | { kind: "text"; text: string }
+  | { kind: "error"; reason: AiReason; message: string }
+  | { kind: "done" };
+
+export async function* streamCompletion(opts: {
+  system: string;
+  prompt: string;
+  tag: string;
+  maxTokens?: number;
+  model?: string;
+}): AsyncGenerator<StreamChunk, void, unknown> {
+  const client = getClient();
+  if (!client) {
+    yield {
+      kind: "error",
+      reason: "not_configured",
+      message: "ANTHROPIC_API_KEY is not set on the server.",
+    };
+    return;
+  }
+
+  const start = Date.now();
+  try {
+    const stream = client.messages.stream({
+      model: opts.model ?? DEFAULT_MODEL,
+      max_tokens: opts.maxTokens ?? 1024,
+      system: opts.system,
+      messages: [{ role: "user", content: opts.prompt }],
+    });
+
+    for await (const event of stream) {
+      // The SDK emits a typed event union; we only care about
+      // content_block_delta events with text deltas. Tool-use and
+      // other event kinds are ignored.
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta" &&
+        typeof event.delta.text === "string"
+      ) {
+        yield { kind: "text", text: event.delta.text };
+      }
+    }
+    yield { kind: "done" };
+  } catch (err) {
+    await captureException(err, { tag: opts.tag, elapsed_ms: Date.now() - start });
+    const { reason, message } = classifyAiError(err);
+    yield { kind: "error", reason, message };
+  }
+}
+
+/**
  * Generate a personalized cold-outreach email draft for a specific
  * venue. The operator reviews + edits the result before sending —
  * AI never autonomously sends.
