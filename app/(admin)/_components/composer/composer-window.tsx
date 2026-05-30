@@ -13,35 +13,28 @@
  *   All modes collapse to a single full-screen bottom sheet
  *   regardless of the requested mode — floating on mobile is unusable.
  *
+ * Polish layer (commit 2 features):
+ *   - Recipient chips with email validation (To/CC/BCC)
+ *   - Lightweight contenteditable rich-text editor + toolbar
+ *   - Attachments chip list (UI-only — storage TODO)
+ *   - Split Send menu (Send now / Schedule / Send test / Save as draft)
+ *   - Undo Send queue (UNDO_WINDOW_MS pre-send delay)
+ *   - After-send follow-up prompt
+ *
  * Lifecycle / persistence:
  *   - First render creates an in-memory draft id (already set in the
  *     store). Every keystroke debounced-autosaves via upsertDraft.
- *   - Send button calls sendDraft via the existing composeAndSend
- *     pipeline (cap + DNC + suppression + dedupe all enforced server-side).
+ *   - Send button schedules the actual sendDraft call after a brief
+ *     undo window so the operator can pull it back if they spot a typo.
  *   - Close button:
  *       * with unsaved content + draft status != 'saved' → confirm
  *       * otherwise → close immediately; row stays in DB so the user
  *         can resume from listMyDrafts (future feature)
- *
- * Composability:
- *   The window doesn't know what page it's mounted from. All entry
- *   points pass venueId/cityCampaignId in OpenComposerInput and the
- *   window uses those for attribution + render context.
  */
 
 import { cn } from "@/lib/cn";
-import {
-  AlertCircle,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Send,
-  Sparkles,
-  Trash2,
-  X,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { AlertCircle, Loader2, Maximize2, Minimize2, Minus, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   type ComposeRenderContext,
   type ComposeTemplate,
@@ -49,14 +42,63 @@ import {
   listComposeContext,
 } from "../../_actions/compose-and-send";
 import { deleteDraft, sendDraft, upsertDraft } from "../../_actions/email-drafts";
+import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
+import { FollowUpPrompt } from "./follow-up-prompt";
+import { RecipientChips } from "./recipient-chips";
+import { RichTextEditor } from "./rich-text-editor";
+import { SendMenu } from "./send-menu";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
+/** Gmail's undo-send window is configurable up to 30s; 15s is the
+ *  default. We follow that. After this elapses the actual send is
+ *  dispatched. */
+const UNDO_WINDOW_MS = 15_000;
 
 interface Props {
   instance: ComposerInstance;
   index: number;
   isMobile: boolean;
+}
+
+// Internal helper: split a CSV string into a clean address array.
+function parseAddressList(s: string): string[] {
+  return s
+    .split(/[,;\n]/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+}
+
+function isValidEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+async function applyTemplate(
+  templateId: string,
+  templates: ComposeTemplate[],
+  renderContext: ComposeRenderContext,
+  setPatch: (patch: { subject: string; bodyText: string; bodyHtml: string | null }) => void,
+) {
+  const t = templates.find((x) => x.id === templateId);
+  if (!t) return;
+  const { renderTemplate } = await import("@/lib/template-render");
+  const subj = renderTemplate(t.subjectTemplate, renderContext);
+  const body = renderTemplate(t.bodyTemplateText, renderContext);
+  // Convert plain-text template body to minimal HTML so the rich
+  // text editor seeds correctly (paragraphs preserved).
+  const html = body.output
+    .split(/\n{2,}/)
+    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  setPatch({ subject: subj.output, bodyText: body.output, bodyHtml: html });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export function ComposerWindow({ instance, isMobile }: Props) {
@@ -68,16 +110,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
   const [sending, startSendTx] = useTransition();
-  const [sent, setSent] = useState(false);
+  /** undo-window timer: when non-null, we're in the queued-send window
+   *  and the operator can cancel. */
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [undoActive, setUndoActive] = useState(false);
+  const [sentThreadId, setSentThreadId] = useState<string | null>(null);
+  const [showFollowUp, setShowFollowUp] = useState(false);
+
+  // Recipient parsed lists kept as derived arrays for the chip
+  // components. The store still holds the canonical CSV string.
+  const toList = useMemo(() => parseAddressList(instance.to), [instance.to]);
+  const ccList = useMemo(() => parseAddressList(instance.cc), [instance.cc]);
+  const bccList = useMemo(() => parseAddressList(instance.bcc), [instance.bcc]);
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSaveRef = useRef(true);
 
-  // ---------------------------------------------------------------
-  // Load From/templates/render context once per composer instance.
-  // Tied to instance.venueId so different attribution → different
-  // render context (and never mixes).
-  // ---------------------------------------------------------------
+  // -------------------------------------------------------------
+  // Load From / templates / render context once per composer.
+  // -------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     listComposeContext({ venueId: instance.venueId ?? undefined })
@@ -86,7 +137,6 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setInboxes(ctx.inboxes);
         setTemplates(ctx.templates);
         setRenderContext(ctx.renderContext);
-        // Default-select the first inbox if the operator hasn't picked one.
         if (!instance.fromAccountId && ctx.inboxes[0]) {
           setField(instance.id, { fromAccountId: ctx.inboxes[0].id });
         }
@@ -101,14 +151,12 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance.venueId]);
 
-  // ---------------------------------------------------------------
-  // Debounced autosave. Runs on every relevant field change.
-  // ---------------------------------------------------------------
+  // -------------------------------------------------------------
+  // Debounced autosave.
+  // -------------------------------------------------------------
   const triggerAutosave = useCallback(() => {
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(async () => {
-      // Skip autosave on truly empty drafts (no recipient, no subject,
-      // no body) — no point creating empty rows in email_drafts.
       const hasContent = instance.to.trim() || instance.subject.trim() || instance.bodyText.trim();
       if (!hasContent && isFirstSaveRef.current) return;
       isFirstSaveRef.current = false;
@@ -117,9 +165,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       const result = await upsertDraft({
         id: instance.id,
         connectedAccountId: instance.fromAccountId || null,
-        toAddresses: parseAddressList(instance.to),
-        ccAddresses: parseAddressList(instance.cc),
-        bccAddresses: parseAddressList(instance.bcc),
+        toAddresses: toList,
+        ccAddresses: ccList,
+        bccAddresses: bccList,
         subject: instance.subject,
         bodyText: instance.bodyText,
         bodyHtml: instance.bodyHtml,
@@ -140,7 +188,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setStatus(instance.id, "save_failed");
       }
     }, AUTOSAVE_DEBOUNCE_MS);
-  }, [instance, setStatus]);
+  }, [instance, toList, ccList, bccList, setStatus]);
 
   useEffect(() => {
     triggerAutosave();
@@ -160,9 +208,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     triggerAutosave,
   ]);
 
-  // ---------------------------------------------------------------
-  // Close handling. Warn-on-discard when content is present + not saved.
-  // ---------------------------------------------------------------
+  // -------------------------------------------------------------
+  // Close + discard handlers
+  // -------------------------------------------------------------
   function handleClose() {
     const hasContent = instance.to.trim() || instance.subject.trim() || instance.bodyText.trim();
     if (hasContent && instance.draftStatus !== "saved") {
@@ -180,70 +228,128 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     close(instance.id);
   }
 
-  // ---------------------------------------------------------------
-  // Send. Validates locally then dispatches sendDraft, which routes
-  // through composeAndSend on the server.
-  // ---------------------------------------------------------------
-  function handleSend() {
-    setSendError(null);
-    setCapBlocked(false);
-    if (!instance.fromAccountId) {
-      setSendError("Pick a From inbox before sending.");
-      return;
+  // -------------------------------------------------------------
+  // Pre-send validation + dispatch through composeAndSend pipeline
+  // with the Gmail-style undo queue
+  // -------------------------------------------------------------
+  function validate(): string | null {
+    if (!instance.fromAccountId) return "Pick a From inbox before sending.";
+    if (toList.length === 0) return "Add at least one recipient.";
+    for (const addr of [...toList, ...ccList, ...bccList]) {
+      if (!isValidEmail(addr)) return `Invalid email address: ${addr}`;
     }
-    const toList = parseAddressList(instance.to);
-    if (toList.length === 0) {
-      setSendError("Add at least one recipient.");
-      return;
-    }
-    for (const addr of [
-      ...toList,
-      ...parseAddressList(instance.cc),
-      ...parseAddressList(instance.bcc),
-    ]) {
-      if (!isValidEmail(addr)) {
-        setSendError(`Invalid email address: ${addr}`);
-        return;
-      }
-    }
-    if (!instance.subject.trim()) {
-      if (!confirm("Send with an empty subject?")) return;
-    }
-    if (!instance.bodyText.trim()) {
-      setSendError("Body can't be empty.");
-      return;
-    }
+    if (!instance.bodyText.trim()) return "Body can't be empty.";
+    return null;
+  }
+
+  /** Actually fire the send (called once the undo window elapses). */
+  function actuallySend(opts: { testOnly?: boolean } = {}) {
     startSendTx(async () => {
-      // Ensure the latest fields hit the row before sending.
+      // Persist final state of the draft so sendDraft has fresh data.
       const saveRes = await upsertDraft({
         id: instance.id,
         connectedAccountId: instance.fromAccountId,
-        toAddresses: toList,
-        ccAddresses: parseAddressList(instance.cc),
-        bccAddresses: parseAddressList(instance.bcc),
-        subject: instance.subject,
+        toAddresses: opts.testOnly
+          ? // "Send test to myself" routes to the operator's own inbox
+            // (using the From account's email_address as the recipient).
+            [
+              inboxes?.find((x) => x.id === instance.fromAccountId)?.emailAddress ??
+                instance.fromAccountId,
+            ]
+          : toList,
+        ccAddresses: opts.testOnly ? [] : ccList,
+        bccAddresses: opts.testOnly ? [] : bccList,
+        subject: opts.testOnly ? `[TEST] ${instance.subject}` : instance.subject,
         bodyText: instance.bodyText,
         bodyHtml: instance.bodyHtml,
-        venueId: instance.venueId,
-        cityCampaignId: instance.cityCampaignId,
+        venueId: opts.testOnly ? null : instance.venueId,
+        cityCampaignId: opts.testOnly ? null : instance.cityCampaignId,
         templateId: instance.templateId,
         attachments: instance.attachments,
-        scheduledFor: instance.scheduledFor,
+        scheduledFor: null,
       });
       if (!saveRes.ok) {
         setSendError(saveRes.error);
+        setUndoActive(false);
         return;
       }
       const sendRes = await sendDraft(instance.id);
+      setUndoActive(false);
       if (!sendRes.ok) {
         setSendError(sendRes.error);
         setCapBlocked(sendRes.capBlocked ?? false);
         return;
       }
-      setSent(true);
-      // Auto-close after a short confirmation pause.
-      setTimeout(() => close(instance.id), 1500);
+      setSentThreadId(sendRes.data.threadId);
+      // Skip follow-up prompt on test sends.
+      if (!opts.testOnly) {
+        setShowFollowUp(true);
+      } else {
+        setTimeout(() => close(instance.id), 1200);
+      }
     });
+  }
+
+  /** Send-now button entry point: queue with UNDO_WINDOW_MS delay. */
+  function handleSendNow() {
+    setSendError(null);
+    setCapBlocked(false);
+    const err = validate();
+    if (err) {
+      setSendError(err);
+      return;
+    }
+    if (!instance.subject.trim() && !confirm("Send with an empty subject?")) return;
+    if (instance.scheduledFor) {
+      // Scheduled drafts: store the timestamp + close. Cron is TODO.
+      handleSaveAsDraft();
+      return;
+    }
+    if (undoActive) return; // already queued
+    setUndoActive(true);
+    undoTimerRef.current = setTimeout(() => {
+      actuallySend();
+    }, UNDO_WINDOW_MS);
+  }
+
+  function handleUndoSend() {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoActive(false);
+  }
+
+  function handleSendTest() {
+    const err = validate();
+    if (err && !err.startsWith("Add at least one recipient")) {
+      setSendError(err);
+      return;
+    }
+    actuallySend({ testOnly: true });
+  }
+
+  function handleSaveAsDraft() {
+    // Force one final autosave then close.
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    void upsertDraft({
+      id: instance.id,
+      connectedAccountId: instance.fromAccountId || null,
+      toAddresses: toList,
+      ccAddresses: ccList,
+      bccAddresses: bccList,
+      subject: instance.subject,
+      bodyText: instance.bodyText,
+      bodyHtml: instance.bodyHtml,
+      venueId: instance.venueId,
+      cityCampaignId: instance.cityCampaignId,
+      templateId: instance.templateId,
+      attachments: instance.attachments,
+      scheduledFor: instance.scheduledFor,
+    }).then((res) => {
+      if (res.ok) setStatus(instance.id, "saved", res.data.updatedAt);
+    });
+    close(instance.id);
   }
 
   // Cmd/Ctrl + Enter sends.
@@ -252,7 +358,13 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         if (instance.mode === "minimized") return;
         e.preventDefault();
-        handleSend();
+        handleSendNow();
+      }
+      if (e.key === "Escape") {
+        // Esc minimizes (not destructive close) per spec.
+        if (instance.mode !== "minimized") {
+          setMode(instance.id, "minimized");
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -260,9 +372,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance]);
 
-  // ---------------------------------------------------------------
+  // -------------------------------------------------------------
   // Layout / mode classes
-  // ---------------------------------------------------------------
+  // -------------------------------------------------------------
   const effectiveMode: ComposerMode = isMobile ? "fullscreen" : instance.mode;
 
   if (effectiveMode === "minimized") {
@@ -301,13 +413,12 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     );
   }
 
-  // Width by mode. Fullscreen uses positioned overlay.
   const widthClass =
     effectiveMode === "fullscreen"
       ? "fixed inset-x-2 inset-y-4 sm:inset-x-12 sm:inset-y-12 max-w-none"
       : effectiveMode === "expanded"
         ? "w-[720px] h-[640px] max-h-[80vh]"
-        : "w-[540px] h-[560px] max-h-[80vh]";
+        : "w-[540px] h-[580px] max-h-[80vh]";
 
   return (
     <div
@@ -319,7 +430,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       role="dialog"
       aria-label="Compose email"
     >
-      {/* Header bar — title + window controls */}
+      {/* Header */}
       <header className="flex items-center justify-between gap-2 border-zinc-200 border-b bg-zinc-50 px-3 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex min-w-0 items-center gap-2">
           <span className="font-medium text-xs">{instance.subject || "New Message"}</span>
@@ -329,7 +440,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           <button
             type="button"
             onClick={() => setMode(instance.id, "minimized")}
-            title="Minimize"
+            title="Minimize (Esc)"
             className="rounded p-1 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
           >
             <Minus className="h-3.5 w-3.5" />
@@ -372,7 +483,6 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
       </header>
 
-      {/* Body */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {loadError && (
           <p className="border-zinc-200 border-b bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
@@ -403,62 +513,59 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
 
         {/* To row with CC/BCC reveal */}
-        <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
-          <span className="w-12 shrink-0 text-zinc-500">To</span>
-          <input
-            type="text"
-            value={instance.to}
-            onChange={(e) => setField(instance.id, { to: e.target.value })}
+        <div className="flex items-start gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+          <span className="w-12 shrink-0 pt-0.5 text-zinc-500">To</span>
+          <RecipientChips
+            value={toList}
+            onChange={(next) => setField(instance.id, { to: next.join(", ") })}
             placeholder="recipient@example.com"
-            className="flex-1 bg-transparent text-xs outline-none"
+            ariaLabel="To recipients"
           />
-          {!instance.showCc && (
-            <button
-              type="button"
-              onClick={() => setField(instance.id, { showCc: true })}
-              className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-            >
-              Cc
-            </button>
-          )}
-          {!instance.showBcc && (
-            <button
-              type="button"
-              onClick={() => setField(instance.id, { showBcc: true })}
-              className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-            >
-              Bcc
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-1 pt-0.5">
+            {!instance.showCc && (
+              <button
+                type="button"
+                onClick={() => setField(instance.id, { showCc: true })}
+                className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Cc
+              </button>
+            )}
+            {!instance.showBcc && (
+              <button
+                type="button"
+                onClick={() => setField(instance.id, { showBcc: true })}
+                className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+              >
+                Bcc
+              </button>
+            )}
+          </div>
         </div>
 
         {instance.showCc && (
-          <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
-            <span className="w-12 shrink-0 text-zinc-500">Cc</span>
-            <input
-              type="text"
-              value={instance.cc}
-              onChange={(e) => setField(instance.id, { cc: e.target.value })}
-              placeholder="comma-separated"
-              className="flex-1 bg-transparent text-xs outline-none"
+          <div className="flex items-start gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+            <span className="w-12 shrink-0 pt-0.5 text-zinc-500">Cc</span>
+            <RecipientChips
+              value={ccList}
+              onChange={(next) => setField(instance.id, { cc: next.join(", ") })}
+              ariaLabel="Cc recipients"
             />
           </div>
         )}
 
         {instance.showBcc && (
-          <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
-            <span className="w-12 shrink-0 text-zinc-500">Bcc</span>
-            <input
-              type="text"
-              value={instance.bcc}
-              onChange={(e) => setField(instance.id, { bcc: e.target.value })}
-              placeholder="comma-separated"
-              className="flex-1 bg-transparent text-xs outline-none"
+          <div className="flex items-start gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+            <span className="w-12 shrink-0 pt-0.5 text-zinc-500">Bcc</span>
+            <RecipientChips
+              value={bccList}
+              onChange={(next) => setField(instance.id, { bcc: next.join(", ") })}
+              ariaLabel="Bcc recipients"
             />
           </div>
         )}
 
-        {/* Template picker (visible when templates exist) */}
+        {/* Template */}
         {templates && templates.length > 0 && (
           <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
             <span className="w-12 shrink-0 text-zinc-500">Template</span>
@@ -468,10 +575,6 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 const tid = e.target.value || null;
                 setField(instance.id, { templateId: tid });
                 if (tid) {
-                  // Render the template into subject + body using the
-                  // existing renderTemplate engine. Importing it
-                  // dynamically keeps the client bundle slim until
-                  // the operator actually picks a template.
                   applyTemplate(tid, templates, renderContext, (patch) =>
                     setField(instance.id, patch),
                   );
@@ -501,15 +604,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           />
         </div>
 
-        {/* Body */}
-        <textarea
-          value={instance.bodyText}
-          onChange={(e) => setField(instance.id, { bodyText: e.target.value })}
-          placeholder="Write your message…"
-          className="flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-zinc-400"
+        {/* Body — rich text */}
+        <RichTextEditor
+          valueHtml={instance.bodyHtml}
+          valueText={instance.bodyText}
+          onChange={({ text, html }) => setField(instance.id, { bodyText: text, bodyHtml: html })}
+          className="flex-1"
         />
 
-        {/* Error strip */}
         {sendError && (
           <div className="flex items-start gap-2 border-zinc-200 border-t bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
             <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -517,34 +619,51 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           </div>
         )}
 
-        {sent && (
-          <div className="border-zinc-200 border-t bg-emerald-50 px-3 py-2 text-emerald-700 text-xs dark:border-zinc-800 dark:bg-emerald-950 dark:text-emerald-300">
-            Sent.
+        {undoActive && (
+          <div className="flex items-center justify-between gap-2 border-zinc-200 border-t bg-zinc-900 px-3 py-2 text-white text-xs dark:bg-zinc-100 dark:text-zinc-900">
+            <span>Email queued. You have {UNDO_WINDOW_MS / 1000}s to undo.</span>
+            <button
+              type="button"
+              onClick={handleUndoSend}
+              className="font-medium underline underline-offset-2"
+            >
+              Undo
+            </button>
           </div>
+        )}
+
+        {showFollowUp && (
+          <FollowUpPrompt
+            venueId={instance.venueId}
+            threadId={sentThreadId}
+            subject={instance.subject}
+            to={toList[0] ?? ""}
+            onClose={() => {
+              setShowFollowUp(false);
+              setTimeout(() => close(instance.id), 200);
+            }}
+          />
         )}
       </div>
 
-      {/* Footer — send + discard */}
+      {/* Footer */}
       <footer className="flex items-center justify-between gap-2 border-zinc-200 border-t bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={sending || sent}
-            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-white text-xs hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-            Send
-          </button>
+          <SendMenu
+            disabled={!!sendError && !undoActive}
+            pending={sending || undoActive}
+            scheduledFor={instance.scheduledFor}
+            onSendNow={handleSendNow}
+            onSchedule={(iso) => setField(instance.id, { scheduledFor: iso })}
+            onSendTest={handleSendTest}
+            onSaveAsDraft={handleSaveAsDraft}
+          />
           {capBlocked && instance.isAdmin && (
             <button
               type="button"
               onClick={() => {
-                // TODO: bypass-cap on the global composer needs the
-                // server action to accept a bypass flag. Wire in a
-                // follow-up commit; for now we surface the message.
                 setSendError(
-                  "Bypass-cap on the global composer is not yet wired. Use the old modal path on /inbox if you need to bypass.",
+                  "Bypass-cap on the global composer is not yet wired. Use the inline reply on /inbox to bypass.",
                 );
               }}
               className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
@@ -554,6 +673,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <AttachmentList
+            attachments={instance.attachments}
+            onChange={(next) => setField(instance.id, { attachments: next })}
+          />
           <button
             type="button"
             onClick={handleDiscard}
@@ -568,46 +691,16 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   );
 }
 
-// ---------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------
-
-function parseAddressList(s: string): string[] {
-  return s
-    .split(/[,;\n]/)
-    .map((x) => x.trim())
-    .filter((x) => x.length > 0);
-}
-
-function isValidEmail(s: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
-}
-
-async function applyTemplate(
-  templateId: string,
-  templates: ComposeTemplate[],
-  renderContext: ComposeRenderContext,
-  setPatch: (patch: { subject: string; bodyText: string }) => void,
-) {
-  const t = templates.find((x) => x.id === templateId);
-  if (!t) return;
-  const { renderTemplate } = await import("@/lib/template-render");
-  const subj = renderTemplate(t.subjectTemplate, renderContext);
-  const body = renderTemplate(t.bodyTemplateText, renderContext);
-  setPatch({ subject: subj.output, bodyText: body.output });
-}
-
 function DraftStatusBadge({ instance }: { instance: ComposerInstance }) {
   switch (instance.draftStatus) {
     case "saving":
       return <span className="font-mono text-[10px] text-zinc-400">Saving…</span>;
     case "saved":
       return (
-        <span className="flex items-center gap-1 font-mono text-[10px] text-zinc-500">
-          <Sparkles className="h-2.5 w-2.5" />
+        <span className="font-mono text-[10px] text-zinc-500">
           Saved
           {instance.lastSavedAt && (
-            <span title={new Date(instance.lastSavedAt).toLocaleString()}>
+            <span title={new Date(instance.lastSavedAt).toLocaleString()} className="ml-1">
               ·{" "}
               {new Date(instance.lastSavedAt).toLocaleTimeString([], {
                 hour: "2-digit",
@@ -618,7 +711,7 @@ function DraftStatusBadge({ instance }: { instance: ComposerInstance }) {
         </span>
       );
     case "save_failed":
-      return <span className="font-mono text-[10px] text-rose-600">Draft save failed</span>;
+      return <span className="font-mono text-[10px] text-rose-600">Save failed — retrying</span>;
     default:
       return null;
   }
