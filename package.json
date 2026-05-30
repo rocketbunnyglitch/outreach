@@ -20,6 +20,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "backup:sheets": "tsx scripts/backup-to-sheets.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.36.0",
     "geist": "^1.3.1",
+    "googleapis": "^144.0.0",
     "ioredis": "^5.4.0",
     "isomorphic-dompurify": "^3.14.0",
     "lucide-react": "^0.460.0",

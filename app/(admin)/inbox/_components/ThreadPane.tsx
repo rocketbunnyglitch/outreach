@@ -251,7 +251,7 @@ function VenueRail({
             </>
           )}
           <dt className="text-zinc-500">Outreach brand</dt>
-          <dd>{thread.brandName ?? <span className="italic text-zinc-500">Unassigned</span>}</dd>
+          <dd>{thread.brandName ?? <span className="text-zinc-500 italic">Unassigned</span>}</dd>
           {thread.campaignName && (
             <>
               <dt className="text-zinc-500">Campaign</dt>
