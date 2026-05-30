@@ -303,3 +303,188 @@ export async function impersonateUser(formData: FormData): Promise<void> {
   // cookie, and create the session.
   redirect("/api/auth/signin/admin-impersonate?callbackUrl=/");
 }
+
+// =========================================================================
+// Inline edit actions — admin updates name, email, role, or password on
+// any user in their team. All four enforce:
+//   - requireAdmin
+//   - target user is on the same team_id as the actor
+//   - the actor can't downgrade their OWN role (so an admin can't
+//     accidentally lock themselves out of admin)
+// =========================================================================
+
+export async function updateUserName(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string; displayName: string }>> {
+  const ctx = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const displayName = String(formData.get("displayName") ?? "").trim();
+  if (!UUID_RE.test(userId)) return { ok: false, error: "Invalid user id." };
+  if (!displayName) return { ok: false, error: "Display name can't be empty." };
+  if (displayName.length > 200) return { ok: false, error: "Display name is too long." };
+
+  try {
+    const updated = await withAuditContext(ctx.staff.id, (tx) =>
+      tx
+        .update(users)
+        .set({ displayName, updatedBy: ctx.staff.id })
+        .where(and(eq(users.id, userId), eq(users.teamId, ctx.staff.teamId)))
+        .returning({ id: users.id, displayName: users.displayName }),
+    );
+    if (!updated[0]) return { ok: false, error: "User not found on your team." };
+    revalidatePath("/admin/users");
+    return { ok: true, data: updated[0] };
+  } catch (err) {
+    logger.error({ err, userId }, "updateUserName failed");
+    return { ok: false, error: "Could not update name." };
+  }
+}
+
+export async function updateUserEmail(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string; primaryEmail: string }>> {
+  const ctx = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const email = String(formData.get("primaryEmail") ?? "")
+    .trim()
+    .toLowerCase();
+  if (!UUID_RE.test(userId)) return { ok: false, error: "Invalid user id." };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return { ok: false, error: "Enter a valid email." };
+  }
+
+  try {
+    // Pre-check duplicate: cleaner error than the unique-index violation.
+    const conflict = await withAuditContext(ctx.staff.id, (tx) =>
+      tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.primaryEmail, email), eq(users.teamId, ctx.staff.teamId)))
+        .limit(1),
+    );
+    if (conflict[0] && conflict[0].id !== userId) {
+      return { ok: false, error: "Another user on your team already has that email." };
+    }
+
+    const updated = await withAuditContext(ctx.staff.id, (tx) =>
+      tx
+        .update(users)
+        .set({ primaryEmail: email, updatedBy: ctx.staff.id })
+        .where(and(eq(users.id, userId), eq(users.teamId, ctx.staff.teamId)))
+        .returning({ id: users.id, primaryEmail: users.primaryEmail }),
+    );
+    if (!updated[0]) return { ok: false, error: "User not found on your team." };
+    revalidatePath("/admin/users");
+    return { ok: true, data: updated[0] };
+  } catch (err) {
+    logger.error({ err, userId }, "updateUserEmail failed");
+    // If the unique-index slips through the pre-check (race), report it.
+    if (err instanceof Error && err.message.includes("primary_email")) {
+      return { ok: false, error: "That email is already in use." };
+    }
+    return { ok: false, error: "Could not update email." };
+  }
+}
+
+export async function updateUserRole(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string; role: Role }>> {
+  const ctx = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const roleRaw = String(formData.get("role") ?? "");
+  if (!UUID_RE.test(userId)) return { ok: false, error: "Invalid user id." };
+  if (!isRole(roleRaw)) return { ok: false, error: "Invalid role." };
+
+  // Guard: admin can't strip their OWN admin role. They can ask
+  // another admin to do it, but they can't accidentally lock
+  // themselves out.
+  if (userId === ctx.staff.id && roleRaw !== "admin") {
+    return {
+      ok: false,
+      error: "You can't change your own role away from admin. Ask another admin.",
+    };
+  }
+
+  try {
+    const updated = await withAuditContext(ctx.staff.id, (tx) =>
+      tx
+        .update(users)
+        .set({ role: roleRaw, updatedBy: ctx.staff.id })
+        .where(and(eq(users.id, userId), eq(users.teamId, ctx.staff.teamId)))
+        .returning({ id: users.id, role: users.role }),
+    );
+    if (!updated[0]) return { ok: false, error: "User not found on your team." };
+    revalidatePath("/admin/users");
+    return { ok: true, data: { id: updated[0].id, role: updated[0].role as Role } };
+  } catch (err) {
+    logger.error({ err, userId }, "updateUserRole failed");
+    return { ok: false, error: "Could not update role." };
+  }
+}
+
+/**
+ * Admin sets a new password DIRECTLY on a user (no invite link
+ * round-trip). Used when the operator wants to dictate the password
+ * out-of-band ("your password is X, please change it next login").
+ *
+ * The receiving user keeps using whatever password they had until
+ * the admin tells them the new one — there's no notification.
+ *
+ * Self-edit allowed: admins can rotate their own password from this
+ * surface too. Future iteration: surface a separate "change my own
+ * password" affordance in the user menu so non-admins aren't stuck.
+ */
+export async function updateUserPassword(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const ctx = await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const password = String(formData.get("password") ?? "");
+  if (!UUID_RE.test(userId)) return { ok: false, error: "Invalid user id." };
+
+  const v = validatePassword(password);
+  if (!v.ok) return v;
+
+  // Defense in depth: the target must be on the actor's team.
+  const target = await withAuditContext(ctx.staff.id, (tx) =>
+    tx
+      .select({ id: users.id, teamId: users.teamId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
+  );
+  if (!target[0] || target[0].teamId !== ctx.staff.teamId) {
+    return { ok: false, error: "User not found on your team." };
+  }
+
+  let hashed: string;
+  try {
+    hashed = await hashPassword(password);
+  } catch (err) {
+    logger.error({ err, userId }, "updateUserPassword: hashPassword failed");
+    return { ok: false, error: "Could not save password." };
+  }
+
+  try {
+    await withAuditContext(ctx.staff.id, (tx) =>
+      tx
+        .update(users)
+        .set({
+          passwordHash: hashed,
+          passwordSetAt: new Date(),
+          passwordMustChange: false,
+          updatedBy: ctx.staff.id,
+        })
+        .where(eq(users.id, userId)),
+    );
+    revalidatePath("/admin/users");
+    return { ok: true, data: { id: userId } };
+  } catch (err) {
+    logger.error({ err, userId }, "updateUserPassword failed");
+    return { ok: false, error: "Could not save password." };
+  }
+}

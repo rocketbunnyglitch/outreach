@@ -3,7 +3,16 @@
 import { cn } from "@/lib/cn";
 import { Loader2, MoreVertical, ShieldOff, UserCog, UserMinus, UserPlus2 } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
-import { impersonateUser, resetUserPassword, setUserStatus } from "../_actions";
+import {
+  impersonateUser,
+  resetUserPassword,
+  setUserStatus,
+  updateUserEmail,
+  updateUserName,
+  updateUserPassword,
+  updateUserRole,
+} from "../_actions";
+import { InlineEditableCell } from "./inline-editable-cell";
 
 interface UserRow {
   id: string;
@@ -91,14 +100,37 @@ function UserRowEl({
   return (
     <>
       <tr className={cn(stripe && "dark:bg-white/[0.015]")}>
-        <td className="px-4 py-2.5 font-medium">{user.displayName}</td>
+        <td className="px-4 py-2.5 font-medium">
+          <InlineEditableCell
+            value={user.displayName}
+            ariaLabel={`name for ${user.displayName}`}
+            placeholder="Display name"
+            commit={async (next) => {
+              const fd = new FormData();
+              fd.set("userId", user.id);
+              fd.set("displayName", next);
+              const result = await updateUserName(null, fd);
+              return result.ok ? { ok: true } : { ok: false, error: result.error };
+            }}
+          />
+        </td>
         <td className="px-4 py-2.5 font-mono text-xs text-zinc-600 dark:text-zinc-400">
-          {user.primaryEmail}
+          <InlineEditableCell
+            value={user.primaryEmail}
+            type="email"
+            ariaLabel={`email for ${user.displayName}`}
+            placeholder="user@example.com"
+            commit={async (next) => {
+              const fd = new FormData();
+              fd.set("userId", user.id);
+              fd.set("primaryEmail", next);
+              const result = await updateUserEmail(null, fd);
+              return result.ok ? { ok: true } : { ok: false, error: result.error };
+            }}
+          />
         </td>
         <td className="px-4 py-2.5">
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-            {user.role}
-          </span>
+          <RoleDropdown user={user} isSelf={isSelf} onError={setError} />
         </td>
         <td className="px-4 py-2.5">
           <span
@@ -111,9 +143,7 @@ function UserRowEl({
           </span>
         </td>
         <td className="px-4 py-2.5">
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-            {user.passwordSetAt ? "set" : "pending invite"}
-          </span>
+          <PasswordCell user={user} onError={setError} />
         </td>
         <td className="px-4 py-2.5">
           <div className="flex items-center justify-end gap-1.5">
@@ -193,3 +223,120 @@ function UserRowEl({
 // Silence unused-import warnings for icons currently kept for future use.
 void ShieldOff;
 void MoreVertical;
+
+const ROLE_OPTIONS: Array<{ value: UserRow["role"]; label: string }> = [
+  { value: "admin", label: "Admin" },
+  { value: "lead", label: "Lead" },
+  { value: "outreach", label: "Outreach" },
+  { value: "readonly", label: "Read-only" },
+];
+
+/**
+ * Role <select> dropdown. A constrained 4-value set, so a real
+ * select is better UX than the text inline editor.
+ *
+ * Self-edit safeguard: an admin cannot change their OWN role away
+ * from admin (mirrors the server-side check). The dropdown disables
+ * non-admin options for the actor's own row so they don't get a
+ * confusing "you can't change your own role" error after submission.
+ */
+function RoleDropdown({
+  user,
+  isSelf,
+  onError,
+}: {
+  user: UserRow;
+  isSelf: boolean;
+  onError: (msg: string | null) => void;
+}) {
+  const [role, setRole] = useState<UserRow["role"]>(user.role);
+  const [isPending, startTx] = useTransition();
+
+  function onChange(next: UserRow["role"]) {
+    if (next === role) return;
+    const previous = role;
+    setRole(next); // optimistic
+    onError(null);
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("userId", user.id);
+      fd.set("role", next);
+      const result = await updateUserRole(null, fd);
+      if (!result.ok) {
+        setRole(previous);
+        onError(result.error);
+      }
+    });
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <select
+        value={role}
+        onChange={(e) => onChange(e.target.value as UserRow["role"])}
+        disabled={isPending}
+        className="rounded-md border border-zinc-300 bg-white px-2 py-0.5 font-mono text-[11px] uppercase tracking-widest focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
+        aria-label={`Role for ${user.displayName}`}
+      >
+        {ROLE_OPTIONS.map((opt) => (
+          <option
+            key={opt.value}
+            value={opt.value}
+            // Self can't pick non-admin on their own row.
+            disabled={isSelf && opt.value !== "admin"}
+          >
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      {isPending && <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />}
+    </span>
+  );
+}
+
+/**
+ * Password cell — clicking opens an inline input that accepts a new
+ * password. Empty input cancels; non-empty input is sent to
+ * updateUserPassword, which validates length / strength server-side.
+ *
+ * The cell also surfaces the existing "set / pending invite" status
+ * via the placeholder displayed in read mode. The actual password
+ * is never sent to the client (and we never store the plaintext).
+ */
+function PasswordCell({
+  user,
+  onError,
+}: {
+  user: UserRow;
+  onError: (msg: string | null) => void;
+}) {
+  const [savedAt, setSavedAt] = useState<Date | null>(user.passwordSetAt);
+  const displayValue = savedAt ? "••••••••" : "pending invite";
+
+  return (
+    <InlineEditableCell
+      // The "value" is never the password — we just pass the marker
+      // so equality checks inside the cell don't accidentally short-
+      // circuit. Real password input starts empty (see type="password"
+      // behaviour in InlineEditableCell).
+      value=""
+      displayValue={displayValue}
+      type="password"
+      ariaLabel={`password for ${user.displayName}`}
+      placeholder="New password (min 10 chars)"
+      commit={async (next) => {
+        const fd = new FormData();
+        fd.set("userId", user.id);
+        fd.set("password", next);
+        const result = await updateUserPassword(null, fd);
+        if (result.ok) {
+          setSavedAt(new Date());
+          onError(null);
+          return { ok: true };
+        }
+        return { ok: false, error: result.error };
+      }}
+      className="font-mono text-[11px] uppercase tracking-widest"
+    />
+  );
+}
