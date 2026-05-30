@@ -337,6 +337,19 @@ async function ingestMessage(opts: {
           bodyText,
           sourceThreadId: null,
         });
+
+        // Bounce detection — different from STOP/unsubscribe: a
+        // bounce is a Mail Transfer Agent notification that a prior
+        // OUTBOUND send failed. We extract the BOUNCED recipient (not
+        // the bounce notifier's address) and suppress that recipient.
+        // Idempotent via the same unique index.
+        await maybeAutoSuppressBounce({
+          teamId,
+          fromAddress: fromHeader,
+          subject,
+          bodyText,
+          headers,
+        });
       }
     } catch (err) {
       logger.warn({ err, gmailThreadId }, "auto-suppress check failed (non-fatal)");
@@ -654,4 +667,150 @@ async function maybeAutoSuppressInbound(opts: {
     ON CONFLICT (team_id, email) DO NOTHING
   `);
   logger.info({ email, teamId: opts.teamId }, "auto-suppressed address from inbound unsubscribe");
+}
+
+// =========================================================================
+// Bounce detection — auto-suppress recipients whose prior outbound failed
+// =========================================================================
+
+/** From header pattern that indicates a bounce notifier — most MTAs
+ *  send from `mailer-daemon` regardless of domain (Postfix, sendmail,
+ *  Gmail's GMAIL-SMTP-IN). We also catch the Google-specific variant. */
+const BOUNCE_FROM_RE = /\b(mailer-daemon|postmaster)@/i;
+
+/** Subject patterns common across MTAs. Conservative — only matches
+ *  unambiguous bounce subjects, not generic "Delivery Confirmation"
+ *  or "Inactive account" replies. */
+const BOUNCE_SUBJECT_RE =
+  /^\s*(Delivery Status Notification|Mail Delivery Subsystem|Undelivered Mail Returned|Delivery has failed|Returned mail|Mail delivery failed|Failure notice)\b/i;
+
+/** Final-Recipient header in delivery-status-notification reports,
+ *  per RFC 3464. Format: `Final-Recipient: rfc822; user@example.com`. */
+const FINAL_RECIPIENT_RE = /Final-Recipient:\s*(?:rfc822;\s*)?([^\s<>]+@[^\s<>;]+)/i;
+
+/** Original-Recipient header (sometimes present instead of Final-Recipient). */
+const ORIGINAL_RECIPIENT_RE = /Original-Recipient:\s*(?:rfc822;\s*)?([^\s<>]+@[^\s<>;]+)/i;
+
+/** Inline mentions some MTAs put in the human-readable body section. */
+const INLINE_FAILED_RE =
+  /(?:could not be delivered|delivery to the following recipient(?:s)? failed|<([^<>\s]+@[^<>\s]+)>:?\s*(?:5\d{2}|user unknown|address rejected|recipient address rejected))/i;
+
+/**
+ * Detect a bounce; if confident, extract the failed recipient and
+ * suppress them with reason='bounced'. Notes capture the bounce
+ * subject for the operator to see in /admin/suppression.
+ *
+ * Detection priority:
+ *   1. From header matches mailer-daemon / postmaster — strongest signal
+ *   2. Subject matches a known MTA bounce string — very strong
+ *   3. Body contains Final-Recipient: or Original-Recipient: headers
+ *      (RFC 3464 DSN format) — definitive
+ *
+ * We require AT LEAST ONE high-confidence signal plus an extracted
+ * recipient. A subject like "Mail Delivery Subsystem" alone without
+ * a recipient address doesn't suppress anyone (we wouldn't know who).
+ */
+async function maybeAutoSuppressBounce(opts: {
+  teamId: string;
+  fromAddress: string;
+  subject: string | null;
+  bodyText: string | null;
+  headers: Record<string, string>;
+}): Promise<void> {
+  const fromMatch = BOUNCE_FROM_RE.test(opts.fromAddress);
+  const subjectMatch = opts.subject ? BOUNCE_SUBJECT_RE.test(opts.subject) : false;
+  // RFC 3464 sets Content-Type: multipart/report; report-type=delivery-status
+  // on DSN messages. This is the strongest signal short of parsing the
+  // structured part — and it costs us one header lookup.
+  const contentType = (opts.headers["content-type"] ?? "").toLowerCase();
+  const contentTypeMatch =
+    contentType.includes("multipart/report") || contentType.includes("delivery-status");
+  const looksLikeBounce = fromMatch || subjectMatch || contentTypeMatch;
+  if (!looksLikeBounce) return;
+
+  // Try to pull the recipient from the body, preferring the
+  // structured headers first.
+  const body = opts.bodyText ?? "";
+  let recipient: string | null = null;
+  const finalMatch = body.match(FINAL_RECIPIENT_RE);
+  if (finalMatch?.[1]) recipient = finalMatch[1];
+  if (!recipient) {
+    const origMatch = body.match(ORIGINAL_RECIPIENT_RE);
+    if (origMatch?.[1]) recipient = origMatch[1];
+  }
+  if (!recipient) {
+    // Last resort: scan for inline failure mentions like
+    // "<user@example.com>: 550 user unknown"
+    const inline = body.match(INLINE_FAILED_RE);
+    if (inline?.[1]) recipient = inline[1];
+  }
+  if (!recipient) {
+    // We've seen a bounce-looking message but couldn't identify the
+    // bounced address. Log and skip — better than guessing wrong.
+    logger.info(
+      { from: opts.fromAddress, subject: opts.subject },
+      "bounce signal detected but no recipient extracted; skipping auto-suppress",
+    );
+    return;
+  }
+
+  const email = recipient.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+  // Don't auto-suppress the inbox's own address (defensive against
+  // mis-extraction).
+  // No inbox.email available here — callers pre-checked direction
+  // so a self-bounce would be very unusual. The unique index also
+  // protects against duplicates if we mis-extract.
+
+  // Capture a short diagnostic from the subject for operator context.
+  const notes = `Auto-suppressed from bounce: ${opts.subject ?? "(no subject)"}`.slice(0, 280);
+
+  await db.execute(sql`
+    INSERT INTO email_suppression (team_id, email, reason, notes, source_thread_id)
+    VALUES (${opts.teamId}, ${email}, 'bounced', ${notes}, NULL)
+    ON CONFLICT (team_id, email) DO NOTHING
+  `);
+  logger.info(
+    { email, teamId: opts.teamId, subject: opts.subject },
+    "auto-suppressed address from bounce",
+  );
+
+  // Close the original thread(s) that bounced. We look for OPEN
+  // threads on this team where the most recent outbound message
+  // had this recipient in its to_addresses. State transitions to
+  // closed_dnc — the existing inbox folder for "this conversation
+  // is dead" — and stale + cadence are cleared so the cron tickers
+  // don't keep re-tagging a now-dead thread.
+  //
+  // Bulk update via a CTE that filters by the same recipient match
+  // used in the duplicate-outreach detector (see lib/send-safety.ts).
+  // Idempotent — re-running on a re-delivered bounce won't change
+  // already-closed threads.
+  try {
+    await db.execute(sql`
+      UPDATE email_threads et
+      SET
+        state = 'closed_dnc',
+        is_stale = false,
+        stale_since = NULL,
+        stale_reason = NULL,
+        follow_up_stage = 0,
+        follow_up_next_due_at = NULL,
+        snippet = COALESCE(snippet, '') || ' [Bounced — auto-suppressed]'
+      FROM connected_accounts ca
+      WHERE et.staff_outreach_email_id = ca.id
+        AND ca.team_id = ${opts.teamId}
+        AND et.state IN ('needs_reply', 'waiting_on_them', 'follow_up_due')
+        AND EXISTS (
+          SELECT 1 FROM email_messages em
+          WHERE em.thread_id = et.id
+            AND em.direction = 'outbound'
+            AND ${email} = ANY (SELECT lower(unnest(em.to_addresses)))
+        )
+    `);
+  } catch (err) {
+    // Closing the thread is best-effort — the suppression is the
+    // important guarantee. Log and move on.
+    logger.warn({ err, email }, "bounce: failed to close original thread (non-fatal)");
+  }
 }
