@@ -5,6 +5,7 @@ import {
   type InboxFolder,
   fetchFolderCounts,
   fetchInboxAliases,
+  fetchInboxFilterFacets,
   fetchInboxThreads,
   fetchThreadDetail,
   fetchVenueOutreachHistory,
@@ -60,7 +61,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         : undefined;
   const mineAssigned = assignedStaffId === currentStaff.id;
 
-  const [detail, threads, counts, aliases] = await Promise.all([
+  const [detail, threads, counts, aliases, facets] = await Promise.all([
     fetchThreadDetail(threadId),
     fetchInboxThreads({
       folder,
@@ -81,6 +82,11 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     fetchInboxAliases({
       currentTeamId: currentStaff.teamId,
       currentUserId: currentStaff.id,
+    }),
+    fetchInboxFilterFacets({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
     }),
   ]);
 
@@ -130,6 +136,16 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             counts={counts}
             mineOnly={mineAssigned}
             currentStaffId={currentStaff.id}
+            facets={facets}
+            activeBrandId={search.brand}
+            activeCampaignId={search.campaign}
+            preservedQueryBase={(() => {
+              const p = new URLSearchParams(preservedQuery.toString());
+              p.delete("folder");
+              p.delete("brand");
+              p.delete("campaign");
+              return p.toString();
+            })()}
           />
           <InboxPresenceBar currentStaffId={currentStaff.id} />
         </div>
