@@ -34,7 +34,20 @@
 
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { AlertCircle, Loader2, Maximize2, Minimize2, Minus, Trash2, X } from "lucide-react";
+import {
+  AlertCircle,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Minus,
+  MoreHorizontal,
+  PenLine,
+  Smile,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   type ComposeRenderContext,
@@ -135,6 +148,16 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [sentThreadId, setSentThreadId] = useState<string | null>(null);
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // Toolbar visibility — Gmail collapses the formatting toolbar by
+  // default and surfaces it via the Aa toggle. We default to open
+  // on first paint so power users see the affordances; the toggle
+  // persists nothing (per-composer state is fine since reopening a
+  // draft re-mounts the editor).
+  const [toolbarOpen, setToolbarOpen] = useState(true);
+  // Three-dot "more" menu in the footer (labels, spell check, etc).
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // Emoji picker popover state.
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   // Recipient parsed lists kept as derived arrays for the chip
   // components. The store still holds the canonical CSV string.
@@ -725,6 +748,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           valueText={instance.bodyText}
           onChange={({ text, html }) => setField(instance.id, { bodyText: text, bodyHtml: html })}
           className="flex-1"
+          showToolbar={toolbarOpen}
         />
 
         {sendError && (
@@ -763,7 +787,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
 
       {/* Footer */}
       <footer className="flex items-center justify-between gap-2 border-zinc-200 border-t bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <SendMenu
             disabled={!!sendError && !undoActive}
             pending={sending || undoActive}
@@ -792,8 +816,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               Bypass cap
             </button>
           )}
-        </div>
-        <div className="flex items-center gap-2">
+          {/* Aa — formatting toolbar toggle. Matches Gmail's
+              placement: directly next to Send. */}
+          <button
+            type="button"
+            onClick={() => setToolbarOpen((v) => !v)}
+            title={toolbarOpen ? "Hide formatting options" : "Show formatting options"}
+            aria-pressed={toolbarOpen}
+            className={cn(
+              "rounded p-1.5 font-semibold text-[11px]",
+              toolbarOpen
+                ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+            )}
+          >
+            Aa
+          </button>
+          {/* Compact icon row — Gmail-shaped affordances: attach
+              files (handled by AttachmentList), insert link, emoji,
+              photo (attachment with image MIME), signature, more. */}
           <AttachmentList
             draftId={instance.id}
             attachments={instance.attachments}
@@ -804,6 +845,109 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               })
             }
           />
+          <FooterIconButton
+            title="Insert link"
+            onClick={() => {
+              const url = prompt("Link URL");
+              if (!url) return;
+              const safe = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+              // Wrap the selected text (or insert a link) in the body
+              // HTML. The contenteditable inside RichTextEditor has the
+              // focus selection; running execCommand here applies it.
+              if (document.activeElement && "execCommand" in document) {
+                // biome-ignore lint/suspicious/noExplicitAny: legacy surface
+                (document as any).execCommand("createLink", false, safe);
+              }
+            }}
+          >
+            <LinkIcon className="h-3.5 w-3.5" />
+          </FooterIconButton>
+          <div className="relative">
+            <FooterIconButton title="Insert emoji" onClick={() => setEmojiOpen((v) => !v)}>
+              <Smile className="h-3.5 w-3.5" />
+            </FooterIconButton>
+            {emojiOpen && (
+              <EmojiPicker
+                onPick={(emoji) => {
+                  setEmojiOpen(false);
+                  // Append into the body text via setField; the editor
+                  // will re-seed innerHTML on next paint.
+                  const nextText = `${instance.bodyText}${emoji}`;
+                  const nextHtml = `${instance.bodyHtml ?? ""}${emoji}`;
+                  setField(instance.id, { bodyText: nextText, bodyHtml: nextHtml });
+                }}
+                onClose={() => setEmojiOpen(false)}
+              />
+            )}
+          </div>
+          <FooterIconButton
+            title="Insert photo (uses attachment storage)"
+            onClick={() => {
+              // Fire a click on a hidden input that filters to images
+              // — uses the same upload path as the paperclip.
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = "image/*";
+              input.onchange = () => {
+                // The AttachmentList component is mounted; we can't
+                // call its add() directly without a ref, so we
+                // dispatch a synthetic CustomEvent it can listen for.
+                window.dispatchEvent(
+                  new CustomEvent("composer-add-image", {
+                    detail: { draftId: instance.id, files: input.files },
+                  }),
+                );
+              };
+              input.click();
+            }}
+          >
+            <ImageIcon className="h-3.5 w-3.5" />
+          </FooterIconButton>
+          <FooterIconButton
+            title="Insert signature"
+            onClick={() => {
+              // Re-insert the inbox's signature into the body via the
+              // existing signature marker block. The composer mounts
+              // this on initial seed; this is a manual re-trigger.
+              const inbox = inboxes?.find((x) => x.id === instance.fromAccountId);
+              if (!inbox?.signatureHtml) {
+                alert(
+                  "No signature configured for this inbox. Set one in Settings -> Inbox signatures.",
+                );
+                return;
+              }
+              const stripped = stripSignatureBlock(instance.bodyHtml ?? "");
+              const nextHtml = `${stripped}\n<!--composer-signature-->\n<br>\n${inbox.signatureHtml}\n<!--/composer-signature-->`;
+              setField(instance.id, { bodyHtml: nextHtml });
+            }}
+          >
+            <PenLine className="h-3.5 w-3.5" />
+          </FooterIconButton>
+          {/* Three-dot more menu — labels, spell check, etc. */}
+          <div className="relative">
+            <FooterIconButton title="More options" onClick={() => setMoreMenuOpen((v) => !v)}>
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </FooterIconButton>
+            {moreMenuOpen && (
+              <MoreMenu
+                onClose={() => setMoreMenuOpen(false)}
+                onCheckSpelling={() => {
+                  // Hand off to the browser's native spell check by
+                  // toggling the contenteditable's spellcheck attr.
+                  const editor = document.querySelector('[contenteditable="true"]');
+                  if (editor) {
+                    editor.setAttribute(
+                      "spellcheck",
+                      editor.getAttribute("spellcheck") === "false" ? "true" : "false",
+                    );
+                  }
+                  setMoreMenuOpen(false);
+                }}
+              />
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleDiscard}
@@ -851,4 +995,145 @@ function DraftStatusBadge({ instance }: { instance: ComposerInstance }) {
     default:
       return null;
   }
+}
+
+/** Small icon button for the composer footer's tool row. */
+function FooterIconButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      onMouseDown={(e) => e.preventDefault()}
+      className="rounded p-1.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Minimal emoji picker — popover with a curated grid. Full Unicode
+ *  picker would need a heavy library (emoji-picker-react ~150KB);
+ *  for v1 we cover the common ones operators reach for in business
+ *  email. A future commit can swap to a full picker behind the
+ *  same surface. */
+function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [onClose]);
+  const COMMON = [
+    "👋",
+    "🙏",
+    "👍",
+    "🎉",
+    "🔥",
+    "✅",
+    "✨",
+    "💯",
+    "🚀",
+    "💪",
+    "👀",
+    "💼",
+    "📧",
+    "📅",
+    "⏰",
+    "🎯",
+    "🤝",
+    "💡",
+    "📌",
+    "🙌",
+    "❤️",
+    "😀",
+    "😄",
+    "😊",
+    "😎",
+    "🤔",
+    "😢",
+    "😅",
+    "🙂",
+    "😉",
+    "👏",
+    "🎊",
+  ];
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full left-0 z-30 mb-1 w-56 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+    >
+      <div className="mb-1 px-1 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+        Common emoji
+      </div>
+      <div className="grid grid-cols-8 gap-0.5">
+        {COMMON.map((e) => (
+          <button
+            key={e}
+            type="button"
+            onMouseDown={(ev) => ev.preventDefault()}
+            onClick={() => onPick(e)}
+            className="rounded p-1 text-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Three-dot more menu — labels + spell check toggle. */
+function MoreMenu({
+  onClose,
+  onCheckSpelling,
+}: {
+  onClose: () => void;
+  onCheckSpelling: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full right-0 z-30 mb-1 w-44 rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-800 dark:bg-zinc-950"
+    >
+      <button
+        type="button"
+        onClick={onCheckSpelling}
+        className="block w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      >
+        Toggle spell check
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          alert(
+            "Labels: apply via the thread header in the inbox (Reply mode) or via the Apply Labels picker on a sent message.",
+          );
+          onClose();
+        }}
+        className="block w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      >
+        Labels…
+      </button>
+    </div>
+  );
 }

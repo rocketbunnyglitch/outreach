@@ -27,7 +27,7 @@
 
 import { cn } from "@/lib/cn";
 import { Check, File as FileIcon, Loader2, Paperclip, Upload, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createAttachmentUpload } from "../../_actions/email-drafts";
 import type { ComposerAttachment } from "./composer-store";
 
@@ -126,6 +126,23 @@ export function AttachmentList({ draftId, attachments, onChange }: Props) {
     onChange((prev) => prev.filter((a) => a.id !== id));
     clearChip(id);
   }
+
+  // Listen for the synthetic 'composer-add-image' event dispatched by
+  // the composer footer's photo-icon button. The event carries
+  // { draftId, files }; we filter by draftId so the right composer
+  // instance picks up the upload when multiple are open.
+  useEffect(() => {
+    function onAddImage(e: Event) {
+      const detail = (e as CustomEvent<{ draftId: string; files: FileList | null }>).detail;
+      if (detail.draftId !== draftId) return;
+      void add(detail.files);
+    }
+    window.addEventListener("composer-add-image", onAddImage);
+    return () => window.removeEventListener("composer-add-image", onAddImage);
+    // 'add' captures draftId + the current attachments via the functional
+    // updater, so no extra deps needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId]);
 
   // Computed: are any chips backed by storage?
   const anyMemoryOnly = attachments.some(
