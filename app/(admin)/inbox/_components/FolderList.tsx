@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { FacetOverflowChip } from "./FacetOverflowChip";
 
 /**
  * Icons for every folder. Mailbox folders mirror Gmail; smart-view
@@ -143,9 +144,9 @@ export function FolderList({
           {/* Brand + campaign chips — facets are scoped to threads
               with at least one open conversation, so a dead brand
               with 0 unread threads doesn't waste a row. Up to
-              MAX_CHIPS per group; overflow falls into a "+N more"
-              link to the full filter modal (TODO, not yet built;
-              the operator can use URL params directly meanwhile). */}
+              MAX_CHIPS per group; overflow folds into a "+N more"
+              chip that opens a searchable modal (see
+              FacetOverflowChip). */}
           {facets?.brands && facets.brands.length > 0 && (
             <>
               <li className="mt-2 px-2 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
@@ -168,6 +169,20 @@ export function FolderList({
                   </FilterChip>
                 </li>
               ))}
+              <FacetOverflowChip
+                groupLabel="Brands"
+                allFacets={facets.brands}
+                visibleCount={6}
+                buildHref={(id) =>
+                  buildChipHref({
+                    activeFolder,
+                    preservedQueryBase,
+                    brandId: id,
+                    campaignId: activeCampaignId,
+                  })
+                }
+                activeId={activeBrandId}
+              />
             </>
           )}
           {facets?.campaigns && facets.campaigns.length > 0 && (
@@ -192,6 +207,20 @@ export function FolderList({
                   </FilterChip>
                 </li>
               ))}
+              <FacetOverflowChip
+                groupLabel="Campaigns"
+                allFacets={facets.campaigns}
+                visibleCount={8}
+                buildHref={(id) =>
+                  buildChipHref({
+                    activeFolder,
+                    preservedQueryBase,
+                    brandId: activeBrandId,
+                    campaignId: id,
+                  })
+                }
+                activeId={activeCampaignId}
+              />
             </>
           )}
           {(activeBrandId || activeCampaignId) && (
