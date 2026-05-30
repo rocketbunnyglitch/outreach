@@ -29,6 +29,13 @@ export const GMAIL_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.modify",
+  // People API — recipient autocomplete reads the operator's
+  // contacts + "Other Contacts" (people they've emailed in the
+  // past but haven't explicitly saved). Optional from a Gmail
+  // workflow perspective; autocomplete falls back to venue +
+  // team history when not granted.
+  "https://www.googleapis.com/auth/contacts.readonly",
+  "https://www.googleapis.com/auth/contacts.other.readonly",
 ];
 
 export interface GmailOAuthConfig {
@@ -426,4 +433,90 @@ export async function modifyGmailThreadLabels(opts: {
     const text = await res.text();
     throw new Error(`Gmail threads.modify failed: ${res.status} ${text}`);
   }
+}
+
+/**
+ * Search the operator's Gmail contacts + recent senders via the
+ * People API's `otherContacts.search` + `people.searchContacts`
+ * endpoints. Returns up to `limit` results matching the query.
+ *
+ * Why People API rather than Gmail's own contact suggestions: the
+ * Gmail API itself doesn't expose contact search; People is the
+ * official path. Requires the contacts.readonly + contacts.other.readonly
+ * scopes (granted on the existing OAuth consent if the operator
+ * accepted the full scope set during connection).
+ *
+ * Falls back to an empty list on any error — autocomplete is a
+ * convenience surface, not a correctness one.
+ */
+export interface GmailContactSuggestion {
+  email: string;
+  /** Display name from the Person resource (if any). */
+  displayName: string | null;
+}
+
+export async function searchGmailContacts(opts: {
+  encryptedRefreshToken: string;
+  query: string;
+  limit?: number;
+}): Promise<GmailContactSuggestion[]> {
+  if (!opts.query.trim()) return [];
+  const accessToken = await refreshAccessToken(opts.encryptedRefreshToken);
+  const limit = Math.min(opts.limit ?? 15, 30);
+
+  // People API's contacts.search endpoint. readMask gives us just
+  // the address + name fields we need.
+  const url = new URL("https://people.googleapis.com/v1/people:searchContacts");
+  url.searchParams.set("query", opts.query);
+  url.searchParams.set("pageSize", String(limit));
+  url.searchParams.set("readMask", "names,emailAddresses");
+
+  const seen = new Set<string>();
+  const results: GmailContactSuggestion[] = [];
+
+  async function pull(endpoint: URL) {
+    try {
+      const res = await fetch(endpoint.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        results?: Array<{
+          person?: {
+            names?: Array<{ displayName?: string }>;
+            emailAddresses?: Array<{ value?: string }>;
+          };
+        }>;
+      };
+      for (const r of data.results ?? []) {
+        const name = r.person?.names?.[0]?.displayName ?? null;
+        for (const e of r.person?.emailAddresses ?? []) {
+          const email = e.value?.trim();
+          if (!email) continue;
+          const key = email.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          results.push({ email, displayName: name });
+          if (results.length >= limit) return;
+        }
+      }
+    } catch {
+      // Best-effort — autocomplete failures don't surface.
+    }
+  }
+
+  await pull(url);
+
+  // Also search the operator's "Other Contacts" — addresses they've
+  // emailed in the past but haven't explicitly added to contacts.
+  // This is where most of the useful suggestions live.
+  if (results.length < limit) {
+    const otherUrl = new URL("https://people.googleapis.com/v1/otherContacts:search");
+    otherUrl.searchParams.set("query", opts.query);
+    otherUrl.searchParams.set("pageSize", String(limit - results.length));
+    otherUrl.searchParams.set("readMask", "names,emailAddresses");
+    await pull(otherUrl);
+  }
+
+  return results;
 }

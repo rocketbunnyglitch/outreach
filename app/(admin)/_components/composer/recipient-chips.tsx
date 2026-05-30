@@ -23,12 +23,12 @@
  */
 
 import { cn } from "@/lib/cn";
-import { Mail, MailQuestion, Users, X } from "lucide-react";
+import { Mail, MailQuestion, UserCircle, Users, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export interface RecipientSuggestion {
   email: string;
-  source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent";
+  source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent" | "gmail_contact";
   label?: string | null;
 }
 
@@ -295,6 +295,8 @@ function SourceIcon({ source }: { source: RecipientSuggestion["source"] }) {
       return <Mail className={`${cls} text-blue-500`} />;
     case "team_recent":
       return <Users className={`${cls} text-zinc-400`} />;
+    case "gmail_contact":
+      return <UserCircle className={`${cls} text-violet-500`} />;
     default:
       return <Mail className={cls} />;
   }

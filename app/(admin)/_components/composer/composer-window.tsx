@@ -465,9 +465,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       return mod.suggestRecipients({
         venueId: instance.venueId,
         query,
+        fromAccountId: instance.fromAccountId,
       });
     },
-    [instance.venueId],
+    [instance.venueId, instance.fromAccountId],
   );
 
   // Cmd/Ctrl + Enter sends.

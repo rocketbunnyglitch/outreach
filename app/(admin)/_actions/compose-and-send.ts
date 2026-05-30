@@ -31,6 +31,7 @@ import {
 } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { searchGmailContacts } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import type { SendUsage } from "@/lib/send-cap";
 import type { DncBlock, DuplicateWarning, SuppressionBlock } from "@/lib/send-safety";
@@ -425,11 +426,16 @@ export async function saveDraftAsTemplate(input: {
 export async function suggestRecipients(input: {
   venueId?: string | null;
   query?: string;
+  /** Optional inbox to use for the Gmail Contacts lookup. When set,
+   *  we hit the People API as that operator and merge results in.
+   *  When absent (or the inbox isn't on the team), we skip the
+   *  remote lookup and use only venue/team-recent suggestions. */
+  fromAccountId?: string | null;
 }): Promise<
   Array<{
     email: string;
     /** Where this address came from — drives the row icon. */
-    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent";
+    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent" | "gmail_contact";
     /** Optional display label (venue name / contact label). */
     label?: string | null;
   }>
@@ -441,13 +447,13 @@ export async function suggestRecipients(input: {
   const seen = new Set<string>();
   const results: Array<{
     email: string;
-    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent";
+    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent" | "gmail_contact";
     label?: string | null;
   }> = [];
 
   function tryAdd(
     email: string | null | undefined,
-    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent",
+    source: "venue_primary" | "venue_alt" | "venue_thread" | "team_recent" | "gmail_contact",
     label?: string | null,
   ) {
     if (!email) return;
@@ -509,6 +515,47 @@ export async function suggestRecipients(input: {
       .limit(40);
     for (const r of recent) {
       for (const addr of r.to ?? []) tryAdd(addr, "team_recent");
+    }
+  }
+
+  // Gmail Contacts (People API) — only when the caller specified an
+  // inbox (so we know whose contacts to query) and when we still have
+  // room in the result set. Skips entirely when the user hasn't typed
+  // anything yet (the People API's search endpoint requires a query).
+  if (
+    input.fromAccountId &&
+    UUID_RE.test(input.fromAccountId) &&
+    queryLower &&
+    results.length < LIMIT
+  ) {
+    try {
+      const [inbox] = await db
+        .select({
+          token: connectedAccounts.gmailOauthRefreshToken,
+        })
+        .from(connectedAccounts)
+        .where(
+          and(
+            eq(connectedAccounts.id, input.fromAccountId),
+            eq(connectedAccounts.teamId, staff.teamId),
+          ),
+        )
+        .limit(1);
+      if (inbox?.token) {
+        const contacts = await searchGmailContacts({
+          encryptedRefreshToken: inbox.token,
+          query: input.query ?? "",
+          limit: LIMIT - results.length,
+        });
+        for (const c of contacts) tryAdd(c.email, "gmail_contact", c.displayName);
+      }
+    } catch (err) {
+      // Best-effort — autocomplete shouldn't surface People API
+      // failures (most often: scope not granted yet, expired token).
+      logger.warn(
+        { err, fromAccountId: input.fromAccountId },
+        "searchGmailContacts within suggestRecipients failed",
+      );
     }
   }
 
