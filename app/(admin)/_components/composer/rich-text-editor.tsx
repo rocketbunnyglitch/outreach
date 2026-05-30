@@ -55,7 +55,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
-import { type Editor, EditorContent, useEditor } from "@tiptap/react";
+import { BubbleMenu, type Editor, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   AlignCenter,
@@ -354,6 +354,54 @@ export function RichTextEditor({
           </ToolbarButton>
         </div>
       )}
+      <BubbleMenu
+        editor={editor}
+        // Render only on actual range selections (not just the caret),
+        // and skip when the selection is inside the auto-managed
+        // signature region — operators selecting their signature
+        // shouldn't get a formatting prompt over auto-generated
+        // content.
+        shouldShow={({ editor, from, to }) => {
+          if (from === to) return false;
+          // Walk up the parent chain to check for signature ancestry.
+          if (editor.isActive("signatureBlock")) return false;
+          return true;
+        }}
+        // Tippy/Popper positioning options. Keep it close to the
+        // selection and arrow-less so the floating pill reads as
+        // contextual rather than a tooltip.
+        tippyOptions={{
+          duration: 80,
+          placement: "top",
+          arrow: false,
+        }}
+        className="pointer-events-auto flex items-center gap-0.5 rounded-md border border-zinc-200 bg-white px-1 py-0.5 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+      >
+        <BubbleButton
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          active={editor.isActive("bold")}
+          title="Bold"
+        >
+          <Bold className="h-3 w-3" />
+        </BubbleButton>
+        <BubbleButton
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          active={editor.isActive("italic")}
+          title="Italic"
+        >
+          <Italic className="h-3 w-3" />
+        </BubbleButton>
+        <BubbleButton
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          active={editor.isActive("underline")}
+          title="Underline"
+        >
+          <UnderlineIcon className="h-3 w-3" />
+        </BubbleButton>
+        <BubbleButton onClick={insertLink} active={editor.isActive("link")} title="Insert link">
+          <LinkIcon className="h-3 w-3" />
+        </BubbleButton>
+      </BubbleMenu>
       <EditorContent editor={editor} className="flex-1 overflow-y-auto" />
     </div>
   );
@@ -395,6 +443,37 @@ function ToolbarButton({
 
 function Divider() {
   return <span className="mx-1 h-3 w-px bg-zinc-300 dark:bg-zinc-700" />;
+}
+
+/** Bubble-menu button — slightly tighter than ToolbarButton since
+ *  the floating pill has less room than the top toolbar. */
+function BubbleButton({
+  onClick,
+  active,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  active?: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      onMouseDown={(e) => e.preventDefault()}
+      className={cn(
+        "rounded p-1",
+        active
+          ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 function FontPopover({
