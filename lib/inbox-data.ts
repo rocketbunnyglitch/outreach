@@ -37,26 +37,49 @@ import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm"
 // =========================================================================
 
 /**
- * URL slug → thread_state values it includes. "Closed" rolls up three
- * underlying states (won/lost/dnc) so the operator doesn't have to think
- * about the difference when triaging.
+ * URL slug → thread_state values it includes. Used by the engine
+ * "smart view" folders (needs_reply / waiting / follow_up / closed).
+ *
+ * The Gmail-style mailbox folders (inbox / sent / starred / etc) do
+ * NOT use state filtering — they filter by direction / is_starred /
+ * snooze_until / deleted_at instead. The folder enum carries both
+ * sets of slugs; fetchInboxThreads picks the right WHERE shape.
  */
-export const FOLDER_TO_STATES: Record<InboxFolder, readonly ThreadStateValue[]> = {
+export const FOLDER_TO_STATES: Record<EngineSmartFolder, readonly ThreadStateValue[]> = {
   needs_reply: ["needs_reply"],
   waiting: ["waiting_on_them"],
   follow_up: ["follow_up_due"],
   closed: ["closed_won", "closed_lost", "closed_dnc"],
-  all: [
-    "needs_reply",
-    "waiting_on_them",
-    "follow_up_due",
-    "closed_won",
-    "closed_lost",
-    "closed_dnc",
-  ],
 };
 
-export const INBOX_FOLDERS = ["needs_reply", "waiting", "follow_up", "closed", "all"] as const;
+/**
+ * Gmail-style mailbox views — primary navigation. Map to Gmail
+ * mailbox concepts (Inbox = inbound, Sent = outbound, etc).
+ * Drafts + Scheduled live in email_drafts so the page renders a
+ * different middle pane for those.
+ */
+export const GMAIL_MAILBOX_FOLDERS = [
+  "inbox",
+  "sent",
+  "drafts",
+  "starred",
+  "snoozed",
+  "scheduled",
+  "all_mail",
+  "trash",
+] as const;
+
+/**
+ * Engine smart views — secondary navigation for power-user
+ * workflows. Kept for parity with the prior shape; surfaced below
+ * the mailbox section in the left rail.
+ */
+export const ENGINE_SMART_FOLDERS = ["needs_reply", "waiting", "follow_up", "closed"] as const;
+
+export type GmailMailboxFolder = (typeof GMAIL_MAILBOX_FOLDERS)[number];
+export type EngineSmartFolder = (typeof ENGINE_SMART_FOLDERS)[number];
+
+export const INBOX_FOLDERS = [...GMAIL_MAILBOX_FOLDERS, ...ENGINE_SMART_FOLDERS] as const;
 export type InboxFolder = (typeof INBOX_FOLDERS)[number];
 
 export type ThreadStateValue =
@@ -69,15 +92,32 @@ export type ThreadStateValue =
   | "archived";
 
 export const FOLDER_LABELS: Record<InboxFolder, string> = {
+  // Gmail-style mailbox views
+  inbox: "Inbox",
+  sent: "Sent",
+  drafts: "Drafts",
+  starred: "Starred",
+  snoozed: "Snoozed",
+  scheduled: "Scheduled",
+  all_mail: "All Mail",
+  trash: "Trash",
+  // Engine smart views
   needs_reply: "Needs Reply",
   waiting: "Waiting On Them",
   follow_up: "Follow-Up Due",
   closed: "Closed",
-  all: "All Mail",
 };
 
 export function isInboxFolder(value: string | undefined | null): value is InboxFolder {
   return value != null && (INBOX_FOLDERS as readonly string[]).includes(value);
+}
+
+export function isGmailMailbox(value: InboxFolder): value is GmailMailboxFolder {
+  return (GMAIL_MAILBOX_FOLDERS as readonly string[]).includes(value);
+}
+
+export function isEngineSmartFolder(value: InboxFolder): value is EngineSmartFolder {
+  return (ENGINE_SMART_FOLDERS as readonly string[]).includes(value);
 }
 
 /**
@@ -172,8 +212,74 @@ export interface InboxThreadRow {
  * within that; if real usage hits 200+ unread we'll paginate.
  */
 export async function fetchInboxThreads(filter: ThreadListFilter): Promise<InboxThreadRow[]> {
-  const states = FOLDER_TO_STATES[filter.folder];
   const slaCutoff = new Date(Date.now() - INBOX_SLA_HOURS * 3_600_000);
+
+  // Drafts + Scheduled are rendered from email_drafts, not threads.
+  // Return empty here — the page will branch on the folder slug and
+  // render a different middle pane.
+  if (filter.folder === "drafts" || filter.folder === "scheduled") {
+    return [];
+  }
+
+  // Build the folder-specific predicate. Three shapes:
+  //   - Gmail mailbox views filter by direction / is_starred /
+  //     snooze_until / deleted_at
+  //   - Engine smart views filter by thread state via FOLDER_TO_STATES
+  //   - All mailbox views except "trash" hide deleted_at IS NOT NULL
+  //   - All mailbox views except "snoozed" hide active snoozes
+  const folderPredicate = (() => {
+    switch (filter.folder) {
+      case "inbox":
+        // Gmail "Inbox": active conversations with at least one
+        // inbound message; not deleted, not archived, not snoozed.
+        return and(
+          isNull(emailThreads.deletedAt),
+          or(eq(emailThreads.direction, "inbound"), eq(emailThreads.direction, "mixed")),
+          ne(emailThreads.state, "archived"),
+          or(isNull(emailThreads.snoozeUntil), sql`${emailThreads.snoozeUntil} <= now()`),
+        );
+      case "sent":
+        // Threads we've sent at least one outbound on. Not deleted.
+        return and(
+          isNull(emailThreads.deletedAt),
+          or(eq(emailThreads.direction, "outbound"), eq(emailThreads.direction, "mixed")),
+        );
+      case "starred":
+        // Operator-flagged. Not deleted.
+        return and(isNull(emailThreads.deletedAt), eq(emailThreads.isStarred, true));
+      case "snoozed":
+        // Threads waiting to re-surface. Future snooze only.
+        return and(isNull(emailThreads.deletedAt), sql`${emailThreads.snoozeUntil} > now()`);
+      case "all_mail":
+        // Everything except deleted/trashed.
+        return isNull(emailThreads.deletedAt);
+      case "trash":
+        // Only deleted threads — recoverable view.
+        return sql`${emailThreads.deletedAt} IS NOT NULL`;
+      case "needs_reply":
+      case "waiting":
+      case "follow_up":
+      case "closed": {
+        const states = FOLDER_TO_STATES[filter.folder];
+        return and(
+          isNull(emailThreads.deletedAt),
+          or(isNull(emailThreads.snoozeUntil), sql`${emailThreads.snoozeUntil} <= now()`),
+          inArray(
+            emailThreads.state,
+            states as unknown as Array<
+              | "needs_reply"
+              | "waiting_on_them"
+              | "follow_up_due"
+              | "closed_won"
+              | "closed_lost"
+              | "closed_dnc"
+              | "archived"
+            >,
+          ),
+        );
+      }
+    }
+  })();
 
   const rows = await db
     .select({
@@ -220,25 +326,18 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
     .where(
       and(
-        isNull(emailThreads.archivedAt),
         // Team scope: ALWAYS applied. Inbox is per-team.
         eq(connectedAccounts.teamId, filter.currentTeamId),
         // "Mine" filter: restricts to the current user's own
         // connected accounts. Off by default — operators want to
         // see the full team inbox so anyone can pick up a thread.
         filter.mine ? eq(connectedAccounts.ownerUserId, filter.currentUserId) : undefined,
-        inArray(
-          emailThreads.state,
-          states as unknown as Array<
-            | "needs_reply"
-            | "waiting_on_them"
-            | "follow_up_due"
-            | "closed_won"
-            | "closed_lost"
-            | "closed_dnc"
-            | "archived"
-          >,
-        ),
+        // Folder-specific predicate. Replaces the previous coupled
+        // `archivedAt IS NULL + state IN (...)` shape — every folder
+        // now declares its own visibility rules (see folderPredicate
+        // above). Notably "all_mail" + "trash" intentionally allow
+        // through what other views hide.
+        folderPredicate,
         filter.assignedStaffId
           ? eq(emailThreads.assignedStaffId, filter.assignedStaffId)
           : undefined,
@@ -308,36 +407,106 @@ export async function fetchFolderCounts(opts: {
   currentUserId: string;
   mine?: boolean;
 }): Promise<Record<InboxFolder, number>> {
-  const rows = await db
-    .select({
-      state: emailThreads.state,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(emailThreads)
-    // Team-scope join — same shape as fetchInboxThreads. Threads
-    // with NULL staffOutreachEmailId are hidden.
-    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
-    .where(
-      and(
-        isNull(emailThreads.archivedAt),
-        eq(connectedAccounts.teamId, opts.currentTeamId),
-        opts.mine ? eq(connectedAccounts.ownerUserId, opts.currentUserId) : undefined,
-      ),
+  // Pull one count per logical predicate. Rather than one big GROUP BY
+  // (which doesn't compose with the new direction / starred / snooze
+  // predicates), run a single aggregate query that returns each count
+  // in its own column via FILTER. Postgres optimizes this into one
+  // table scan.
+  const result = await db.execute<{
+    inbox: number;
+    sent: number;
+    starred: number;
+    snoozed: number;
+    all_mail: number;
+    trash: number;
+    needs_reply: number;
+    waiting: number;
+    follow_up: number;
+    closed: number;
+    drafts: number;
+    scheduled: number;
+  }>(sql`
+    WITH scoped AS (
+      SELECT et.*
+      FROM email_threads et
+      INNER JOIN connected_accounts ca ON ca.id = et.staff_outreach_email_id
+      WHERE ca.team_id = ${opts.currentTeamId}
+        ${opts.mine ? sql`AND ca.owner_user_id = ${opts.currentUserId}` : sql``}
+    ),
+    draft_counts AS (
+      SELECT
+        COUNT(*) FILTER (WHERE sent_at IS NULL AND scheduled_for IS NULL)::int AS drafts,
+        COUNT(*) FILTER (WHERE sent_at IS NULL AND scheduled_for IS NOT NULL)::int AS scheduled
+      FROM email_drafts
+      WHERE owner_user_id = ${opts.currentUserId}
+        AND team_id = ${opts.currentTeamId}
     )
-    .groupBy(emailThreads.state);
+    SELECT
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND direction IN ('inbound','mixed')
+          AND state <> 'archived'
+          AND (snooze_until IS NULL OR snooze_until <= now())
+      )::int AS inbox,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND direction IN ('outbound','mixed')
+      )::int AS sent,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL AND is_starred = true
+      )::int AS starred,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL AND snooze_until > now()
+      )::int AS snoozed,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+      )::int AS all_mail,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NOT NULL
+      )::int AS trash,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND (snooze_until IS NULL OR snooze_until <= now())
+          AND state = 'needs_reply'
+      )::int AS needs_reply,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND (snooze_until IS NULL OR snooze_until <= now())
+          AND state = 'waiting_on_them'
+      )::int AS waiting,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND (snooze_until IS NULL OR snooze_until <= now())
+          AND state = 'follow_up_due'
+      )::int AS follow_up,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND (snooze_until IS NULL OR snooze_until <= now())
+          AND state IN ('closed_won','closed_lost','closed_dnc')
+      )::int AS closed,
+      (SELECT drafts FROM draft_counts) AS drafts,
+      (SELECT scheduled FROM draft_counts) AS scheduled
+    FROM scoped
+  `);
 
-  const byState = new Map<string, number>();
-  for (const r of rows) byState.set(r.state, r.count);
-
-  const sumStates = (states: readonly string[]): number =>
-    states.reduce((acc, s) => acc + (byState.get(s) ?? 0), 0);
+  const list = Array.isArray(result)
+    ? (result as unknown as Array<Record<string, number>>)
+    : ((result as unknown as { rows: Array<Record<string, number>> }).rows ?? []);
+  const r = list[0] ?? {};
 
   return {
-    needs_reply: sumStates(FOLDER_TO_STATES.needs_reply),
-    waiting: sumStates(FOLDER_TO_STATES.waiting),
-    follow_up: sumStates(FOLDER_TO_STATES.follow_up),
-    closed: sumStates(FOLDER_TO_STATES.closed),
-    all: sumStates(FOLDER_TO_STATES.all),
+    inbox: Number(r.inbox ?? 0),
+    sent: Number(r.sent ?? 0),
+    drafts: Number(r.drafts ?? 0),
+    starred: Number(r.starred ?? 0),
+    snoozed: Number(r.snoozed ?? 0),
+    scheduled: Number(r.scheduled ?? 0),
+    all_mail: Number(r.all_mail ?? 0),
+    trash: Number(r.trash ?? 0),
+    needs_reply: Number(r.needs_reply ?? 0),
+    waiting: Number(r.waiting ?? 0),
+    follow_up: Number(r.follow_up ?? 0),
+    closed: Number(r.closed ?? 0),
   };
 }
 

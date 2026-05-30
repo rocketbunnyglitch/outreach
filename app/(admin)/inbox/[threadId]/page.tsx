@@ -51,7 +51,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   const search = await searchParams;
   const { staff: currentStaff } = await requireStaff();
 
-  const folder: InboxFolder = isInboxFolder(search.folder) ? search.folder : "needs_reply";
+  const folder: InboxFolder = isInboxFolder(search.folder) ? search.folder : "inbox";
   const mine = search.mine === "1";
   const assignedStaffId =
     search.staff === "mine"

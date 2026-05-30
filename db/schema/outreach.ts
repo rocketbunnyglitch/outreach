@@ -219,6 +219,23 @@ export const emailThreads = pgTable(
       onDelete: "set null",
     }),
 
+    /** Gmail-style star. Operator-toggled, rendered as a yellow star on
+     *  thread rows + drives the Starred mailbox view. Engine-side only
+     *  in v1; a future cron can two-way sync to Gmail via the API since
+     *  connected accounts carry OAuth creds. Added in migration 0057. */
+    isStarred: boolean("is_starred").notNull().default(false),
+
+    /** Gmail-style snooze. When set, the thread hides from default
+     *  mailbox views until the timestamp passes. NULL = not snoozed.
+     *  Added in migration 0057. */
+    snoozeUntil: timestamp("snooze_until", { withTimezone: true }),
+
+    /** Soft-trash. Set when an operator clicks Delete on the thread;
+     *  the UI treats deleted_at IS NOT NULL as "in trash" — recoverable,
+     *  not hard-deleted. Distinct from archivedAt so trash + untrash
+     *  don't disturb the audit lineage. Added in migration 0057. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+
     ...auditColumns,
     ...archivedAt,
     ...versionColumn,

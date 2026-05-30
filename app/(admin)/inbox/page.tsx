@@ -61,7 +61,7 @@ export default async function InboxPage({ searchParams }: Props) {
   const params = await searchParams;
   const { staff: currentStaff } = await requireStaff();
 
-  const folder: InboxFolder = isInboxFolder(params.folder) ? params.folder : "needs_reply";
+  const folder: InboxFolder = isInboxFolder(params.folder) ? params.folder : "inbox";
 
   // "?mine=1" — show only threads flowing through MY OWN connected
   // accounts (the new inbox owner toggle). Distinct from the

@@ -1,30 +1,49 @@
 import { cn } from "@/lib/cn";
-import { FOLDER_LABELS, INBOX_FOLDERS, type InboxFolder } from "@/lib/inbox-data";
+import {
+  ENGINE_SMART_FOLDERS,
+  FOLDER_LABELS,
+  GMAIL_MAILBOX_FOLDERS,
+  type InboxFolder,
+} from "@/lib/inbox-data";
 import type { InboxFilterFacets } from "@/lib/inbox-data";
 import {
+  AlarmClock,
   CheckCheck,
   CheckCircle2,
   Clock4,
+  FileEdit,
   Inbox as InboxIcon,
+  Mail,
   MailOpen,
   RotateCcw,
+  Send,
   Settings,
+  Star,
   Tag,
+  Trash2,
   X,
 } from "lucide-react";
 import Link from "next/link";
 
 /**
- * Five canonical folders. Anything else (campaign / brand / staff) becomes
- * a filter chip below the folders — see CLAUDE design rationale: 13 folders
- * is decision fatigue dressed as power-user.
+ * Icons for every folder. Mailbox folders mirror Gmail; smart-view
+ * folders use engine-specific glyphs.
  */
 const FOLDER_ICONS: Record<InboxFolder, React.ReactNode> = {
-  needs_reply: <InboxIcon className="h-4 w-4" />,
+  // Gmail-style mailbox views
+  inbox: <InboxIcon className="h-4 w-4" />,
+  sent: <Send className="h-4 w-4" />,
+  drafts: <FileEdit className="h-4 w-4" />,
+  starred: <Star className="h-4 w-4" />,
+  snoozed: <AlarmClock className="h-4 w-4" />,
+  scheduled: <Clock4 className="h-4 w-4" />,
+  all_mail: <MailOpen className="h-4 w-4" />,
+  trash: <Trash2 className="h-4 w-4" />,
+  // Engine smart views
+  needs_reply: <Mail className="h-4 w-4" />,
   waiting: <Clock4 className="h-4 w-4" />,
   follow_up: <RotateCcw className="h-4 w-4" />,
   closed: <CheckCircle2 className="h-4 w-4" />,
-  all: <MailOpen className="h-4 w-4" />,
 };
 
 export function FolderList({
@@ -73,51 +92,35 @@ export function FolderList({
       </header>
 
       <ul className="flex flex-col gap-0.5">
-        {INBOX_FOLDERS.map((folder) => {
-          const isActive = folder === activeFolder;
-          const count = counts[folder] ?? 0;
-          const params = new URLSearchParams();
-          params.set("folder", folder);
-          if (mineOnly) params.set("staff", currentStaffId);
-          return (
-            <li key={folder}>
-              <Link
-                href={`/inbox?${params.toString()}`}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                  isActive
-                    ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
-                    : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
-                )}
-              >
-                <span
-                  className={cn(
-                    "shrink-0",
-                    isActive
-                      ? "text-zinc-200 dark:text-zinc-700"
-                      : "text-zinc-500 dark:text-zinc-400",
-                  )}
-                >
-                  {FOLDER_ICONS[folder]}
-                </span>
-                <span className="flex-1 truncate">{FOLDER_LABELS[folder]}</span>
-                {count > 0 && (
-                  <span
-                    className={cn(
-                      "shrink-0 font-mono text-[10px] tabular-nums",
-                      isActive
-                        ? "text-zinc-300 dark:text-zinc-700"
-                        : "text-zinc-500 dark:text-zinc-500",
-                    )}
-                  >
-                    {count}
-                  </span>
-                )}
-              </Link>
-            </li>
-          );
-        })}
+        {GMAIL_MAILBOX_FOLDERS.map((folder) => (
+          <FolderLink
+            key={folder}
+            folder={folder}
+            activeFolder={activeFolder}
+            count={counts[folder] ?? 0}
+            mineOnly={mineOnly}
+            currentStaffId={currentStaffId}
+          />
+        ))}
       </ul>
+
+      <div className="border-zinc-200/80 border-t pt-3 dark:border-zinc-800/60">
+        <p className="mb-1.5 px-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+          Smart views
+        </p>
+        <ul className="flex flex-col gap-0.5">
+          {ENGINE_SMART_FOLDERS.map((folder) => (
+            <FolderLink
+              key={folder}
+              folder={folder}
+              activeFolder={activeFolder}
+              count={counts[folder] ?? 0}
+              mineOnly={mineOnly}
+              currentStaffId={currentStaffId}
+            />
+          ))}
+        </ul>
+      </div>
 
       <div className="border-zinc-200/80 border-t pt-3 dark:border-zinc-800/60">
         <p className="px-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
@@ -309,4 +312,64 @@ function buildChipHref(opts: {
     params.delete("campaign");
   }
   return `/inbox?${params.toString()}`;
+}
+
+/**
+ * Single folder link. Active state mirrors the Gmail-style high-contrast
+ * pill. Count badge dims on the active row so it doesn't fight the pill.
+ */
+function FolderLink({
+  folder,
+  activeFolder,
+  count,
+  mineOnly,
+  currentStaffId,
+}: {
+  folder: InboxFolder;
+  activeFolder: InboxFolder;
+  count: number;
+  mineOnly: boolean;
+  currentStaffId: string;
+}) {
+  const isActive = folder === activeFolder;
+  const params = new URLSearchParams();
+  params.set("folder", folder);
+  if (mineOnly) params.set("staff", currentStaffId);
+  return (
+    <li>
+      <Link
+        href={`/inbox?${params.toString()}`}
+        className={cn(
+          "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+          isActive
+            ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
+            : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
+        )}
+      >
+        <span
+          className={cn(
+            "shrink-0",
+            isActive
+              ? "text-zinc-200 dark:text-zinc-700"
+              : folder === "starred"
+                ? "text-amber-500"
+                : "text-zinc-500 dark:text-zinc-400",
+          )}
+        >
+          {FOLDER_ICONS[folder]}
+        </span>
+        <span className="flex-1 truncate">{FOLDER_LABELS[folder]}</span>
+        {count > 0 && (
+          <span
+            className={cn(
+              "shrink-0 font-mono text-[10px] tabular-nums",
+              isActive ? "text-zinc-300 dark:text-zinc-700" : "text-zinc-500 dark:text-zinc-500",
+            )}
+          >
+            {count}
+          </span>
+        )}
+      </Link>
+    </li>
+  );
 }
