@@ -7,6 +7,7 @@ import {
   fetchInboxAliases,
   fetchInboxFilterFacets,
   fetchInboxThreads,
+  fetchTeamGmailLabels,
   isInboxFolder,
 } from "@/lib/inbox-data";
 import { Inbox as InboxIcon } from "lucide-react";
@@ -85,7 +86,7 @@ export default async function InboxPage({ searchParams }: Props) {
 
   const isDraftFolder = folder === "drafts" || folder === "scheduled";
 
-  const [threads, counts, aliases, facets, drafts] = await Promise.all([
+  const [threads, counts, aliases, facets, gmailLabels, drafts] = await Promise.all([
     fetchInboxThreads({
       folder,
       currentTeamId: currentStaff.teamId,
@@ -112,6 +113,7 @@ export default async function InboxPage({ searchParams }: Props) {
       currentUserId: currentStaff.id,
       mine,
     }),
+    fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
     isDraftFolder
       ? fetchDraftList({
           currentUserId: currentStaff.id,
@@ -144,6 +146,7 @@ export default async function InboxPage({ searchParams }: Props) {
             activeBrandId={params.brand}
             activeCampaignId={params.campaign}
             activeLabelId={params.label}
+            gmailLabels={gmailLabels}
             preservedQueryBase={(() => {
               // Strip folder/brand/campaign/label since FolderList sets
               // them per-chip. Preserve mine, staff, alias, q.

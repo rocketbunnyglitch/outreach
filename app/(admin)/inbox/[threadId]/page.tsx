@@ -7,6 +7,7 @@ import {
   fetchInboxAliases,
   fetchInboxFilterFacets,
   fetchInboxThreads,
+  fetchTeamGmailLabels,
   fetchThreadDetail,
   fetchVenueOutreachHistory,
   isInboxFolder,
@@ -62,7 +63,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         : undefined;
   const mineAssigned = assignedStaffId === currentStaff.id;
 
-  const [detail, threads, counts, aliases, facets] = await Promise.all([
+  const [detail, threads, counts, aliases, facets, gmailLabels] = await Promise.all([
     fetchThreadDetail(threadId),
     fetchInboxThreads({
       folder,
@@ -90,6 +91,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       currentUserId: currentStaff.id,
       mine,
     }),
+    fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
   ]);
 
   if (!detail) notFound();
@@ -143,6 +145,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             activeBrandId={search.brand}
             activeCampaignId={search.campaign}
             activeLabelId={search.label}
+            gmailLabels={gmailLabels}
             preservedQueryBase={(() => {
               const p = new URLSearchParams(preservedQuery.toString());
               p.delete("folder");

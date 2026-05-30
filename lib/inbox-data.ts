@@ -797,7 +797,12 @@ export async function fetchVenueCurrentBookings(venueId: string) {
  * doesn't show stale options; 'connected' AND 'needs_reauth' are
  * both visible so the operator can spot which alias is broken.
  */
-import { emailThreadLabels, staffOutreachEmails, teamLabels } from "@/db/schema";
+import {
+  emailThreadLabels,
+  gmailLabels as gmailLabelsTable,
+  staffOutreachEmails,
+  teamLabels,
+} from "@/db/schema";
 
 export interface InboxAliasOption {
   id: string;
@@ -1044,4 +1049,103 @@ function firstLine(s: string | null): string {
   if (!stripped) return "";
   const eol = stripped.indexOf("\n");
   return (eol === -1 ? stripped : stripped.slice(0, eol)).slice(0, 140);
+}
+
+// =========================================================================
+// Gmail labels (left rail mirror)
+// =========================================================================
+
+export interface TeamGmailLabel {
+  /** gmail_label_id — stable id from Gmail itself. */
+  gmailLabelId: string;
+  /** Display name (may include slashes for nested labels). */
+  name: string;
+  type: "user" | "system";
+  /** Aggregate unread count across all the team's accounts that carry this label. */
+  unreadCount: number;
+  /** Background color from Gmail's color config, if set. */
+  backgroundColor: string | null;
+}
+
+/**
+ * Fetch the team's Gmail labels for the left rail. Aggregates across
+ * every connected_account on the team — if two operators each have a
+ * "Renewals" label in their own Gmail, the left rail shows one
+ * "Renewals" entry with the combined unread count.
+ *
+ * Filters to user-defined labels (skips system labels like INBOX,
+ * SENT, TRASH which duplicate our existing mailbox views).
+ */
+export async function fetchTeamGmailLabels(opts: {
+  currentTeamId: string;
+}): Promise<TeamGmailLabel[]> {
+  // Pull the mirrored label metadata first (name + color from Gmail).
+  const labelRows = await db
+    .select({
+      gmailLabelId: gmailLabelsTable.gmailLabelId,
+      name: gmailLabelsTable.name,
+      type: gmailLabelsTable.type,
+      backgroundColor: gmailLabelsTable.backgroundColor,
+    })
+    .from(gmailLabelsTable)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, gmailLabelsTable.connectedAccountId))
+    .where(
+      and(eq(connectedAccounts.teamId, opts.currentTeamId), eq(gmailLabelsTable.type, "user")),
+    );
+
+  if (labelRows.length === 0) return [];
+
+  // Derive unread counts from our own email_messages.gmail_labels
+  // array — more accurate than gmail_labels.unread_count (which goes
+  // stale between syncs) and zero extra Gmail API calls. Counts each
+  // distinct thread that has an inbound message tagged with the label
+  // and isn't archived / deleted on our side.
+  //
+  // This is one query per render rather than per-label since we use
+  // unnest() + GROUP BY on the label id.
+  const countRows = (await db.execute<{ label_id: string; unread: number }>(sql`
+    SELECT label_id, COUNT(DISTINCT thread_id)::int AS unread
+    FROM (
+      SELECT
+        unnest(em.gmail_labels) AS label_id,
+        em.thread_id
+      FROM email_messages em
+      INNER JOIN email_threads et ON et.id = em.thread_id
+      INNER JOIN connected_accounts ca ON ca.id = et.staff_outreach_email_id
+      WHERE ca.team_id = ${opts.currentTeamId}
+        AND et.deleted_at IS NULL
+        AND et.state != 'archived'
+        AND et.unread_count > 0
+    ) labeled
+    GROUP BY label_id
+  `)) as unknown as
+    | { rows?: Array<{ label_id: string; unread: number }> }
+    | Array<{ label_id: string; unread: number }>;
+  const countList = Array.isArray(countRows) ? countRows : (countRows.rows ?? []);
+  const countByLabelId = new Map(countList.map((r) => [r.label_id, r.unread]));
+
+  // Collapse identically-named labels across accounts. Pick the
+  // first color we see for visual consistency. Sum unread counts
+  // from countByLabelId across each Gmail label id that maps to
+  // the same display name.
+  const byName = new Map<string, TeamGmailLabel>();
+  for (const r of labelRows) {
+    const unread = countByLabelId.get(r.gmailLabelId) ?? 0;
+    const cur = byName.get(r.name);
+    if (cur) {
+      cur.unreadCount += unread;
+    } else {
+      byName.set(r.name, {
+        gmailLabelId: r.gmailLabelId,
+        name: r.name,
+        type: r.type as "user" | "system",
+        unreadCount: unread,
+        backgroundColor: r.backgroundColor,
+      });
+    }
+  }
+
+  return Array.from(byName.values()).sort(
+    (a, b) => b.unreadCount - a.unreadCount || a.name.localeCompare(b.name),
+  );
 }

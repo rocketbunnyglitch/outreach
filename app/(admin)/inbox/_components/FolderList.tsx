@@ -5,7 +5,7 @@ import {
   GMAIL_MAILBOX_FOLDERS,
   type InboxFolder,
 } from "@/lib/inbox-data";
-import type { InboxFilterFacets } from "@/lib/inbox-data";
+import type { InboxFilterFacets, TeamGmailLabel } from "@/lib/inbox-data";
 import {
   AlarmClock,
   CheckCheck,
@@ -56,6 +56,7 @@ export function FolderList({
   activeBrandId,
   activeCampaignId,
   activeLabelId,
+  gmailLabels,
   preservedQueryBase,
 }: {
   activeFolder: InboxFolder;
@@ -70,6 +71,9 @@ export function FolderList({
   activeCampaignId?: string;
   /** Currently-applied label filter (URL param). */
   activeLabelId?: string;
+  /** Gmail's own labels mirrored from labels.list (one row per
+   *  unique name, aggregated across the team's connected accounts). */
+  gmailLabels?: TeamGmailLabel[];
   /** Other URL params to preserve when building chip hrefs. */
   preservedQueryBase?: string;
 }) {
@@ -276,6 +280,44 @@ export function FolderList({
               />
             </>
           )}
+          {gmailLabels && gmailLabels.length > 0 && (
+            <>
+              <li className="mt-2 px-2 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+                Gmail labels
+              </li>
+              {gmailLabels.slice(0, 10).map((g) => (
+                <li key={g.gmailLabelId}>
+                  <FilterChip
+                    href={(() => {
+                      const params = new URLSearchParams(preservedQueryBase ?? "");
+                      params.set("folder", activeFolder);
+                      params.delete("brand");
+                      params.delete("campaign");
+                      params.delete("label");
+                      params.set("q", `label:${quoteIfNeeded(g.name)}`);
+                      return `/inbox?${params.toString()}`;
+                    })()}
+                    active={false}
+                    icon={
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: g.backgroundColor ?? "#a1a1aa" }}
+                      />
+                    }
+                    count={g.unreadCount}
+                  >
+                    {g.name}
+                  </FilterChip>
+                </li>
+              ))}
+              {gmailLabels.length > 10 && (
+                <li className="px-2 py-1 font-mono text-[9px] text-zinc-400 uppercase tracking-widest">
+                  +{gmailLabels.length - 10} more in Gmail
+                </li>
+              )}
+            </>
+          )}
           {(activeBrandId || activeCampaignId || activeLabelId) && (
             <li className="mt-2">
               <Link
@@ -460,4 +502,10 @@ function FolderLink({
       </Link>
     </li>
   );
+}
+
+/** Wrap a label name in quotes if it contains whitespace (so the
+ *  search operator parser treats "Big deal" as one token). */
+function quoteIfNeeded(s: string): string {
+  return /\s/.test(s) ? `"${s}"` : s;
 }

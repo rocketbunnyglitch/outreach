@@ -44,6 +44,7 @@ import "server-only";
 import { emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { db, withAuditContext } from "@/lib/db";
 import { refreshAccessToken } from "@/lib/gmail";
+import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { reconcileGmailLabelsForThread } from "@/lib/team-labels";
@@ -96,6 +97,23 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
       const result = await pollOneInbox(inbox);
       summary.messagesIngested += result.messagesIngested;
       summary.threadsCreated += result.threadsCreated;
+      // Sync Gmail labels on a sub-cadence — labels.list is cheap
+      // but doesn't change between most polls. Run on a ~10% rate
+      // (≈ once per 10 drains per account on average), plus we always
+      // sync if the account has never been synced (the gmail_labels
+      // table will be empty for new connections).
+      if (Math.random() < 0.1) {
+        try {
+          await syncGmailLabelsForAccount(inbox.id);
+        } catch (err) {
+          // Label sync failures don't block message polling — they
+          // just delay the next display refresh.
+          logger.warn(
+            { connectedAccountId: inbox.id, err },
+            "syncGmailLabelsForAccount within drain failed",
+          );
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn({ err, inboxId: inbox.id, email: inbox.email }, "gmail poll failed for inbox");
