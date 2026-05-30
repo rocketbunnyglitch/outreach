@@ -1,4 +1,4 @@
-import { ComposeEmailModal } from "@/app/(admin)/_components/compose-email-modal";
+import { ComposeEmailButton } from "@/app/(admin)/_components/composer/compose-email-button";
 import { Globe, Instagram, Mail, MapPin, Phone } from "lucide-react";
 import Link from "next/link";
 
@@ -97,7 +97,7 @@ export function VenueQuickLinks({
       {email && (
         // In-app composer instead of mailto so the message goes through
         // a chosen connected_account and ingests into /inbox.
-        <ComposeEmailModal
+        <ComposeEmailButton
           defaultTo={email}
           venueId={venueId}
           ariaLabel={`Email ${email}`}
@@ -105,7 +105,7 @@ export function VenueQuickLinks({
         >
           <Mail className="h-3.5 w-3.5" />
           Email
-        </ComposeEmailModal>
+        </ComposeEmailButton>
       )}
       {mapsHref && (
         <IconLink href={mapsHref} title="Open in Google Maps" label="Maps" external>

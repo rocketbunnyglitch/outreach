@@ -49,6 +49,7 @@ export * from "./outreach";
 export * from "./email-send-events";
 export * from "./email-suppression";
 export * from "./email-soft-bounces";
+export * from "./email-drafts";
 export * from "./inbox-daily-stats";
 export * from "./inbox-alerts";
 export * from "./team-labels";

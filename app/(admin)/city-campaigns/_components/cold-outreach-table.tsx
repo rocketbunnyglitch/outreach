@@ -1,6 +1,6 @@
 "use client";
 
-import { ComposeEmailModal } from "@/app/(admin)/_components/compose-email-modal";
+import { ComposeEmailButton } from "@/app/(admin)/_components/composer/compose-email-button";
 import { SavedViewsPicker } from "@/app/(admin)/_components/saved-views-picker";
 import { WarmLeadPromoteButton } from "@/app/(admin)/_components/warm-lead-promote-button";
 import { ActivityHistoryButton } from "@/components/ui/activity-history-button";
@@ -1228,14 +1228,14 @@ function ColdRow({
             </div>
             {entry.venueEmail && (
               <>
-                <ComposeEmailModal
+                <ComposeEmailButton
                   defaultTo={entry.venueEmail}
                   venueId={entry.venueId}
                   ariaLabel={`Compose email to ${entry.venueEmail}`}
                   className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
                 >
                   <Mail className="h-3 w-3" />
-                </ComposeEmailModal>
+                </ComposeEmailButton>
                 <AiDraftButton
                   venueId={entry.venueId}
                   venueName={entry.venueName}
@@ -1472,14 +1472,14 @@ function ColdRow({
           </div>
           {entry.venueEmail && (
             <>
-              <ComposeEmailModal
+              <ComposeEmailButton
                 defaultTo={entry.venueEmail}
                 venueId={entry.venueId}
                 ariaLabel={`Compose email to ${entry.venueEmail}`}
                 className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
               >
                 <Mail className="h-2.5 w-2.5" />
-              </ComposeEmailModal>
+              </ComposeEmailButton>
               <AiDraftButton
                 venueId={entry.venueId}
                 venueName={entry.venueName}

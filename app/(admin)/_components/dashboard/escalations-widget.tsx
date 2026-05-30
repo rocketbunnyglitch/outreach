@@ -1,4 +1,4 @@
-import { ComposeEmailModal } from "@/app/(admin)/_components/compose-email-modal";
+import { ComposeEmailButton } from "@/app/(admin)/_components/composer/compose-email-button";
 import { cn } from "@/lib/cn";
 import type { PendingEscalation } from "@/lib/escalations-data";
 import { AlertTriangle, ArrowRight, Mail, MapPin, Phone, User } from "lucide-react";
@@ -141,7 +141,7 @@ function EscalationRow({ escalation }: { escalation: PendingEscalation }) {
             </a>
           )}
           {escalation.venueEmail && (
-            <ComposeEmailModal
+            <ComposeEmailButton
               defaultTo={escalation.venueEmail}
               venueId={escalation.venueId}
               ariaLabel={`Email ${escalation.venueEmail}`}
@@ -149,7 +149,7 @@ function EscalationRow({ escalation }: { escalation: PendingEscalation }) {
             >
               <Mail className="h-3 w-3" />
               {escalation.venueEmail}
-            </ComposeEmailModal>
+            </ComposeEmailButton>
           )}
         </div>
       )}

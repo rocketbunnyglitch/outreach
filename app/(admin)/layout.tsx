@@ -8,6 +8,8 @@ import { ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { CampaignSwitcher } from "./_components/campaign-switcher";
+import { ComposerHost } from "./_components/composer/composer-host";
+import { ComposerProvider } from "./_components/composer/composer-store";
 import { GlobalPresence } from "./_components/global-presence";
 import { GlobalShortcuts } from "./_components/global-shortcuts";
 import { MobileSectionNav } from "./_components/mobile-section-nav";
@@ -48,30 +50,37 @@ export default async function AdminLayout({
   return (
     <ToastProvider>
       <ShortcutProvider>
-        <GlobalPresence staffId={staff.id} />
-        <div className="flex min-h-screen flex-col">
-          {isDevImpersonation && <DevModeBanner />}
-          <TopBar staff={staff} provider={provider} />
-          {/* Mobile-only horizontal section + sub-nav strips. Renders
-              under the TopBar at < lg viewports; hidden at lg+ where
-              SideNav takes over. Replaces the old hamburger drawer
-              (operator session 11). */}
-          <MobileSectionNav
-            isAdmin={staff.role === "admin"}
-            hasCurrentCampaign={hasCurrentCampaign}
-          />
-          <div className="flex flex-1">
-            <SideNav isAdmin={staff.role === "admin"} hasCurrentCampaign={hasCurrentCampaign} />
-            <main className="min-w-0 flex-1 px-6 py-10 sm:px-10 sm:py-14">{children}</main>
+        <ComposerProvider>
+          <GlobalPresence staffId={staff.id} />
+          <div className="flex min-h-screen flex-col">
+            {isDevImpersonation && <DevModeBanner />}
+            <TopBar staff={staff} provider={provider} />
+            {/* Mobile-only horizontal section + sub-nav strips. Renders
+                under the TopBar at < lg viewports; hidden at lg+ where
+                SideNav takes over. Replaces the old hamburger drawer
+                (operator session 11). */}
+            <MobileSectionNav
+              isAdmin={staff.role === "admin"}
+              hasCurrentCampaign={hasCurrentCampaign}
+            />
+            <div className="flex flex-1">
+              <SideNav isAdmin={staff.role === "admin"} hasCurrentCampaign={hasCurrentCampaign} />
+              <main className="min-w-0 flex-1 px-6 py-10 sm:px-10 sm:py-14">{children}</main>
+            </div>
+            <GlobalShortcuts />
+            <MountCommandPalette />
+            <StaleDataIndicator />
+            {/* Live updates across every admin page: every committed mutation
+                publishes a firehose event (withAuditContext) and this consumer
+                soft-refreshes all open clients via SSE. */}
+            <RealtimeRefresh currentStaffId={staff.id} />
+            {/* Global Gmail-style composer. Renders bottom-right when at
+                least one composer is open; persists across route changes
+                because it's mounted at the layout level, not inside
+                any page component. */}
+            <ComposerHost />
           </div>
-          <GlobalShortcuts />
-          <MountCommandPalette />
-          <StaleDataIndicator />
-          {/* Live updates across every admin page: every committed mutation
-              publishes a firehose event (withAuditContext) and this consumer
-              soft-refreshes all open clients via SSE. */}
-          <RealtimeRefresh currentStaffId={staff.id} />
-        </div>
+        </ComposerProvider>
       </ShortcutProvider>
     </ToastProvider>
   );
