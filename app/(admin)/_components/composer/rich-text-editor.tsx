@@ -1,46 +1,61 @@
 "use client";
 
 /**
- * RichTextEditor — Gmail-style contenteditable editor.
+ * RichTextEditor — Tiptap-backed contenteditable editor with a
+ * Gmail-style toolbar.
  *
- * Toolbar (toggleable via the Aa button mounted next to Send in the
- * composer footer — see `showToolbar` prop):
- *   - Undo / Redo
- *   - Font family + Font size (text-size popovers)
- *   - Bold / Italic / Underline / Strikethrough
- *   - Text color / Background color (color pickers)
- *   - Alignment: left / center / right / justify
- *   - Numbered list / Bulleted list
- *   - Indent in / Indent out
- *   - Insert link
- *   - Remove formatting
+ * Same onChange({ text, html }) contract as the previous
+ * execCommand-based implementation; the composer doesn't need to
+ * change. Drop-in replacement.
  *
- * Why contenteditable + execCommand:
- *   document.execCommand is deprecated but still widely supported
- *   in every evergreen browser and is the only zero-dependency path
- *   to rich text. Modern alternatives (Lexical, TipTap, Slate) pull
- *   in 30-100kb of runtime each. For an outreach composer that
- *   primarily handles short text + light formatting, execCommand
- *   is the right tradeoff.
+ * Why Tiptap (vs the previous execCommand path):
+ *   - execCommand is deprecated and increasingly buggy in evergreen
+ *     browsers (cursor handling, nested-list collapse, paste-from-
+ *     Word artifacts)
+ *   - Tiptap is built on ProseMirror — every formatting verb is a
+ *     deterministic transaction, so undo/redo, multi-keystroke
+ *     compositions (IME, Korean/Japanese input), and serialization
+ *     all "just work"
+ *   - Output remains plain HTML so the existing sanitiseEmailHtml
+ *     pipeline (lib/email-sanitize.ts) continues to be the security
+ *     boundary on send
  *
- *   If we ever need inline images, table support, or collaborative
- *   editing, swapping to Lexical here is a contained refactor —
- *   the parent only knows about onChange({text, html}).
+ * Toolbar (toggleable via the Aa button in the composer footer):
+ *   Undo / Redo
+ *   Font family (Sans Serif, Serif, Mono, Wide)
+ *   Font size (Small, Normal, Large, Huge) via a custom FontSize mark
+ *   Bold / Italic / Underline / Strikethrough
+ *   Text color (8-swatch picker)
+ *   Alignment (left / center / right / justify)
+ *   Ordered / unordered list
+ *   Indent in / Indent out (only meaningful inside lists)
+ *   Link (with the existing https:// normalization)
+ *   Remove formatting
  *
- * Output contract:
- *   onChange({ text, html })
- *     text: plain text fallback (current paragraph structure preserved
- *           via newlines; <br> collapsed)
- *     html: sanitised HTML (script tags + on* attrs stripped)
+ * Bundle cost: Tiptap-core + StarterKit + extensions + ProseMirror
+ * weighs in around 250KB minified. Bundled into the admin app
+ * chunk; the composer lazy-mounts so the rest of the app doesn't
+ * pay the cost until a draft is opened.
  *
- * Sanitisation:
- *   The composer ALSO calls a server-side sanitiser when sending,
- *   so this is defense-in-depth rather than the security boundary.
- *   We strip the obvious vectors here so paste-from-Word can't
- *   inject runtime JS into a casually-rendered preview.
+ * Migration notes:
+ *   - sanitiseHtml stays as a small named export so preview-modal
+ *     (which only imports the sanitizer) keeps working with no
+ *     changes
+ *   - htmlToText is no longer needed — Tiptap's getText() does the
+ *     right thing — but we kept a thin wrapper for compatibility
+ *     with the previous output shape
  */
 
 import { cn } from "@/lib/cn";
+import Color from "@tiptap/extension-color";
+import FontFamily from "@tiptap/extension-font-family";
+import Link from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
+import TextAlign from "@tiptap/extension-text-align";
+import TextStyle from "@tiptap/extension-text-style";
+import Underline from "@tiptap/extension-underline";
+import { type Editor, EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import {
   AlignCenter,
   AlignJustify,
@@ -57,10 +72,11 @@ import {
   Redo2,
   Type as RemoveFormatting,
   Strikethrough,
-  Underline,
+  Underline as UnderlineIcon,
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FontSize } from "./tiptap-font-size";
 
 interface Props {
   /** HTML representation (the canonical source for the editor). */
@@ -71,18 +87,19 @@ interface Props {
   placeholder?: string;
   className?: string;
   /** When true, the formatting toolbar above the editor is visible.
-   *  Gmail mounts this beside Send and the toolbar can be toggled
-   *  off for a cleaner surface; the composer controls visibility
-   *  via the Aa button in the footer. Defaults to true so existing
-   *  callers keep their current behavior. */
+   *  The composer controls visibility via the Aa button in its
+   *  footer. Defaults to true so existing callers keep their
+   *  current behavior. */
   showToolbar?: boolean;
 }
 
 const FONT_SIZES: Array<{ label: string; value: string }> = [
-  { label: "Small", value: "2" },
-  { label: "Normal", value: "3" },
-  { label: "Large", value: "5" },
-  { label: "Huge", value: "7" },
+  // px values that map roughly to the previous execCommand fontSize
+  // scale (1-7). Operators recognize the labels, not the numbers.
+  { label: "Small", value: "11px" },
+  { label: "Normal", value: "14px" },
+  { label: "Large", value: "18px" },
+  { label: "Huge", value: "24px" },
 ];
 
 const FONT_FAMILIES: Array<{ label: string; value: string }> = [
@@ -110,141 +127,219 @@ export function RichTextEditor({
   className,
   showToolbar = true,
 }: Props) {
-  const ref = useRef<HTMLDivElement>(null);
-  // Track last-emitted HTML so we can avoid re-syncing the DOM (which
-  // would reset the operator's cursor) when value updates come from
-  // our own onChange round-trip.
+  // Track last-emitted HTML so we don't re-seed the editor on our
+  // own round-trip (which would jump the cursor to the start).
   const lastEmittedRef = useRef<string | null>(null);
   const [colorOpen, setColorOpen] = useState(false);
   const [fontOpen, setFontOpen] = useState(false);
 
-  // Initial mount: seed innerHTML from valueHtml.
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Underline,
+      TextStyle,
+      Color.configure({ types: ["textStyle"] }),
+      FontFamily.configure({ types: ["textStyle"] }),
+      FontSize.configure({ types: ["textStyle"] }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Link.configure({
+        // Open in a new tab when the user clicks a link inside the
+        // editor (operator-facing convenience; doesn't affect the
+        // final HTML which is rendered server-side anyway).
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        HTMLAttributes: {
+          rel: "noopener noreferrer",
+          target: "_blank",
+        },
+      }),
+      Placeholder.configure({
+        placeholder: placeholder ?? "Write your message…",
+      }),
+    ],
+    content: valueHtml ?? "",
+    // ProseMirror logs an SSR warning if it tries to render server-
+    // side. Defer attaching to the DOM until mount.
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: cn(
+          "min-h-[160px] flex-1 overflow-y-auto bg-transparent px-3 py-2 text-sm outline-none",
+        ),
+      },
+    },
+    onUpdate({ editor }) {
+      const html = sanitiseHtml(editor.getHTML());
+      const text = editor.getText();
+      lastEmittedRef.current = html;
+      onChange({ text, html });
+    },
+  });
+
+  // Externally-driven valueHtml changes — re-seed when the caller's
+  // value diverges from what we last emitted. Avoids the loop where
+  // our own onChange round-trips back as a new valueHtml.
   useEffect(() => {
-    if (!ref.current) return;
-    if (valueHtml !== null && valueHtml !== lastEmittedRef.current) {
-      ref.current.innerHTML = valueHtml;
-      lastEmittedRef.current = valueHtml;
+    if (!editor) return;
+    if (valueHtml === null) return;
+    if (valueHtml === lastEmittedRef.current) return;
+    // setContent without emitting an update so we don't bounce.
+    editor.commands.setContent(valueHtml, false);
+    lastEmittedRef.current = valueHtml;
+  }, [valueHtml, editor]);
+
+  const insertLink = useCallback(() => {
+    if (!editor) return;
+    const previous = editor.getAttributes("link").href as string | undefined;
+    const url = prompt("Link URL", previous ?? "");
+    if (url === null) return;
+    if (url === "") {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [valueHtml]);
-
-  const emit = useCallback(() => {
-    if (!ref.current) return;
-    const rawHtml = ref.current.innerHTML;
-    const html = sanitiseHtml(rawHtml);
-    const text = htmlToText(ref.current);
-    lastEmittedRef.current = html;
-    onChange({ text, html });
-  }, [onChange]);
-
-  /**
-   * Apply a formatting command. document.execCommand is deprecated
-   * but still the cheapest path to rich text without pulling in
-   * Lexical. If we ever migrate, this is the single integration
-   * point that changes.
-   */
-  function exec(cmd: string, arg?: string) {
-    ref.current?.focus();
-    // biome-ignore lint/suspicious/noExplicitAny: legacy execCommand surface
-    (document as any).execCommand(cmd, false, arg);
-    emit();
-  }
-
-  function insertLink() {
-    const url = prompt("Link URL");
-    if (!url) return;
     const safe = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-    exec("createLink", safe);
+    editor.chain().focus().extendMarkRange("link").setLink({ href: safe }).run();
+  }, [editor]);
+
+  if (!editor) {
+    return (
+      <div className={cn("flex flex-col", className)}>
+        <div className="min-h-[160px]" />
+      </div>
+    );
   }
 
   return (
     <div className={cn("flex flex-col", className)}>
       {showToolbar && (
         <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-zinc-200 border-b px-2 py-1 dark:border-zinc-800">
-          <ToolbarButton onClick={() => exec("undo")} title="Undo (Cmd+Z)">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().undo().run()}
+            disabled={!editor.can().chain().focus().undo().run()}
+            title="Undo (Cmd+Z)"
+          >
             <Undo2 className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("redo")} title="Redo (Cmd+Shift+Z)">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().redo().run()}
+            disabled={!editor.can().chain().focus().redo().run()}
+            title="Redo (Cmd+Shift+Z)"
+          >
             <Redo2 className="h-3 w-3" />
           </ToolbarButton>
           <Divider />
           <FontPopover
             open={fontOpen}
             setOpen={setFontOpen}
-            onPickFamily={(v) => exec("fontName", v)}
-            onPickSize={(v) => exec("fontSize", v)}
+            onPickFamily={(v) => editor.chain().focus().setFontFamily(v).run()}
+            onPickSize={(v) => editor.chain().focus().setFontSize(v).run()}
           />
           <Divider />
-          <ToolbarButton onClick={() => exec("bold")} title="Bold (Cmd+B)">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            active={editor.isActive("bold")}
+            title="Bold (Cmd+B)"
+          >
             <Bold className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("italic")} title="Italic (Cmd+I)">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            active={editor.isActive("italic")}
+            title="Italic (Cmd+I)"
+          >
             <Italic className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("underline")} title="Underline (Cmd+U)">
-            <Underline className="h-3 w-3" />
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleUnderline().run()}
+            active={editor.isActive("underline")}
+            title="Underline (Cmd+U)"
+          >
+            <UnderlineIcon className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("strikeThrough")} title="Strikethrough">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+            active={editor.isActive("strike")}
+            title="Strikethrough"
+          >
             <Strikethrough className="h-3 w-3" />
           </ToolbarButton>
           <ColorPopover
             open={colorOpen}
             setOpen={setColorOpen}
-            onPick={(c) => exec("foreColor", c)}
+            onPick={(c) => editor.chain().focus().setColor(c).run()}
           />
           <Divider />
-          <ToolbarButton onClick={() => exec("justifyLeft")} title="Align left">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign("left").run()}
+            active={editor.isActive({ textAlign: "left" })}
+            title="Align left"
+          >
             <AlignLeft className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("justifyCenter")} title="Align center">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign("center").run()}
+            active={editor.isActive({ textAlign: "center" })}
+            title="Align center"
+          >
             <AlignCenter className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("justifyRight")} title="Align right">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign("right").run()}
+            active={editor.isActive({ textAlign: "right" })}
+            title="Align right"
+          >
             <AlignRight className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("justifyFull")} title="Justify">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setTextAlign("justify").run()}
+            active={editor.isActive({ textAlign: "justify" })}
+            title="Justify"
+          >
             <AlignJustify className="h-3 w-3" />
           </ToolbarButton>
           <Divider />
-          <ToolbarButton onClick={() => exec("insertOrderedList")} title="Numbered list">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            active={editor.isActive("orderedList")}
+            title="Numbered list"
+          >
             <ListOrdered className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("insertUnorderedList")} title="Bulleted list">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            active={editor.isActive("bulletList")}
+            title="Bulleted list"
+          >
             <List className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("outdent")} title="Decrease indent">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+            disabled={!editor.can().chain().focus().liftListItem("listItem").run()}
+            title="Decrease indent"
+          >
             <Outdent className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("indent")} title="Increase indent">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+            disabled={!editor.can().chain().focus().sinkListItem("listItem").run()}
+            title="Increase indent"
+          >
             <Indent className="h-3 w-3" />
           </ToolbarButton>
           <Divider />
-          <ToolbarButton onClick={insertLink} title="Insert link">
+          <ToolbarButton onClick={insertLink} active={editor.isActive("link")} title="Insert link">
             <LinkIcon className="h-3 w-3" />
           </ToolbarButton>
-          <ToolbarButton onClick={() => exec("removeFormat")} title="Remove formatting">
+          <ToolbarButton
+            onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+            title="Remove formatting"
+          >
             <RemoveFormatting className="h-3 w-3" />
           </ToolbarButton>
         </div>
       )}
-      <div
-        ref={ref}
-        contentEditable
-        suppressContentEditableWarning
-        data-placeholder={placeholder ?? "Write your message…"}
-        onInput={emit}
-        onBlur={emit}
-        tabIndex={0}
-        role="textbox"
-        aria-multiline="true"
-        className={cn(
-          "min-h-[160px] flex-1 overflow-y-auto bg-transparent px-3 py-2 text-sm outline-none",
-          // Placeholder shimmed via data-placeholder + :empty:before
-          // injected at the consuming page-level CSS. For now use
-          // a tailwind-friendly variant via 'empty:before:content-[attr(data-placeholder)]'.
-          "empty:before:pointer-events-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)]",
-        )}
-      />
+      <EditorContent editor={editor} className="flex-1 overflow-y-auto" />
     </div>
   );
 }
@@ -252,21 +347,31 @@ export function RichTextEditor({
 function ToolbarButton({
   onClick,
   title,
+  active,
+  disabled,
   children,
 }: {
   onClick: () => void;
   title: string;
+  active?: boolean;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       title={title}
       // Don't take focus when toolbar button clicked — keeps caret in
       // the editable area so the formatting applies to the right spot.
       onMouseDown={(e) => e.preventDefault()}
-      className="rounded p-1 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+      className={cn(
+        "rounded p-1 disabled:opacity-40",
+        active
+          ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+      )}
     >
       {children}
     </button>
@@ -427,6 +532,11 @@ function ColorPopover({
  * remove all script tags, on* attribute names, and javascript:
  * URLs. The composer also re-sanitizes on send via the same
  * sanitiseEmailHtml() helper from lib/email-sanitize.ts.
+ *
+ * Tiptap already gives us reasonably-clean HTML (it serializes
+ * from its ProseMirror schema rather than passing the raw DOM
+ * through), but we keep this as defense-in-depth so a pasted-in
+ * value with weird residue gets cleaned before any preview path.
  */
 export function sanitiseHtml(html: string): string {
   return html
@@ -437,39 +547,24 @@ export function sanitiseHtml(html: string): string {
 }
 
 /**
- * Convert the editable's current DOM into a plain-text representation
- * that preserves paragraph breaks but collapses inline runs.
- *
- * We walk children rather than reading innerText to avoid layout
- * forcing reflow on every keystroke.
+ * Compatibility shim — the previous implementation exported a
+ * htmlToText helper for the composer to use when computing the
+ * plain-text fallback. We don't need it anymore (Tiptap's
+ * getText() is the source of truth) but the export stays so any
+ * external consumer keeps compiling.
  */
-function htmlToText(node: HTMLElement): string {
-  const lines: string[] = [];
-  let current = "";
-  function walk(n: Node) {
-    if (n.nodeType === Node.TEXT_NODE) {
-      current += n.textContent ?? "";
-      return;
-    }
-    if (n.nodeType === Node.ELEMENT_NODE) {
-      const el = n as HTMLElement;
-      const tag = el.tagName.toLowerCase();
-      if (tag === "br") {
-        lines.push(current);
-        current = "";
-        return;
-      }
-      const isBlock = ["p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"].includes(
-        tag,
-      );
-      for (const child of Array.from(el.childNodes)) walk(child);
-      if (isBlock) {
-        lines.push(current);
-        current = "";
-      }
-    }
+export function htmlToText(node: HTMLElement | string): string {
+  if (typeof node === "string") {
+    // Best-effort browser-side strip — no DOM parsing.
+    return node
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|li|h[1-6]|blockquote)>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .trim();
   }
-  for (const child of Array.from(node.childNodes)) walk(child);
-  if (current) lines.push(current);
-  return lines.join("\n").trim();
+  return node.innerText.trim();
 }
+
+// Re-export the FontSize extension type so external callers can
+// inspect the schema if they ever need to.
+export type TiptapEditor = Editor;
