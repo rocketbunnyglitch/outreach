@@ -31,7 +31,8 @@ import {
 } from "@/db/schema";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { parseSearchQuery } from "@/lib/inbox-search";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 
 // =========================================================================
 // Folders
@@ -227,6 +228,12 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     return [];
   }
 
+  // Parse Gmail-style operators out of the search string so
+  // "from:sarah is:unread invoice" maps to from/isUnread predicates
+  // plus a free-text residue ("invoice"). Operators stack with the
+  // existing folder-specific predicate via AND.
+  const parsed = parseSearchQuery(filter.search);
+
   // Build the folder-specific predicate. Three shapes:
   //   - Gmail mailbox views filter by direction / is_starred /
   //     snooze_until / deleted_at
@@ -355,18 +362,49 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
           : undefined,
         // Alias filter — match a specific connected_accounts row.
         filter.aliasId ? eq(emailThreads.staffOutreachEmailId, filter.aliasId) : undefined,
-        // Free-text search. We OR across subject, snippet, venue name, and
-        // last-sender name so operators can find a thread by whichever
-        // attribute they remember. Wrapped in a single OR so the surrounding
-        // and(...) treats it as one condition. Pattern wraps the input in
-        // % wildcards — ilike does case-insensitive matching native to PG.
-        filter.search?.trim()
+        // Operator-aware search. parseSearchQuery splits the raw input
+        // into structured operators (`from:`, `subject:`, `is:starred`,
+        // etc) + a free-text residue. Each operator becomes its own
+        // AND predicate; free text drives the existing OR across
+        // subject/snippet/venue/sender.
+        //
+        // Engine-specific operators (campaign:, brand:, venue:,
+        // assigned:) override the corresponding top-level filter
+        // when both are present — the parsed query is authoritative
+        // since it came from the operator's explicit input.
+        parsed.freeText
           ? or(
-              ilike(emailThreads.subject, `%${filter.search.trim()}%`),
-              ilike(emailThreads.snippet, `%${filter.search.trim()}%`),
-              ilike(venues.name, `%${filter.search.trim()}%`),
-              ilike(emailThreads.lastSenderName, `%${filter.search.trim()}%`),
+              ilike(emailThreads.subject, `%${parsed.freeText}%`),
+              ilike(emailThreads.snippet, `%${parsed.freeText}%`),
+              ilike(venues.name, `%${parsed.freeText}%`),
+              ilike(emailThreads.lastSenderName, `%${parsed.freeText}%`),
             )
+          : undefined,
+        parsed.from ? ilike(emailThreads.lastSenderName, `%${parsed.from}%`) : undefined,
+        parsed.subject ? ilike(emailThreads.subject, `%${parsed.subject}%`) : undefined,
+        parsed.isStarred ? eq(emailThreads.isStarred, true) : undefined,
+        parsed.isUnread ? sql`${emailThreads.unreadCount} > 0` : undefined,
+        // is:snoozed override — the folder predicate already handles
+        // the snoozed/non-snoozed split, but operators can use
+        // is:snoozed from any view to add a snooze filter.
+        parsed.isSnoozed ? sql`${emailThreads.snoozeUntil} > now()` : undefined,
+        parsed.before ? lte(emailThreads.lastMessageAt, new Date(parsed.before)) : undefined,
+        parsed.after ? gte(emailThreads.lastMessageAt, new Date(parsed.after)) : undefined,
+        parsed.campaignId ? eq(emailThreads.cityCampaignId, parsed.campaignId) : undefined,
+        parsed.brandId ? eq(emailThreads.outreachBrandId, parsed.brandId) : undefined,
+        parsed.venueId ? eq(emailThreads.venueId, parsed.venueId) : undefined,
+        parsed.assignedStaffId
+          ? eq(emailThreads.assignedStaffId, parsed.assignedStaffId)
+          : undefined,
+        // label:NAME — EXISTS subquery against the join table.
+        parsed.label
+          ? sql`EXISTS (
+              SELECT 1
+              FROM email_thread_labels etl
+              INNER JOIN team_labels tl ON tl.id = etl.team_label_id
+              WHERE etl.thread_id = ${emailThreads.id}
+                AND tl.name ILIKE ${`%${parsed.label}%`}
+            )`
           : undefined,
       ),
     )

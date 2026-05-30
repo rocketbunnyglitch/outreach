@@ -18,6 +18,7 @@
  */
 
 import { cn } from "@/lib/cn";
+import { parseSearchQuery } from "@/lib/inbox-search";
 import { Inbox, Search, User, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -93,7 +94,7 @@ export function InboxFilterBar({
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search threads, subjects, venues…"
+          placeholder="Search · try from: subject: is:unread is:starred has:attachment"
           aria-label="Search inbox"
           className={cn(
             "w-full rounded-md border border-zinc-200 bg-white py-1 pr-8 pl-7 text-xs",
@@ -115,6 +116,10 @@ export function InboxFilterBar({
           </button>
         )}
       </div>
+      {/* Parsed-operator hint chips. Shown only when the active query
+          contains at least one recognized operator, so plain free-text
+          searches don't get a redundant repeat below the input. */}
+      <ParsedOperatorChips raw={search} />
 
       {/* Row 2: mine-assigned + mine-inbox toggles + alias select */}
       <div className="flex items-center gap-2">
@@ -185,5 +190,57 @@ export function InboxFilterBar({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * ParsedOperatorChips — visual feedback on the search parser so
+ * operators can see how their query maps to filters. Renders only
+ * when at least one recognized operator is present; pure free-text
+ * searches don't show anything (the input itself is the feedback).
+ */
+function ParsedOperatorChips({ raw }: { raw: string }) {
+  const parsed = parseSearchQuery(raw);
+  const chips: Array<{ label: string; value: string }> = [];
+  if (parsed.from) chips.push({ label: "from", value: parsed.from });
+  if (parsed.to) chips.push({ label: "to", value: parsed.to });
+  if (parsed.subject) chips.push({ label: "subject", value: parsed.subject });
+  if (parsed.label) chips.push({ label: "label", value: parsed.label });
+  if (parsed.hasAttachment) chips.push({ label: "has", value: "attachment" });
+  if (parsed.isUnread) chips.push({ label: "is", value: "unread" });
+  if (parsed.isStarred) chips.push({ label: "is", value: "starred" });
+  if (parsed.isSnoozed) chips.push({ label: "is", value: "snoozed" });
+  if (parsed.isTrashed) chips.push({ label: "is", value: "trashed" });
+  if (parsed.before) chips.push({ label: "before", value: parsed.before });
+  if (parsed.after) chips.push({ label: "after", value: parsed.after });
+  if (parsed.campaignId) chips.push({ label: "campaign", value: parsed.campaignId.slice(0, 8) });
+  if (parsed.brandId) chips.push({ label: "brand", value: parsed.brandId.slice(0, 8) });
+  if (parsed.venueId) chips.push({ label: "venue", value: parsed.venueId.slice(0, 8) });
+  if (parsed.assignedStaffId) {
+    chips.push({ label: "assigned", value: parsed.assignedStaffId.slice(0, 8) });
+  }
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 px-0.5">
+      {chips.map((c) => (
+        <span
+          key={`${c.label}:${c.value}`}
+          className="inline-flex items-center gap-0.5 rounded-md bg-blue-100 px-1.5 py-0.5 font-mono text-[10px] text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+          title={`Active operator: ${c.label}:${c.value}`}
+        >
+          <span className="font-medium">{c.label}:</span>
+          <span className="truncate">{c.value}</span>
+        </span>
+      ))}
+      {parsed.freeText && (
+        <span
+          className="inline-flex items-center gap-0.5 rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          title="Free-text portion of the query"
+        >
+          <span className="font-medium">text:</span>
+          <span className="truncate">{parsed.freeText}</span>
+        </span>
+      )}
+    </div>
   );
 }
