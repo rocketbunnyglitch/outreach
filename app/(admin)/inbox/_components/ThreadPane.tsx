@@ -4,6 +4,7 @@ import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-d
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
 import Link from "next/link";
+import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
 import { ThreadActions } from "./ThreadActions";
@@ -57,8 +58,11 @@ export function ThreadPane({
               {thread.venueName}
             </Link>
           ) : (
-            <span className="font-medium text-amber-700 dark:text-amber-300">
-              Unassigned · no venue match
+            <span className="inline-flex items-center gap-2">
+              <span className="font-medium text-amber-700 dark:text-amber-300">
+                Unassigned · no venue match
+              </span>
+              <AttachVenueButton threadId={thread.id} />
             </span>
           )}
           {thread.cityName && <span>· {thread.cityName}</span>}
@@ -233,7 +237,10 @@ function VenueRail({
               {thread.venueName}
             </Link>
           ) : (
-            <span className="text-amber-700 dark:text-amber-300">Unassigned</span>
+            <span className="inline-flex items-center gap-2">
+              <span className="text-amber-700 dark:text-amber-300">Unassigned</span>
+              <AttachVenueButton threadId={thread.id} />
+            </span>
           )}
         </h3>
         <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
