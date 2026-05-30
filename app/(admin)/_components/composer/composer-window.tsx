@@ -498,7 +498,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   if (effectiveMode === "minimized") {
     return (
       <div
-        className="pointer-events-auto flex w-72 items-center justify-between gap-2 rounded-t-md border border-zinc-200 border-b-0 bg-white px-3 py-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+        className="pointer-events-auto flex w-60 shrink-0 items-center justify-between gap-1.5 rounded-t-md border border-zinc-200 border-b-0 bg-white px-2.5 py-1.5 shadow-md hover:shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
         role="region"
         aria-label="Minimized composer"
       >
@@ -506,26 +506,44 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           type="button"
           onClick={() => setMode(instance.id, "docked")}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs"
+          title="Restore composer"
         >
+          {instance.composeMode === "reply" || instance.composeMode === "reply_all" ? (
+            <span className="shrink-0 font-mono text-[9px] text-blue-600 uppercase tracking-widest dark:text-blue-400">
+              Re:
+            </span>
+          ) : instance.composeMode === "forward" ? (
+            <span className="shrink-0 font-mono text-[9px] text-violet-600 uppercase tracking-widest dark:text-violet-400">
+              Fwd:
+            </span>
+          ) : null}
           <span className="truncate font-medium">
             {instance.subject || (instance.to ? `To: ${instance.to}` : "New Message")}
           </span>
+          {instance.draftStatus === "saving" && (
+            <Loader2
+              className="h-2.5 w-2.5 shrink-0 animate-spin text-zinc-400"
+              aria-label="Saving"
+            />
+          )}
         </button>
         <button
           type="button"
           onClick={() => setMode(instance.id, "docked")}
           title="Restore"
-          className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          aria-label="Restore composer"
+          className="shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
-          <Maximize2 className="h-3.5 w-3.5" />
+          <Maximize2 className="h-3 w-3" />
         </button>
         <button
           type="button"
           onClick={handleClose}
           title="Close"
-          className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          aria-label="Close composer"
+          className="shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-3 w-3" />
         </button>
       </div>
     );
