@@ -243,7 +243,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   }
 
   /** Actually fire the send (called once the undo window elapses). */
-  function actuallySend(opts: { testOnly?: boolean } = {}) {
+  function actuallySend(opts: { testOnly?: boolean; bypassCap?: boolean } = {}) {
     startSendTx(async () => {
       // Persist final state of the draft so sendDraft has fresh data.
       const saveRes = await upsertDraft({
@@ -273,7 +273,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setUndoActive(false);
         return;
       }
-      const sendRes = await sendDraft(instance.id);
+      const sendRes = await sendDraft(instance.id, { bypassCap: opts.bypassCap });
       setUndoActive(false);
       if (!sendRes.ok) {
         setSendError(sendRes.error);
@@ -662,9 +662,12 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             <button
               type="button"
               onClick={() => {
-                setSendError(
-                  "Bypass-cap on the global composer is not yet wired. Use the inline reply on /inbox to bypass.",
-                );
+                // Admin path: re-fire actuallySend with bypassCap=true.
+                // composeAndSend re-checks the operator's role
+                // server-side before honoring the flag.
+                setCapBlocked(false);
+                setSendError(null);
+                actuallySend({ bypassCap: true });
               }}
               className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
             >

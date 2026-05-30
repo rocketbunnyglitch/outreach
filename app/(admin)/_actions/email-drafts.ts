@@ -214,11 +214,14 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
  * draft's fields through composeAndSend which enforces everything. On
  * success we mark the draft as sent + link the resulting thread id.
  *
- * Scheduling: scheduled_for handling is a separate cron path (TODO);
- * this action ignores scheduled_for and sends immediately. The UI
- * disables Send on a scheduled draft.
+ * The scheduled-send cron uses runScheduledSends in
+ * lib/scheduled-send-runner.ts which delegates to sendDraftAsUser
+ * per-draft scoped to each draft's own owner.
  */
-export async function sendDraft(draftId: string): Promise<
+export async function sendDraft(
+  draftId: string,
+  opts: { bypassCap?: boolean } = {},
+): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
     duplicateWarnings?: unknown;
@@ -228,11 +231,30 @@ export async function sendDraft(draftId: string): Promise<
   if (!UUID_RE.test(draftId)) {
     return { ok: false, error: "Invalid draft id." };
   }
+  return sendDraftAsUser({ draftId, ownerUserId: staff.id, bypassCap: opts.bypassCap });
+}
 
+/**
+ * Internal: drive the send pipeline scoped to a specific owner.
+ * The public sendDraft auth-gates via requireStaff; the cron path
+ * calls this directly with each draft row's own owner_user_id so
+ * audit attribution stays correct (the cron isn't sending — the
+ * draft's owner is, just on a delay).
+ */
+async function sendDraftAsUser(input: {
+  draftId: string;
+  ownerUserId: string;
+  bypassCap?: boolean;
+}): Promise<
+  ActionResult<{ threadId: string }> & {
+    capBlocked?: boolean;
+    duplicateWarnings?: unknown;
+  }
+> {
   const [draft] = await db
     .select()
     .from(emailDrafts)
-    .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)))
+    .where(and(eq(emailDrafts.id, input.draftId), eq(emailDrafts.ownerUserId, input.ownerUserId)))
     .limit(1);
   if (!draft) {
     return { ok: false, error: "Draft not found." };
@@ -261,6 +283,9 @@ export async function sendDraft(draftId: string): Promise<
   fd.set("body", draft.bodyText);
   if (draft.bodyHtml) fd.set("bodyHtml", draft.bodyHtml);
   if (draft.venueId) fd.set("venueId", draft.venueId);
+  // Admin-bypass marker — composeAndSend re-checks the operator's
+  // role server-side; we just surface the form-field convention here.
+  if (input.bypassCap) fd.set("bypassCap", "1");
 
   const result = await composeAndSend(null, fd);
   if (!result.ok) {
@@ -274,17 +299,17 @@ export async function sendDraft(draftId: string): Promise<
 
   // Mark draft as sent.
   try {
-    await withAuditContext(staff.id, async (tx) => {
+    await withAuditContext(input.ownerUserId, async (tx) => {
       await tx
         .update(emailDrafts)
         .set({ sentAt: new Date(), sentThreadId: result.threadId, updatedAt: new Date() })
-        .where(eq(emailDrafts.id, draftId));
+        .where(eq(emailDrafts.id, input.draftId));
     });
   } catch (err) {
     // The mail already sent; failing to mark the draft is non-fatal
     // (the draft will just linger in the user's open-drafts list
     // until they discard it).
-    logger.warn({ err, draftId }, "couldn't mark draft as sent (mail already sent)");
+    logger.warn({ err, draftId: input.draftId }, "couldn't mark draft as sent (mail already sent)");
   }
   revalidatePath("/inbox");
   return { ok: true, data: { threadId: result.threadId } };

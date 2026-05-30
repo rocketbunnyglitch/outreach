@@ -5,9 +5,9 @@
  *
  * Main button fires sendNow. Chevron opens a popover with:
  *   • Send now (same as the main button)
- *   • Schedule send …  (opens a datetime picker; the composer then
- *                       stores scheduledFor; actual cron dispatch is
- *                       TODO, surfaced inline to operator)
+ *   • Schedule send …  (opens a datetime picker; the composer stores
+ *                       scheduledFor; the /api/cron/scheduled-sends
+ *                       cron dispatches due drafts every 5 minutes)
  *   • Send test to myself
  *   • Save as draft (forces immediate upsertDraft + closes the
  *                    composer; row stays in email_drafts)
@@ -109,9 +109,9 @@ export function SendMenu({
                   setShowDateInput(false);
                 }}
               />
-              <p className="mt-1 font-mono text-[9px] text-amber-600 dark:text-amber-400">
-                TODO: scheduled send cron not yet wired — UI saves the timestamp but the email will
-                not auto-send. Use Send now for real sends.
+              <p className="mt-1 font-mono text-[9px] text-zinc-500">
+                Scheduled drafts fire on the next cron tick (every 5 minutes). Owner's daily send
+                cap still applies at dispatch time.
               </p>
             </div>
           ) : (
