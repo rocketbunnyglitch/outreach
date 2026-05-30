@@ -25,7 +25,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { composeAndSend } from "./compose-and-send";
 
@@ -239,6 +239,62 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
   } catch (err) {
     logger.error({ err, draftId }, "deleteDraft failed");
     return { ok: false, error: "Couldn't discard draft." };
+  }
+}
+
+/**
+ * Bulk discard — delete multiple drafts at once. Same auth +
+ * attachment-cleanup rules as deleteDraft, but in a single round trip
+ * for the row delete (per-draft loop for storage cleanup).
+ *
+ * Each id is validated as a UUID + scoped to the current user. Cross-
+ * owner ids are silently dropped (the WHERE clause owner filter
+ * handles that on the DB side too).
+ *
+ * Returns the count actually deleted — used by the toast feedback.
+ */
+export async function bulkDeleteDrafts(ids: string[]): Promise<ActionResult<{ deleted: number }>> {
+  const { staff } = await requireStaff();
+  const cleanIds = ids.filter((id) => UUID_RE.test(id));
+  if (cleanIds.length === 0) return { ok: false, error: "No drafts selected." };
+  if (cleanIds.length > 200) {
+    return { ok: false, error: "Too many drafts (200 max per batch)." };
+  }
+
+  try {
+    // Pull attachments + verify ownership in one query so we can
+    // clean up storage before dropping the rows.
+    const draftsToDelete = await db
+      .select({ id: emailDrafts.id, attachments: emailDrafts.attachments })
+      .from(emailDrafts)
+      .where(and(inArray(emailDrafts.id, cleanIds), eq(emailDrafts.ownerUserId, staff.id)));
+
+    if (draftsToDelete.length === 0) {
+      return { ok: false, error: "No matching drafts." };
+    }
+
+    // Best-effort attachment cleanup. Failures here log but don't
+    // block the row deletes — worst case is a stale object lingering
+    // in storage.
+    for (const d of draftsToDelete) {
+      const list = (d.attachments as EmailDraftAttachment[] | null) ?? [];
+      for (const att of list) {
+        if (att.storage_key) {
+          await deleteAttachment(att.storage_key);
+        }
+      }
+    }
+
+    const okIds = draftsToDelete.map((d) => d.id);
+    await db
+      .delete(emailDrafts)
+      .where(and(inArray(emailDrafts.id, okIds), eq(emailDrafts.ownerUserId, staff.id)));
+
+    revalidatePath("/inbox");
+    return { ok: true, data: { deleted: okIds.length } };
+  } catch (err) {
+    logger.error({ err, count: cleanIds.length }, "bulkDeleteDrafts failed");
+    return { ok: false, error: "Couldn't discard drafts." };
   }
 }
 
