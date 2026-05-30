@@ -118,15 +118,19 @@ function escapeHtml(s: string): string {
 
 /**
  * Strip a previously-auto-appended signature block from HTML. The
- * composer wraps auto-appended signatures in
- * <!--composer-signature--> ... <!--/composer-signature--> so we can
- * cleanly swap them when the operator changes From inbox.
+ * composer wraps auto-appended signatures in a
+ * <div data-composer-signature="true">...</div> element which the
+ * Tiptap SignatureBlock node round-trips cleanly. Older drafts may
+ * still carry the previous <!--composer-signature--> HTML-comment
+ * markers; we strip both shapes so a draft created before the
+ * Tiptap port still swaps correctly.
  *
  * Manually-edited signatures (operator deleted the markers or typed
  * their own) are LEFT ALONE — we only strip blocks we own.
  */
 function stripSignatureBlock(html: string): string {
   return html
+    .replace(/(?:<br\s*\/?>\s*)?<div[^>]*\sdata-composer-signature[^>]*>[\s\S]*?<\/div>/gi, "")
     .replace(/(?:<br\s*\/?>\s*)?<!--composer-signature-->[\s\S]*?<!--\/composer-signature-->/gi, "")
     .replace(/\s+$/, "");
 }
@@ -186,7 +190,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           // Skip if the operator already typed content (initial-load
           // would have an empty body normally; defensive).
           if (first.signatureHtml && !instance.bodyHtml && !instance.bodyText.trim()) {
-            patch.bodyHtml = `<!--composer-signature-->\n<br>\n${first.signatureHtml}\n<!--/composer-signature-->`;
+            patch.bodyHtml = `<p></p><div data-composer-signature="true">${first.signatureHtml}</div>`;
           }
           setField(instance.id, patch);
         }
@@ -646,7 +650,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 const stripped = stripSignatureBlock(instance.bodyHtml ?? "");
                 const newSig = newInbox?.signatureHtml ?? null;
                 if (newSig) {
-                  patch.bodyHtml = `${stripped}<!--composer-signature-->\n<br>\n${newSig}\n<!--/composer-signature-->`;
+                  patch.bodyHtml = `${stripped}<div data-composer-signature="true">${newSig}</div>`;
                 } else {
                   patch.bodyHtml = stripped || null;
                 }
@@ -936,7 +940,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 return;
               }
               const stripped = stripSignatureBlock(instance.bodyHtml ?? "");
-              const nextHtml = `${stripped}\n<!--composer-signature-->\n<br>\n${inbox.signatureHtml}\n<!--/composer-signature-->`;
+              const nextHtml = `${stripped}<div data-composer-signature="true">${inbox.signatureHtml}</div>`;
               setField(instance.id, { bodyHtml: nextHtml });
             }}
           >

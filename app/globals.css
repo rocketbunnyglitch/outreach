@@ -421,3 +421,52 @@ html[data-inbox-density="comfortable"] .inbox-msg {
 html[data-inbox-reading-pane="none"] [data-inbox-right-pane="true"] {
   display: none;
 }
+
+/* =========================================================================
+   Composer / Tiptap surfaces
+
+   Placeholder for empty editor. Tiptap's extension-placeholder
+   attaches `data-placeholder` to the first empty paragraph; we
+   style it via the standard `:before` pattern.
+   ========================================================================= */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: rgb(161 161 170); /* zinc-400 */
+  pointer-events: none;
+  height: 0;
+}
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+  color: rgb(82 82 91); /* zinc-500 */
+}
+
+/* Tiptap focus state — match the surrounding composer body
+   (no outline, just the existing border treatment). */
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* Inline images inserted via the Image extension. Constrain so a
+   pasted screenshot doesn't blow past the composer edges. */
+.composer-inline-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 0.5em 0;
+}
+
+/* Signature block wrapper — slight visual hint that this is the
+   auto-managed signature region (helps operators spot where the
+   "Swap signature" boundary is). Tiptap renders the div with
+   data-composer-signature; we just give it a faint left border. */
+.ProseMirror div[data-composer-signature] {
+  border-left: 2px solid rgb(228 228 231); /* zinc-200 */
+  padding-left: 0.5em;
+  margin-top: 1em;
+  color: rgb(82 82 91); /* zinc-500 */
+}
+.dark .ProseMirror div[data-composer-signature] {
+  border-left-color: rgb(63 63 70); /* zinc-700 */
+  color: rgb(161 161 170); /* zinc-400 */
+}

@@ -49,6 +49,7 @@
 import { cn } from "@/lib/cn";
 import Color from "@tiptap/extension-color";
 import FontFamily from "@tiptap/extension-font-family";
+import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
@@ -77,6 +78,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FontSize } from "./tiptap-font-size";
+import { SignatureBlock } from "./tiptap-signature-block";
 
 interface Props {
   /** HTML representation (the canonical source for the editor). */
@@ -142,6 +144,19 @@ export function RichTextEditor({
       FontFamily.configure({ types: ["textStyle"] }),
       FontSize.configure({ types: ["textStyle"] }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      SignatureBlock,
+      Image.configure({
+        // We constrain images to a sane inline width so a pasted
+        // newsletter screenshot doesn't blow past the composer
+        // edges. Operators can resize via attribute editing if we
+        // ever add a node view; for now this is fine.
+        HTMLAttributes: {
+          class: "composer-inline-image",
+        },
+        // Don't auto-create images from URLs in the document — we
+        // only want explicit insert via the photo button or paste.
+        inline: false,
+      }),
       Link.configure({
         // Open in a new tab when the user clicks a link inside the
         // editor (operator-facing convenience; doesn't affect the
