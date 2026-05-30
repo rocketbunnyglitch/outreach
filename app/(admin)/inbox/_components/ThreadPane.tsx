@@ -1,13 +1,16 @@
 import type { CampaignSuggestion } from "@/lib/campaign-matcher";
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
+import { type ThreadState, suggestNextAction } from "@/lib/suggested-next-action";
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
+import type { Classification } from "@/lib/triage-classifier";
 import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
 import Link from "next/link";
 import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
 import { ReplyComposer } from "./ReplyComposer";
+import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 
@@ -94,6 +97,19 @@ export function ThreadPane({
             unreadCount={thread.unreadCount}
           />
         </div>
+        {/* Suggested next action — rule-based mapping from
+            classification + state. Returns null for closed/
+            unclassified threads. Sits high so it's visible
+            without scrolling. */}
+        <SuggestedActionRow
+          threadId={thread.id}
+          suggestion={suggestNextAction({
+            classification: thread.classification as Classification,
+            state: thread.state as ThreadState,
+          })}
+          subject={thread.subject}
+          assignedStaffId={thread.assignedStaffId}
+        />
         {/* Team labels — apply / remove inline; also surfaces gmail
             labels that synced in via reconcileGmailLabelsForThread. */}
         <ThreadLabelsRow

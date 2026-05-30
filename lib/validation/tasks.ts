@@ -15,7 +15,14 @@ const uuidSchema = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "Must be a valid UUID");
 
-const taskTargetTypeEnum = z.enum(["venue_event", "venue", "city_campaign", "wristband", "misc"]);
+const taskTargetTypeEnum = z.enum([
+  "venue_event",
+  "venue",
+  "city_campaign",
+  "wristband",
+  "misc",
+  "email_thread",
+]);
 
 const taskStatusEnum = z.enum(["pending", "in_progress", "completed", "cancelled"]);
 
