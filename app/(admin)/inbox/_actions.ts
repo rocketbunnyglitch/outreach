@@ -621,3 +621,92 @@ export async function draftAiReplyAction(
   }
   return { ok: true, data: result.data };
 }
+
+/**
+ * Assign or unassign a thread to a team member.
+ *
+ * Team-scoped: only members of the thread's owning team can be
+ * assigned (we re-validate the staff id against the team). Passing
+ * an empty assignedStaffId unassigns. The audit log captures the
+ * change via withAuditContext + the existing audit trigger.
+ */
+const assignmentSchema = z.object({
+  threadId: z.string().uuid(),
+  assignedStaffId: z
+    .string()
+    .uuid()
+    .or(z.literal(""))
+    .nullable()
+    .transform((v) => (v === "" || v === null ? null : v)),
+});
+
+export async function setThreadAssignment(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ ok: true }>> {
+  const { staff } = await requireStaff();
+  const parsed = assignmentSchema.safeParse(formToObject(formData));
+  if (!parsed.success) return { ok: false, error: "Invalid assignment." };
+
+  const { threadId, assignedStaffId } = parsed.data;
+
+  // Team-scope: ensure the thread is on the operator's team AND
+  // (if assigning) the staffId is on the same team. One join query
+  // covers both.
+  if (assignedStaffId) {
+    const { users } = await import("@/db/schema");
+    const [target] = await db
+      .select({ teamId: staffOutreachEmails.teamId })
+      .from(emailThreads)
+      .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, threadId))
+      .limit(1);
+    if (!target || target.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+    const [assignee] = await db
+      .select({ teamId: users.teamId })
+      .from(users)
+      .where(eq(users.id, assignedStaffId))
+      .limit(1);
+    if (!assignee || assignee.teamId !== staff.teamId) {
+      return { ok: false, error: "Assignee is not on this team." };
+    }
+  }
+
+  try {
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(emailThreads)
+        .set({ assignedStaffId, updatedBy: staff.id })
+        .where(eq(emailThreads.id, threadId));
+    });
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    logger.error({ err, threadId }, "setThreadAssignment failed");
+    return { ok: false, error: "Couldn't update assignment." };
+  }
+}
+
+/**
+ * List every team member, with display name + email. Used by the
+ * AssignmentPicker dropdown on /inbox/<thread>.
+ */
+export async function listTeamMembersForAssignment(): Promise<
+  Array<{ id: string; displayName: string | null; primaryEmail: string }>
+> {
+  const { staff } = await requireStaff();
+  const { users } = await import("@/db/schema");
+  const rows = await db
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      primaryEmail: users.primaryEmail,
+    })
+    .from(users)
+    .where(eq(users.teamId, staff.teamId))
+    .orderBy(users.displayName);
+  return rows;
+}

@@ -67,6 +67,12 @@ export function InboxKeyboardNav({ threadIds, activeThreadId, preservedQuery }: 
             new CustomEvent("inbox-archive", { detail: { threadId: activeThreadId } }),
           )
       : undefined,
+    assign: activeThreadId
+      ? () =>
+          document.dispatchEvent(
+            new CustomEvent("inbox-assign", { detail: { threadId: activeThreadId } }),
+          )
+      : undefined,
     showHelp: () => setShowHelp(true),
   });
 

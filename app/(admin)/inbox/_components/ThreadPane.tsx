@@ -6,6 +6,7 @@ import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import type { Classification } from "@/lib/triage-classifier";
 import { ArrowLeft, ArrowRight, MailOpen, User } from "lucide-react";
 import Link from "next/link";
+import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
@@ -96,6 +97,11 @@ export function ThreadPane({
             threadId={thread.id}
             currentState={thread.state}
             unreadCount={thread.unreadCount}
+          />
+          <AssignmentPicker
+            threadId={thread.id}
+            currentAssignedStaffId={thread.assignedStaffId}
+            currentAssigneeName={thread.assignedStaffName}
           />
         </div>
         {/* Suggested next action — rule-based mapping from
