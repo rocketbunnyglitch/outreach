@@ -124,7 +124,7 @@ function ThreadRow({
       <Link
         href={href}
         className={cn(
-          "group/row block border-zinc-200/60 border-b px-4 py-3 transition-colors",
+          "inbox-row group/row block border-zinc-200/60 border-b px-4 py-3 transition-colors",
           "dark:border-zinc-800/40",
           isActive
             ? "bg-zinc-100 dark:bg-zinc-900"

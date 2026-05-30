@@ -382,3 +382,42 @@ h1 {
   border-left-color: rgb(63 63 70);
   color: rgb(161 161 170);
 }
+
+/* =========================================================================
+   Inbox density preferences — set via the InboxDensityToggle popover.
+   The toggle writes data-inbox-density on <html>. Three values:
+     comfortable, default, compact.
+
+   Targets thread rows (.inbox-row) and conversation message cards
+   (.inbox-msg). Components opt in to density by adding those classes.
+   ========================================================================= */
+
+html[data-inbox-density="compact"] .inbox-row {
+  padding-top: 0.375rem; /* py-1.5 */
+  padding-bottom: 0.375rem;
+}
+html[data-inbox-density="compact"] .inbox-msg {
+  padding-top: 0.75rem; /* py-3 */
+  padding-bottom: 0.75rem;
+}
+html[data-inbox-density="comfortable"] .inbox-row {
+  padding-top: 1rem; /* py-4 */
+  padding-bottom: 1rem;
+}
+html[data-inbox-density="comfortable"] .inbox-msg {
+  padding-top: 1.5rem; /* py-6 */
+  padding-bottom: 1.5rem;
+}
+
+/* =========================================================================
+   Reading-pane position — three options:
+     right  (default): three-pane shell, right pane shows the active thread
+     bottom: middle pane is wide, thread renders below the list
+     none:  click a row to navigate to a dedicated thread view; no inline pane
+
+   Mostly a styling hook for the InboxShell. When the user is on a thread
+   detail route the right pane shows the thread regardless of preference.
+   ========================================================================= */
+html[data-inbox-reading-pane="none"] [data-inbox-right-pane="true"] {
+  display: none;
+}

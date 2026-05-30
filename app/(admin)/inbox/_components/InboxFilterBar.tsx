@@ -22,6 +22,7 @@ import { parseSearchQuery } from "@/lib/inbox-search";
 import { Inbox, Search, User, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { InboxDensityToggle } from "./InboxDensityToggle";
 
 interface AliasOption {
   id: string;
@@ -188,6 +189,7 @@ export function InboxFilterBar({
         >
           search
         </button>
+        <InboxDensityToggle />
       </div>
     </form>
   );

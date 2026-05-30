@@ -72,7 +72,10 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
   // Expanded — full header + body.
   return (
     <li
-      className={cn("border-zinc-200/40 px-6 py-5 dark:border-zinc-800/30", !isLast && "border-b")}
+      className={cn(
+        "inbox-msg border-zinc-200/40 px-6 py-5 dark:border-zinc-800/30",
+        !isLast && "border-b",
+      )}
     >
       <header
         className="flex cursor-pointer items-start justify-between gap-3"
