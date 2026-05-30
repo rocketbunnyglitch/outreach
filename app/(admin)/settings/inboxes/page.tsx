@@ -22,8 +22,8 @@ import { classifyHealth, loadInboxAnalytics } from "@/lib/inbox-analytics";
 import { loadInboxDailyStats } from "@/lib/inbox-daily-stats";
 import { loadSendUsage } from "@/lib/send-cap";
 import { and, asc, eq, ne } from "drizzle-orm";
-import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Unplug } from "lucide-react";
-import { disconnectInbox, resyncInbox } from "./_actions";
+import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Tag, Unplug } from "lucide-react";
+import { disconnectInbox, resyncInbox, syncGmailLabelsNowAction } from "./_actions";
 import { CapEditor } from "./_components/cap-editor";
 import { InboxAnalyticsStrip } from "./_components/inbox-analytics-strip";
 import { SignatureEditor } from "./_components/signature-editor";
@@ -261,6 +261,24 @@ export default async function InboxesPage({ searchParams }: Props) {
                           >
                             <RefreshCw className="h-3 w-3" />
                             Resync
+                          </button>
+                        </form>
+                      )}
+                      {inbox.status === "connected" && (
+                        <form
+                          action={async (fd: FormData) => {
+                            "use server";
+                            await syncGmailLabelsNowAction(null, fd);
+                          }}
+                        >
+                          <input type="hidden" name="id" value={inbox.id} />
+                          <button
+                            type="submit"
+                            title="Refresh the Gmail labels mirror — useful after creating a new label in Gmail's web UI"
+                            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                          >
+                            <Tag className="h-3 w-3" />
+                            Sync labels
                           </button>
                         </form>
                       )}

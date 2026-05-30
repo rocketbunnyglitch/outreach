@@ -4,6 +4,7 @@ import { connectedAccounts } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
+import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { pollOneInbox } from "@/lib/gmail-poll-worker";
 import { logger } from "@/lib/logger";
 import { and, eq, sql } from "drizzle-orm";
@@ -126,6 +127,51 @@ export async function resyncInbox(
     logger.error({ err, inboxId: id }, "resyncInbox failed");
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `Resync failed: ${msg}` };
+  }
+}
+
+/**
+ * Force a Gmail-labels sync for a single connected inbox. Useful
+ * when the operator has just created a new label in Gmail's web UI
+ * and doesn't want to wait for the probabilistic 10%-per-drain
+ * sync to catch up.
+ *
+ * Owner-only — operators can sync their own inboxes.
+ */
+export async function syncGmailLabelsNowAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ inserted: number; updated: number; deleted: number }>> {
+  const { staff } = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { ok: false, error: "Missing inbox id" };
+
+  const [inbox] = await db
+    .select({
+      id: connectedAccounts.id,
+      ownerUserId: connectedAccounts.ownerUserId,
+      status: connectedAccounts.status,
+    })
+    .from(connectedAccounts)
+    .where(eq(connectedAccounts.id, id))
+    .limit(1);
+  if (!inbox) return { ok: false, error: "Inbox not found." };
+  if (inbox.ownerUserId !== staff.id) {
+    return { ok: false, error: "You can only sync labels for inboxes you own." };
+  }
+  if (inbox.status !== "connected") {
+    return { ok: false, error: "Inbox is disconnected — Reconnect first." };
+  }
+
+  try {
+    const result = await syncGmailLabelsForAccount(inbox.id);
+    revalidatePath("/settings/inboxes");
+    revalidatePath("/inbox");
+    return { ok: true, data: result };
+  } catch (err) {
+    logger.error({ err, inboxId: id }, "syncGmailLabelsNowAction failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Sync failed: ${msg}` };
   }
 }
 
