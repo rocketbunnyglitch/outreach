@@ -99,6 +99,7 @@ export function ThreadPane({
             unreadCount={thread.unreadCount}
             isStarred={thread.isStarred}
             snoozeUntil={thread.snoozeUntil}
+            gmailThreadId={thread.gmailThreadId}
           />
           <AssignmentPicker
             threadId={thread.id}

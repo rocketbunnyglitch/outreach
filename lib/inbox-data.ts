@@ -547,6 +547,8 @@ export interface InboxThreadDetail {
     isStarred: boolean;
     /** ISO timestamp when the thread re-surfaces from snooze; null = not snoozed. */
     snoozeUntil: string | null;
+    /** Gmail's own thread id — used to construct an "Open in Gmail" link. */
+    gmailThreadId: string;
   };
   messages: Array<{
     id: string;
@@ -599,6 +601,7 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       unreadCount: emailThreads.unreadCount,
       isStarred: emailThreads.isStarred,
       snoozeUntilDate: emailThreads.snoozeUntil,
+      gmailThreadId: emailThreads.gmailThreadId,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))

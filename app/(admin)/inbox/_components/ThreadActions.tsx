@@ -21,6 +21,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { markThreadRead, setThreadState, setThreadTrash } from "../_actions";
 import { SnoozePopover } from "./SnoozePopover";
 import { StarToggle } from "./StarToggle";
+import { ThreadMoreMenu } from "./ThreadMoreMenu";
 
 interface Props {
   threadId: string;
@@ -28,6 +29,8 @@ interface Props {
   unreadCount: number;
   isStarred: boolean;
   snoozeUntil: string | null;
+  /** Gmail's thread id for "Open in Gmail" deep-link. */
+  gmailThreadId: string;
 }
 
 export function ThreadActions({
@@ -36,6 +39,7 @@ export function ThreadActions({
   unreadCount,
   isStarred,
   snoozeUntil,
+  gmailThreadId,
 }: Props) {
   const [pending, startTx] = useTransition();
   const [snoozeOpen, setSnoozeOpen] = useState(false);
@@ -171,6 +175,7 @@ export function ThreadActions({
         <Trash2 className="h-3 w-3" />
         Trash
       </Button>
+      <ThreadMoreMenu threadId={threadId} gmailThreadId={gmailThreadId} />
     </div>
   );
 }

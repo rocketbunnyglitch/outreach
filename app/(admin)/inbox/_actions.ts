@@ -315,6 +315,37 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
   }
 }
 
+/**
+ * markThreadUnread — counterpart to markThreadRead. Sets unread_count
+ * to 1 so the thread re-surfaces in unread filters + the row badge
+ * comes back. Doesn't touch email_messages.read_at — the per-message
+ * read state is separate and tracking which specific message to
+ * re-flag isn't a useful distinction at the operator level.
+ */
+export async function markThreadUnread(threadId: string): Promise<ActionResult<{ ok: true }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  try {
+    await db
+      .update(emailThreads)
+      .set({ unreadCount: 1, updatedBy: staff.id })
+      .where(eq(emailThreads.id, threadId));
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    logger.error({ err, threadId }, "markThreadUnread failed");
+    return { ok: false, error: "Couldn't update unread state." };
+  }
+}
+
 // =========================================================================
 // Change thread state (interested / declined / closed / archived)
 // =========================================================================
