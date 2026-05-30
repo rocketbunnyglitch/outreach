@@ -1,3 +1,5 @@
+"use client";
+
 import { cn } from "@/lib/cn";
 import type { InboxThreadRow } from "@/lib/inbox-data";
 import {
@@ -14,16 +16,25 @@ import Link from "next/link";
 import { StarToggle } from "./StarToggle";
 
 /**
- * Middle pane — the thread list. Rows are Gmail-shaped: sender / subject
- * snippet / timestamp on the right. Below the snippet is a single line
- * of context chips (campaign, city, day_part) so the operator sees the
- * "why this matters" without opening the thread.
+ * Middle pane — the thread list. Rows are Gmail-shaped: checkbox /
+ * star / sender / subject snippet / timestamp on the right. Below
+ * the snippet is a single line of context chips (campaign, city,
+ * day_part) so the operator sees the "why this matters" without
+ * opening the thread.
+ *
+ * Optional selection model: when `selectedIds` + `onToggleSelect`
+ * are provided, each row carries a checkbox that drives bulk-action
+ * selection state. ThreadListWithBulk wraps this and provides those
+ * props. The bare component (selectedIds undefined) still works for
+ * read-only callers.
  */
 export function ThreadList({
   threads,
   activeThreadId,
   folderLabel,
   preservedQuery,
+  selectedIds,
+  onToggleSelect,
 }: {
   threads: InboxThreadRow[];
   activeThreadId: string | null;
@@ -33,6 +44,10 @@ export function ThreadList({
    * "mine only" + folder filters survive the click).
    */
   preservedQuery: string;
+  /** Selection state from ThreadListWithBulk; omit for read-only mode. */
+  selectedIds?: Set<string>;
+  /** Per-row checkbox handler. Omit for read-only mode. */
+  onToggleSelect?: (threadId: string) => void;
 }) {
   if (threads.length === 0) {
     return (
@@ -45,24 +60,18 @@ export function ThreadList({
   }
 
   return (
-    <>
-      <header className="sticky top-0 z-10 bg-white/90 px-4 py-3 backdrop-blur-md dark:bg-zinc-950/80">
-        <h2 className="font-semibold text-sm tracking-tight">{folderLabel}</h2>
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-          {threads.length} thread{threads.length === 1 ? "" : "s"}
-        </p>
-      </header>
-      <ul className="flex flex-col">
-        {threads.map((t) => (
-          <ThreadRow
-            key={t.id}
-            thread={t}
-            isActive={t.id === activeThreadId}
-            preservedQuery={preservedQuery}
-          />
-        ))}
-      </ul>
-    </>
+    <ul className="flex flex-col">
+      {threads.map((t) => (
+        <ThreadRow
+          key={t.id}
+          thread={t}
+          isActive={t.id === activeThreadId}
+          preservedQuery={preservedQuery}
+          isSelected={selectedIds?.has(t.id) ?? false}
+          onToggleSelect={onToggleSelect}
+        />
+      ))}
+    </ul>
   );
 }
 
@@ -92,10 +101,14 @@ function ThreadRow({
   thread,
   isActive,
   preservedQuery,
+  isSelected,
+  onToggleSelect,
 }: {
   thread: InboxThreadRow;
   isActive: boolean;
   preservedQuery: string;
+  isSelected: boolean;
+  onToggleSelect?: (threadId: string) => void;
 }) {
   const href = preservedQuery ? `/inbox/${thread.id}?${preservedQuery}` : `/inbox/${thread.id}`;
 
@@ -106,13 +119,27 @@ function ThreadRow({
         className={cn(
           "block border-zinc-200/60 border-b px-4 py-3 transition-colors",
           "dark:border-zinc-800/40",
-          isActive ? "bg-zinc-100 dark:bg-zinc-900" : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50",
+          isActive
+            ? "bg-zinc-100 dark:bg-zinc-900"
+            : isSelected
+              ? "bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50"
+              : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50",
           // Unread threads get a slightly heavier left border accent
           thread.unreadCount > 0 && "border-l-2 border-l-indigo-500",
         )}
       >
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {onToggleSelect && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onToggleSelect(thread.id)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Select thread from ${thread.lastSenderName ?? thread.venueName ?? "unknown"}`}
+                className="h-3.5 w-3.5 shrink-0 cursor-pointer"
+              />
+            )}
             <StarToggle threadId={thread.id} initialStarred={thread.isStarred} size="sm" />
             <p
               className={cn(

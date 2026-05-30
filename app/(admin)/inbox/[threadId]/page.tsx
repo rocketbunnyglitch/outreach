@@ -17,7 +17,7 @@ import { FolderList } from "../_components/FolderList";
 import { InboxFilterBar } from "../_components/InboxFilterBar";
 import { InboxPresenceBar } from "../_components/InboxPresenceBar";
 import { InboxShell } from "../_components/InboxShell";
-import { ThreadList } from "../_components/ThreadList";
+import { ThreadListWithBulk } from "../_components/ThreadListWithBulk";
 import { ThreadPane } from "../_components/ThreadPane";
 import { InboxKeyboardNav } from "../_components/inbox-keyboard-nav";
 
@@ -161,11 +161,12 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             initialSearch={search.q}
           />
           <div className="flex-1 overflow-y-auto">
-            <ThreadList
+            <ThreadListWithBulk
               threads={threads}
               activeThreadId={threadId}
               folderLabel={FOLDER_LABELS[folder]}
               preservedQuery={preservedQuery.toString()}
+              isTrashView={folder === "trash"}
             />
             {/* j/k navigation between threads in the current folder
                 + ? for the shortcut help dialog. Mounts here so it

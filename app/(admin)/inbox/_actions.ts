@@ -31,7 +31,7 @@ import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
 import { clearStaleOnAction } from "@/lib/stale-tagger";
 import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -564,6 +564,110 @@ export async function setThreadSnooze(
   } catch (err) {
     logger.error({ err, threadId, snoozeUntilRaw }, "setThreadSnooze failed");
     return { ok: false, error: "Couldn't snooze thread." };
+  }
+}
+
+/**
+ * bulkUpdateThreads — apply one of a handful of toggles to a list of
+ * thread ids. Used by the inbox top toolbar when the operator has
+ * selected one or more rows.
+ *
+ * Supported actions:
+ *   star          — is_starred = true
+ *   unstar        — is_starred = false
+ *   trash         — deleted_at = now()
+ *   restore       — deleted_at = null (un-trash)
+ *   archive       — state = 'archived' + archived_at = now()
+ *   mark_read     — unread_count = 0 (clears the unread badge)
+ *   mark_unread   — unread_count = 1 (resurfaces the unread badge)
+ *
+ * Auth: requireStaff + team-scoped on every id (WHERE clause includes
+ * the team_id check via the joined connected_accounts row).
+ *
+ * Returns the count of rows actually updated — useful for the toast
+ * "Archived 12 threads" feedback.
+ */
+export async function bulkUpdateThreads(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ updated: number }>> {
+  const { staff } = await requireStaff();
+  const action = String(formData.get("action") ?? "");
+  const idsRaw = String(formData.get("threadIds") ?? "");
+  const ids = idsRaw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => UUID_RE.test(s));
+  if (ids.length === 0) return { ok: false, error: "No threads selected." };
+  if (ids.length > 200) return { ok: false, error: "Too many threads (200 max per batch)." };
+
+  const allowed = [
+    "star",
+    "unstar",
+    "trash",
+    "restore",
+    "archive",
+    "mark_read",
+    "mark_unread",
+  ] as const;
+  type Action = (typeof allowed)[number];
+  if (!(allowed as readonly string[]).includes(action)) {
+    return { ok: false, error: "Invalid action." };
+  }
+  const act = action as Action;
+
+  // Team-scope: select only ids the operator's team owns. The bulk
+  // update is then restricted to those ids, so a malicious client
+  // can't sneak in cross-team ids.
+  const scoped = await db
+    .select({ id: emailThreads.id })
+    .from(emailThreads)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .where(and(eq(connectedAccounts.teamId, staff.teamId), inArray(emailThreads.id, ids)));
+  const okIds = scoped.map((r) => r.id);
+  if (okIds.length === 0) return { ok: false, error: "No matching threads on your team." };
+
+  type Patch = Partial<typeof emailThreads.$inferInsert>;
+  const patch: Patch = { updatedBy: staff.id };
+  const now = new Date();
+  switch (act) {
+    case "star":
+      patch.isStarred = true;
+      break;
+    case "unstar":
+      patch.isStarred = false;
+      break;
+    case "trash":
+      patch.deletedAt = now;
+      break;
+    case "restore":
+      patch.deletedAt = null;
+      break;
+    case "archive":
+      patch.state = "archived";
+      patch.archivedAt = now;
+      patch.isStale = false;
+      patch.staleSince = null;
+      patch.staleReason = null;
+      patch.followUpStage = 0;
+      patch.followUpNextDueAt = null;
+      break;
+    case "mark_read":
+      patch.unreadCount = 0;
+      break;
+    case "mark_unread":
+      patch.unreadCount = 1;
+      break;
+  }
+
+  try {
+    await db.update(emailThreads).set(patch).where(inArray(emailThreads.id, okIds));
+    revalidatePath("/inbox");
+    for (const id of okIds) revalidatePath(`/inbox/${id}`);
+    return { ok: true, data: { updated: okIds.length } };
+  } catch (err) {
+    logger.error({ err, action: act, count: okIds.length }, "bulkUpdateThreads failed");
+    return { ok: false, error: "Couldn't apply bulk action." };
   }
 }
 
