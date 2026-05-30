@@ -31,6 +31,7 @@ interface Props {
     staff?: string;
     campaign?: string;
     brand?: string;
+    label?: string;
     alias?: string;
     q?: string;
     mine?: string;
@@ -71,6 +72,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       assignedStaffId,
       cityCampaignId: search.campaign,
       outreachBrandId: search.brand,
+      labelId: search.label,
       aliasId: search.alias,
       search: search.q,
     }),
@@ -124,6 +126,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (mineAssigned) preservedQuery.set("staff", currentStaff.id);
   if (search.campaign) preservedQuery.set("campaign", search.campaign);
   if (search.brand) preservedQuery.set("brand", search.brand);
+  if (search.label) preservedQuery.set("label", search.label);
   if (search.alias) preservedQuery.set("alias", search.alias);
   if (search.q) preservedQuery.set("q", search.q);
 
@@ -139,11 +142,13 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             facets={facets}
             activeBrandId={search.brand}
             activeCampaignId={search.campaign}
+            activeLabelId={search.label}
             preservedQueryBase={(() => {
               const p = new URLSearchParams(preservedQuery.toString());
               p.delete("folder");
               p.delete("brand");
               p.delete("campaign");
+              p.delete("label");
               return p.toString();
             })()}
           />

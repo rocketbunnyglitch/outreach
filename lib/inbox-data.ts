@@ -158,6 +158,9 @@ export interface ThreadListFilter {
   assignedStaffId?: string;
   cityCampaignId?: string;
   outreachBrandId?: string;
+  /** Active team-label filter (URL param `label`). When set, narrows
+   *  the thread list to those tagged with this label. */
+  labelId?: string;
   /**
    * Filter to a specific connected Gmail account (connected_accounts.id).
    * When a user has multiple inbox addresses (up to ~3 per the new
@@ -359,6 +362,15 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         filter.cityCampaignId ? eq(emailThreads.cityCampaignId, filter.cityCampaignId) : undefined,
         filter.outreachBrandId
           ? eq(emailThreads.outreachBrandId, filter.outreachBrandId)
+          : undefined,
+        // Team-label filter — EXISTS subquery on the join table so
+        // multi-label threads aren't duplicated.
+        filter.labelId
+          ? sql`EXISTS (
+              SELECT 1 FROM email_thread_labels etl
+              WHERE etl.thread_id = ${emailThreads.id}
+                AND etl.team_label_id = ${filter.labelId}
+            )`
           : undefined,
         // Alias filter — match a specific connected_accounts row.
         filter.aliasId ? eq(emailThreads.staffOutreachEmailId, filter.aliasId) : undefined,
@@ -837,6 +849,9 @@ export interface InboxFilterFacet {
 export interface InboxFilterFacets {
   campaigns: InboxFilterFacet[];
   brands: InboxFilterFacet[];
+  /** Team labels with at least one OPEN thread attached.
+   *  Each carries an optional color for the dot. */
+  labels: Array<InboxFilterFacet & { color: string | null }>;
 }
 
 /**
@@ -902,6 +917,30 @@ export async function fetchInboxFilterFacets(opts: {
     )
     .groupBy(outreachBrands.id, outreachBrands.displayName);
 
+  // Team labels — Gmail-style filter chips in the left rail. Same
+  // scope rules as brand/campaign: open threads only, team-scoped,
+  // honor the mine toggle. JOIN through email_thread_labels.
+  const labelRows = await db
+    .select({
+      id: teamLabels.id,
+      name: teamLabels.name,
+      color: teamLabels.color,
+      count: sql<number>`count(${emailThreads.id})::int`,
+    })
+    .from(emailThreads)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .innerJoin(emailThreadLabels, eq(emailThreadLabels.threadId, emailThreads.id))
+    .innerJoin(teamLabels, eq(teamLabels.id, emailThreadLabels.teamLabelId))
+    .where(
+      and(
+        eq(connectedAccounts.teamId, opts.currentTeamId),
+        opts.mine ? eq(connectedAccounts.ownerUserId, opts.currentUserId) : undefined,
+        ne(emailThreads.state, "archived"),
+        isNull(emailThreads.deletedAt),
+      ),
+    )
+    .groupBy(teamLabels.id, teamLabels.name, teamLabels.color);
+
   return {
     campaigns: campaignRows
       .map((r) => ({
@@ -912,6 +951,9 @@ export async function fetchInboxFilterFacets(opts: {
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
     brands: brandRows
       .map((r) => ({ id: r.id, label: r.displayName, count: r.count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+    labels: labelRows
+      .map((r) => ({ id: r.id, label: r.name, count: r.count, color: r.color }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
   };
 }

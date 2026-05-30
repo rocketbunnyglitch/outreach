@@ -27,6 +27,8 @@ interface Props {
     staff?: string;
     campaign?: string;
     brand?: string;
+    /** team_labels.id — narrow the list to threads tagged with this label. */
+    label?: string;
     /** connected_accounts.id — narrow the list to one Gmail alias. */
     alias?: string;
     /** Free-text search across subject, snippet, venue name, sender. */
@@ -92,6 +94,7 @@ export default async function InboxPage({ searchParams }: Props) {
       assignedStaffId,
       cityCampaignId: params.campaign,
       outreachBrandId: params.brand,
+      labelId: params.label,
       aliasId: params.alias,
       search: params.q,
     }),
@@ -124,6 +127,7 @@ export default async function InboxPage({ searchParams }: Props) {
   if (mineAssigned) preservedQuery.set("staff", currentStaff.id);
   if (params.campaign) preservedQuery.set("campaign", params.campaign);
   if (params.brand) preservedQuery.set("brand", params.brand);
+  if (params.label) preservedQuery.set("label", params.label);
   if (params.alias) preservedQuery.set("alias", params.alias);
   if (params.q) preservedQuery.set("q", params.q);
 
@@ -139,13 +143,15 @@ export default async function InboxPage({ searchParams }: Props) {
             facets={facets}
             activeBrandId={params.brand}
             activeCampaignId={params.campaign}
+            activeLabelId={params.label}
             preservedQueryBase={(() => {
-              // Strip folder/brand/campaign since FolderList sets
+              // Strip folder/brand/campaign/label since FolderList sets
               // them per-chip. Preserve mine, staff, alias, q.
               const p = new URLSearchParams(preservedQuery.toString());
               p.delete("folder");
               p.delete("brand");
               p.delete("campaign");
+              p.delete("label");
               return p.toString();
             })()}
           />

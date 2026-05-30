@@ -55,18 +55,21 @@ export function FolderList({
   facets,
   activeBrandId,
   activeCampaignId,
+  activeLabelId,
   preservedQueryBase,
 }: {
   activeFolder: InboxFolder;
   counts: Record<InboxFolder, number>;
   mineOnly: boolean;
   currentStaffId: string;
-  /** Active brand + campaign facets with open-thread counts. */
+  /** Active brand + campaign + label facets with open-thread counts. */
   facets?: InboxFilterFacets;
   /** Currently-applied brand filter (URL param). */
   activeBrandId?: string;
   /** Currently-applied campaign filter (URL param). */
   activeCampaignId?: string;
+  /** Currently-applied label filter (URL param). */
+  activeLabelId?: string;
   /** Other URL params to preserve when building chip hrefs. */
   preservedQueryBase?: string;
 }) {
@@ -160,6 +163,7 @@ export function FolderList({
                       preservedQueryBase,
                       brandId: activeBrandId === f.id ? undefined : f.id,
                       campaignId: activeCampaignId,
+                      labelId: activeLabelId,
                     })}
                     active={activeBrandId === f.id}
                     icon={<Tag className="h-3 w-3" />}
@@ -179,6 +183,7 @@ export function FolderList({
                     preservedQueryBase,
                     brandId: id,
                     campaignId: activeCampaignId,
+                    labelId: activeLabelId,
                   })
                 }
                 activeId={activeBrandId}
@@ -198,6 +203,7 @@ export function FolderList({
                       preservedQueryBase,
                       brandId: activeBrandId,
                       campaignId: activeCampaignId === f.id ? undefined : f.id,
+                      labelId: activeLabelId,
                     })}
                     active={activeCampaignId === f.id}
                     icon={<Tag className="h-3 w-3" />}
@@ -217,13 +223,60 @@ export function FolderList({
                     preservedQueryBase,
                     brandId: activeBrandId,
                     campaignId: id,
+                    labelId: activeLabelId,
                   })
                 }
                 activeId={activeCampaignId}
               />
             </>
           )}
-          {(activeBrandId || activeCampaignId) && (
+          {facets?.labels && facets.labels.length > 0 && (
+            <>
+              <li className="mt-2 px-2 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+                Labels
+              </li>
+              {facets.labels.slice(0, 10).map((f) => (
+                <li key={f.id}>
+                  <FilterChip
+                    href={buildChipHref({
+                      activeFolder,
+                      preservedQueryBase,
+                      brandId: activeBrandId,
+                      campaignId: activeCampaignId,
+                      labelId: activeLabelId === f.id ? undefined : f.id,
+                    })}
+                    active={activeLabelId === f.id}
+                    icon={
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: f.color ?? "#a1a1aa" }}
+                      />
+                    }
+                    count={f.count}
+                  >
+                    {f.label}
+                  </FilterChip>
+                </li>
+              ))}
+              <FacetOverflowChip
+                groupLabel="Labels"
+                allFacets={facets.labels}
+                visibleCount={10}
+                buildHref={(id) =>
+                  buildChipHref({
+                    activeFolder,
+                    preservedQueryBase,
+                    brandId: activeBrandId,
+                    campaignId: activeCampaignId,
+                    labelId: id,
+                  })
+                }
+                activeId={activeLabelId}
+              />
+            </>
+          )}
+          {(activeBrandId || activeCampaignId || activeLabelId) && (
             <li className="mt-2">
               <Link
                 href={`/inbox?folder=${activeFolder}${mineOnly ? `&staff=${currentStaffId}` : ""}`}
@@ -327,6 +380,7 @@ function buildChipHref(opts: {
   preservedQueryBase?: string;
   brandId?: string;
   campaignId?: string;
+  labelId?: string;
 }): string {
   const params = new URLSearchParams(opts.preservedQueryBase ?? "");
   params.set("folder", opts.activeFolder);
@@ -339,6 +393,11 @@ function buildChipHref(opts: {
     params.set("campaign", opts.campaignId);
   } else {
     params.delete("campaign");
+  }
+  if (opts.labelId) {
+    params.set("label", opts.labelId);
+  } else {
+    params.delete("label");
   }
   return `/inbox?${params.toString()}`;
 }
