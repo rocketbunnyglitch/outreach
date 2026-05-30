@@ -21,6 +21,7 @@
  */
 
 import {
+  Ban,
   ExternalLink,
   Loader2,
   Mail,
@@ -31,7 +32,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { markThreadUnread, reportThreadSpam, setThreadTrash } from "../_actions";
+import { blockThreadSender, markThreadUnread, reportThreadSpam, setThreadTrash } from "../_actions";
 
 interface Props {
   threadId: string;
@@ -126,6 +127,26 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
     });
   }
 
+  function handleBlockSender() {
+    setOpen(false);
+    if (
+      !confirm(
+        "Block the latest inbound sender on this thread? Their address will be added to your team's suppression list so we never send to them again.",
+      )
+    )
+      return;
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("threadId", threadId);
+      const res = await blockThreadSender(null, fd);
+      if (res.ok) {
+        alert(`Blocked ${res.data?.blocked}. They've been added to the suppression list.`);
+      } else {
+        alert(res.error);
+      }
+    });
+  }
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -165,6 +186,12 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
             icon={<ShieldAlert className="h-3 w-3" />}
             label="Report as spam"
             onClick={handleReportSpam}
+            tone="rose"
+          />
+          <MenuItem
+            icon={<Ban className="h-3 w-3" />}
+            label="Block sender"
+            onClick={handleBlockSender}
             tone="rose"
           />
           <MenuItem

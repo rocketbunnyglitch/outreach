@@ -16,6 +16,7 @@ import {
   connectedAccounts,
   emailDrafts,
   emailMessages,
+  emailSuppression,
   emailThreads,
   staffOutreachEmails,
   teamLabels,
@@ -32,7 +33,7 @@ import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
 import { clearStaleOnAction } from "@/lib/stale-tagger";
 import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -610,6 +611,74 @@ export async function reportThreadSpam(
   } catch (err) {
     logger.error({ err, threadId }, "reportThreadSpam failed");
     return { ok: false, error: "Couldn't report thread as spam." };
+  }
+}
+
+/**
+ * blockThreadSender — add the most-recent inbound sender's address
+ * to the team's email_suppression list so we never send to them
+ * again.
+ *
+ * Source of the address: the latest inbound email_message on the
+ * thread. If the thread has no inbound messages (e.g. drafts-only),
+ * the action returns an error since there's no sender to block.
+ *
+ * Idempotent: ON CONFLICT (team_id, email) DO NOTHING — re-blocking
+ * the same address is a no-op rather than an error.
+ *
+ * Doesn't auto-trash the thread (caller can trash separately if
+ * they want). Doesn't touch Gmail — the suppression list only
+ * affects our send pipeline.
+ *
+ * Auth: requireStaff + team scope.
+ */
+export async function blockThreadSender(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ blocked: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+
+  try {
+    // Most recent inbound sender on the thread.
+    const [latest] = await db
+      .select({
+        teamId: connectedAccounts.teamId,
+        fromAddress: emailMessages.fromAddress,
+      })
+      .from(emailMessages)
+      .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(and(eq(emailThreads.id, threadId), eq(emailMessages.direction, "inbound")))
+      .orderBy(desc(emailMessages.sentAt))
+      .limit(1);
+    if (!latest) {
+      return { ok: false, error: "This thread has no inbound messages — nothing to block." };
+    }
+    if (latest.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+    const email = latest.fromAddress?.trim().toLowerCase();
+    if (!email) return { ok: false, error: "No sender address on the latest inbound message." };
+
+    await db
+      .insert(emailSuppression)
+      .values({
+        teamId: staff.teamId,
+        email,
+        reason: "manual",
+        notes: "Blocked via thread more menu",
+        sourceThreadId: threadId,
+        createdBy: staff.id,
+      })
+      .onConflictDoNothing({ target: [emailSuppression.teamId, emailSuppression.email] });
+
+    revalidatePath("/admin/suppression");
+    return { ok: true, data: { blocked: email } };
+  } catch (err) {
+    logger.error({ err, threadId }, "blockThreadSender failed");
+    return { ok: false, error: "Couldn't block sender." };
   }
 }
 
