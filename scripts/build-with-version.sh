@@ -39,10 +39,19 @@ BUILD_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 export BUILD_VERSION BUILD_COMMIT BUILD_AT
 
+# Next's build worker crashed with JavaScript heap out of memory
+# after dep tree growth (adding googleapis pushed it over Node's
+# default ~1.7 GB heap on this Node 22 build). 3072 MB is well
+# inside the VPS's 5.8 GB and matches the heap Next.js recommends
+# for prod builds at this code size.
+# Honors any caller-provided NODE_OPTIONS instead of clobbering them.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3072"
+
 echo "Building crawl-engine"
 echo "  version: ${BUILD_VERSION}"
 echo "  commit:  ${BUILD_COMMIT}"
 echo "  at:      ${BUILD_AT}"
+echo "  heap:    ${NODE_OPTIONS}"
 echo ""
 
 exec next build
