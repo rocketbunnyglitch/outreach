@@ -37,6 +37,8 @@ export interface ComposerAttachment {
   storage_key?: string;
 }
 
+export type ComposeMode = "new" | "reply" | "reply_all" | "forward";
+
 export interface ComposerInstance {
   id: string;
   mode: ComposerMode;
@@ -65,11 +67,23 @@ export interface ComposerInstance {
   lastSavedAt: string | null;
   /** Show admin-bypass affordances when the operator has admin role. */
   isAdmin: boolean;
+  /** Compose intent — "new" for a fresh draft, "reply"/"reply_all"/
+   *  "forward" for thread-anchored drafts. Drives the send pipeline's
+   *  threading behavior (Gmail thread continuation + In-Reply-To
+   *  headers). */
+  composeMode: ComposeMode;
+  /** Thread the operator is replying to/forwarding from. Set when
+   *  composeMode != "new". */
+  replyToThreadId: string | null;
+  /** Specific message within the reply thread to anchor against.
+   *  null falls back to the latest message at send time. */
+  replyToMessageId: string | null;
 }
 
 export interface OpenComposerInput {
   /** Pre-fill recipient. */
   to?: string;
+  cc?: string;
   subject?: string;
   bodyText?: string;
   bodyHtml?: string | null;
@@ -79,6 +93,11 @@ export interface OpenComposerInput {
   /** Picked template id (optional). */
   templateId?: string | null;
   isAdmin?: boolean;
+  /** Reply/forward intent. Defaults to "new". */
+  composeMode?: ComposeMode;
+  /** Thread anchor for replies/forwards. */
+  replyToThreadId?: string | null;
+  replyToMessageId?: string | null;
 }
 
 type Action =
@@ -176,14 +195,15 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
 
   const open = useCallback((input: OpenComposerInput) => {
     const id = uuidv4();
+    const ccPrefilled = input.cc ?? "";
     const instance: ComposerInstance = {
       id,
       mode: "docked",
       fromAccountId: "",
       to: input.to ?? "",
-      cc: "",
+      cc: ccPrefilled,
       bcc: "",
-      showCc: false,
+      showCc: ccPrefilled !== "",
       showBcc: false,
       subject: input.subject ?? "",
       bodyText: input.bodyText ?? "",
@@ -196,6 +216,9 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       draftStatus: "idle",
       lastSavedAt: null,
       isAdmin: input.isAdmin ?? false,
+      composeMode: input.composeMode ?? "new",
+      replyToThreadId: input.replyToThreadId ?? null,
+      replyToMessageId: input.replyToMessageId ?? null,
     };
     dispatch({ type: "open", payload: { id, instance } });
     return id;
@@ -263,6 +286,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     function onCompose(e: Event) {
       const ce = e as CustomEvent<{
         draftId?: string;
+        hydrateDraftId?: string;
         to?: string;
         subject?: string;
         body?: string;
@@ -283,6 +307,51 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         setMode(d.draftId, "docked");
         return;
       }
+      if (d.hydrateDraftId) {
+        // Server just created a draft (e.g. openReplyDraft); pull it
+        // from the server + add to the store, docked. listMyDrafts
+        // is cheap so we don't bother diffing — the hydrate reducer
+        // already merges idempotently.
+        const id = d.hydrateDraftId;
+        void import("../../_actions/email-drafts").then(async (mod) => {
+          const rows = await mod.listMyDrafts();
+          const row = rows.find((r) => r.id === id);
+          if (!row) return;
+          hydrate([
+            {
+              id: row.id,
+              mode: "docked",
+              fromAccountId: row.connectedAccountId ?? "",
+              to: row.toAddresses.join(", "),
+              cc: row.ccAddresses.join(", "),
+              bcc: row.bccAddresses.join(", "),
+              showCc: row.ccAddresses.length > 0,
+              showBcc: row.bccAddresses.length > 0,
+              subject: row.subject,
+              bodyText: row.bodyText,
+              bodyHtml: row.bodyHtml,
+              venueId: row.venueId,
+              cityCampaignId: row.cityCampaignId,
+              templateId: row.templateId,
+              attachments: (row.attachments ?? []).map((a, i) => ({
+                id: `${row.id}-att-${i}`,
+                name: a.name,
+                size: a.size,
+                mime: a.mime,
+                storage_key: a.storage_key,
+              })),
+              scheduledFor: row.scheduledFor,
+              draftStatus: "saved",
+              lastSavedAt: row.updatedAt,
+              isAdmin: false,
+              composeMode: (row.mode as ComposerInstance["composeMode"]) ?? "new",
+              replyToThreadId: row.replyToThreadId,
+              replyToMessageId: row.replyToMessageId,
+            },
+          ]);
+        });
+        return;
+      }
       open({
         to: d.to,
         subject: d.subject,
@@ -296,7 +365,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     }
     window.addEventListener("compose-email", onCompose);
     return () => window.removeEventListener("compose-email", onCompose);
-  }, [open, setMode]);
+  }, [open, setMode, hydrate]);
 
   const value = useMemo<ComposerStoreValue>(
     () => ({ composers, open, close, setMode, setField, setStatus, hydrate }),

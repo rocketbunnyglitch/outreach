@@ -27,7 +27,7 @@ import { logger } from "@/lib/logger";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
 import { applyLabelToThread } from "@/lib/team-labels";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import type { ComposeResult } from "@/app/(admin)/_actions/compose-and-send";
@@ -59,6 +59,26 @@ export async function composeAndSendImpl(
     .split(",")
     .map((s) => s.trim())
     .filter((s) => UUID_RE.test(s));
+
+  // Reply / forward context. When replyToThreadId is set, the send
+  // pipeline:
+  //   - Looks up the thread's gmail_thread_id + (optional) anchor
+  //     message's gmail_message_id
+  //   - Calls sendGmailMessage with threadId + replyToMessageId so
+  //     Gmail nests the new message under the original thread on the
+  //     venue side AND adds In-Reply-To/References headers
+  //   - Skips creating a new email_threads row (the existing thread
+  //     gets a new email_messages row + lastMessageAt bump)
+  //
+  // composeMode lives on email_drafts.mode for the operator's UI
+  // affordances + analytics — the send pipeline itself branches
+  // purely on the presence of replyToThreadId.
+  const replyToThreadIdRaw = String(formData.get("replyToThreadId") ?? "").trim();
+  const replyToThreadId =
+    replyToThreadIdRaw && UUID_RE.test(replyToThreadIdRaw) ? replyToThreadIdRaw : null;
+  const replyToMessageIdRaw = String(formData.get("replyToMessageId") ?? "").trim();
+  const replyToMessageId =
+    replyToMessageIdRaw && UUID_RE.test(replyToMessageIdRaw) ? replyToMessageIdRaw : null;
 
   if (!UUID_RE.test(fromAccountId)) return { ok: false, error: "Pick a From inbox." };
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
@@ -151,6 +171,38 @@ export async function composeAndSendImpl(
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
 
+  // Resolve the reply context (if any) BEFORE the Gmail send so we
+  // can pass through threadId + replyToMessageId. The thread + message
+  // must be team-scoped and not deleted.
+  let replyThreadGmailId: string | null = null;
+  let replyMessageRfc822Id: string | null = null;
+  let existingEngineThreadId: string | null = null;
+  if (replyToThreadId) {
+    const [t] = await db
+      .select({
+        id: emailThreads.id,
+        gmailThreadId: emailThreads.gmailThreadId,
+        staffOutreachEmailId: emailThreads.staffOutreachEmailId,
+      })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(and(eq(emailThreads.id, replyToThreadId), eq(connectedAccounts.teamId, staff.teamId)))
+      .limit(1);
+    if (!t) {
+      return { ok: false, error: "Reply thread not found or not on your team." };
+    }
+    replyThreadGmailId = t.gmailThreadId;
+    existingEngineThreadId = t.id;
+    if (replyToMessageId) {
+      const [m] = await db
+        .select({ rfc822: emailMessages.rfcMessageId })
+        .from(emailMessages)
+        .where(and(eq(emailMessages.id, replyToMessageId), eq(emailMessages.threadId, t.id)))
+        .limit(1);
+      if (m?.rfc822) replyMessageRfc822Id = m.rfc822;
+    }
+  }
+
   let sent: { id: string; threadId: string };
   try {
     sent = await sendGmailMessage({
@@ -160,6 +212,8 @@ export async function composeAndSendImpl(
       subject,
       htmlBody,
       textBody: body,
+      threadId: replyThreadGmailId ?? undefined,
+      replyToMessageId: replyMessageRfc822Id ?? undefined,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, to }, "composeAndSend: gmail send failed");
@@ -172,32 +226,67 @@ export async function composeAndSendImpl(
   // Record the thread + outbound message so the inbox view picks it
   // up immediately (poll worker would also pick it up on the next
   // cycle, but we don't want to wait).
+  //
+  // Two paths:
+  //   - existingEngineThreadId set (reply/forward): append a new
+  //     email_messages row + UPDATE the existing thread's last_*
+  //     fields. Skip thread creation.
+  //   - new thread: INSERT a new email_threads row (existing path).
   const now = new Date();
   let threadId: string;
   try {
-    const inserted = await db
-      .insert(emailThreads)
-      .values({
-        staffOutreachEmailId: inbox.id,
-        gmailThreadId: sent.threadId,
-        venueId,
-        subject,
-        state: "waiting_on_them",
-        direction: "outbound",
-        classification: "unclassified",
-        snippet: body.slice(0, 140),
-        messageCount: 1,
-        unreadCount: 0,
-        lastOutboundAt: now,
-        lastSenderName: inbox.email,
-        lastMessageAt: now,
-        createdBy: staff.id,
-        updatedBy: staff.id,
-      })
-      .returning({ id: emailThreads.id });
-    const t = inserted[0];
-    if (!t) throw new Error("emailThreads insert returning was empty");
-    threadId = t.id;
+    if (existingEngineThreadId) {
+      threadId = existingEngineThreadId;
+
+      // Increment messageCount + bump last_* on the existing thread.
+      // State transitions to waiting_on_them (operator just replied —
+      // the ball is back in the venue's court). Don't touch
+      // assignedStaffId / venueId / brand etc — those persist.
+      await db
+        .update(emailThreads)
+        .set({
+          state: "waiting_on_them",
+          direction: "mixed",
+          messageCount: sql`${emailThreads.messageCount} + 1`,
+          lastOutboundAt: now,
+          lastSenderName: inbox.email,
+          lastMessageAt: now,
+          snippet: body.slice(0, 140),
+          // Replying clears any stale flag + follow-up cadence —
+          // operator just engaged.
+          isStale: false,
+          staleSince: null,
+          staleReason: null,
+          followUpStage: 0,
+          followUpNextDueAt: null,
+          updatedBy: staff.id,
+        })
+        .where(eq(emailThreads.id, threadId));
+    } else {
+      const inserted = await db
+        .insert(emailThreads)
+        .values({
+          staffOutreachEmailId: inbox.id,
+          gmailThreadId: sent.threadId,
+          venueId,
+          subject,
+          state: "waiting_on_them",
+          direction: "outbound",
+          classification: "unclassified",
+          snippet: body.slice(0, 140),
+          messageCount: 1,
+          unreadCount: 0,
+          lastOutboundAt: now,
+          lastSenderName: inbox.email,
+          lastMessageAt: now,
+          createdBy: staff.id,
+          updatedBy: staff.id,
+        })
+        .returning({ id: emailThreads.id });
+      const t = inserted[0];
+      if (!t) throw new Error("emailThreads insert returning was empty");
+      threadId = t.id;
+    }
 
     await db.insert(emailMessages).values({
       threadId,

@@ -14,6 +14,7 @@
 
 import {
   connectedAccounts,
+  emailDrafts,
   emailMessages,
   emailThreads,
   staffOutreachEmails,
@@ -699,6 +700,192 @@ export async function bulkUpdateThreads(
   } catch (err) {
     logger.error({ err, action: act, count: okIds.length }, "bulkUpdateThreads failed");
     return { ok: false, error: "Couldn't apply bulk action." };
+  }
+}
+
+/**
+ * openReplyDraft — create a new email_drafts row seeded with the
+ * given thread's context so the global composer can take over the
+ * reply / reply-all / forward flow.
+ *
+ * Returns the new draft id. The client then dispatches the existing
+ * 'compose-email' CustomEvent with { hydrateDraftId } and the
+ * ComposerProvider bridge picks it up (the hydration path on next
+ * mount re-fetches via listMyDrafts so the new draft appears in the
+ * bottom-right stack).
+ *
+ * Auth: requireStaff + thread must be on operator's team. The
+ * created draft is owned by the operator (each user has their own
+ * draft list).
+ *
+ * Mode semantics:
+ *   reply       To = original sender's address; Cc empty
+ *   reply_all   To = original sender; Cc = union of original to+cc
+ *               minus the inbox's own address
+ *   forward     To = empty (operator picks); subject prefixed Fwd:
+ *               body includes the full quoted thread
+ */
+export async function openReplyDraft(input: {
+  threadId: string;
+  /** Optional anchor message — defaults to the latest in the thread. */
+  messageId?: string | null;
+  mode: "reply" | "reply_all" | "forward";
+}): Promise<ActionResult<{ draftId: string }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(input.threadId)) return { ok: false, error: "Invalid thread id." };
+  if (input.messageId && !UUID_RE.test(input.messageId)) {
+    return { ok: false, error: "Invalid message id." };
+  }
+
+  // Load thread + verify team scope + grab the inbox address so we
+  // can omit it from Reply All's Cc list.
+  const [thread] = await db
+    .select({
+      id: emailThreads.id,
+      subject: emailThreads.subject,
+      venueId: emailThreads.venueId,
+      cityCampaignId: emailThreads.cityCampaignId,
+      connectedAccountId: emailThreads.staffOutreachEmailId,
+      teamId: connectedAccounts.teamId,
+      inboxEmail: connectedAccounts.emailAddress,
+    })
+    .from(emailThreads)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, input.threadId))
+    .limit(1);
+  if (!thread || thread.teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not on your team." };
+  }
+
+  // Pick the anchor message. Operator-specified > latest in the thread.
+  const message = input.messageId
+    ? await db
+        .select({
+          id: emailMessages.id,
+          direction: emailMessages.direction,
+          fromAddress: emailMessages.fromAddress,
+          fromName: emailMessages.fromName,
+          toAddresses: emailMessages.toAddresses,
+          ccAddresses: emailMessages.ccAddresses,
+          subject: emailMessages.subject,
+          bodyText: emailMessages.bodyText,
+          sentAt: emailMessages.sentAt,
+        })
+        .from(emailMessages)
+        .where(
+          and(eq(emailMessages.threadId, input.threadId), eq(emailMessages.id, input.messageId)),
+        )
+        .limit(1)
+        .then((r) => r[0])
+    : await db
+        .select({
+          id: emailMessages.id,
+          direction: emailMessages.direction,
+          fromAddress: emailMessages.fromAddress,
+          fromName: emailMessages.fromName,
+          toAddresses: emailMessages.toAddresses,
+          ccAddresses: emailMessages.ccAddresses,
+          subject: emailMessages.subject,
+          bodyText: emailMessages.bodyText,
+          sentAt: emailMessages.sentAt,
+        })
+        .from(emailMessages)
+        .where(eq(emailMessages.threadId, input.threadId))
+        .orderBy(sql`${emailMessages.sentAt} DESC`)
+        .limit(1)
+        .then((r) => r[0]);
+  if (!message) return { ok: false, error: "No message to reply to." };
+
+  const inboxEmailLower = thread.inboxEmail.toLowerCase();
+
+  // Build recipient + cc lists based on mode.
+  let toList: string[];
+  const ccList: string[] = [];
+  if (input.mode === "forward") {
+    toList = []; // operator types it in
+  } else {
+    // Reply / Reply All — reply to the sender of the anchor message.
+    // Skip if the anchor was outbound (replying to your own message);
+    // fall back to the latest INBOUND message in the thread.
+    let target = message;
+    if (message.direction === "outbound") {
+      const [inbound] = await db
+        .select({
+          id: emailMessages.id,
+          direction: emailMessages.direction,
+          fromAddress: emailMessages.fromAddress,
+          fromName: emailMessages.fromName,
+          toAddresses: emailMessages.toAddresses,
+          ccAddresses: emailMessages.ccAddresses,
+          subject: emailMessages.subject,
+          bodyText: emailMessages.bodyText,
+          sentAt: emailMessages.sentAt,
+        })
+        .from(emailMessages)
+        .where(
+          and(eq(emailMessages.threadId, input.threadId), eq(emailMessages.direction, "inbound")),
+        )
+        .orderBy(sql`${emailMessages.sentAt} DESC`)
+        .limit(1);
+      if (inbound) target = inbound;
+    }
+    const senderEmail = extractEmail(target.fromAddress) ?? target.fromAddress;
+    toList = [senderEmail];
+    if (input.mode === "reply_all") {
+      const merged = [...(target.toAddresses ?? []), ...(target.ccAddresses ?? [])];
+      const seen = new Set([senderEmail.toLowerCase(), inboxEmailLower]);
+      for (const raw of merged) {
+        const e = extractEmail(raw) ?? raw;
+        const lower = e.toLowerCase();
+        if (seen.has(lower)) continue;
+        seen.add(lower);
+        ccList.push(e);
+      }
+    }
+  }
+
+  // Subject prefix.
+  const originalSubject = message.subject ?? thread.subject ?? "(no subject)";
+  const subjectPrefix = input.mode === "forward" ? "Fwd: " : "Re: ";
+  const subject = /^\s*(re|fwd):/i.test(originalSubject)
+    ? originalSubject
+    : `${subjectPrefix}${originalSubject}`;
+
+  // Quoted body. Format mirrors Gmail's reply quote header.
+  const quoteHeader = `On ${message.sentAt.toLocaleString()}, ${message.fromName ?? message.fromAddress} wrote:`;
+  const quotedLines = (message.bodyText ?? "")
+    .split("\n")
+    .map((line: string) => `> ${line}`)
+    .join("\n");
+  const bodyText = `\n\n${quoteHeader}\n${quotedLines}`;
+
+  // Create the draft. ID generated server-side; client passes it
+  // through to the composer hydration path.
+  const draftId = crypto.randomUUID();
+  try {
+    await db.insert(emailDrafts).values({
+      id: draftId,
+      ownerUserId: staff.id,
+      teamId: staff.teamId,
+      connectedAccountId: thread.connectedAccountId,
+      toAddresses: toList,
+      ccAddresses: ccList,
+      bccAddresses: [],
+      subject,
+      bodyText,
+      bodyHtml: null,
+      venueId: thread.venueId,
+      cityCampaignId: thread.cityCampaignId,
+      attachments: [],
+      mode: input.mode,
+      replyToThreadId: input.threadId,
+      replyToMessageId: message.id,
+    });
+    revalidatePath(`/inbox/${input.threadId}`);
+    return { ok: true, data: { draftId } };
+  } catch (err) {
+    logger.error({ err, threadId: input.threadId, mode: input.mode }, "openReplyDraft failed");
+    return { ok: false, error: "Couldn't open reply." };
   }
 }
 

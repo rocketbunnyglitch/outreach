@@ -208,6 +208,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           storage_key: a.storage_key,
         })),
         scheduledFor: instance.scheduledFor,
+        mode: instance.composeMode,
+        replyToThreadId: instance.replyToThreadId,
+        replyToMessageId: instance.replyToMessageId,
       });
       if (result.ok) {
         setStatus(instance.id, "saved", result.data.updatedAt);
@@ -294,6 +297,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         templateId: instance.templateId,
         attachments: instance.attachments,
         scheduledFor: null,
+        mode: opts.testOnly ? "new" : instance.composeMode,
+        replyToThreadId: opts.testOnly ? null : instance.replyToThreadId,
+        replyToMessageId: opts.testOnly ? null : instance.replyToMessageId,
       });
       if (!saveRes.ok) {
         setSendError(saveRes.error);
@@ -390,6 +396,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       templateId: instance.templateId,
       attachments: instance.attachments,
       scheduledFor: instance.scheduledFor,
+      mode: instance.composeMode,
+      replyToThreadId: instance.replyToThreadId,
+      replyToMessageId: instance.replyToMessageId,
     }).then((res) => {
       if (res.ok) setStatus(instance.id, "saved", res.data.updatedAt);
     });

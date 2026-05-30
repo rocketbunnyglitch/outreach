@@ -44,6 +44,12 @@ export interface UpsertDraftInput {
   templateId?: string | null;
   attachments?: EmailDraftAttachment[];
   scheduledFor?: string | null; // ISO string
+  /** Compose intent — "new" | "reply" | "reply_all" | "forward". */
+  mode?: "new" | "reply" | "reply_all" | "forward" | null;
+  /** Thread the operator is replying to/forwarding. */
+  replyToThreadId?: string | null;
+  /** Specific message anchor within the thread. */
+  replyToMessageId?: string | null;
 }
 
 export interface UpsertDraftResult {
@@ -97,6 +103,9 @@ export async function upsertDraft(
           templateId: input.templateId ?? null,
           attachments: input.attachments ?? [],
           scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : null,
+          mode: input.mode ?? null,
+          replyToThreadId: input.replyToThreadId ?? null,
+          replyToMessageId: input.replyToMessageId ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -127,6 +136,9 @@ export async function upsertDraft(
   if (input.scheduledFor !== undefined) {
     patch.scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
   }
+  if (input.mode !== undefined) patch.mode = input.mode;
+  if (input.replyToThreadId !== undefined) patch.replyToThreadId = input.replyToThreadId;
+  if (input.replyToMessageId !== undefined) patch.replyToMessageId = input.replyToMessageId;
 
   try {
     await db
@@ -162,6 +174,9 @@ export async function listMyDrafts(): Promise<
     attachments: EmailDraftAttachment[];
     scheduledFor: string | null;
     updatedAt: string;
+    mode: string | null;
+    replyToThreadId: string | null;
+    replyToMessageId: string | null;
   }>
 > {
   const { staff } = await requireStaff();
@@ -185,6 +200,9 @@ export async function listMyDrafts(): Promise<
     attachments: (r.attachments as EmailDraftAttachment[]) ?? [],
     scheduledFor: r.scheduledFor ? r.scheduledFor.toISOString() : null,
     updatedAt: r.updatedAt.toISOString(),
+    mode: r.mode ?? null,
+    replyToThreadId: r.replyToThreadId ?? null,
+    replyToMessageId: r.replyToMessageId ?? null,
   }));
 }
 
@@ -271,7 +289,7 @@ async function sendDraftAsUser(input: {
   }
 
   const fd = new FormData();
-  fd.set("connectedAccountId", draft.connectedAccountId);
+  fd.set("fromAccountId", draft.connectedAccountId);
   fd.set("to", to);
   if (draft.ccAddresses && draft.ccAddresses.length > 0) {
     fd.set("cc", draft.ccAddresses.join(","));
@@ -283,6 +301,12 @@ async function sendDraftAsUser(input: {
   fd.set("body", draft.bodyText);
   if (draft.bodyHtml) fd.set("bodyHtml", draft.bodyHtml);
   if (draft.venueId) fd.set("venueId", draft.venueId);
+  // Reply/forward context — composeAndSendImpl branches on these to
+  // attach the new message to the existing Gmail thread instead of
+  // creating a fresh thread.
+  if (draft.replyToThreadId) fd.set("replyToThreadId", draft.replyToThreadId);
+  if (draft.replyToMessageId) fd.set("replyToMessageId", draft.replyToMessageId);
+  if (draft.mode) fd.set("composeMode", draft.mode);
   // Admin-bypass marker — composeAndSend re-checks the operator's
   // role server-side; we just surface the form-field convention here.
   if (input.bypassCap) fd.set("bypassCap", "1");

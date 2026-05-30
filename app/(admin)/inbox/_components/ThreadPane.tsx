@@ -10,11 +10,11 @@ import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
-import { ReplyComposer } from "./ReplyComposer";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
+import { ThreadReplyButtons } from "./ThreadReplyButtons";
 
 /**
  * Right pane — full thread conversation + CRM rail below.
@@ -34,7 +34,7 @@ export function ThreadPane({
   threadLabels,
   allTeamLabels,
   campaignSuggestions,
-  isAdmin,
+  isAdmin: _isAdmin,
 }: {
   detail: InboxThreadDetail;
   outreachHistory: VenueOutreachHistoryEntry[];
@@ -141,11 +141,12 @@ export function ThreadPane({
         ))}
       </ol>
 
-      {/* Inline reply — sticks to the bottom of the thread pane. The
-          composer expands on click; sending mirrors to Gmail via
-          sendThreadReply and the daily cold-send cap is enforced
-          server-side (admins see a Bypass button on cap-block). */}
-      <ReplyComposer threadId={thread.id} isAdmin={isAdmin} />
+      {/* Reply triggers — Reply / Reply All / Forward all hand off
+          to the global composer, which carries the full Gmail-style
+          surface (popout, fullscreen, undo send, schedule, etc).
+          Send still routes through composeAndSendImpl with the
+          existing cap + safety + duplicate checks. */}
+      <ThreadReplyButtons threadId={thread.id} />
 
       {/* History — audit timeline. Collapsed by default; renders
           null when no audited events exist for the thread or

@@ -59,6 +59,9 @@ export function useDraftHydration() {
           draftStatus: "saved",
           lastSavedAt: r.updatedAt,
           isAdmin: false,
+          composeMode: (r.mode as ComposerInstance["composeMode"]) ?? "new",
+          replyToThreadId: r.replyToThreadId ?? null,
+          replyToMessageId: r.replyToMessageId ?? null,
         }));
         hydrate(instances);
       })

@@ -39,6 +39,20 @@ export const emailDrafts = pgTable(
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentThreadId: uuid("sent_thread_id"),
+    /** Compose mode: "new" | "reply" | "reply_all" | "forward". Drives
+     *  the Gmail-shaped UI affordances + the threading behavior on
+     *  send. NULL implies "new" for backward compatibility with
+     *  drafts created before migration 0058. */
+    mode: text("mode"),
+    /** Thread the operator is replying to/forwarding from. When set,
+     *  the compose pipeline reuses that thread's gmail_thread_id +
+     *  adds In-Reply-To/References headers so Gmail threads the
+     *  outbound message correctly. NULL for "new" drafts. */
+    replyToThreadId: uuid("reply_to_thread_id"),
+    /** Specific message within the reply thread to anchor the reply
+     *  against. NULL falls back to the latest message. Used for the
+     *  message-level "Reply to this" action. */
+    replyToMessageId: uuid("reply_to_message_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
