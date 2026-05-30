@@ -106,11 +106,16 @@ export async function suggestCampaignsForThread(opts: {
     .where(
       and(
         or(eq(campaigns.status, "active"), eq(campaigns.status, "planning")),
+        // city_campaign_status enum is {planning, active, confirmed, cancelled}.
+        // The earlier "contract_signed" entry belonged to venue_event_status
+        // and made Postgres throw 22P02 invalid_input on every inbox thread
+        // page render — that's the "Application error" overlay operators
+        // hit when clicking any thread. Removing it whitelists every
+        // non-cancelled city_campaign, which was the original intent.
         or(
           eq(cityCampaigns.status, "planning"),
           eq(cityCampaigns.status, "active"),
           eq(cityCampaigns.status, "confirmed"),
-          eq(cityCampaigns.status, "contract_signed"),
         ),
       ),
     );
