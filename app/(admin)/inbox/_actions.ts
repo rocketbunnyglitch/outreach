@@ -437,6 +437,136 @@ export async function setThreadStar(
   }
 }
 
+/**
+ * setThreadTrash — soft-delete a thread (move to Trash) or restore it.
+ *
+ * Sets / clears email_threads.deleted_at. The Trash mailbox view shows
+ * deleted_at IS NOT NULL; every other view filters them out. Recoverable
+ * indefinitely from /inbox?folder=trash. A future cron could hard-purge
+ * after 30 days.
+ *
+ * Auth: requireStaff + team-scoped.
+ */
+export async function setThreadTrash(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ trashed: boolean }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const trashedRaw = String(formData.get("trashed") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (trashedRaw !== "true" && trashedRaw !== "false") {
+    return { ok: false, error: "Invalid trash state." };
+  }
+  const trashed = trashedRaw === "true";
+
+  try {
+    const [row] = await db
+      .select({ teamId: connectedAccounts.teamId })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, threadId))
+      .limit(1);
+    if (!row || row.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+
+    await db
+      .update(emailThreads)
+      .set({
+        deletedAt: trashed ? new Date() : null,
+        updatedBy: staff.id,
+      })
+      .where(eq(emailThreads.id, threadId));
+
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return { ok: true, data: { trashed } };
+  } catch (err) {
+    logger.error({ err, threadId, trashed }, "setThreadTrash failed");
+    return { ok: false, error: "Couldn't move thread to trash." };
+  }
+}
+
+/**
+ * setThreadSnooze — snooze a thread until a future timestamp, or clear
+ * an existing snooze (pass snoozeUntil="").
+ *
+ * Snoozed threads hide from inbox / smart views until snooze_until passes
+ * (the query predicates check `snooze_until <= now()`). No background cron
+ * required for re-surfacing; the SQL filter does the work.
+ *
+ * Auth: requireStaff + team-scoped.
+ */
+export async function setThreadSnooze(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ snoozeUntil: string | null }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const snoozeUntilRaw = String(formData.get("snoozeUntil") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+
+  let snoozeUntil: Date | null = null;
+  if (snoozeUntilRaw !== "") {
+    const parsed = new Date(snoozeUntilRaw);
+    if (Number.isNaN(parsed.getTime())) {
+      return { ok: false, error: "Invalid snooze timestamp." };
+    }
+    if (parsed.getTime() <= Date.now()) {
+      return { ok: false, error: "Snooze time must be in the future." };
+    }
+    // Cap absurdly far snoozes (>180d) so an operator typo doesn't
+    // park a thread until next year.
+    const maxFuture = Date.now() + 180 * 86_400_000;
+    if (parsed.getTime() > maxFuture) {
+      return { ok: false, error: "Snooze too far in the future (180 day max)." };
+    }
+    snoozeUntil = parsed;
+  }
+
+  try {
+    const [row] = await db
+      .select({ teamId: connectedAccounts.teamId })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, threadId))
+      .limit(1);
+    if (!row || row.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+
+    await db
+      .update(emailThreads)
+      .set({ snoozeUntil, updatedBy: staff.id })
+      .where(eq(emailThreads.id, threadId));
+
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return {
+      ok: true,
+      data: { snoozeUntil: snoozeUntil?.toISOString() ?? null },
+    };
+  } catch (err) {
+    logger.error({ err, threadId, snoozeUntilRaw }, "setThreadSnooze failed");
+    return { ok: false, error: "Couldn't snooze thread." };
+  }
+}
+
 function extractEmail(headerVal: string): string | null {
   const m = headerVal.match(/<([^>]+)>/) ?? headerVal.match(/([\w.\-+]+@[\w.\-]+)/);
   return m?.[1]?.toLowerCase() ?? null;

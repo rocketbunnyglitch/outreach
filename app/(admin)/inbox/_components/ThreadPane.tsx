@@ -97,6 +97,8 @@ export function ThreadPane({
             threadId={thread.id}
             currentState={thread.state}
             unreadCount={thread.unreadCount}
+            isStarred={thread.isStarred}
+            snoozeUntil={thread.snoozeUntil}
           />
           <AssignmentPicker
             threadId={thread.id}

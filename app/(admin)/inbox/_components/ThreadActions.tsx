@@ -5,6 +5,9 @@
  * Mark interested → state closed_won
  * Mark declined → state closed_lost
  * Archive → state archived (also sets archivedAt server-side)
+ * Star → toggles is_starred (Gmail-style)
+ * Snooze → opens a popover with presets + custom datetime
+ * Trash → soft-delete (deleted_at IS NOT NULL; recoverable from Trash)
  *
  * Also auto-fires markThreadRead on mount so the unread badge clears
  * the moment the operator opens the thread. Gmail does this implicitly;
@@ -12,19 +15,30 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { Archive, CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { AlarmClock, Archive, CheckCircle2, Loader2, Trash2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useTransition } from "react";
-import { markThreadRead, setThreadState } from "../_actions";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { markThreadRead, setThreadState, setThreadTrash } from "../_actions";
+import { SnoozePopover } from "./SnoozePopover";
+import { StarToggle } from "./StarToggle";
 
 interface Props {
   threadId: string;
   currentState: string;
   unreadCount: number;
+  isStarred: boolean;
+  snoozeUntil: string | null;
 }
 
-export function ThreadActions({ threadId, currentState, unreadCount }: Props) {
+export function ThreadActions({
+  threadId,
+  currentState,
+  unreadCount,
+  isStarred,
+  snoozeUntil,
+}: Props) {
   const [pending, startTx] = useTransition();
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const router = useRouter();
   // Only mark-as-read once per mount to avoid noise from re-renders
   const markedRef = useRef(false);
@@ -45,6 +59,23 @@ export function ThreadActions({ threadId, currentState, unreadCount }: Props) {
       fd.set("state", state);
       await setThreadState(null, fd);
       router.refresh();
+    });
+  }
+
+  function handleTrash() {
+    if (!confirm("Move this thread to Trash? You can restore it from the Trash view.")) {
+      return;
+    }
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("threadId", threadId);
+      fd.set("trashed", "true");
+      const res = await setThreadTrash(null, fd);
+      if (res.ok) {
+        // Navigate back to the inbox after trashing — the operator
+        // has no need to stay on a trashed thread page.
+        router.push("/inbox");
+      }
     });
   }
 
@@ -70,6 +101,7 @@ export function ThreadActions({ threadId, currentState, unreadCount }: Props) {
 
   return (
     <div className="flex items-center gap-2">
+      <StarToggle threadId={threadId} initialStarred={isStarred} size="md" />
       <Button
         size="sm"
         variant={currentState === "closed_won" ? "default" : "outline"}
@@ -103,6 +135,41 @@ export function ThreadActions({ threadId, currentState, unreadCount }: Props) {
       >
         <Archive className="h-3 w-3" />
         Archive
+      </Button>
+      <div className="relative">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setSnoozeOpen((v) => !v)}
+          disabled={pending}
+          title={
+            snoozeUntil
+              ? `Snoozed until ${new Date(snoozeUntil).toLocaleString()}`
+              : "Snooze this thread"
+          }
+        >
+          <AlarmClock className="h-3 w-3" />
+          {snoozeUntil ? "Snoozed" : "Snooze"}
+        </Button>
+        {snoozeOpen && (
+          <SnoozePopover
+            threadId={threadId}
+            currentSnoozeUntil={snoozeUntil}
+            onClose={() => setSnoozeOpen(false)}
+            onSnoozed={() => router.refresh()}
+          />
+        )}
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleTrash}
+        disabled={pending}
+        title="Move to Trash"
+        className="text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
+      >
+        <Trash2 className="h-3 w-3" />
+        Trash
       </Button>
     </div>
   );

@@ -542,6 +542,10 @@ export interface InboxThreadDetail {
     /** Global unread count on the thread; used by inbox UI to drive
         the "auto mark as read on open" effect + unread badges. */
     unreadCount: number;
+    /** Gmail-style star state. */
+    isStarred: boolean;
+    /** ISO timestamp when the thread re-surfaces from snooze; null = not snoozed. */
+    snoozeUntil: string | null;
   };
   messages: Array<{
     id: string;
@@ -592,6 +596,8 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       lastMessageAt: emailThreads.lastMessageAt,
       messageCount: emailThreads.messageCount,
       unreadCount: emailThreads.unreadCount,
+      isStarred: emailThreads.isStarred,
+      snoozeUntilDate: emailThreads.snoozeUntil,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
@@ -605,6 +611,12 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
     .then((r) => r[0]);
 
   if (!threadRow) return null;
+
+  // Reshape: snoozeUntilDate (Date|null) → snoozeUntil (string|null).
+  const threadShaped = {
+    ...threadRow,
+    snoozeUntil: threadRow.snoozeUntilDate ? threadRow.snoozeUntilDate.toISOString() : null,
+  } as InboxThreadDetail["thread"];
 
   const messageRows = await db
     .select({
@@ -627,7 +639,7 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
     .orderBy(emailMessages.sentAt);
 
   return {
-    thread: threadRow as InboxThreadDetail["thread"],
+    thread: threadShaped,
     messages: messageRows.map((m) => ({
       ...m,
       // Server-sanitize the HTML body before we let the client touch
