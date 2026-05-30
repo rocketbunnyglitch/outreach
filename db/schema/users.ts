@@ -162,6 +162,12 @@ export const connectedAccounts = pgTable(
     status: staffOutreachEmailStatus("status").notNull().default("disconnected"),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
 
+    /** Hard cap on cold sends per local day (sender user's timezone).
+     *  Default 30 per the spec; admin can adjust per inbox in
+     *  /admin/inboxes when an account is warming up. Added in
+     *  migration 0049. */
+    dailyColdSendCap: integer("daily_cold_send_cap").notNull().default(30),
+
     ...auditColumns,
     ...versionColumn,
   },

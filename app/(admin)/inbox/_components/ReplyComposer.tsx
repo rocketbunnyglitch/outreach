@@ -21,12 +21,15 @@ import { sendThreadReply } from "../_actions";
 
 interface Props {
   threadId: string;
+  /** When true, the "Bypass cap" button appears on cap-block errors. */
+  isAdmin?: boolean;
 }
 
-export function ReplyComposer({ threadId }: Props) {
+export function ReplyComposer({ threadId, isAdmin = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [capBlocked, setCapBlocked] = useState(false);
   const [pending, startTx] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const router = useRouter();
@@ -37,7 +40,7 @@ export function ReplyComposer({ threadId }: Props) {
     }
   }, [expanded]);
 
-  function send() {
+  function send(bypass = false) {
     setError(null);
     if (!body.trim()) {
       setError("Reply body can't be empty.");
@@ -47,13 +50,18 @@ export function ReplyComposer({ threadId }: Props) {
       const fd = new FormData();
       fd.set("threadId", threadId);
       fd.set("body", body);
+      if (bypass) fd.set("bypassCap", "1");
       const result = await sendThreadReply(null, fd);
       if (!result.ok) {
         setError(result.error);
+        // Heuristic: "Daily cold-send cap reached" is the prefix the
+        // server returns on a cap block. Surface the bypass affordance.
+        setCapBlocked(result.error.startsWith("Daily cold-send cap reached"));
         return;
       }
       setBody("");
       setExpanded(false);
+      setCapBlocked(false);
       router.refresh();
     });
   }
@@ -113,6 +121,7 @@ export function ReplyComposer({ threadId }: Props) {
           onClick={() => {
             setBody("");
             setExpanded(false);
+            setCapBlocked(false);
           }}
           disabled={pending}
           className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-widest transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"
@@ -120,10 +129,23 @@ export function ReplyComposer({ threadId }: Props) {
           <X className="h-3 w-3" />
           Cancel
         </button>
-        <Button onClick={send} disabled={pending || !body.trim()} size="sm">
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-          Send reply
-        </Button>
+        <div className="flex items-center gap-2">
+          {capBlocked && isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => send(true)}
+              disabled={pending || !body.trim()}
+              className="text-amber-700 dark:text-amber-300"
+            >
+              Bypass cap
+            </Button>
+          )}
+          <Button onClick={() => send(false)} disabled={pending || !body.trim()} size="sm">
+            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            Send reply
+          </Button>
+        </div>
       </div>
     </div>
   );

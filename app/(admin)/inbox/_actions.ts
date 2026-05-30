@@ -19,6 +19,7 @@ import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
+import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -110,6 +111,35 @@ export async function sendThreadReply(
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
 
+  // Preflight cold-send cap. Replies almost always classify warm
+  // (the thread has inbound history), but a reply on a thread that
+  // only has outbound messages — say the operator hits Reply on
+  // their own sent message — comes back cold and consumes a slot.
+  // Admin override via the form's bypassCap flag.
+  const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
+  const preflight = await preflightSend({
+    connectedAccountId: senderInbox.id,
+    threadId,
+  });
+  if (!preflight.ok) {
+    if (!bypassCap || staff.role !== "admin") {
+      return {
+        ok: false,
+        error: `Daily cold-send cap reached on ${senderInbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
+          staff.role === "admin"
+            ? "Click 'Bypass cap' to send anyway."
+            : "Wait for the daily reset, or ask an admin to bypass."
+        }`,
+      };
+    }
+    logger.warn(
+      { threadId, userId: staff.id, used: preflight.usage.used, cap: preflight.usage.cap },
+      "sendThreadReply: admin bypassed cold-send cap",
+    );
+  }
+  const sendCategory = preflight.ok ? preflight.category : preflight.category;
+  const capBypassed = !preflight.ok && bypassCap;
+
   // Send via Gmail
   let sentId: string;
   let sentThreadId: string;
@@ -175,6 +205,20 @@ export async function sendThreadReply(
       ok: false,
       error: "The reply sent but couldn't be saved to the inbox view. Refresh the page.",
     };
+  }
+
+  // Record the send-cap counter event. Failure is logged, not fatal.
+  try {
+    await recordSendEvent({
+      connectedAccountId: senderInbox.id,
+      threadId,
+      sentByUserId: staff.id,
+      recipientEmail: recipient,
+      category: sendCategory,
+      capBypassed,
+    });
+  } catch (err) {
+    logger.error({ err, threadId }, "sendThreadReply: recordSendEvent failed");
   }
 
   revalidatePath(`/inbox/${threadId}`);

@@ -24,6 +24,7 @@ import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
+import { type SendUsage, preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { type TeamLabelSummary, applyLabelToThread, listTeamLabels } from "@/lib/team-labels";
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -109,7 +110,16 @@ export async function listComposeContext(): Promise<{
   return { inboxes, labels };
 }
 
-export type ComposeResult = { ok: true; threadId: string } | { ok: false; error: string };
+export type ComposeResult =
+  | { ok: true; threadId: string }
+  | {
+      ok: false;
+      error: string;
+      /** Set when the failure was the daily cold-send cap. UI shows
+       *  a "Bypass cap" button (admins only). */
+      capBlocked?: boolean;
+      usage?: SendUsage;
+    };
 
 /**
  * Send a brand-new email from a chosen connected inbox. Creates a
@@ -172,6 +182,35 @@ export async function composeAndSend(_prev: unknown, formData: FormData): Promis
       error: "That inbox is disconnected. Reconnect it in Settings then try again.",
     };
   }
+
+  // Preflight: classify + check the cold-send cap. composeAndSend
+  // always creates a NEW thread (no prior inbound history), so it's
+  // always cold. Admin can override via bypassCap form field.
+  const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
+  const preflight = await preflightSend({
+    connectedAccountId: fromAccountId,
+    threadId: null,
+  });
+  if (!preflight.ok) {
+    if (!bypassCap || staff.role !== "admin") {
+      return {
+        ok: false,
+        error: `Daily cold-send cap reached on ${inbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
+          staff.role === "admin"
+            ? "Click 'Bypass cap' to send anyway."
+            : "Try a different inbox, or ask an admin to bypass."
+        }`,
+        capBlocked: true,
+        usage: preflight.usage,
+      };
+    }
+    logger.warn(
+      { fromAccountId, userId: staff.id, used: preflight.usage.used, cap: preflight.usage.cap },
+      "composeAndSend: admin bypassed cold-send cap",
+    );
+  }
+  const sendCategory = preflight.ok ? preflight.category : preflight.category; // 'cold' either way for composeAndSend
+  const capBypassed = !preflight.ok && bypassCap;
 
   // Build light HTML.
   const htmlBody = body
@@ -272,6 +311,22 @@ export async function composeAndSend(_prev: unknown, formData: FormData): Promis
       ok: false,
       error: "The email sent, but couldn't save the record. Refresh the inbox.",
     };
+  }
+
+  // Record the cap-counting event. Failures here are logged but
+  // don't fail the action — the email is already out the door and
+  // the thread is recorded; an under-counted send is recoverable.
+  try {
+    await recordSendEvent({
+      connectedAccountId: fromAccountId,
+      threadId,
+      sentByUserId: staff.id,
+      recipientEmail: to,
+      category: sendCategory,
+      capBypassed,
+    });
+  } catch (err) {
+    logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
   }
 
   revalidatePath("/inbox");

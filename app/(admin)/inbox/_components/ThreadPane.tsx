@@ -7,6 +7,7 @@ import Link from "next/link";
 import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
+import { ReplyComposer } from "./ReplyComposer";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 
@@ -28,12 +29,14 @@ export function ThreadPane({
   threadLabels,
   allTeamLabels,
   campaignSuggestions,
+  isAdmin,
 }: {
   detail: InboxThreadDetail;
   outreachHistory: VenueOutreachHistoryEntry[];
   threadLabels: ThreadLabelRow[];
   allTeamLabels: TeamLabelSummary[];
   campaignSuggestions: CampaignSuggestion[];
+  isAdmin: boolean;
 }) {
   const { thread, messages } = detail;
 
@@ -111,6 +114,12 @@ export function ThreadPane({
           <MessageCard key={m.id} message={m} isLast={i === messages.length - 1} />
         ))}
       </ol>
+
+      {/* Inline reply — sticks to the bottom of the thread pane. The
+          composer expands on click; sending mirrors to Gmail via
+          sendThreadReply and the daily cold-send cap is enforced
+          server-side (admins see a Bypass button on cap-block). */}
+      <ReplyComposer threadId={thread.id} isAdmin={isAdmin} />
 
       {/* CRM rail */}
       <div className="border-zinc-200/80 border-t bg-zinc-50/50 px-6 py-6 dark:border-zinc-800/60 dark:bg-zinc-950/40">

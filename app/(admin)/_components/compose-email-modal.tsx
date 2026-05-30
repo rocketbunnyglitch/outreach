@@ -56,6 +56,10 @@ interface Props {
   ariaLabel?: string;
   /** Optional className applied to the inline wrapper around children. */
   className?: string;
+  /** When true, a "Bypass cap" button appears on cap-block errors.
+   *  Server-side admin gate is the source of truth; this only
+   *  governs whether the affordance is visible. */
+  isAdmin?: boolean;
 }
 
 export function ComposeEmailModal({
@@ -66,6 +70,7 @@ export function ComposeEmailModal({
   venueId,
   ariaLabel = "Compose email",
   className,
+  isAdmin = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [inboxes, setInboxes] = useState<ConnectedAccountOption[] | null>(null);
@@ -77,6 +82,7 @@ export function ComposeEmailModal({
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState(defaultBody);
   const [error, setError] = useState<string | null>(null);
+  const [capBlocked, setCapBlocked] = useState(false);
   const [sent, setSent] = useState(false);
   const [isPending, startTx] = useTransition();
 
@@ -88,6 +94,7 @@ export function ComposeEmailModal({
     setSubject(defaultSubject);
     setBody(defaultBody);
     setError(null);
+    setCapBlocked(false);
     setSent(false);
     setSelectedLabelIds([]);
     if (inboxes !== null) return; // already loaded
@@ -137,8 +144,8 @@ export function ComposeEmailModal({
     // Don't reset inboxes — keep them cached for subsequent opens.
   }
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleSubmit(e: React.FormEvent | null, bypass = false) {
+    if (e) e.preventDefault();
     setError(null);
     const fd = new FormData();
     fd.set("fromAccountId", fromAccountId);
@@ -147,12 +154,15 @@ export function ComposeEmailModal({
     fd.set("body", body);
     if (venueId) fd.set("venueId", venueId);
     if (selectedLabelIds.length > 0) fd.set("labelIds", selectedLabelIds.join(","));
+    if (bypass) fd.set("bypassCap", "1");
     startTx(async () => {
       const result = await composeAndSend(null, fd);
       if (result.ok) {
         setSent(true);
+        setCapBlocked(false);
       } else {
         setError(result.error);
+        setCapBlocked(Boolean(result.capBlocked));
       }
     });
   }
@@ -342,6 +352,17 @@ export function ComposeEmailModal({
                     >
                       Cancel
                     </button>
+                    {capBlocked && isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleSubmit(null, true)}
+                        disabled={isPending || !fromAccountId}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800 text-sm hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+                      >
+                        {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Bypass cap
+                      </button>
+                    )}
                     <button
                       type="submit"
                       disabled={isPending || !fromAccountId}

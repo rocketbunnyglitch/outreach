@@ -160,6 +160,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           threadLabels={threadLabels}
           allTeamLabels={teamLabelsAll}
           campaignSuggestions={campaignSuggestions}
+          isAdmin={currentStaff.role === "admin"}
         />
       }
     />

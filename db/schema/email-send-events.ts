@@ -1,0 +1,39 @@
+/**
+ * Per-send audit + counter source for the daily cold-send cap.
+ * See migration 0049 for the table layout.
+ */
+
+import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { emailThreads } from "./outreach";
+import { staffOutreachEmails, users } from "./users";
+
+export const emailSendEvents = pgTable(
+  "email_send_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    connectedAccountId: uuid("connected_account_id")
+      .notNull()
+      .references(() => staffOutreachEmails.id, { onDelete: "cascade" }),
+    threadId: uuid("thread_id").references(() => emailThreads.id, { onDelete: "set null" }),
+    sentByUserId: uuid("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    recipientEmail: text("recipient_email").notNull(),
+    /** 'cold' counts against the cap; 'warm' does not. v1 stores
+     *  these two values; a later migration may expand to the full
+     *  spec set (follow_up / operational / internal). */
+    category: text("category").notNull(),
+    countedAgainstCap: boolean("counted_against_cap").notNull(),
+    /** True when an admin pushed the send through despite the cap. */
+    capBypassed: boolean("cap_bypassed").notNull().default(false),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    accountIdx: index("email_send_events_account_sent_at_idx").on(t.connectedAccountId, t.sentAt),
+    userIdx: index("email_send_events_user_sent_at_idx").on(t.sentByUserId, t.sentAt),
+    threadIdx: index("email_send_events_thread_idx").on(t.threadId),
+  }),
+);
+
+export type EmailSendEvent = typeof emailSendEvents.$inferSelect;
+export type NewEmailSendEvent = typeof emailSendEvents.$inferInsert;
+
+export type SendCategory = "cold" | "warm";

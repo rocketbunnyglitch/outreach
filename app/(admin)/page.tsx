@@ -2,6 +2,7 @@ import { requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
 import { loadPendingEscalationsForStaff } from "@/lib/escalations-data";
+import { loadInboxWidget } from "@/lib/inbox-widget-data";
 import { captureException } from "@/lib/logger";
 import { loadNextBestActions } from "@/lib/next-best-actions";
 import { loadTeamActivity } from "@/lib/team-activity";
@@ -12,6 +13,7 @@ import { redirect } from "next/navigation";
 import { CitiesCompletedKpi } from "./_components/dashboard/cities-completed-kpi";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
+import { InboxWidget } from "./_components/dashboard/inbox-widget";
 import { KpiCard } from "./_components/dashboard/kpi-strip";
 import { MeetingMode } from "./_components/dashboard/meeting-mode";
 import { NextBestActionsWidget } from "./_components/dashboard/next-best-actions-widget";
@@ -81,37 +83,42 @@ export default async function DashboardHome({
   // configured) Sentry forward. Engineers see WHICH widget failed in
   // pm2 logs; operators see the rest of the dashboard render with the
   // failed widget showing empty state.
-  const [trackerLoaded, todayDigest, nextBestActions, teamActivity, pendingEscalations] =
-    await Promise.all([
-      campaignId
-        ? loadTrackerData({ campaignId }).catch(async (err) => {
-            await captureException(err, { widget: "tracker", campaignId });
-            return { rows: [], staff: [] };
-          })
-        : Promise.resolve({ rows: [], staff: [] }),
-      loadTodayDigest(campaignId).catch(async (err) => {
-        await captureException(err, { widget: "today_digest", campaignId });
-        // Empty digest (matches the EMPTY_DIGEST shape in today-data.ts)
-        // — keeps the widget rendered with "nothing urgent" state rather
-        // than 500-ing the page.
-        return { urgentCrawls: [], staleFollowUps: [], recentWins: [] };
-      }),
-      loadNextBestActions(campaignId).catch(async (err) => {
-        await captureException(err, { widget: "next_best_actions", campaignId });
-        // Empty array — section hides itself when nothing to do.
-        return [];
-      }),
-      loadTeamActivity(4).catch(async (err) => {
-        await captureException(err, { widget: "team_activity" });
-        // Empty TeamActivitySummary — preserves shape so the widget
-        // renders its empty state rather than the page erroring.
-        return { entries: [], windowHours: 4, totalEvents: 0 };
-      }),
-      loadPendingEscalationsForStaff(staff.id).catch(async (err) => {
-        await captureException(err, { widget: "escalations", staffId: staff.id });
-        return [];
-      }),
-    ]);
+  const [
+    trackerLoaded,
+    todayDigest,
+    nextBestActions,
+    teamActivity,
+    pendingEscalations,
+    inboxWidget,
+  ] = await Promise.all([
+    campaignId
+      ? loadTrackerData({ campaignId }).catch(async (err) => {
+          await captureException(err, { widget: "tracker", campaignId });
+          return { rows: [], staff: [] };
+        })
+      : Promise.resolve({ rows: [], staff: [] }),
+    loadTodayDigest(campaignId).catch(async (err) => {
+      await captureException(err, { widget: "today_digest", campaignId });
+      return { urgentCrawls: [], staleFollowUps: [], recentWins: [] };
+    }),
+    loadNextBestActions(campaignId).catch(async (err) => {
+      await captureException(err, { widget: "next_best_actions", campaignId });
+      return [];
+    }),
+    loadTeamActivity(4).catch(async (err) => {
+      await captureException(err, { widget: "team_activity" });
+      return { entries: [], windowHours: 4, totalEvents: 0 };
+    }),
+    loadPendingEscalationsForStaff(staff.id).catch(async (err) => {
+      await captureException(err, { widget: "escalations", staffId: staff.id });
+      return [];
+    }),
+    loadInboxWidget({ userId: staff.id, teamId: staff.teamId }).catch(async (err) => {
+      await captureException(err, { widget: "inbox", staffId: staff.id });
+      // Empty data — widget hides itself when nothing to show.
+      return { threads: [], myInboxes: [], totalNeedsReply: 0 };
+    }),
+  ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
 
   const kpis = [
@@ -223,6 +230,14 @@ export default async function DashboardHome({
           staffFirstName={staff.displayName.split(" ")[0] ?? staff.displayName}
         />
       )}
+
+      {/* Inbox widget — needs-reply queue + per-inbox send-cap rail.
+          Renders only when the operator has threads OR connected
+          inboxes to surface (the component returns null for an
+          empty/empty pair, keeping the dashboard tidy). Sits high
+          on the page because email is the operational primary
+          surface in the outreach phase. */}
+      <InboxWidget data={inboxWidget} />
 
       <TodayWidget
         digest={todayDigest}
