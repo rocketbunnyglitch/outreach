@@ -19,8 +19,8 @@ import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
 import { and, asc, eq, ne } from "drizzle-orm";
-import { AlertCircle, CheckCircle2, Info, Mail, Unplug } from "lucide-react";
-import { disconnectInbox } from "./_actions";
+import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Unplug } from "lucide-react";
+import { disconnectInbox, resyncInbox } from "./_actions";
 
 export const metadata = { title: "Email Connection" };
 export const dynamic = "force-dynamic";
@@ -175,6 +175,24 @@ export default async function InboxesPage({ searchParams }: Props) {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {inbox.status === "connected" && (
+                    <form
+                      action={async (fd: FormData) => {
+                        "use server";
+                        await resyncInbox(null, fd);
+                      }}
+                    >
+                      <input type="hidden" name="id" value={inbox.id} />
+                      <button
+                        type="submit"
+                        title="Pull new Gmail messages now (bypasses the 5-min cron cadence)"
+                        className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Resync
+                      </button>
+                    </form>
+                  )}
                   {oauthReady && (
                     <a
                       href="/api/auth/google/start"

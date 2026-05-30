@@ -152,7 +152,7 @@ interface InboxPollResult {
   threadsCreated: number;
 }
 
-async function pollOneInbox(inbox: {
+export async function pollOneInbox(inbox: {
   id: string;
   refresh_token: string;
   last_history_id: string | null;
