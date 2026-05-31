@@ -29,8 +29,9 @@
  * Keyboard binding: 'r' fires Reply (same as the old shortcut).
  */
 
-import { ArrowRight, Forward, Reply, ReplyAll } from "lucide-react";
+import { Forward, Reply, ReplyAll } from "lucide-react";
 import { useEffect, useTransition } from "react";
+import { useComposer } from "../../_components/composer/composer-store";
 import { openReplyDraft } from "../_actions";
 
 interface Props {
@@ -39,20 +40,34 @@ interface Props {
 
 export function ThreadReplyButtons({ threadId }: Props) {
   const [pending, startTx] = useTransition();
+  const { composers, setMode } = useComposer();
 
   function open(mode: "reply" | "reply_all" | "forward") {
+    // Reuse: if a not-yet-sent draft already exists in the store for
+    // this thread, just flip its mode instead of creating another
+    // row. Prevents the "click Reply twice -> two drafts" trap.
+    // Reply-All / Forward go straight to docked even if there's an
+    // existing reply draft so the operator can distinguish the two
+    // intents.
+    const existing = Array.from(composers.values()).find((c) => c.replyToThreadId === threadId);
+    if (existing && mode === "reply") {
+      setMode(existing.id, "inline");
+      return;
+    }
     startTx(async () => {
       const res = await openReplyDraft({ threadId, mode });
       if (!res.ok) {
         alert(res.error);
         return;
       }
-      // Dispatch the existing CustomEvent the composer bridge
-      // listens for. hydrateDraftId triggers useDraftHydration to
-      // re-fetch + surface the new draft in the docked stack.
+      // Default Reply to INLINE — Gmail-parity: a single-recipient
+      // reply lives at the bottom of the thread. Reply All + Forward
+      // get the docked composer since their recipient lists are
+      // non-trivial and benefit from the wider chrome.
+      const initialMode: "inline" | "docked" = mode === "reply" ? "inline" : "docked";
       window.dispatchEvent(
         new CustomEvent("compose-email", {
-          detail: { hydrateDraftId: res.data.draftId },
+          detail: { hydrateDraftId: res.data.draftId, initialMode },
         }),
       );
     });
@@ -96,8 +111,7 @@ export function ThreadReplyButtons({ threadId }: Props) {
         label="Forward"
       />
       <span className="ml-auto inline-flex items-center gap-1 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
-        Opens in composer
-        <ArrowRight className="h-2.5 w-2.5" />
+        Reply opens inline · pop out for full window
       </span>
     </div>
   );

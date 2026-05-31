@@ -586,14 +586,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const widthClass =
     effectiveMode === "fullscreen"
       ? "fixed inset-x-2 inset-y-4 sm:inset-x-12 sm:inset-y-12 max-w-none"
-      : effectiveMode === "expanded"
-        ? "w-[720px] h-[640px] max-h-[80vh]"
-        : "w-[540px] h-[580px] max-h-[80vh]";
+      : effectiveMode === "inline"
+        ? // Inline reply: fills the thread-pane width; height is
+          // content-driven up to 60vh so a long quoted thread + edit
+          // surface stays scrollable inside the window without
+          // pushing the whole thread out of view.
+          "w-full max-h-[60vh]"
+        : effectiveMode === "expanded"
+          ? "w-[720px] h-[640px] max-h-[80vh]"
+          : "w-[540px] h-[580px] max-h-[80vh]";
 
   return (
     <div
       className={cn(
-        "pointer-events-auto flex flex-col overflow-hidden rounded-t-lg border border-zinc-200 border-b-0 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-950",
+        "pointer-events-auto flex flex-col overflow-hidden border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950",
+        // Docked / expanded / fullscreen sit on a fixed-position layer
+        // with a strong shadow and a flat bottom edge. Inline lives
+        // inside the thread surface so it rounds on all corners and
+        // drops the shadow — reads as "part of the thread."
+        effectiveMode === "inline" ? "rounded-lg shadow-sm" : "rounded-t-lg border-b-0 shadow-2xl",
         effectiveMode === "fullscreen" ? "z-[200] sm:rounded-lg sm:border" : "",
         widthClass,
       )}
@@ -607,41 +618,58 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           <DraftStatusBadge instance={instance} />
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setMode(instance.id, "minimized")}
-            title="Minimize (Esc)"
-            className="rounded p-1 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-          >
-            <Minus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setMode(
-                instance.id,
-                effectiveMode === "fullscreen"
-                  ? "docked"
-                  : effectiveMode === "expanded"
-                    ? "fullscreen"
-                    : "expanded",
-              )
-            }
-            title={
-              effectiveMode === "fullscreen"
-                ? "Restore"
-                : effectiveMode === "expanded"
-                  ? "Full screen"
-                  : "Expand"
-            }
-            className="rounded p-1 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-          >
-            {effectiveMode === "fullscreen" ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
+          {effectiveMode === "inline" ? (
+            // Inline-mode popout: move the same draft to the docked
+            // bottom-right composer without losing typed content,
+            // attachments, formatting, or quoted-thread state. Same
+            // composer-store instance, just a mode swap.
+            <button
+              type="button"
+              onClick={() => setMode(instance.id, "docked")}
+              title="Pop out to bottom-right composer"
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
               <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </button>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMode(instance.id, "minimized")}
+              title="Minimize (Esc)"
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {effectiveMode !== "inline" && (
+            <button
+              type="button"
+              onClick={() =>
+                setMode(
+                  instance.id,
+                  effectiveMode === "fullscreen"
+                    ? "docked"
+                    : effectiveMode === "expanded"
+                      ? "fullscreen"
+                      : "expanded",
+                )
+              }
+              title={
+                effectiveMode === "fullscreen"
+                  ? "Restore"
+                  : effectiveMode === "expanded"
+                    ? "Full screen"
+                    : "Expand"
+              }
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              {effectiveMode === "fullscreen" ? (
+                <Minimize2 className="h-3.5 w-3.5" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleClose}

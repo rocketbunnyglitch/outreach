@@ -69,9 +69,10 @@ export function ComposerHost() {
   if (composers.size === 0) return null;
 
   // Partition into visible (docked/expanded/fullscreen) and minimized.
-  // Insertion order is preserved by the underlying Map so the right
-  // edge of the docked stack stays anchored to the newest composer.
-  const all = Array.from(composers.values());
+  // Inline-mode composers are rendered inside the ThreadPane via
+  // InlineReplyHost — skip them here so the same draft doesn't appear
+  // twice on screen.
+  const all = Array.from(composers.values()).filter((c) => c.mode !== "inline");
   const fullscreen = all.find((c) => c.mode === "fullscreen") ?? null;
   const visibleDocked = all.filter((c) => c.mode === "docked" || c.mode === "expanded");
   const minimized = all.filter((c) => c.mode === "minimized");

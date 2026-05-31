@@ -9,6 +9,7 @@ import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
 import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
+import { InlineReplyHost } from "./InlineReplyHost";
 import { MessageCard } from "./MessageCard";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
@@ -176,6 +177,13 @@ export function ThreadPane({
           Send still routes through composeAndSendImpl with the
           existing cap + safety + duplicate checks. */}
       <ThreadReplyButtons threadId={thread.id} />
+
+      {/* Inline reply composer — renders when the operator clicked
+          Reply (or hit 'r') and the resulting draft is in mode
+          "inline". Sits directly below the reply buttons and above
+          the history panel so it reads as "the reply for this
+          thread." Empty render when no inline draft exists. */}
+      <InlineReplyHost threadId={thread.id} />
 
       {/* History — audit timeline. Collapsed by default; renders
           null when no audited events exist for the thread or

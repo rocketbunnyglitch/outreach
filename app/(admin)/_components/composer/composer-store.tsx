@@ -23,7 +23,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 
-export type ComposerMode = "docked" | "minimized" | "expanded" | "fullscreen";
+export type ComposerMode = "docked" | "minimized" | "expanded" | "fullscreen" | "inline";
 
 export type DraftStatus = "idle" | "saving" | "saved" | "save_failed";
 
@@ -295,6 +295,11 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       const ce = e as CustomEvent<{
         draftId?: string;
         hydrateDraftId?: string;
+        /** Initial mode for the new composer instance. Defaults to
+         *  "docked" (the bottom-right popout). Used by inline-reply
+         *  callers that want the draft to render at the bottom of
+         *  the thread instead. */
+        initialMode?: ComposerInstance["mode"];
         to?: string;
         subject?: string;
         body?: string;
@@ -306,20 +311,20 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         isAdmin?: boolean;
       }>;
       const d = ce.detail ?? {};
+      const initialMode: ComposerInstance["mode"] = d.initialMode ?? "docked";
       if (d.draftId) {
         // Resume an existing draft. If it's not in the store yet
         // (hydration slow or never ran), fall through to open()
         // which creates a fresh instance with empty fields — the
         // autosave will then sync against the existing row id once
         // the operator starts typing.
-        setMode(d.draftId, "docked");
+        setMode(d.draftId, initialMode);
         return;
       }
       if (d.hydrateDraftId) {
         // Server just created a draft (e.g. openReplyDraft); pull it
-        // from the server + add to the store, docked. listMyDrafts
-        // is cheap so we don't bother diffing — the hydrate reducer
-        // already merges idempotently.
+        // from the server + add to the store with the requested mode
+        // (inline for thread replies, docked otherwise).
         const id = d.hydrateDraftId;
         void import("../../_actions/email-drafts").then(async (mod) => {
           const rows = await mod.listMyDrafts();
@@ -328,7 +333,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
           hydrate([
             {
               id: row.id,
-              mode: "docked",
+              mode: initialMode,
               fromAccountId: row.connectedAccountId ?? "",
               to: row.toAddresses.join(", "),
               cc: row.ccAddresses.join(", "),
