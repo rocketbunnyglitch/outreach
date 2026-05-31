@@ -177,7 +177,10 @@ export function ThreadLabelsRow({
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      <Tag className="h-3 w-3 text-zinc-400" aria-hidden="true" />
+      <span className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+        <Tag className="h-3 w-3" aria-hidden="true" />
+        Engine
+      </span>
       {localApplied.length === 0 && <span className="text-xs text-zinc-500">No labels</span>}
       {localApplied.map((l) => (
         <span

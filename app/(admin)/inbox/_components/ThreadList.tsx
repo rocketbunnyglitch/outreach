@@ -238,10 +238,30 @@ function ThreadRow({
             </Chip>
           )}
 
+          {/* =====================================================
+              ENGINE STATUS PILLS
+              =====================================================
+              Operational state of the thread in the engine. Visually
+              distinct from Gmail labels (below): square corners
+              (rounded-sm, not rounded-md), neutral subtle bg, mono
+              uppercase. The shape difference is the at-a-glance
+              "this is an engine status, not a Gmail label" cue
+              called out in the spec.
+
+              Order: state pill -> SLA -> Stale -> classification
+              icon. Each is gated on its own predicate so the row
+              only carries the pills that apply. */}
+          {thread.state !== "needs_reply" || thread.slaBreached ? (
+            // Show "Needs Reply" only when SLA breached; otherwise it's
+            // the default state and rendering it on every row is noise.
+            // Other states (waiting, follow_up_due) always render.
+            <EngineStatusPill state={thread.state} />
+          ) : null}
+
           {/* SLA breach badge (recency-based, ad-hoc heuristic) */}
           {thread.slaBreached && (
-            <span className="inline-flex items-center gap-1 font-mono text-[10px] text-rose-500 uppercase tracking-widest">
-              <AlertTriangle className="h-3 w-3" />
+            <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[9px] text-rose-700 uppercase tracking-widest dark:bg-rose-950/40 dark:text-rose-300">
+              <AlertTriangle className="h-2.5 w-2.5" />
               SLA
             </span>
           )}
@@ -253,25 +273,22 @@ function ThreadRow({
               "really overdue" case). */}
           {thread.isStale && (
             <span
-              className="inline-flex items-center gap-1 font-mono text-[10px] text-amber-600 uppercase tracking-widest dark:text-amber-400"
+              className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] text-amber-800 uppercase tracking-widest dark:bg-amber-950/40 dark:text-amber-300"
               title={thread.staleReason ?? "Stale"}
             >
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="h-2.5 w-2.5" />
               Stale
             </span>
           )}
 
-          {/* Gmail labels — synced from each connected Gmail account.
-              Visual treatment is distinct from engine statuses (above)
-              and team labels (below):
-                - rounded-md (not pill) so they read as "tags"
-                - Gmail's own bg + text color via inline style; falls
-                  back to neutral zinc when Gmail didn't supply one
-                - cap at 3 visible; "+N" overflow chip when more so
-                  rows don't blow up on threads with many labels
-              Two-way sync is wired in the next commit (apply / remove
-              from the engine -> Gmail API). For now this is a
-              read-only display. */}
+          {/* =====================================================
+              GMAIL LABELS
+              =====================================================
+              Synced from each connected Gmail account. Rounded-md
+              (not square like engine pills above) with Gmail's
+              bg + text color via inline style — same shape Gmail
+              uses for label chips. Cap at 3 visible; "+N" overflow
+              chip when more so rows don't blow up. */}
           {thread.gmailLabels.slice(0, 3).map((g) => (
             <span
               key={g.gmailLabelId}
@@ -348,6 +365,59 @@ function Chip({
     >
       {icon}
       {children}
+    </span>
+  );
+}
+
+/**
+ * EngineStatusPill — operational state pill for an engine-tracked
+ * thread (needs_reply, waiting, follow_up_due, closed_won, etc).
+ *
+ * Visual treatment is intentionally distinct from Gmail labels:
+ *   - rounded-sm corners (vs Gmail's rounded-md)
+ *   - subtle tone-on-tone background (vs Gmail's bg+text colors)
+ *   - mono uppercase (vs Gmail's mixed case)
+ *
+ * This is the "engine statuses = operational pills" treatment the
+ * spec calls out — at a glance an operator should know "this is the
+ * engine's state of the thread" vs "this is a Gmail label."
+ *
+ * "needs_reply" is the default state so it normally hides; the
+ * caller decides when to surface it (SLA breached, etc).
+ */
+const ENGINE_STATE_LABEL: Record<string, string> = {
+  needs_reply: "Needs Reply",
+  waiting_on_them: "Waiting",
+  follow_up_due: "Follow-Up",
+  closed_won: "Won",
+  closed_lost: "Lost",
+  closed_dnc: "DNC",
+  archived: "Archived",
+};
+
+const ENGINE_STATE_TONE: Record<string, string> = {
+  needs_reply: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+  waiting_on_them: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+  follow_up_due: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  closed_won: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  closed_lost: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  closed_dnc: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  archived: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500",
+};
+
+function EngineStatusPill({ state }: { state: string }) {
+  const label = ENGINE_STATE_LABEL[state];
+  const tone = ENGINE_STATE_TONE[state] ?? "bg-zinc-100 text-zinc-600";
+  if (!label) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest",
+        tone,
+      )}
+      title={`Engine status: ${label}`}
+    >
+      {label}
     </span>
   );
 }
