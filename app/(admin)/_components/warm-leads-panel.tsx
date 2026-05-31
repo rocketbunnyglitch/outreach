@@ -6,7 +6,15 @@ import { WarmLeadPromoteButton } from "./warm-lead-promote-button";
 
 interface CrawlOption {
   eventId: string;
-  dayPart: "thursday_night" | "friday_night" | "saturday_night";
+  dayPart:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other"
+    | null;
   crawlNumber: number;
   middleVenueGroupId: string | null;
   filledSlots: Array<{

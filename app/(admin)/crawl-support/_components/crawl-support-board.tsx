@@ -21,6 +21,7 @@ import {
   type SupportIssue,
   isUnmatchedCall,
 } from "@/lib/crawl-support-types";
+import { formatDayPart } from "@/lib/tracker-status-types";
 import { AlertTriangle, Check, Phone, PhoneMissed, Plus, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,17 +30,13 @@ import { assignCrawlIssue, createCrawlIssue, resolveCrawlIssue, reverseSearch } 
 
 type StaffOpt = { id: string; name: string };
 
-const DAY_LABEL: Record<string, string> = {
-  thursday_night: "Thu Night",
-  friday_night: "Fri Night",
-  saturday_day: "Sat Day",
-  saturday_night: "Sat Night",
-  sunday_night: "Sun Night",
-};
+// Day-part labels centralized in lib/tracker-status-types. The previous
+// local DAY_LABEL was missing sunday_day and other; the fallback at
+// callsites prevented hard breakage but the labels rendered as
+// "sunday day" / "other" with the wrong casing.
 
 function dayLabel(dp: string | null): string {
-  if (!dp) return "Crawl";
-  return DAY_LABEL[dp] ?? dp.replace(/_/g, " ");
+  return formatDayPart(dp, "full");
 }
 
 export function CrawlSupportBoard({

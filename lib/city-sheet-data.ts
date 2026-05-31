@@ -356,8 +356,11 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
 
     return {
       eventId: ev.id,
-      dayPart:
-        (ev.dayPart as "thursday_night" | "friday_night" | "saturday_night") ?? "saturday_night",
+      // No cast / normalization needed — CrawlCard.dayPart now permits
+      // every enum value AND null. Display surfaces normalize via
+      // formatDayPart() from tracker-status-types so unset / unknown
+      // values render as "Crawl" instead of the empty string.
+      dayPart: ev.dayPart,
       crawlNumber: ev.crawlNumber ?? 1,
       routeLabel: ev.routeLabel ?? null,
       eventDate: String(ev.eventDate ?? ""),

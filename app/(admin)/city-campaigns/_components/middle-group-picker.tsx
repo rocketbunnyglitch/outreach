@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
+import { formatDayPart } from "@/lib/tracker-status-types";
 import { Loader2, Plus, Share2, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -21,7 +22,15 @@ interface ExistingGroup {
 interface Props {
   eventId: string;
   cityCampaignId: string;
-  dayPart: "thursday_night" | "friday_night" | "saturday_night";
+  dayPart:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other"
+    | null;
   currentGroupId: string | null;
   currentGroupName: string | null;
 }
@@ -104,7 +113,9 @@ export function MiddleGroupPicker({
     const fd = new FormData();
     fd.set("cityCampaignId", cityCampaignId);
     fd.set("name", newName.trim());
-    fd.set("dayPart", dayPart);
+    // FormData drops null/undefined as empty string; the server schema
+    // treats empty string as null (formData.get returns "" not null).
+    if (dayPart) fd.set("dayPart", dayPart);
     fd.set("attachEventId", eventId);
     startTx(async () => {
       const result = await createMiddleGroup(null, fd);
@@ -174,7 +185,7 @@ export function MiddleGroupPicker({
         )}
         {!loading && groups.length === 0 && (
           <p className="px-2 py-3 text-xs text-zinc-500 italic">
-            No middle groups yet for this {dayLabel(dayPart)}. Create the first below.
+            No middle groups yet for this {formatDayPart(dayPart)}. Create the first below.
           </p>
         )}
         {!loading && groups.length > 0 && (
@@ -215,7 +226,7 @@ export function MiddleGroupPicker({
                   handleCreate();
                 }
               }}
-              placeholder={`${dayLabel(dayPart)} middles`}
+              placeholder={`${formatDayPart(dayPart)} middles`}
               className="h-7 text-xs"
             />
             <Button
@@ -237,7 +248,7 @@ export function MiddleGroupPicker({
   );
 }
 
-function dayLabel(dp: string): string {
-  const day = dp.split("_")[0] ?? dp;
-  return day.charAt(0).toUpperCase() + day.slice(1);
-}
+// Day-part formatting centralized via formatDayPart() from
+// tracker-status-types — the local dayLabel() helper used to assume
+// day_part was always "X_Y" (e.g. "saturday_night") and split on "_" to
+// extract the day. That was fragile and didn't handle null cleanly.

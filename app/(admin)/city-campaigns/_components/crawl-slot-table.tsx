@@ -9,6 +9,7 @@ import {
 } from "@/lib/city-sheet-shared";
 import { cn } from "@/lib/cn";
 import type { NoteRow } from "@/lib/notes";
+import { formatDayPart } from "@/lib/tracker-status-types";
 import {
   Check,
   CheckCircle2,
@@ -43,17 +44,17 @@ interface Props {
   staff: Array<{ id: string; displayName: string }>;
 }
 
-const DAY_LABEL: Record<CrawlCard["dayPart"], string> = {
-  thursday_night: "Thursday",
-  friday_night: "Friday",
-  saturday_night: "Saturday",
-};
-
 /**
  * Editable crawl header — shows "Friday crawl 2 · Downtown loop" with
  * an inline editor (pencil) to rename / renumber, and a delete button.
  * Operators flagged (session 12) they want to manage crawls directly
  * from the city sheet rather than a separate setup screen.
+ *
+ * Uses formatDayPart() from tracker-status-types for the day prefix so
+ * every value from the day_part enum renders correctly — saturday_day,
+ * sunday_day, sunday_night, other, and null are all handled, where the
+ * previous local DAY_LABEL was hard-coded to only 3 values and rendered
+ * "undefined crawl 1" -> "crawl 1" for every other case.
  */
 function CrawlHeader({
   crawl,
@@ -98,7 +99,7 @@ function CrawlHeader({
   }
 
   function remove() {
-    const name = `${DAY_LABEL[crawl.dayPart]} crawl ${crawl.crawlNumber}`;
+    const name = `${formatDayPart(crawl.dayPart)} crawl ${crawl.crawlNumber}`;
     if (
       !confirm(
         `Delete "${name}"? This removes the crawl and all its venue slot assignments. This can't be undone.`,
@@ -126,7 +127,7 @@ function CrawlHeader({
       <div className="flex flex-1 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-            {DAY_LABEL[crawl.dayPart]} crawl
+            {formatDayPart(crawl.dayPart)} crawl
           </span>
           <input
             type="number"
@@ -180,7 +181,7 @@ function CrawlHeader({
     <div className="flex flex-col gap-1.5">
       <div className="group/crawlhdr flex items-baseline gap-3">
         <h3 className="font-semibold text-base tracking-tight">
-          {DAY_LABEL[crawl.dayPart]} crawl {crawl.crawlNumber}
+          {formatDayPart(crawl.dayPart)} crawl {crawl.crawlNumber}
           {crawl.routeLabel && (
             <span className="ml-2 font-normal text-zinc-500">· {crawl.routeLabel}</span>
           )}

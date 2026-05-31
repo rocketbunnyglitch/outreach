@@ -5,11 +5,21 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { assignSlotVenue } from "../city-campaigns/_slot-actions";
 
+import { formatDayPart } from "@/lib/tracker-status-types";
+
 type SlotRole = "wristband" | "middle" | "final" | "alt_final";
 
 interface CrawlOption {
   eventId: string;
-  dayPart: "thursday_night" | "friday_night" | "saturday_night";
+  dayPart:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other"
+    | null;
   crawlNumber: number;
   /** Set when the crawl is using a shared middle group — middle role
    * is disabled because the group is authoritative. */
@@ -25,11 +35,9 @@ interface Props {
   crawls: CrawlOption[];
 }
 
-const DAY_LABEL = {
-  thursday_night: "Thursday",
-  friday_night: "Friday",
-  saturday_night: "Saturday",
-};
+// DAY_LABEL was previously a hard-coded 3-value object that broke
+// silently for saturday_day / sunday_day / sunday_night / other / null.
+// Now centralized in formatDayPart() from tracker-status-types.
 
 const ROLE_OPTIONS: Array<{
   role: SlotRole;
@@ -176,7 +184,7 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
               {step === "crawl"
                 ? "Pick a crawl below; you'll then pick the slot role."
                 : selectedCrawl
-                  ? `Picking a slot in ${DAY_LABEL[selectedCrawl.dayPart]} crawl ${selectedCrawl.crawlNumber}.`
+                  ? `Picking a slot in ${formatDayPart(selectedCrawl.dayPart)} crawl ${selectedCrawl.crawlNumber}.`
                   : "Pick a slot role."}
             </p>
           </div>
@@ -216,7 +224,7 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
                   >
                     <div className="flex flex-col">
                       <span className="font-medium">
-                        {DAY_LABEL[c.dayPart]} crawl {c.crawlNumber}
+                        {formatDayPart(c.dayPart)} crawl {c.crawlNumber}
                       </span>
                       <span className="mt-0.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
                         {c.filledSlots.length} of 4 slots filled

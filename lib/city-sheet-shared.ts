@@ -68,7 +68,21 @@ export interface CrawlHostRef {
 
 export interface CrawlCard {
   eventId: string;
-  dayPart: "thursday_night" | "friday_night" | "saturday_night";
+  /** Day part for this crawl. NULL means the operator didn't set one
+   *  (legacy data, CSV imports, etc.). Surfaces render via
+   *  formatDayPart() from tracker-status-types so every enum value
+   *  AND null are handled gracefully. Previously typed as only 3
+   *  values; that lied to TypeScript and caused "{undefined} crawl 1"
+   *  → "crawl 1" rendering bugs for any of the other enum values. */
+  dayPart:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other"
+    | null;
   crawlNumber: number;
   /** Free-text crawl name, e.g. "Downtown loop". Null when unnamed. */
   routeLabel: string | null;

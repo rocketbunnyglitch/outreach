@@ -82,7 +82,21 @@ export async function assignMiddleGroup(
 const createSchema = z.object({
   cityCampaignId: uuid,
   name: z.string().min(1).max(80),
-  dayPart: z.enum(["thursday_night", "friday_night", "saturday_night"]).nullable(),
+  // Matches the day_part DB enum (all 7 values, nullable for groups
+  // that span multiple day-parts). Widened from the old 3-value
+  // restriction so saturday_day / sunday_day / sunday_night / other
+  // crawls can attach to a group.
+  dayPart: z
+    .enum([
+      "thursday_night",
+      "friday_night",
+      "saturday_day",
+      "saturday_night",
+      "sunday_day",
+      "sunday_night",
+      "other",
+    ])
+    .nullable(),
   /** Optional: immediately attach this event to the new group. */
   attachEventId: uuid.optional(),
 });
@@ -145,7 +159,18 @@ export async function createMiddleGroup(
  */
 export async function listMiddleGroupsForCityCampaign(opts: {
   cityCampaignId: string;
-  dayPart?: "thursday_night" | "friday_night" | "saturday_night";
+  /** Filter by day_part. Pass null for "no filter" (returns all
+   *  groups regardless of their day_part, useful when the calling
+   *  crawl itself has no day_part set). */
+  dayPart?:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other"
+    | null;
 }): Promise<Array<{ id: string; name: string; dayPart: string | null; memberCount: number }>> {
   await requireStaff();
   const rows = await db

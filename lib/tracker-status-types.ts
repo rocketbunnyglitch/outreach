@@ -149,3 +149,80 @@ export const SLOT_PILL_LABEL: Record<SlotKind, string> = {
   middle_pair: "M1+2",
   final: "F",
 };
+
+// =========================================================================
+// Day-part formatting — centralized so every surface renders the same
+// =========================================================================
+
+/** Every value from the day_part DB enum, in chronological-by-week order. */
+export type DayPart =
+  | "thursday_night"
+  | "friday_night"
+  | "saturday_day"
+  | "saturday_night"
+  | "sunday_day"
+  | "sunday_night"
+  | "other";
+
+/** Full title-case label, e.g. "Saturday Night". Used in crawl headers and
+ *  print sheets. The null fallback ("Crawl") matches the operator's mental
+ *  model: an unset day_part is "just a crawl on this date." */
+export const DAY_PART_LABEL_FULL: Record<DayPart, string> = {
+  thursday_night: "Thursday Night",
+  friday_night: "Friday Night",
+  saturday_day: "Saturday Day",
+  saturday_night: "Saturday Night",
+  sunday_day: "Sunday Day",
+  sunday_night: "Sunday Night",
+  other: "Other",
+};
+
+/** Short label, e.g. "Saturday". Used inline next to "crawl 1" in the
+ *  city-sheet crawl header. The day-part-of-week is what operators
+ *  actually say out loud — "Saturday Crawl 1." */
+export const DAY_PART_LABEL_DAY: Record<DayPart, string> = {
+  thursday_night: "Thursday",
+  friday_night: "Friday",
+  saturday_day: "Saturday",
+  saturday_night: "Saturday",
+  sunday_day: "Sunday",
+  sunday_night: "Sunday",
+  other: "Other",
+};
+
+/** 3-letter compact label for grid rows. saturday_day and saturday_night
+ *  both render as "Sat" deliberately — the grid groups by day_part value
+ *  not by weekday, so two distinct rows can both say "Sat" when both
+ *  saturday day-parts have crawls. */
+export const DAY_PART_LABEL_SHORT: Record<DayPart, string> = {
+  thursday_night: "Thu",
+  friday_night: "Fri",
+  saturday_day: "Sat",
+  saturday_night: "Sat",
+  sunday_day: "Sun",
+  sunday_night: "Sun",
+  other: "Oth",
+};
+
+/** Safe formatter — handles every enum value, null, and unknown strings.
+ *  Use this everywhere a day_part is displayed so a DB value the type
+ *  system doesn't know about (e.g. a future enum addition before the
+ *  client is rebuilt) renders as something legible rather than the empty
+ *  string + a confusing "crawl 1" with no prefix. */
+export function formatDayPart(
+  dp: string | null | undefined,
+  style: "full" | "day" | "short" = "day",
+): string {
+  if (!dp) return style === "short" ? "—" : "Crawl";
+  const label =
+    style === "full"
+      ? (DAY_PART_LABEL_FULL as Record<string, string>)[dp]
+      : style === "short"
+        ? (DAY_PART_LABEL_SHORT as Record<string, string>)[dp]
+        : (DAY_PART_LABEL_DAY as Record<string, string>)[dp];
+  if (label) return label;
+  // Unknown enum value — title-case-replace the underscore as a graceful
+  // fallback (e.g. "monday_night" → "Monday Night"). Never returns empty
+  // string so the calling component is guaranteed a non-blank label.
+  return dp.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
