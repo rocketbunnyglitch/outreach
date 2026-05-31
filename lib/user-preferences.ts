@@ -24,6 +24,12 @@ export type ReadingPanePosition = "right" | "bottom" | "none";
 export interface UserPrefs {
   inboxDensity: InboxDensity | null;
   inboxReadingPane: ReadingPanePosition | null;
+  /** Per-campaign account-visibility scope. Key is campaign id or
+   *  "_default" for the no-campaign / all-campaigns view. Value is
+   *  the list of connected_account ids the operator explicitly
+   *  selected. Empty arrays + missing keys both mean "default to
+   *  every account I can see." */
+  inboxAccountFilters: Record<string, string[]>;
 }
 
 export async function getUserPreferences(userId: string): Promise<UserPrefs | null> {
@@ -31,6 +37,7 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
     .select({
       inboxDensity: userPreferences.inboxDensity,
       inboxReadingPane: userPreferences.inboxReadingPane,
+      inboxAccountFilters: userPreferences.inboxAccountFilters,
     })
     .from(userPreferences)
     .where(eq(userPreferences.userId, userId))
@@ -39,6 +46,7 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
   return {
     inboxDensity: (row.inboxDensity as InboxDensity | null) ?? null,
     inboxReadingPane: (row.inboxReadingPane as ReadingPanePosition | null) ?? null,
+    inboxAccountFilters: (row.inboxAccountFilters as Record<string, string[]> | null) ?? {},
   };
 }
 
@@ -83,4 +91,81 @@ function isInboxDensity(v: unknown): v is InboxDensity | null {
 
 function isReadingPanePosition(v: unknown): v is ReadingPanePosition | null {
   return v === null || v === "right" || v === "bottom" || v === "none";
+}
+
+/**
+ * Persist the account-visibility selection for one campaign (or the
+ * "_default" / all-campaigns view). Single-key upsert preserves the
+ * other campaigns' filters — we don't overwrite the whole JSONB
+ * object since the operator may have set filters on multiple
+ * campaigns from different devices.
+ *
+ * Empty list means "clear the filter for this campaign" — the entry
+ * is deleted from the JSONB rather than stored as an empty array,
+ * so the next read defaults back to "every account."
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function setInboxAccountFilterForCampaign(
+  userId: string,
+  /** campaign id, or "_default" for the no-campaign view. */
+  campaignKey: string,
+  accountIds: string[],
+): Promise<void> {
+  // Defensive validation — the action is callable from the client.
+  // Drop garbage entries; if every id is invalid we treat as "clear".
+  const valid = accountIds.filter((id) => UUID_RE.test(id));
+  const key = campaignKey === "_default" || UUID_RE.test(campaignKey) ? campaignKey : null;
+  if (!key) return;
+
+  // Update the JSONB in place via jsonb_set when adding, or '#-' when
+  // clearing. Done with a single SQL fragment so we don't read-
+  // modify-write across two queries (race-safe).
+  if (valid.length === 0) {
+    await db
+      .insert(userPreferences)
+      .values({
+        userId,
+        inboxAccountFilters: {},
+      })
+      .onConflictDoUpdate({
+        target: userPreferences.userId,
+        set: {
+          inboxAccountFilters: sql`COALESCE(${userPreferences.inboxAccountFilters}, '{}'::jsonb) #- ${sql.raw(
+            `'{${escapeJsonbPathKey(key)}}'`,
+          )}`,
+          updatedAt: sql`NOW()`,
+        },
+      });
+    return;
+  }
+
+  await db
+    .insert(userPreferences)
+    .values({
+      userId,
+      inboxAccountFilters: { [key]: valid },
+    })
+    .onConflictDoUpdate({
+      target: userPreferences.userId,
+      set: {
+        inboxAccountFilters: sql`jsonb_set(
+          COALESCE(${userPreferences.inboxAccountFilters}, '{}'::jsonb),
+          ${sql.raw(`'{${escapeJsonbPathKey(key)}}'`)},
+          ${JSON.stringify(valid)}::jsonb,
+          true
+        )`,
+        updatedAt: sql`NOW()`,
+      },
+    });
+}
+
+/**
+ * jsonb path keys need single quotes escaped + braces / commas
+ * stripped to be safe inside the {key} array literal. Campaign keys
+ * are UUID or "_default" so this is defensive only; the alphabet
+ * is already safe.
+ */
+function escapeJsonbPathKey(key: string): string {
+  return key.replace(/[^a-zA-Z0-9_-]/g, "");
 }

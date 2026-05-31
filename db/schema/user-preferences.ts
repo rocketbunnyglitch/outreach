@@ -12,7 +12,7 @@
  * with the auth surface.
  */
 
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 export const userPreferences = pgTable("user_preferences", {
@@ -23,6 +23,14 @@ export const userPreferences = pgTable("user_preferences", {
   inboxDensity: text("inbox_density"),
   /** 'right' | 'bottom' | 'none' — reading-pane position. */
   inboxReadingPane: text("inbox_reading_pane"),
+  /** Per-campaign account-visibility scope from the AccountSwitcher.
+   *  Shape: { "<campaign_id>": ["<connected_account_id>", ...] }
+   *  Empty arrays + missing keys both mean "default to every account
+   *  the operator can see." See migration 0061. */
+  inboxAccountFilters: jsonb("inbox_account_filters")
+    .$type<Record<string, string[]>>()
+    .notNull()
+    .default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

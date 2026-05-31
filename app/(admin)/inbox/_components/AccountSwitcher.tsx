@@ -28,6 +28,7 @@ import type { AccountHealth, VisibleAccount } from "@/lib/visible-accounts";
 import { AlertTriangle, Check, RotateCw, ShieldOff } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { saveInboxAccountFilter } from "../../_actions/user-preferences";
 
 const STORAGE_KEY = "inbox.accountFilter";
 
@@ -40,9 +41,23 @@ interface Props {
    *  glyph. We don't take a full name because the avatar should
    *  always render even when displayName is null. */
   currentUserInitial: string;
+  /** Active campaign id, or null when viewing the no-campaign /
+   *  all-campaigns mode. Drives the per-campaign persistence key
+   *  ("_default" when null) so each campaign keeps its own
+   *  visibility scope across sessions. */
+  currentCampaignId: string | null;
+  /** Server-persisted selection for this campaign (or "_default").
+   *  When set, takes precedence over the localStorage fallback —
+   *  the URL still wins if it carries an explicit ?accounts. */
+  initialSelection: string[] | null;
 }
 
-export function AccountSwitcher({ accounts, currentUserInitial }: Props) {
+export function AccountSwitcher({
+  accounts,
+  currentUserInitial,
+  currentCampaignId,
+  initialSelection,
+}: Props) {
   const router = useRouter();
   const params = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -61,7 +76,15 @@ export function AccountSwitcher({ accounts, currentUserInitial }: Props) {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
     if (urlSelected) return urlSelected;
-    // localStorage fallback
+    // Server-persisted per-campaign selection wins over localStorage
+    // since it survives across devices. localStorage is the local
+    // no-flicker fallback for when the server hasn't seeded yet
+    // (first-time operator) or the lookup failed.
+    if (initialSelection && initialSelection.length > 0) {
+      return new Set(initialSelection);
+    }
+    // localStorage fallback — same-device continuity even before the
+    // server response.
     if (typeof window !== "undefined") {
       try {
         const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -94,7 +117,7 @@ export function AccountSwitcher({ accounts, currentUserInitial }: Props) {
 
   function applySelection(next: Set<string>) {
     setSelectedIds(next);
-    // Persist to localStorage immediately.
+    // Persist to localStorage immediately for no-flicker reload.
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(next)));
     } catch {
@@ -110,6 +133,22 @@ export function AccountSwitcher({ accounts, currentUserInitial }: Props) {
       url.searchParams.set("accounts", Array.from(next).join(","));
     }
     router.replace(`${url.pathname}${url.search}`);
+
+    // Persist server-side, keyed by the active campaign (or
+    // "_default" when no campaign is selected). Fire-and-forget;
+    // the local + URL state already updated optimistically. The
+    // server action validates against the operator's identity.
+    const campaignKey = currentCampaignId ?? "_default";
+    saveInboxAccountFilter({
+      campaignKey,
+      // Empty array = clear the entry (revert to "every account I
+      // can see" for this campaign on the next page render).
+      accountIds: next.size === accounts.length ? [] : Array.from(next),
+    }).catch(() => {
+      /* network blip — local state remains correct; next reload
+         falls back to whatever the server has, which might be
+         slightly stale */
+    });
   }
 
   function toggle(id: string) {

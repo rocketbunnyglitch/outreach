@@ -11,6 +11,7 @@ import {
   fetchTeamGmailLabels,
   isInboxFolder,
 } from "@/lib/inbox-data";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { Inbox as InboxIcon } from "lucide-react";
 import { AccountSwitcher } from "./_components/AccountSwitcher";
@@ -107,7 +108,7 @@ export default async function InboxPage({ searchParams }: Props) {
   // (default = every account the operator can see).
   const accountIds = parseAccountIds(params.accounts);
 
-  const [threads, counts, aliases, facets, gmailLabels, drafts, visibleAccounts] =
+  const [threads, counts, aliases, facets, gmailLabels, drafts, visibleAccounts, userPrefs] =
     await Promise.all([
       fetchInboxThreads({
         folder,
@@ -155,7 +156,15 @@ export default async function InboxPage({ searchParams }: Props) {
         // to" model will go here.
         canSeeAllTeamAccounts: currentStaff.role === "admin",
       }),
+      getUserPreferences(currentStaff.id),
     ]);
+
+  // AccountSwitcher seed selection: prefer the per-campaign
+  // server-side entry when present. The "_default" key is used when
+  // viewing the no-campaign / all-campaigns mode. Null = let the
+  // component fall back through URL > localStorage > all-selected.
+  const accountFilterCampaignKey = params.campaign ?? "_default";
+  const initialAccountSelection = userPrefs?.inboxAccountFilters[accountFilterCampaignKey] ?? null;
 
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
@@ -180,6 +189,8 @@ export default async function InboxPage({ searchParams }: Props) {
             currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
               .trim()
               .charAt(0)}
+            currentCampaignId={params.campaign ?? null}
+            initialSelection={initialAccountSelection}
           />
         }
         left={

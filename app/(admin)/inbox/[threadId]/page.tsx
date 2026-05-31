@@ -15,6 +15,7 @@ import {
   isInboxFolder,
 } from "@/lib/inbox-data";
 import { listTeamLabels, listThreadLabels } from "@/lib/team-labels";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { notFound } from "next/navigation";
 import { AccountSwitcher } from "../_components/AccountSwitcher";
@@ -75,7 +76,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // Account-switcher scope from the ?accounts=<id>,<id> URL param.
   const accountIds = parseAccountIds(search.accounts);
 
-  const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts] =
+  const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts, userPrefs] =
     await Promise.all([
       fetchThreadDetail(threadId),
       fetchInboxThreads({
@@ -114,9 +115,13 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         currentTeamId: currentStaff.teamId,
         canSeeAllTeamAccounts: currentStaff.role === "admin",
       }),
+      getUserPreferences(currentStaff.id),
     ]);
 
   if (!detail) notFound();
+
+  const accountFilterCampaignKey = search.campaign ?? "_default";
+  const initialAccountSelection = userPrefs?.inboxAccountFilters[accountFilterCampaignKey] ?? null;
 
   // When the thread isn't matched to a venue yet (poll worker
   // couldn't resolve the sender domain), there's no per-venue
@@ -168,6 +173,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
               .trim()
               .charAt(0)}
+            currentCampaignId={search.campaign ?? null}
+            initialSelection={initialAccountSelection}
           />
         }
         left={
