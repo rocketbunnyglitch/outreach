@@ -806,6 +806,18 @@ export interface InboxThreadDetail {
     } | null;
     aiSummaryAt: Date | null;
     aiSummaryMessageCount: number | null;
+    /** Cached AI-enriched next-action suggestion (Phase A.4).
+     *  Refreshed lazily when classification or message_count
+     *  changes. Layered on top of the rule-based
+     *  suggestNextAction — the AI just sharpens the human-facing
+     *  label + reason. */
+    aiNextAction: {
+      label: string;
+      reason: string;
+      urgency: "now" | "today" | "this_week" | "when_able";
+      generatedAt: string;
+      classification: string;
+    } | null;
     assignedStaffId: string | null;
     assignedStaffName: string | null;
     /** null when the thread hasn't been matched to a venue yet. */
@@ -874,6 +886,8 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       aiSummary: emailThreads.aiSummary,
       aiSummaryAt: emailThreads.aiSummaryAt,
       aiSummaryMessageCount: emailThreads.aiSummaryMessageCount,
+      // Phase A.4
+      aiNextAction: emailThreads.aiNextAction,
       assignedStaffId: emailThreads.assignedStaffId,
       assignedStaffName: staffMembers.displayName,
       venueId: emailThreads.venueId,

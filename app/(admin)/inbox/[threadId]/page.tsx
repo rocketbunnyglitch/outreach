@@ -1,4 +1,5 @@
 import { parseAccountIds } from "@/lib/account-filter";
+import { enrichNextActionAsync } from "@/lib/ai-next-action";
 import { summarizeThreadAsync } from "@/lib/ai-summarize";
 import { requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
@@ -165,6 +166,18 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     process.env.AI_INBOX_SUMMARIZE_ENABLED !== "0"
   ) {
     void summarizeThreadAsync({ threadId });
+  }
+
+  // Lazy AI next-action enrichment (Phase A.4). Fires when:
+  //   - thread is in an enrichable classification
+  //     (interested / warm / confirmed / question / callback_requested)
+  //   - the cached enrichment is stale (different message_count or
+  //     classification changed since the last generation)
+  // The cache + classification check live inside enrichNextAction,
+  // so we just kick it off here and trust the function to no-op
+  // when it's already current.
+  if (process.env.AI_INBOX_NEXT_ACTION_ENABLED !== "0") {
+    void enrichNextActionAsync({ threadId });
   }
 
   // Labels applied to THIS thread + the full team-label catalogue so

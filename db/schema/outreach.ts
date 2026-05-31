@@ -187,6 +187,26 @@ export const emailThreads = pgTable(
     aiSummaryMessageCount: integer("ai_summary_message_count"),
 
     /**
+     * AI-enriched next-action suggestion (Phase A.4). Augments the
+     * rule-based suggestNextAction with a thread-context-aware
+     * recommendation for ambiguous cases. Cached on the row; lazy-
+     * regenerated when classification or message_count changes.
+     *
+     * Shape: {
+     *   "label": "...",
+     *   "reason": "...",
+     *   "urgency": "now" | "today" | "this_week" | "when_able",
+     *   "generatedAt": "...",
+     *   "classification": "..."
+     * }
+     *
+     * Migration 0068.
+     */
+    aiNextAction: jsonb("ai_next_action").$type<Record<string, unknown> | null>(),
+    aiNextActionAt: timestamp("ai_next_action_at", { withTimezone: true }),
+    aiNextActionMessageCount: integer("ai_next_action_message_count"),
+
+    /**
      * Initial direction. 'mixed' once both inbound and outbound exist.
      */
     direction: threadDirection("direction").notNull().default("inbound"),

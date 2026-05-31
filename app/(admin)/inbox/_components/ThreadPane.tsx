@@ -158,6 +158,15 @@ export function ThreadPane({
           })}
           subject={thread.subject}
           assignedStaffId={thread.assignedStaffId}
+          aiEnrichment={
+            thread.aiNextAction
+              ? {
+                  label: thread.aiNextAction.label,
+                  reason: thread.aiNextAction.reason,
+                  urgency: thread.aiNextAction.urgency,
+                }
+              : null
+          }
         />
         {/* Team labels — apply / remove inline; also surfaces gmail
             labels that synced in via reconcileGmailLabelsForThread. */}
