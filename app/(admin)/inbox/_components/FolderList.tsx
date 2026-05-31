@@ -1,3 +1,4 @@
+import { ComposeEmailButton } from "@/app/(admin)/_components/composer/compose-email-button";
 import { cn } from "@/lib/cn";
 import {
   ENGINE_SMART_FOLDERS,
@@ -15,6 +16,7 @@ import {
   Inbox as InboxIcon,
   Mail,
   MailOpen,
+  Pencil,
   RotateCcw,
   Send,
   Settings,
@@ -86,9 +88,6 @@ export function FolderList({
           </p>
           <h2 className="mt-0.5 font-semibold text-lg tracking-tight">Inbox</h2>
         </div>
-        {/* Email connection settings — moved off the left nav (session-12
-            P2 declutter) to a gear here, where email config naturally
-            belongs. Links to the inbox/OAuth setup page. */}
         <Link
           href="/settings/inboxes"
           title="Email settings — connect & manage inboxes"
@@ -98,6 +97,20 @@ export function FolderList({
           <Settings className="h-4 w-4" />
         </Link>
       </header>
+
+      {/* Compose CTA — Gmail's prominent top-left button. Opens the
+          global composer (same surface every other Compose entry
+          point uses; cold outreach table, thread reply, etc all
+          route through the same store + host). */}
+      <div className="px-2">
+        <ComposeEmailButton
+          ariaLabel="New email"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 font-medium text-white text-sm shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md dark:bg-indigo-500 dark:hover:bg-indigo-400"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+          <span>Compose</span>
+        </ComposeEmailButton>
+      </div>
 
       <ul className="flex flex-col gap-0.5">
         {GMAIL_MAILBOX_FOLDERS.map((folder) => (
