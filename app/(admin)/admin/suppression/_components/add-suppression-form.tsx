@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { Loader2, Plus } from "lucide-react";
 import { useState, useTransition } from "react";
 import { addSuppression } from "../_actions";
@@ -17,10 +18,12 @@ export function AddSuppressionForm() {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTx] = useTransition();
+  const toast = useToast();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const submittedEmail = email;
     const fd = new FormData();
     fd.set("email", email);
     fd.set("reason", reason);
@@ -31,8 +34,10 @@ export function AddSuppressionForm() {
         setEmail("");
         setNotes("");
         setReason("manual");
+        toast.show({ kind: "success", message: `Suppressed ${submittedEmail}.` });
       } else {
         setError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't add suppression." });
       }
     });
   }

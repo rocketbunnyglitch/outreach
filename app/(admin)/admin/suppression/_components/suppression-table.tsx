@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { ExternalLink, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -65,6 +66,7 @@ export function SuppressionTable({ rows }: { rows: Row[] }) {
 
 function SuppressionRow({ row, onError }: { row: Row; onError: (msg: string | null) => void }) {
   const [isPending, startTx] = useTransition();
+  const toast = useToast();
 
   function remove() {
     if (
@@ -77,7 +79,12 @@ function SuppressionRow({ row, onError }: { row: Row; onError: (msg: string | nu
     fd.set("id", row.id);
     startTx(async () => {
       const result = await removeSuppression(null, fd);
-      if (!result.ok) onError(result.error);
+      if (!result.ok) {
+        onError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't remove suppression." });
+      } else {
+        toast.show({ kind: "success", message: `${row.email} can now receive emails again.` });
+      }
     });
   }
 

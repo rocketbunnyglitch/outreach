@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { Loader2, MoreVertical, ShieldOff, UserCog, UserMinus, UserPlus2 } from "lucide-react";
 import { useRef, useState, useTransition } from "react";
@@ -69,6 +70,7 @@ function UserRowEl({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTx] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+  const toast = useToast();
 
   function resetAction() {
     setError(null);
@@ -79,8 +81,13 @@ function UserRowEl({
       const result = await resetUserPassword(null, fd);
       if (result.ok) {
         setResetLink(result.data.inviteLinkPath);
+        toast.show({
+          kind: "success",
+          message: `Password reset link generated for ${user.displayName}.`,
+        });
       } else {
         setError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't reset password." });
       }
     });
   }
@@ -93,7 +100,18 @@ function UserRowEl({
       fd.set("userId", user.id);
       fd.set("status", next);
       const result = await setUserStatus(null, fd);
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't change status." });
+      } else {
+        toast.show({
+          kind: "success",
+          message:
+            next === "active"
+              ? `${user.displayName} activated.`
+              : `${user.displayName} deactivated.`,
+        });
+      }
     });
   }
 
@@ -251,6 +269,7 @@ function RoleDropdown({
 }) {
   const [role, setRole] = useState<UserRow["role"]>(user.role);
   const [isPending, startTx] = useTransition();
+  const toast = useToast();
 
   function onChange(next: UserRow["role"]) {
     if (next === role) return;
@@ -265,6 +284,12 @@ function RoleDropdown({
       if (!result.ok) {
         setRole(previous);
         onError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't change role." });
+      } else {
+        toast.show({
+          kind: "success",
+          message: `${user.displayName} is now ${next}.`,
+        });
       }
     });
   }

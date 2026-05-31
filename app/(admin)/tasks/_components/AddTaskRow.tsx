@@ -21,6 +21,7 @@
  *     single line so it doesn't bloat the footer height.
  */
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { Loader2, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -85,6 +86,7 @@ export function AddTaskRow({ staffList, currentUserId }: Props) {
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const toast = useToast();
 
   const sortedStaff = useMemo(
     () => orderStaffWithSelfFirst(staffList, currentUserId),
@@ -101,9 +103,10 @@ export function AddTaskRow({ staffList, currentUserId }: Props) {
       setError("Enter a task first.");
       return;
     }
+    const taskTitleForToast = title.trim();
     startTx(async () => {
       const fd = new FormData();
-      fd.set("title", title.trim());
+      fd.set("title", taskTitleForToast);
       if (assignedStaffId) fd.set("assignedStaffId", assignedStaffId);
       // dueDate from <input type=date> is yyyy-MM-dd. Convert to ISO at noon
       // local time so the task doesn't read as 'overdue' the moment the date
@@ -114,11 +117,19 @@ export function AddTaskRow({ staffList, currentUserId }: Props) {
       const result = await createTask(null, fd);
       if (!result.ok) {
         setError(result.error ?? "Couldn't create task.");
+        toast.show({ kind: "error", message: result.error ?? "Couldn't create task." });
         return;
       }
       setTitle("");
       setAssignedStaffId("");
       setDueDate("");
+      toast.show({
+        kind: "success",
+        message:
+          taskTitleForToast.length > 40
+            ? `Task created: ${taskTitleForToast.slice(0, 40)}…`
+            : `Task created: ${taskTitleForToast}`,
+      });
       router.refresh();
     });
   }

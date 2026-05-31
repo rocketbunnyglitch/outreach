@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -8,6 +9,7 @@ import { deleteTask } from "../_actions";
 /** Admin-only hard delete. Two-step confirm to avoid accidents. */
 export function DeleteTaskButton({ taskId }: { taskId: string }) {
   const router = useRouter();
+  const toast = useToast();
   const [pending, startTx] = useTransition();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,11 +19,13 @@ export function DeleteTaskButton({ taskId }: { taskId: string }) {
     startTx(async () => {
       const res = await deleteTask(taskId);
       if (res.ok) {
+        toast.show({ kind: "success", message: "Task deleted." });
         router.push("/tasks");
         router.refresh();
       } else {
         setError(res.error);
         setConfirming(false);
+        toast.show({ kind: "error", message: res.error ?? "Couldn't delete task." });
       }
     });
   }

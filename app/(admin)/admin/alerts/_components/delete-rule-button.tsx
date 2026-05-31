@@ -1,6 +1,8 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { Loader2, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { deleteAlertRule } from "../_actions";
 
@@ -10,6 +12,8 @@ interface Props {
 
 export function DeleteRuleButton({ ruleId }: Props) {
   const [pending, startTx] = useTransition();
+  const toast = useToast();
+  const router = useRouter();
 
   return (
     <button
@@ -19,7 +23,16 @@ export function DeleteRuleButton({ ruleId }: Props) {
         const fd = new FormData();
         fd.set("ruleId", ruleId);
         startTx(async () => {
-          await deleteAlertRule(null, fd);
+          const r = await deleteAlertRule(null, fd);
+          if (r && !r.ok) {
+            toast.show({
+              kind: "error",
+              message: r.error ?? "Couldn't delete alert rule.",
+            });
+            return;
+          }
+          toast.show({ kind: "success", message: "Alert rule deleted." });
+          router.refresh();
         });
       }}
       disabled={pending}

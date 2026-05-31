@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { Clock, Loader2, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { revokePendingInvite } from "../_actions";
@@ -44,6 +45,7 @@ export function PendingInvitesList({ invites }: { invites: PendingInvite[] }) {
 function PendingInviteRow({ invite }: { invite: PendingInvite }) {
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   function handleRevoke() {
     if (!confirm(`Revoke invite for ${invite.email}? The email can be re-invited after.`)) {
@@ -56,6 +58,9 @@ function PendingInviteRow({ invite }: { invite: PendingInvite }) {
       const res = await revokePendingInvite(null, fd);
       if (!res.ok) {
         setError(res.error);
+        toast.show({ kind: "error", message: res.error ?? "Couldn't revoke invite." });
+      } else {
+        toast.show({ kind: "success", message: `Revoked invite for ${invite.email}.` });
       }
       // Successful revoke triggers revalidatePath('/admin/users') so
       // the row vanishes via re-render. No local state change needed.

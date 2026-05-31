@@ -14,6 +14,7 @@
  * Phase B.2 of the email-system audit.
  */
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import type { SavedSearch } from "@/lib/inbox-saved-searches";
 import { Bookmark, Check, Loader2, Plus, Trash2 } from "lucide-react";
@@ -39,6 +40,7 @@ export function SavedSearchesDropdown({ saved, currentQuery, onApply }: Props) {
   const [pending, startTx] = useTransition();
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   // Outside-click + Escape close.
   useEffect(() => {
@@ -74,26 +76,38 @@ export function SavedSearchesDropdown({ saved, currentQuery, onApply }: Props) {
   function handleSave() {
     if (!canSave) return;
     setError(null);
+    const labelForToast = labelDraft.trim() || trimmed.slice(0, 60);
     startTx(async () => {
       const res = await createSavedSearchAction({
-        label: labelDraft.trim() || trimmed.slice(0, 60),
+        label: labelForToast,
         queryText: trimmed,
       });
       if (!res.ok) {
         setError(res.error ?? "Couldn't save.");
+        toast.show({ kind: "error", message: res.error ?? "Couldn't save search." });
         return;
       }
       setShowSaveForm(false);
       setLabelDraft("");
+      toast.show({ kind: "success", message: `Saved search "${labelForToast}".` });
       router.refresh();
     });
   }
 
   function handleDelete(id: string) {
     setError(null);
+    const target = saved.find((s) => s.id === id);
     startTx(async () => {
       const res = await deleteSavedSearchAction({ id });
-      if (!res.ok) setError(res.error ?? "Couldn't delete.");
+      if (!res.ok) {
+        setError(res.error ?? "Couldn't delete.");
+        toast.show({ kind: "error", message: res.error ?? "Couldn't delete search." });
+      } else {
+        toast.show({
+          kind: "success",
+          message: target ? `Deleted "${target.label}".` : "Deleted saved search.",
+        });
+      }
       router.refresh();
     });
   }

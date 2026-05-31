@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { Loader2, Plus, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -23,6 +24,7 @@ export function AddLabelButton() {
   const [color, setColor] = useState<string>("zinc");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTx] = useTransition();
+  const toast = useToast();
 
   function close() {
     setOpen(false);
@@ -40,9 +42,11 @@ export function AddLabelButton() {
     startTx(async () => {
       const result = await createTeamLabelAction(null, fd);
       if (result.ok) {
+        toast.show({ kind: "success", message: `Label "${name}" created.` });
         close();
       } else {
         setError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't create label." });
       }
     });
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { Check, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { deleteTeamLabelAction, renameTeamLabelAction } from "../_actions";
@@ -47,6 +48,7 @@ function Row({ label }: { label: TeamLabelRow }) {
   const [name, setName] = useState(label.name);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTx] = useTransition();
+  const toast = useToast();
 
   function saveRename() {
     if (!name.trim() || name === label.name) {
@@ -61,9 +63,11 @@ function Row({ label }: { label: TeamLabelRow }) {
     startTx(async () => {
       const result = await renameTeamLabelAction(null, fd);
       if (result.ok) {
+        toast.show({ kind: "success", message: `Renamed to "${name.trim()}".` });
         setEditing(false);
       } else {
         setError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't rename label." });
       }
     });
   }
@@ -74,7 +78,12 @@ function Row({ label }: { label: TeamLabelRow }) {
     fd.set("id", label.id);
     startTx(async () => {
       const result = await deleteTeamLabelAction(null, fd);
-      if (!result.ok) setError(result.error);
+      if (result.ok) {
+        toast.show({ kind: "success", message: `Label "${label.name}" deleted.` });
+      } else {
+        setError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't delete label." });
+      }
     });
   }
 
