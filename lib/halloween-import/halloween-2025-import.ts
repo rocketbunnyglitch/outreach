@@ -272,7 +272,22 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
   // ---------------- Ensure campaign row exists ----------------
   // In dry-run we still resolve / would-create the campaign so
   // the report has a stable campaignId for downstream callers.
-  const campaignId = await ensureCampaign({ dryRun });
+  // Wrap in try/catch so a campaign-level failure (missing
+  // outreach_brands/crawl_brands, DB issue, etc.) becomes a
+  // warning instead of killing the entire run. On apply, the
+  // city loop will then see campaignId=null and skip the writes
+  // that require it — which is the right behavior because we
+  // can't create city_campaigns without a campaign.
+  let campaignId: string | null = null;
+  try {
+    campaignId = await ensureCampaign({ dryRun });
+  } catch (campErr) {
+    const msg = (campErr as Error)?.message ?? String(campErr);
+    logger.error({ err: campErr }, "halloween import: ensureCampaign failed");
+    report.warnings.push(
+      `Campaign create/lookup failed: ${msg}. Most likely cause: no outreach_brands or crawl_brands rows in the database. Create one of each in the admin UI, then re-run.`,
+    );
+  }
   report.campaignId = campaignId;
 
   // ---------------- Per-city loop ----------------

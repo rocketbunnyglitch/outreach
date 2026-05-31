@@ -50,7 +50,8 @@ export async function runHalloween2025DryRun(input?: {
     return { ok: true, data: report };
   } catch (err) {
     op.log(err, { input });
-    return { ok: false, error: "Dry-run failed.", code: op.code };
+    const detail = (err as Error)?.message ?? String(err);
+    return { ok: false, error: `Dry-run failed: ${detail}`, code: op.code };
   }
 }
 
@@ -77,7 +78,16 @@ export async function runHalloween2025Apply(input?: {
     return { ok: true, data: report };
   } catch (err) {
     op.log(err, { input });
-    return { ok: false, error: "Import apply failed.", code: op.code };
+    // Include the actual underlying error message in the response
+    // so the operator can diagnose without PM2 grep. The op.code
+    // still ties it back to the structured log line if they want
+    // the stack.
+    const detail = (err as Error)?.message ?? String(err);
+    return {
+      ok: false,
+      error: `Import apply failed: ${detail}`,
+      code: op.code,
+    };
   }
 }
 
