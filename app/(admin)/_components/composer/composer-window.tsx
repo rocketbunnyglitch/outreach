@@ -238,6 +238,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         mode: instance.composeMode,
         replyToThreadId: instance.replyToThreadId,
         replyToMessageId: instance.replyToMessageId,
+        pendingLabelIds: instance.pendingLabelIds,
       });
       if (result.ok) {
         setStatus(instance.id, "saved", result.data.updatedAt);
@@ -353,6 +354,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         mode: opts.testOnly ? "new" : instance.composeMode,
         replyToThreadId: opts.testOnly ? null : instance.replyToThreadId,
         replyToMessageId: opts.testOnly ? null : instance.replyToMessageId,
+        pendingLabelIds: opts.testOnly ? [] : instance.pendingLabelIds,
       });
       if (!saveRes.ok) {
         setSendError(saveRes.error);
@@ -452,6 +454,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       mode: instance.composeMode,
       replyToThreadId: instance.replyToThreadId,
       replyToMessageId: instance.replyToMessageId,
+      pendingLabelIds: instance.pendingLabelIds,
     }).then((res) => {
       if (res.ok) setStatus(instance.id, "saved", res.data.updatedAt);
     });
@@ -992,6 +995,8 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             {moreMenuOpen && (
               <MoreMenu
                 replyToThreadId={instance.replyToThreadId}
+                pendingLabelIds={instance.pendingLabelIds}
+                onPendingLabelsChange={(next) => setField(instance.id, { pendingLabelIds: next })}
                 onClose={() => setMoreMenuOpen(false)}
                 onCheckSpelling={() => {
                   // Hand off to the browser's native spell check by
@@ -1159,10 +1164,21 @@ function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose
 /** Three-dot more menu — labels + spell check toggle. */
 function MoreMenu({
   replyToThreadId,
+  pendingLabelIds,
+  onPendingLabelsChange,
   onClose,
   onCheckSpelling,
 }: {
   replyToThreadId: string | null;
+  /** Labels queued during compose (for new compose) or initial set
+   *  (for reply compose). For replies, we still use the thread's
+   *  applied labels as the source of truth and ignore this; it's
+   *  only meaningful pre-send. */
+  pendingLabelIds: string[];
+  /** Setter for the composer-store's pendingLabelIds field. Called
+   *  on every toggle so autosave can flush it to draft.pending_label_ids
+   *  before the operator sends. */
+  onPendingLabelsChange: (next: string[]) => void;
   onClose: () => void;
   onCheckSpelling: () => void;
 }) {
@@ -1173,7 +1189,13 @@ function MoreMenu({
     name: string;
     color: string | null;
   }> | null>(null);
-  const [appliedLabelIds, setAppliedLabelIds] = useState<Set<string>>(new Set());
+  // For REPLY compose, this mirrors the thread's applied labels —
+  // toggleLabel calls applyLabel/removeLabel actions immediately.
+  // For NEW compose, this mirrors pendingLabelIds — toggleLabel just
+  // updates the composer-store; actual apply happens on send.
+  const [appliedLabelIds, setAppliedLabelIds] = useState<Set<string>>(
+    () => new Set(pendingLabelIds),
+  );
   const [labelsLoading, setLabelsLoading] = useState(false);
 
   useEffect(() => {
@@ -1184,25 +1206,32 @@ function MoreMenu({
     return () => document.removeEventListener("pointerdown", onDown);
   }, [onClose]);
 
-  // Lazy-load the team's labels + the thread's current set when the
-  // operator opens the submenu. Avoids hitting the server on every
-  // composer open.
+  // Lazy-load the team's labels + (for replies) the thread's
+  // currently-applied set. Both modes need the team-labels list
+  // for the picker; only replies need the thread-applied set.
   useEffect(() => {
-    if (!labelsOpen || !replyToThreadId) return;
+    if (!labelsOpen) return;
     if (teamLabels !== null) return;
     setLabelsLoading(true);
     (async () => {
       try {
         const mod = await import("../../inbox/_actions");
-        const [allLabels, threadLabels] = await Promise.all([
-          mod.listTeamLabelsAction(),
-          mod.listThreadLabelsAction(replyToThreadId),
-        ]);
-        if (allLabels.ok) {
-          setTeamLabels(allLabels.data);
-        }
-        if (threadLabels.ok) {
-          setAppliedLabelIds(new Set(threadLabels.data.map((l) => l.id)));
+        if (replyToThreadId) {
+          // REPLY compose: load both. appliedLabelIds reflects the
+          // thread state and toggles apply immediately.
+          const [allLabels, threadLabels] = await Promise.all([
+            mod.listTeamLabelsAction(),
+            mod.listThreadLabelsAction(replyToThreadId),
+          ]);
+          if (allLabels.ok) setTeamLabels(allLabels.data);
+          if (threadLabels.ok) {
+            setAppliedLabelIds(new Set(threadLabels.data.map((l) => l.id)));
+          }
+        } else {
+          // NEW compose: just the team-labels list. appliedLabelIds
+          // is seeded from pendingLabelIds via useState initializer.
+          const allLabels = await mod.listTeamLabelsAction();
+          if (allLabels.ok) setTeamLabels(allLabels.data);
         }
       } finally {
         setLabelsLoading(false);
@@ -1211,15 +1240,22 @@ function MoreMenu({
   }, [labelsOpen, replyToThreadId, teamLabels]);
 
   async function toggleLabel(labelId: string) {
-    if (!replyToThreadId) return;
     const currentlyApplied = appliedLabelIds.has(labelId);
     // Optimistic flip so the operator sees the change instantly.
-    setAppliedLabelIds((prev) => {
-      const next = new Set(prev);
-      if (currentlyApplied) next.delete(labelId);
-      else next.add(labelId);
-      return next;
-    });
+    const nextSet = new Set(appliedLabelIds);
+    if (currentlyApplied) nextSet.delete(labelId);
+    else nextSet.add(labelId);
+    setAppliedLabelIds(nextSet);
+
+    if (!replyToThreadId) {
+      // NEW compose: queue locally. The composer-store's autosave
+      // loop will flush this to draft.pending_label_ids; on send
+      // the labels apply to the resulting thread.
+      onPendingLabelsChange(Array.from(nextSet));
+      return;
+    }
+
+    // REPLY compose: existing immediate-apply path.
     const mod = await import("../../inbox/_actions");
     const fd = new FormData();
     fd.set("threadId", replyToThreadId);
@@ -1251,30 +1287,30 @@ function MoreMenu({
       >
         Toggle spell check
       </button>
-      {replyToThreadId ? (
-        <button
-          type="button"
-          onClick={() => setLabelsOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
-        >
-          <span>Labels…</span>
-          <span className="text-zinc-400">{labelsOpen ? "▲" : "▼"}</span>
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            alert(
-              "Labels apply to existing threads. Send this message first, then add labels from the inbox thread view.",
-            );
-            onClose();
-          }}
-          className="block w-full px-3 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-        >
-          Labels (reply only)
-        </button>
-      )}
-      {labelsOpen && replyToThreadId && (
+      <button
+        type="button"
+        onClick={() => setLabelsOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
+      >
+        <span>
+          Labels
+          {!replyToThreadId && appliedLabelIds.size > 0 && (
+            <span className="ml-1 rounded-sm bg-indigo-100 px-1 font-mono text-[9px] text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+              {appliedLabelIds.size}
+            </span>
+          )}
+          {!replyToThreadId && (
+            <span
+              className="ml-1 font-mono text-[9px] text-zinc-400"
+              title="Labels queued during compose — applied to the new thread after send"
+            >
+              (after send)
+            </span>
+          )}
+        </span>
+        <span className="text-zinc-400">{labelsOpen ? "▲" : "▼"}</span>
+      </button>
+      {labelsOpen && (
         <div className="max-h-56 overflow-y-auto border-zinc-200/70 border-t dark:border-zinc-800">
           {labelsLoading && <p className="px-3 py-1.5 text-[10px] text-zinc-400">Loading…</p>}
           {teamLabels && teamLabels.length === 0 && (

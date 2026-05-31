@@ -53,6 +53,12 @@ export const emailDrafts = pgTable(
      *  against. NULL falls back to the latest message. Used for the
      *  message-level "Reply to this" action. */
     replyToMessageId: uuid("reply_to_message_id"),
+    /** team_labels.id[] queued during compose to be applied to the
+     *  resulting thread after send. Only used for NEW (non-reply)
+     *  compose where there's no thread yet to apply to immediately.
+     *  Replies apply labels directly to their existing thread via
+     *  applyLabelToThreadAction at toggle time. See migration 0064. */
+    pendingLabelIds: uuid("pending_label_ids").array().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

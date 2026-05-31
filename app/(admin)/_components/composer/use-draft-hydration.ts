@@ -62,6 +62,7 @@ export function useDraftHydration() {
           composeMode: (r.mode as ComposerInstance["composeMode"]) ?? "new",
           replyToThreadId: r.replyToThreadId ?? null,
           replyToMessageId: r.replyToMessageId ?? null,
+          pendingLabelIds: r.pendingLabelIds ?? [],
         }));
         hydrate(instances);
       })

@@ -78,6 +78,13 @@ export interface ComposerInstance {
   /** Specific message within the reply thread to anchor against.
    *  null falls back to the latest message at send time. */
   replyToMessageId: string | null;
+  /** team_labels.id[] queued during compose. For replies, also
+   *  applied immediately to the existing thread via
+   *  applyLabelToThreadAction so the operator sees the chip on the
+   *  thread row right away. For new compose, only stored here +
+   *  persisted to draft.pending_label_ids; applied after Gmail send
+   *  creates the new thread row. */
+  pendingLabelIds: string[];
 }
 
 export interface OpenComposerInput {
@@ -219,6 +226,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       composeMode: input.composeMode ?? "new",
       replyToThreadId: input.replyToThreadId ?? null,
       replyToMessageId: input.replyToMessageId ?? null,
+      pendingLabelIds: [],
     };
     dispatch({ type: "open", payload: { id, instance } });
     return id;
@@ -347,6 +355,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               composeMode: (row.mode as ComposerInstance["composeMode"]) ?? "new",
               replyToThreadId: row.replyToThreadId,
               replyToMessageId: row.replyToMessageId,
+              pendingLabelIds: row.pendingLabelIds ?? [],
             },
           ]);
         });

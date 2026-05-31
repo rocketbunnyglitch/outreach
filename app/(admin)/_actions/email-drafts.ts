@@ -56,6 +56,11 @@ export interface UpsertDraftInput {
   replyToThreadId?: string | null;
   /** Specific message anchor within the thread. */
   replyToMessageId?: string | null;
+  /** team_labels.id[] queued during compose. For replies (existing
+   *  thread), labels apply immediately via applyLabelToThreadAction.
+   *  For NEW compose, they're stored here and applied after send
+   *  when the new thread row is created. */
+  pendingLabelIds?: string[];
 }
 
 export interface UpsertDraftResult {
@@ -112,6 +117,7 @@ export async function upsertDraft(
           mode: input.mode ?? null,
           replyToThreadId: input.replyToThreadId ?? null,
           replyToMessageId: input.replyToMessageId ?? null,
+          pendingLabelIds: input.pendingLabelIds ?? [],
           createdAt: now,
           updatedAt: now,
         })
@@ -145,6 +151,7 @@ export async function upsertDraft(
   if (input.mode !== undefined) patch.mode = input.mode;
   if (input.replyToThreadId !== undefined) patch.replyToThreadId = input.replyToThreadId;
   if (input.replyToMessageId !== undefined) patch.replyToMessageId = input.replyToMessageId;
+  if (input.pendingLabelIds !== undefined) patch.pendingLabelIds = input.pendingLabelIds;
 
   try {
     await db
@@ -183,6 +190,7 @@ export async function listMyDrafts(): Promise<
     mode: string | null;
     replyToThreadId: string | null;
     replyToMessageId: string | null;
+    pendingLabelIds: string[];
   }>
 > {
   const { staff } = await requireStaff();
@@ -209,6 +217,7 @@ export async function listMyDrafts(): Promise<
     mode: r.mode ?? null,
     replyToThreadId: r.replyToThreadId ?? null,
     replyToMessageId: r.replyToMessageId ?? null,
+    pendingLabelIds: r.pendingLabelIds ?? [],
   }));
 }
 
@@ -394,6 +403,14 @@ async function sendDraftAsUser(input: {
     (draft.attachments as EmailDraftAttachment[] | null)?.filter((a) => a.storage_key) ?? [];
   if (attachmentsToSend.length > 0) {
     fd.set("attachments", JSON.stringify(attachmentsToSend));
+  }
+  // Pending labels — applied to the resulting thread after Gmail
+  // send completes (handled inside compose-send-impl). Only set when
+  // the operator queued labels during a NEW compose; replies apply
+  // labels at toggle time and don't carry them on the draft row.
+  const pendingLabelIds = (draft.pendingLabelIds ?? []) as string[];
+  if (pendingLabelIds.length > 0) {
+    fd.set("labelIds", pendingLabelIds.join(","));
   }
   // Admin-bypass marker — composeAndSend re-checks the operator's
   // role server-side; we just surface the form-field convention here.
