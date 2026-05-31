@@ -394,7 +394,39 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   );
   const allVisibleSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
 
-  function toggleSelect(id: string) {
+  // Anchor for shift-click range select. When the operator clicks a
+  // checkbox with shift held, every row between this anchor and the
+  // clicked row (inclusive, in visible order) joins the selection.
+  // Tracks the LAST clicked checkbox — same behavior as Gmail / Sheets.
+  const lastClickedRef = useRef<string | null>(null);
+
+  function toggleSelect(id: string, shift?: boolean) {
+    if (shift && lastClickedRef.current && lastClickedRef.current !== id) {
+      // Range select. Find both ids in the current visible order and
+      // ADD every row between them to the selection (we don't unselect
+      // on shift-click — that matches Sheets' "extend selection" model
+      // and avoids losing context when the operator is bulk-picking).
+      const anchor = lastClickedRef.current;
+      const anchorIdx = visibleIds.indexOf(anchor);
+      const endIdx = visibleIds.indexOf(id);
+      if (anchorIdx >= 0 && endIdx >= 0) {
+        const [lo, hi] = anchorIdx <= endIdx ? [anchorIdx, endIdx] : [endIdx, anchorIdx];
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (let i = lo; i <= hi; i++) {
+            const rid = visibleIds[i];
+            if (rid) next.add(rid);
+          }
+          return next;
+        });
+        // Don't move the anchor on shift-click — successive shift-clicks
+        // extend from the same origin (matches Sheets).
+        return;
+      }
+    }
+    // Plain toggle. Update anchor so the NEXT shift-click bases off
+    // this row.
+    lastClickedRef.current = id;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -612,7 +644,9 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
               staff={staff}
               gridRow={i}
               selected={selected.has(row.cityCampaignId)}
-              onToggleSelect={() => toggleSelect(row.cityCampaignId)}
+              onToggleSelect={(e) =>
+                toggleSelect(row.cityCampaignId, !!e && (e.shiftKey || e.metaKey))
+              }
             />
           ))
         )}
@@ -739,7 +773,9 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                   staff={staff}
                   stripeIndex={i}
                   selected={selected.has(row.cityCampaignId)}
-                  onToggleSelect={() => toggleSelect(row.cityCampaignId)}
+                  onToggleSelect={(e) =>
+                    toggleSelect(row.cityCampaignId, !!e && (e.shiftKey || e.metaKey))
+                  }
                 />
               ))
             )}
@@ -874,7 +910,10 @@ function CityCard({
   staff: StaffOption[];
   gridRow: number;
   selected: boolean;
-  onToggleSelect: () => void;
+  /** Receives the mouse event so the parent can detect shift / meta
+   *  modifier for range-select. Optional to make the parent's call
+   *  site terser when the event isn't needed. */
+  onToggleSelect: (e?: React.MouseEvent) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
@@ -922,7 +961,10 @@ function CityCard({
           <input
             type="checkbox"
             checked={selected}
-            onChange={onToggleSelect}
+            onClick={(e) => onToggleSelect(e)}
+            onChange={() => {
+              /* handled by onClick above so we can read shiftKey/metaKey */
+            }}
             className="h-5 w-5 cursor-pointer rounded border-zinc-300 accent-zinc-700 dark:border-zinc-600"
           />
         </label>
@@ -1002,7 +1044,10 @@ function CityRow({
   staff: StaffOption[];
   stripeIndex: number;
   selected: boolean;
-  onToggleSelect: () => void;
+  /** Receives the mouse event so the parent can detect shift / meta
+   *  modifier for range-select. Optional to make the parent's call
+   *  site terser when the event isn't needed. */
+  onToggleSelect: (e?: React.MouseEvent) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
@@ -1094,7 +1139,10 @@ function CityRow({
             <input
               type="checkbox"
               checked={selected}
-              onChange={onToggleSelect}
+              onClick={(e) => onToggleSelect(e)}
+              onChange={() => {
+                /* handled by onClick above so we can read shiftKey/metaKey */
+              }}
               aria-label={`Select ${row.cityName}`}
               className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 align-middle accent-zinc-700 dark:border-zinc-600"
             />
