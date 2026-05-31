@@ -40,6 +40,6 @@ CREATE INDEX IF NOT EXISTS email_send_events_team_idx
 -- update below).
 UPDATE email_send_events ese
 SET team_id = soe.team_id
-FROM staff_outreach_emails soe
+FROM connected_accounts soe
 WHERE ese.connected_account_id = soe.id
   AND ese.team_id IS NULL;
