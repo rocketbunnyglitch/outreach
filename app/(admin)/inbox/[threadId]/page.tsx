@@ -31,6 +31,7 @@ import { notFound } from "next/navigation";
 import { AccountSwitcher } from "../_components/AccountSwitcher";
 import { FolderList } from "../_components/FolderList";
 import { InboxFilterBar } from "../_components/InboxFilterBar";
+import { InboxLiveRefresh } from "../_components/InboxLiveRefresh";
 import { InboxPresenceBar } from "../_components/InboxPresenceBar";
 import { InboxScopeBar } from "../_components/InboxScopeBar";
 import { InboxShell } from "../_components/InboxShell";
@@ -281,11 +282,19 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         }
         middle={
           <div className="flex h-full flex-col">
-            <InboxScopeBar
-              currentUserId={currentStaff.id}
-              isAdmin={currentStaff.role === "admin"}
-              mentionCount={mentionCount}
-            />
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <InboxScopeBar
+                  currentUserId={currentStaff.id}
+                  isAdmin={currentStaff.role === "admin"}
+                  mentionCount={mentionCount}
+                />
+              </div>
+              {/* Live-refresh indicator + subscriber (Phase E). */}
+              <div className="shrink-0 px-3">
+                <InboxLiveRefresh currentStaffId={currentStaff.id} />
+              </div>
+            </div>
             <InboxFilterBar
               aliases={aliases}
               currentStaffId={currentStaff.id}
