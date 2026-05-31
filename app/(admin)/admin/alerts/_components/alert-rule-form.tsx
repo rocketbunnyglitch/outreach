@@ -1,7 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { upsertAlertRule } from "../_actions";
 
@@ -15,14 +17,25 @@ export function AlertRuleForm({ connectedAccountId, ruleLabels, ruleUnits }: Pro
   const [pending, startTx] = useTransition();
   const firstKind = Object.keys(ruleLabels)[0] ?? "";
   const [selectedKind, setSelectedKind] = useState(firstKind);
+  const toast = useToast();
+  const router = useRouter();
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const fd = new FormData(e.currentTarget);
+        const form = e.currentTarget;
+        const fd = new FormData(form);
+        const kindLabel = ruleLabels[String(fd.get("ruleKind") ?? "")] ?? "Alert rule";
         startTx(async () => {
-          await upsertAlertRule(null, fd);
+          const r = await upsertAlertRule(null, fd);
+          if (r && !r.ok) {
+            toast.show({ kind: "error", message: r.error ?? "Couldn't save alert rule." });
+            return;
+          }
+          toast.show({ kind: "success", message: `${kindLabel} saved.` });
+          form.reset();
+          router.refresh();
         });
       }}
       className="mt-3 flex flex-col gap-2 text-xs"

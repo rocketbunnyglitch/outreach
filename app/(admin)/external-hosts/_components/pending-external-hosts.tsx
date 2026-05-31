@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -20,11 +21,14 @@ export function PendingExternalHostsSection({
   const [pending, startTx] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   if (crawls.length === 0) return null;
 
   function assign(crawlHostId: string, externalHostId: string) {
     if (!externalHostId) return;
+    const host = hosts.find((h) => h.id === externalHostId);
+    const crawl = crawls.find((c) => c.crawlHostId === crawlHostId);
     setBusyId(crawlHostId);
     setError(null);
     startTx(async () => {
@@ -32,8 +36,14 @@ export function PendingExternalHostsSection({
       setBusyId(null);
       if (!res.ok) {
         setError(res.error ?? "Couldn't assign.");
+        toast.show({ kind: "error", message: res.error ?? "Couldn't assign host." });
         return;
       }
+      toast.show({
+        kind: "success",
+        message:
+          host && crawl ? `Assigned ${host.fullName} to ${crawl.cityName}.` : "Host assigned.",
+      });
       router.refresh();
     });
   }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -44,10 +45,12 @@ export function HostShipmentControl({
   const [tracking, setTracking] = useState(trackingNumber ?? "");
   const [count, setCount] = useState(wristbandCount != null ? String(wristbandCount) : "");
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   function save() {
     setError(null);
     const qty = count.trim();
+    const nextStatus = s;
     startTx(async () => {
       const res = await setExternalHostShipment({
         externalHostId,
@@ -58,9 +61,14 @@ export function HostShipmentControl({
       });
       if (!res.ok) {
         setError(res.error);
+        toast.show({ kind: "error", message: res.error ?? "Couldn't save shipment." });
         return;
       }
       setOpen(false);
+      toast.show({
+        kind: "success",
+        message: `Shipment marked ${LABEL[nextStatus].toLowerCase()}.`,
+      });
       router.refresh();
     });
   }

@@ -14,6 +14,7 @@
  * validation other than the obvious empty check.
  */
 
+import { useToast } from "@/components/ui/toast";
 import { Loader2, Pencil, Save, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { setInboxSignature } from "../../../_actions/compose-and-send";
@@ -29,22 +30,29 @@ export function SignatureEditor({ connectedAccountId, initialSignatureHtml }: Pr
   const [open, setOpen] = useState(false);
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const dirty = signature !== saved;
 
   function save() {
     setError(null);
+    const willClear = signature.trim() === "";
     startTx(async () => {
       const res = await setInboxSignature({
         connectedAccountId,
-        signatureHtml: signature.trim() === "" ? null : signature,
+        signatureHtml: willClear ? null : signature,
       });
       if (!res.ok) {
         setError(res.error);
+        toast.show({ kind: "error", message: res.error ?? "Couldn't save signature." });
         return;
       }
       setSaved(res.signatureHtml ?? "");
       setOpen(false);
+      toast.show({
+        kind: "success",
+        message: willClear ? "Signature cleared." : "Signature saved.",
+      });
     });
   }
 

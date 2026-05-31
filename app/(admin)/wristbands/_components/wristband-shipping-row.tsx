@@ -1,5 +1,6 @@
 "use client";
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { AlertTriangle, Check, Loader2, Package, Pencil, X } from "lucide-react";
 import Link from "next/link";
@@ -62,6 +63,7 @@ export function WristbandShippingRow({
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTx] = useTransition();
+  const toast = useToast();
   const noSetup = !row.wristbandId;
 
   const [form, setForm] = useState({
@@ -89,14 +91,23 @@ export function WristbandShippingRow({
         });
         if (!result.ok) {
           setError(result.error ?? "Couldn't save.");
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't save wristband shipping.",
+          });
           return;
         }
         setEditing(false);
         setError(null);
+        toast.show({
+          kind: "success",
+          message: `Wristband for ${row.venueName} saved (${form.status.replace(/_/g, " ")}).`,
+        });
         router.refresh();
       } catch (err) {
         console.error("[wristbands] save failed", err);
         setError("Couldn't save — try again.");
+        toast.show({ kind: "error", message: "Couldn't save — try again." });
       }
     });
   }

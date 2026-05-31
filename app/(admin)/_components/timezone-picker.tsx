@@ -13,6 +13,7 @@
  * "in your time" displays update without a refresh.
  */
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { Check, Globe, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -38,6 +39,7 @@ export function TimezonePicker({ currentTimezone }: Props) {
   const [pending, startTx] = useTransition();
   const [feedback, setFeedback] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const toast = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -55,14 +57,17 @@ export function TimezonePicker({ currentTimezone }: Props) {
       setOpen(false);
       return;
     }
+    const label = COMMON_TIMEZONES.find((t) => t.id === tz)?.label ?? tz;
     startTx(async () => {
       const result = await setStaffTimezone(tz);
       if (!result.ok) {
         setFeedback(result.error ?? "Couldn't save.");
+        toast.show({ kind: "error", message: result.error ?? "Couldn't change timezone." });
         return;
       }
       setOpen(false);
       setFeedback(null);
+      toast.show({ kind: "success", message: `Timezone set to ${label}.` });
     });
   }
 

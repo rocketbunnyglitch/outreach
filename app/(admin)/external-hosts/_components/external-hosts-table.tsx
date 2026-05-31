@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -48,6 +49,7 @@ export function ExternalHostsTable({ hosts }: { hosts: ExternalHostRow[] }) {
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTx] = useTransition();
+  const toast = useToast();
 
   function startEdit(h: ExternalHostRow) {
     setError(null);
@@ -71,6 +73,8 @@ export function ExternalHostsTable({ hosts }: { hosts: ExternalHostRow[] }) {
       setError("Full name is required.");
       return;
     }
+    const wasEdit = !!draft.id;
+    const nameForToast = draft.fullName.trim();
     startTx(async () => {
       try {
         const result = await upsertExternalHost({
@@ -87,13 +91,19 @@ export function ExternalHostsTable({ hosts }: { hosts: ExternalHostRow[] }) {
         });
         if (!result.ok) {
           setError(result.error ?? "Couldn't save.");
+          toast.show({ kind: "error", message: result.error ?? "Couldn't save host." });
           return;
         }
         setDraft(null);
+        toast.show({
+          kind: "success",
+          message: wasEdit ? `Updated ${nameForToast}.` : `Added ${nameForToast}.`,
+        });
         router.refresh();
       } catch (err) {
         console.error("[external-hosts] save failed", err);
         setError("Couldn't save — try again.");
+        toast.show({ kind: "error", message: "Couldn't save — try again." });
       }
     });
   }
@@ -105,12 +115,15 @@ export function ExternalHostsTable({ hosts }: { hosts: ExternalHostRow[] }) {
         const result = await archiveExternalHost({ id: h.id });
         if (!result.ok) {
           setError(result.error ?? "Couldn't remove.");
+          toast.show({ kind: "error", message: result.error ?? "Couldn't remove host." });
           return;
         }
+        toast.show({ kind: "success", message: `${h.fullName} removed from external hosts.` });
         router.refresh();
       } catch (err) {
         console.error("[external-hosts] remove failed", err);
         setError("Couldn't remove — try again.");
+        toast.show({ kind: "error", message: "Couldn't remove — try again." });
       }
     });
   }
