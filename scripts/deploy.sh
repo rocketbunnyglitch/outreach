@@ -245,6 +245,15 @@ reload_instance() {
   fi
 }
 
+# Keep the failover instance's env file in sync with .env — identical
+# secrets, only PORT differs (3001 -> 3003). Regenerated every deploy so
+# it can never drift or go missing. instance "outreach-2" loads this via
+# --env-file in ecosystem.config.cjs.
+if [ -f "$APP_DIR/.env" ]; then
+  sed 's/^PORT=3001$/PORT=3003/' "$APP_DIR/.env" > "$APP_DIR/.env.3003"
+  chmod 600 "$APP_DIR/.env.3003"
+fi
+
 log "reloading web instances (staggered, zero-downtime)..."
 reload_instance "$PM2_NAME" 3001
 reload_instance "outreach-2" 3003

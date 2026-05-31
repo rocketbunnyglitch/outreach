@@ -39,7 +39,6 @@ module.exports = {
       // crash-loops the outreach process.
       env: {
         NODE_ENV: "production",
-        PORT: "3001",
       },
       node_args: ["--env-file=/var/www/outreach/.env"],
 
@@ -83,9 +82,8 @@ module.exports = {
       exec_mode: "fork",
       env: {
         NODE_ENV: "production",
-        PORT: "3003",
       },
-      node_args: ["--env-file=/var/www/outreach/.env"],
+      node_args: ["--env-file=/var/www/outreach/.env.3003"],
       max_memory_restart: "2G",
       max_restarts: 50,
       min_uptime: "10s",
