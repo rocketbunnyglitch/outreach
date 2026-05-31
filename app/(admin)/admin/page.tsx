@@ -17,8 +17,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getUnclassifiedCount } from "./_actions-classifier";
+import { getUntaggedVenueCount } from "./_actions-venue-tag";
 import { ClassifierBackfillPanel } from "./_components/classifier-backfill-panel";
 import { CsvImportWidget } from "./_components/csv-import-widget";
+import { VenueTagBackfillPanel } from "./_components/venue-tag-backfill-panel";
 
 export const metadata = { title: "Admin" };
 export const dynamic = "force-dynamic";
@@ -43,40 +45,45 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireAdmin();
 
-  const [campaignRows, cityCount, ccCount, staffCount, unclassifiedCount] = await Promise.all([
-    db
-      .select({
-        id: campaigns.id,
-        name: campaigns.name,
-        slug: campaigns.slug,
-        status: campaigns.status,
-        startDate: campaigns.startDate,
-        archivedAt: campaigns.archivedAt,
-        cityCount: sql<number>`(
+  const [campaignRows, cityCount, ccCount, staffCount, unclassifiedCount, untaggedVenueCount] =
+    await Promise.all([
+      db
+        .select({
+          id: campaigns.id,
+          name: campaigns.name,
+          slug: campaigns.slug,
+          status: campaigns.status,
+          startDate: campaigns.startDate,
+          archivedAt: campaigns.archivedAt,
+          cityCount: sql<number>`(
           SELECT count(*)::int FROM city_campaigns
           WHERE city_campaigns.campaign_id = ${campaigns.id}
         )`,
-      })
-      .from(campaigns)
-      .orderBy(asc(campaigns.archivedAt), asc(campaigns.name)),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(cities)
-      .where(isNull(cities.archivedAt))
-      .then((r) => Number(r[0]?.count ?? 0)),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(cityCampaigns)
-      .then((r) => Number(r[0]?.count ?? 0)),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(staffMembers)
-      .where(eq(staffMembers.status, "active"))
-      .then((r) => Number(r[0]?.count ?? 0)),
-    // Snapshot for the classifier backfill panel — refreshed via
-    // router.refresh() after each batch click.
-    getUnclassifiedCount(),
-  ]);
+        })
+        .from(campaigns)
+        .orderBy(asc(campaigns.archivedAt), asc(campaigns.name)),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cities)
+        .where(isNull(cities.archivedAt))
+        .then((r) => Number(r[0]?.count ?? 0)),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cityCampaigns)
+        .then((r) => Number(r[0]?.count ?? 0)),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(staffMembers)
+        .where(eq(staffMembers.status, "active"))
+        .then((r) => Number(r[0]?.count ?? 0)),
+      // Snapshot for the classifier backfill panel — refreshed via
+      // router.refresh() after each batch click.
+      getUnclassifiedCount(),
+      // Snapshot for the AI venue-tag backfill panel (Haiku ROI #8).
+      // Counts venues with empty venueType arrays so the operator
+      // knows the size of the backlog before clicking.
+      getUntaggedVenueCount(),
+    ]);
 
   const activeCampaigns = campaignRows.filter((c) => !c.archivedAt);
   const archivedCampaigns = campaignRows.filter((c) => c.archivedAt);
@@ -243,6 +250,26 @@ export default async function AdminPage() {
           </div>
         </header>
         <ClassifierBackfillPanel initialUnclassified={unclassifiedCount} />
+      </section>
+
+      {/* AI venue-type backfill (Haiku ROI #8). Sweeps venues with
+          empty venueType arrays + asks Haiku for tags from a fixed
+          vocabulary. Operator manual edits are never overwritten.
+          Cheap — ~$0.0001/venue, ~$0.30 for 3000-venue full run. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-start gap-3 px-6 pt-4 pb-2">
+          <Sparkles className="mt-0.5 h-5 w-5 text-violet-500" />
+          <div>
+            <h2 className="font-semibold text-lg tracking-tight">AI venue-type tagging</h2>
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              Many venues have empty venue_type arrays because the column was added later. This
+              one-time backfill reads name + address + city and picks tags from a fixed vocabulary
+              (bar, lounge, cocktail_bar, dive_bar, etc). Skips any venue that's already tagged —
+              manual edits are never overwritten.
+            </p>
+          </div>
+        </header>
+        <VenueTagBackfillPanel initialUntaggedCount={untaggedVenueCount} />
       </section>
     </div>
   );

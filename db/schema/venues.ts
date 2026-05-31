@@ -16,6 +16,7 @@ import {
   integer,
   pgTable,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -50,6 +51,16 @@ export const venues = pgTable(
     // Venue facts
     capacity: integer("capacity"),
     venueType: text("venue_type").array().notNull().default([]), // ["bar", "club", "restaurant", "lounge"]
+    /**
+     * AI venue-type tagging timestamp (Haiku ROI #8). When the
+     * backfill writes a venueType to a previously-empty row, it
+     * stamps this column. NULL = never AI-tagged (either a
+     * brand-new row or a manually-tagged row). Used by the
+     * backfill query to skip recently-processed rows.
+     *
+     * Migration 0078.
+     */
+    aiVenueTypeAt: timestamp("ai_venue_type_at", { withTimezone: true }),
     servesAlcohol: boolean("serves_alcohol").notNull().default(true),
 
     /**
