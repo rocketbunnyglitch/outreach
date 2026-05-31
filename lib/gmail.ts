@@ -374,22 +374,101 @@ export async function listGmailLabels(encryptedRefreshToken: string): Promise<Gm
 /** Create a label on a Gmail account. Returns the new label id.
  *  Idempotent-ish: if a label with the same name already exists Gmail
  *  returns 409; we catch it and re-fetch the existing id. */
+/**
+ * Gmail's fixed label-color palette. Any color outside this set is
+ * rejected by the API with HTTP 400. Source:
+ * https://developers.google.com/gmail/api/reference/rest/v1/users.labels#color
+ *
+ * Pairs are (backgroundColor, textColor) — Gmail requires both
+ * together; sending one without the other fails.
+ *
+ * Sticking to the ~25 most-commonly-used Gmail palette colors here.
+ * The label color picker in the engine will offer the same set so
+ * operators can't ask for something Gmail will reject.
+ */
+export const GMAIL_LABEL_COLOR_PAIRS: ReadonlyArray<{
+  background: string;
+  text: string;
+}> = [
+  // Greens
+  { background: "#16a766", text: "#ffffff" },
+  { background: "#43d692", text: "#ffffff" },
+  { background: "#b3efd3", text: "#094228" },
+  // Blues
+  { background: "#3c78d8", text: "#ffffff" },
+  { background: "#4a86e8", text: "#ffffff" },
+  { background: "#a4c2f4", text: "#0b2954" },
+  // Purples
+  { background: "#8e63ce", text: "#ffffff" },
+  { background: "#b694e8", text: "#ffffff" },
+  { background: "#d0bcf1", text: "#3d188e" },
+  // Reds
+  { background: "#cc3a21", text: "#ffffff" },
+  { background: "#e66550", text: "#ffffff" },
+  { background: "#f6c5be", text: "#7a2e0b" },
+  // Oranges / Yellows
+  { background: "#ffad47", text: "#ffffff" },
+  { background: "#ffd6a2", text: "#7a4706" },
+  { background: "#fbe983", text: "#684e07" },
+  // Neutrals
+  { background: "#666666", text: "#ffffff" },
+  { background: "#999999", text: "#ffffff" },
+  { background: "#cccccc", text: "#1c1c1c" },
+];
+
+export function isValidGmailLabelColor(opts: {
+  backgroundColor?: string | null;
+  textColor?: string | null;
+}): boolean {
+  if (!opts.backgroundColor && !opts.textColor) return true; // no color = ok
+  if (!opts.backgroundColor || !opts.textColor) return false; // half-set is not
+  return GMAIL_LABEL_COLOR_PAIRS.some(
+    (p) =>
+      p.background.toLowerCase() === opts.backgroundColor?.toLowerCase() &&
+      p.text.toLowerCase() === opts.textColor?.toLowerCase(),
+  );
+}
+
 export async function createGmailLabel(opts: {
   encryptedRefreshToken: string;
   name: string;
+  /** Optional Gmail-supported color pair. Both must be present
+   *  together; either both null or both set. Validated against
+   *  GMAIL_LABEL_COLOR_PAIRS — non-matching pairs throw before
+   *  the Gmail call. */
+  backgroundColor?: string | null;
+  textColor?: string | null;
 }): Promise<{ id: string; existed: boolean }> {
+  // Validate before the network call. Surface a clear error so the
+  // UI's color picker can highlight the invalid choice.
+  if (
+    !isValidGmailLabelColor({ backgroundColor: opts.backgroundColor, textColor: opts.textColor })
+  ) {
+    throw new Error(
+      "Gmail rejected color. Pick from the supported palette (background + text together).",
+    );
+  }
+
   const accessToken = await refreshAccessToken(opts.encryptedRefreshToken);
+  const body: Record<string, unknown> = {
+    name: opts.name,
+    labelListVisibility: "labelShow",
+    messageListVisibility: "show",
+  };
+  if (opts.backgroundColor && opts.textColor) {
+    body.color = {
+      backgroundColor: opts.backgroundColor,
+      textColor: opts.textColor,
+    };
+  }
+
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      name: opts.name,
-      labelListVisibility: "labelShow",
-      messageListVisibility: "show",
-    }),
+    body: JSON.stringify(body),
   });
   if (res.ok) {
     const data = (await res.json()) as { id: string };

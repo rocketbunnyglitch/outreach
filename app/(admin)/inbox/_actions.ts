@@ -29,6 +29,7 @@ import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { modifyGmailThreadLabels, sendGmailMessage } from "@/lib/gmail";
 import {
   applyGmailLabelToThread,
+  createGmailLabelForAccount,
   listGmailLabelsForThread,
   removeGmailLabelFromThread,
 } from "@/lib/gmail-thread-labels";
@@ -1420,6 +1421,65 @@ export async function listGmailLabelsForThreadAction(threadId: string): Promise<
   if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
   const labels = await listGmailLabelsForThread(threadId);
   return { ok: true, data: labels };
+}
+
+/**
+ * Create a new Gmail label on the connected account that receives
+ * this thread, then apply it. Two-phase: createGmailLabelForAccount
+ * does the Gmail API + cache write; applyGmailLabelToThread mirrors
+ * the new label onto the thread.
+ *
+ * Color validation: the lib helper rejects non-palette pairs before
+ * the network call, so the error message comes back clean for the
+ * picker to surface inline.
+ */
+export async function createAndApplyGmailLabelAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ threadId: string; gmailLabelId: string; name: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const backgroundColor = (formData.get("backgroundColor") as string | null) || null;
+  const textColor = (formData.get("textColor") as string | null) || null;
+
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (!name) return { ok: false, error: "Label name is required." };
+
+  // Resolve the thread's connected account + verify team scope.
+  const [row] = await db
+    .select({
+      teamId: staffOutreachEmails.teamId,
+      connectedAccountId: emailThreads.staffOutreachEmailId,
+    })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!row || row.teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not on your team." };
+  }
+  if (!row.connectedAccountId) {
+    return { ok: false, error: "Thread has no connected account." };
+  }
+
+  try {
+    const { gmailLabelId } = await createGmailLabelForAccount({
+      connectedAccountId: row.connectedAccountId,
+      name,
+      backgroundColor,
+      textColor,
+    });
+    // Auto-apply the new label to the current thread.
+    await applyGmailLabelToThread({ threadId, gmailLabelId });
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    return { ok: true, data: { threadId, gmailLabelId, name } };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Gmail rejected the change.";
+    logger.warn({ err, threadId, name }, "createAndApplyGmailLabelAction failed");
+    return { ok: false, error: msg };
+  }
 }
 
 /**

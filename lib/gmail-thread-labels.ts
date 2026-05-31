@@ -257,3 +257,78 @@ export async function loadAppliedGmailLabelsForThread(threadId: string): Promise
     textColor: r.text_color,
   }));
 }
+
+/**
+ * Create a new Gmail label on a specific connected account, then
+ * cache the row in our gmail_labels table so the UI can pick it up
+ * without waiting for the next poll.
+ *
+ * Color is optional. When provided, must be a valid Gmail palette
+ * pair (validated in createGmailLabel before the network call).
+ */
+export async function createGmailLabelForAccount(opts: {
+  connectedAccountId: string;
+  name: string;
+  backgroundColor?: string | null;
+  textColor?: string | null;
+}): Promise<{ id: string; gmailLabelId: string }> {
+  const trimmed = opts.name.trim();
+  if (!trimmed) throw new Error("Label name is required.");
+
+  const [acct] = await db
+    .select({ refreshToken: connectedAccounts.gmailOauthRefreshToken })
+    .from(connectedAccounts)
+    .where(eq(connectedAccounts.id, opts.connectedAccountId))
+    .limit(1);
+  if (!acct?.refreshToken) {
+    throw new Error("Connected account has no Gmail credentials.");
+  }
+
+  // Gmail call first — validates color + name + creates if new.
+  const { createGmailLabel } = await import("@/lib/gmail");
+  const result = await createGmailLabel({
+    encryptedRefreshToken: acct.refreshToken,
+    name: trimmed,
+    backgroundColor: opts.backgroundColor ?? null,
+    textColor: opts.textColor ?? null,
+  });
+
+  // Cache row in gmail_labels. ON CONFLICT updates name + colors
+  // so existing rows pick up the new attributes if Gmail returned
+  // an existing label id.
+  const [cached] = await db
+    .insert(gmailLabels)
+    .values({
+      connectedAccountId: opts.connectedAccountId,
+      gmailLabelId: result.id,
+      name: trimmed,
+      type: "user",
+      backgroundColor: opts.backgroundColor ?? null,
+      textColor: opts.textColor ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [gmailLabels.connectedAccountId, gmailLabels.gmailLabelId],
+      set: {
+        name: trimmed,
+        backgroundColor: opts.backgroundColor ?? null,
+        textColor: opts.textColor ?? null,
+        updatedAt: sql`NOW()`,
+      },
+    })
+    .returning({ id: gmailLabels.id, gmailLabelId: gmailLabels.gmailLabelId });
+
+  if (!cached) {
+    throw new Error("Failed to cache Gmail label locally.");
+  }
+
+  logger.info(
+    {
+      connectedAccountId: opts.connectedAccountId,
+      gmailLabelId: result.id,
+      existed: result.existed,
+    },
+    "Created Gmail label",
+  );
+
+  return { id: cached.id, gmailLabelId: cached.gmailLabelId };
+}

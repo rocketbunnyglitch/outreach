@@ -1,8 +1,10 @@
 "use client";
+import { cn } from "@/lib/cn";
 import { Loader2, Plus, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   applyGmailLabelToThreadAction,
+  createAndApplyGmailLabelAction,
   listGmailLabelsForThreadAction,
   removeGmailLabelFromThreadAction,
 } from "../_actions";
@@ -208,6 +210,23 @@ export function ThreadGmailLabelsRow({
                 All Gmail labels are already applied.
               </p>
             )}
+            {/* Inline create — name + Gmail-palette color picker.
+                Bottom of the dropdown like the team-labels picker.
+                Auto-applies to this thread on success. */}
+            {!loading && allLabels !== null && (
+              <CreateGmailLabelInline
+                threadId={threadId}
+                onCreated={(created) => {
+                  setApplied((prev) => [...prev, created]);
+                  // Force a refetch on next open so the new label
+                  // shows up in unappliedLabels too if the operator
+                  // wants to apply it to another thread.
+                  setAllLabels(null);
+                  setPickerOpen(false);
+                }}
+                onError={setError}
+              />
+            )}
           </div>
         )}
       </div>
@@ -219,3 +238,135 @@ export function ThreadGmailLabelsRow({
     </div>
   );
 }
+
+/**
+ * Inline create form for new Gmail labels. Color picker offers the
+ * Gmail-supported palette (validated server-side via
+ * isValidGmailLabelColor); non-palette choices aren't even rendered.
+ * Empty palette selection means "no color" — valid for Gmail (the
+ * label just renders neutral).
+ */
+function CreateGmailLabelInline({
+  threadId,
+  onCreated,
+  onError,
+}: {
+  threadId: string;
+  onCreated: (label: AppliedGmailLabel) => void;
+  onError: (msg: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [selectedPair, setSelectedPair] = useState<number | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  async function submit() {
+    const trimmed = name.trim();
+    if (!trimmed || creating) return;
+    setCreating(true);
+    onError(""); // clear any prior error
+    const pair = selectedPair !== null ? GMAIL_LABEL_PALETTE[selectedPair] : null;
+    const fd = new FormData();
+    fd.set("threadId", threadId);
+    fd.set("name", trimmed);
+    if (pair) {
+      fd.set("backgroundColor", pair.background);
+      fd.set("textColor", pair.text);
+    }
+    const result = await createAndApplyGmailLabelAction(null, fd);
+    setCreating(false);
+    if (result.ok) {
+      onCreated({
+        gmailLabelId: result.data.gmailLabelId,
+        name: result.data.name,
+        backgroundColor: pair?.background ?? null,
+        textColor: pair?.text ?? null,
+      });
+      setName("");
+      setSelectedPair(null);
+    } else {
+      onError(result.error);
+    }
+  }
+
+  return (
+    <div className="border-zinc-200 border-t bg-zinc-50/60 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+      <p className="mb-1.5 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+        New Gmail label
+      </p>
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        placeholder="e.g. Halloween 2026"
+        className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:ring-indigo-900/40"
+      />
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setSelectedPair(null)}
+          aria-label="No color"
+          className={cn(
+            "h-4 w-4 rounded-sm border",
+            selectedPair === null
+              ? "border-indigo-500 ring-1 ring-indigo-300 dark:ring-indigo-900/40"
+              : "border-zinc-300 dark:border-zinc-700",
+          )}
+          title="No color"
+        />
+        {GMAIL_LABEL_PALETTE.map((p, i) => (
+          <button
+            key={p.background}
+            type="button"
+            onClick={() => setSelectedPair(i)}
+            aria-label={`Color: ${p.background}`}
+            className={cn(
+              "h-4 w-4 rounded-sm border",
+              selectedPair === i
+                ? "border-indigo-500 ring-1 ring-indigo-300 dark:ring-indigo-900/40"
+                : "border-zinc-200 dark:border-zinc-700",
+            )}
+            style={{ backgroundColor: p.background }}
+            title={`${p.background} · ${p.text}`}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!name.trim() || creating}
+        className="mt-2 inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-medium text-[11px] text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+      >
+        {creating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+        Create + apply
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Subset of Gmail's color palette exposed to the create UI. We
+ * intentionally don't expose all ~25 pairs Gmail supports — the
+ * picker would get unwieldy. Sticking to a useful coverage of the
+ * common colors (greens, blues, purples, reds, oranges, neutrals).
+ * Server-side validation in lib/gmail.isValidGmailLabelColor
+ * accepts any of the full Gmail-supported set, so power users
+ * can extend this list if they need more later.
+ */
+const GMAIL_LABEL_PALETTE: ReadonlyArray<{ background: string; text: string }> = [
+  { background: "#16a766", text: "#ffffff" }, // green
+  { background: "#43d692", text: "#ffffff" }, // mint
+  { background: "#3c78d8", text: "#ffffff" }, // blue
+  { background: "#4a86e8", text: "#ffffff" }, // azure
+  { background: "#8e63ce", text: "#ffffff" }, // purple
+  { background: "#cc3a21", text: "#ffffff" }, // red
+  { background: "#e66550", text: "#ffffff" }, // coral
+  { background: "#ffad47", text: "#ffffff" }, // orange
+  { background: "#fbe983", text: "#684e07" }, // yellow
+  { background: "#666666", text: "#ffffff" }, // grey
+];
