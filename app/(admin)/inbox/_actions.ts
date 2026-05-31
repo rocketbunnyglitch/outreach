@@ -32,7 +32,12 @@ import { publishRealtime } from "@/lib/realtime-publish";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
 import { clearStaleOnAction } from "@/lib/stale-tagger";
-import { applyLabelToThread, removeLabelFromThread } from "@/lib/team-labels";
+import {
+  applyLabelToThread,
+  listTeamLabels,
+  listThreadLabels,
+  removeLabelFromThread,
+} from "@/lib/team-labels";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -1196,6 +1201,38 @@ export async function backfillThreadClassifications(): Promise<
 // =========================================================================
 // Team label actions — apply / remove a label on a thread.
 // =========================================================================
+
+/**
+ * List the team's labels — small reader used by the composer's
+ * three-dot menu to populate the Apply Labels submenu without
+ * requiring the page-level data prop.
+ */
+export async function listTeamLabelsAction(): Promise<
+  ActionResult<Array<{ id: string; name: string; color: string | null }>>
+> {
+  const { staff } = await requireStaff();
+  const rows = await listTeamLabels(staff.teamId);
+  return {
+    ok: true,
+    data: rows.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+  };
+}
+
+/**
+ * List the labels currently applied to a thread. Same scope as
+ * applyLabelToThreadAction — team-bound via the thread's join.
+ */
+export async function listThreadLabelsAction(
+  threadId: string,
+): Promise<ActionResult<Array<{ id: string; name: string; color: string | null }>>> {
+  await requireStaff();
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  const rows = await listThreadLabels(threadId);
+  return {
+    ok: true,
+    data: rows.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+  };
+}
 
 /**
  * Apply a team_label to a thread. Validates the label belongs to the

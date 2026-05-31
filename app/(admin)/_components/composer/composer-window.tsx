@@ -953,6 +953,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             </FooterIconButton>
             {moreMenuOpen && (
               <MoreMenu
+                replyToThreadId={instance.replyToThreadId}
                 onClose={() => setMoreMenuOpen(false)}
                 onCheckSpelling={() => {
                   // Hand off to the browser's native spell check by
@@ -1119,13 +1120,24 @@ function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose
 
 /** Three-dot more menu — labels + spell check toggle. */
 function MoreMenu({
+  replyToThreadId,
   onClose,
   onCheckSpelling,
 }: {
+  replyToThreadId: string | null;
   onClose: () => void;
   onCheckSpelling: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [teamLabels, setTeamLabels] = useState<Array<{
+    id: string;
+    name: string;
+    color: string | null;
+  }> | null>(null);
+  const [appliedLabelIds, setAppliedLabelIds] = useState<Set<string>>(new Set());
+  const [labelsLoading, setLabelsLoading] = useState(false);
+
   useEffect(() => {
     function onDown(e: PointerEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -1133,10 +1145,66 @@ function MoreMenu({
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [onClose]);
+
+  // Lazy-load the team's labels + the thread's current set when the
+  // operator opens the submenu. Avoids hitting the server on every
+  // composer open.
+  useEffect(() => {
+    if (!labelsOpen || !replyToThreadId) return;
+    if (teamLabels !== null) return;
+    setLabelsLoading(true);
+    (async () => {
+      try {
+        const mod = await import("../../inbox/_actions");
+        const [allLabels, threadLabels] = await Promise.all([
+          mod.listTeamLabelsAction(),
+          mod.listThreadLabelsAction(replyToThreadId),
+        ]);
+        if (allLabels.ok) {
+          setTeamLabels(allLabels.data);
+        }
+        if (threadLabels.ok) {
+          setAppliedLabelIds(new Set(threadLabels.data.map((l) => l.id)));
+        }
+      } finally {
+        setLabelsLoading(false);
+      }
+    })();
+  }, [labelsOpen, replyToThreadId, teamLabels]);
+
+  async function toggleLabel(labelId: string) {
+    if (!replyToThreadId) return;
+    const currentlyApplied = appliedLabelIds.has(labelId);
+    // Optimistic flip so the operator sees the change instantly.
+    setAppliedLabelIds((prev) => {
+      const next = new Set(prev);
+      if (currentlyApplied) next.delete(labelId);
+      else next.add(labelId);
+      return next;
+    });
+    const mod = await import("../../inbox/_actions");
+    const fd = new FormData();
+    fd.set("threadId", replyToThreadId);
+    fd.set("teamLabelId", labelId);
+    const res = currentlyApplied
+      ? await mod.removeLabelFromThreadAction(null, fd)
+      : await mod.applyLabelToThreadAction(null, fd);
+    if (!res.ok) {
+      // Revert on failure.
+      setAppliedLabelIds((prev) => {
+        const next = new Set(prev);
+        if (currentlyApplied) next.add(labelId);
+        else next.delete(labelId);
+        return next;
+      });
+      alert(res.error);
+    }
+  }
+
   return (
     <div
       ref={ref}
-      className="absolute bottom-full right-0 z-30 mb-1 w-44 rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-800 dark:bg-zinc-950"
+      className="absolute right-0 bottom-full z-30 mb-1 w-52 rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-800 dark:bg-zinc-950"
     >
       <button
         type="button"
@@ -1145,18 +1213,58 @@ function MoreMenu({
       >
         Toggle spell check
       </button>
-      <button
-        type="button"
-        onClick={() => {
-          alert(
-            "Labels: apply via the thread header in the inbox (Reply mode) or via the Apply Labels picker on a sent message.",
-          );
-          onClose();
-        }}
-        className="block w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
-      >
-        Labels…
-      </button>
+      {replyToThreadId ? (
+        <button
+          type="button"
+          onClick={() => setLabelsOpen((v) => !v)}
+          className="flex w-full items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          <span>Labels…</span>
+          <span className="text-zinc-400">{labelsOpen ? "▲" : "▼"}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            alert(
+              "Labels apply to existing threads. Send this message first, then add labels from the inbox thread view.",
+            );
+            onClose();
+          }}
+          className="block w-full px-3 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+        >
+          Labels (reply only)
+        </button>
+      )}
+      {labelsOpen && replyToThreadId && (
+        <div className="max-h-56 overflow-y-auto border-zinc-200/70 border-t dark:border-zinc-800">
+          {labelsLoading && <p className="px-3 py-1.5 text-[10px] text-zinc-400">Loading…</p>}
+          {teamLabels && teamLabels.length === 0 && (
+            <p className="px-3 py-1.5 text-[10px] text-zinc-400">
+              No team labels. Create one in Settings.
+            </p>
+          )}
+          {teamLabels?.map((label) => {
+            const applied = appliedLabelIds.has(label.id);
+            return (
+              <button
+                key={label.id}
+                type="button"
+                onClick={() => toggleLabel(label.id)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              >
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: label.color ?? "#a1a1aa" }}
+                />
+                <span className="flex-1 truncate">{label.name}</span>
+                {applied && <span className="text-[10px] text-emerald-600">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
