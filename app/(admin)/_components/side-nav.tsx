@@ -151,6 +151,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
       icon: <ShieldOff className="h-3.5 w-3.5" />,
     },
     { href: "/admin/alerts", label: "Alerts", icon: <Bell className="h-3.5 w-3.5" /> },
+    {
+      href: "/admin/email-health",
+      label: "Email health",
+      icon: <Activity className="h-3.5 w-3.5" />,
+    },
     { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3.5 w-3.5" /> },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3.5 w-3.5" /> },

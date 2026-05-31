@@ -602,7 +602,7 @@ async function resolveVenueFromAddress(fromHeader: string): Promise<string | nul
   const email = m?.[1]?.toLowerCase();
   if (!email) return null;
 
-  // First: exact match on venues.email if any
+  // Tier 1 (high confidence): exact match on venues.email
   const exact = await db
     .select({ id: venues.id })
     .from(venues)
@@ -610,7 +610,28 @@ async function resolveVenueFromAddress(fromHeader: string): Promise<string | nul
     .limit(1);
   if (exact[0]) return exact[0].id;
 
-  // Fallback: domain match on venues.email
+  // Tier 2 (high confidence): exact match on venues.alternate_emails.
+  // This is the canonical "operator-trained" signal — every time an
+  // operator manually links an unmatched thread to a venue, the
+  // thread's sender gets appended to that venue's alt_emails (see
+  // attachVenueToThread in app/(admin)/inbox/_attach-venue-action.ts).
+  // Future inbound from the same sender lands matched at INGEST time
+  // instead of read time.
+  const altExact = await db.execute<{ id: string }>(sql`
+    SELECT id FROM venues
+    WHERE archived_at IS NULL
+      AND ${email} = ANY(SELECT lower(unnest(alternate_emails)))
+    LIMIT 1
+  `);
+  const altList: Array<{ id: string }> = Array.isArray(altExact)
+    ? (altExact as unknown as Array<{ id: string }>)
+    : ((altExact as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+  if (altList[0]) return altList[0].id;
+
+  // Tier 3 (medium confidence): domain match on venues.email.
+  // Last-resort fallback for senders we haven't seen yet but whose
+  // domain looks right (e.g. info@lavelle.com matching when only
+  // bookings@lavelle.com is the stored email).
   const domain = email.split("@")[1];
   if (!domain) return null;
   const domainMatch = await db.execute<{ id: string }>(sql`
