@@ -4,15 +4,7 @@
  * Gmail labels on every connected_account on the team.
  */
 
-import {
-  index,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { emailThreads } from "./outreach";
 import { teams } from "./teams";
 import { staffOutreachEmails } from "./users";
@@ -65,19 +57,39 @@ export const teamLabelGmailLinks = pgTable(
 export const emailThreadLabels = pgTable(
   "email_thread_labels",
   {
+    /** Synthetic PK so a thread can have multiple label rows with
+     *  different sources (team + gmail) without collision. Added in
+     *  migration 0062 to replace the old (thread_id, team_label_id)
+     *  composite PK. */
+    id: uuid("id").primaryKey().defaultRandom(),
     threadId: uuid("thread_id")
       .notNull()
       .references(() => emailThreads.id, { onDelete: "cascade" }),
-    teamLabelId: uuid("team_label_id")
-      .notNull()
-      .references(() => teamLabels.id, { onDelete: "cascade" }),
+    /** team-label-direct row when set. Mutually exclusive with
+     *  gmailLabelId per the check constraint added in migration
+     *  0062. */
+    teamLabelId: uuid("team_label_id").references(() => teamLabels.id, {
+      onDelete: "cascade",
+    }),
+    /** Gmail-direct row when set. Must travel with
+     *  connectedEmailAccountId since Gmail labels are scoped to
+     *  one connected account. */
+    gmailLabelId: text("gmail_label_id"),
+    connectedEmailAccountId: uuid("connected_email_account_id").references(
+      () => staffOutreachEmails.id,
+      { onDelete: "cascade" },
+    ),
+    /** 'engine' for team-label rows; 'gmail' for Gmail-direct
+     *  rows. Tracked separately from applied_via so the source
+     *  namespace is explicit even after a label is mirrored both
+     *  ways. */
+    source: text("source").notNull().default("engine"),
     appliedBy: uuid("applied_by").references(() => users.id, { onDelete: "set null" }),
     appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
     /** 'manual' | 'gmail' | 'inherit'. See migration 0047. */
     appliedVia: text("applied_via").notNull().default("manual"),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.threadId, t.teamLabelId] }),
     threadIdx: index("email_thread_labels_thread_idx").on(t.threadId),
     labelIdx: index("email_thread_labels_label_idx").on(t.teamLabelId),
   }),
