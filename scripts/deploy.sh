@@ -214,9 +214,40 @@ else
   fi
 fi
 
-# === Step 5: Reload PM2 ===
-log "reloading PM2 process (zero-downtime)..."
-pm2 reload "$PM2_NAME" --update-env 2>&1 | tail -5 | tee -a "$LOG_FILE"
+# === Step 5: Reload PM2 (staggered across web instances) ===
+# Two web instances (outreach :3001, outreach-2 :3003) sit behind nginx
+# with failover. Reload them ONE AT A TIME with a per-port health gate
+# between, so nginx always has a live instance — true zero-downtime, and
+# both end on the new build (no split-brain serving stale chunks). If an
+# instance won't come healthy we abort BEFORE touching the other, leaving
+# it serving rather than risking a full outage.
+reload_instance() {
+  _name="$1"; _port="$2"
+  if pm2 describe "$_name" >/dev/null 2>&1; then
+    log "reloading $_name (:$_port)..."
+    pm2 reload "$_name" --update-env 2>&1 | tail -3 | tee -a "$LOG_FILE"
+  else
+    log "$_name not registered — starting it from ecosystem.config.cjs"
+    pm2 start ecosystem.config.cjs --only "$_name" --update-env 2>&1 | tail -3 | tee -a "$LOG_FILE"
+  fi
+  _ok=""
+  for _i in $(seq 1 20); do
+    if curl -fsS --max-time 4 "http://127.0.0.1:$_port/api/health" 2>/dev/null | grep -q '"status":"ok"'; then
+      _ok=1; break
+    fi
+    sleep 1
+  done
+  if [ -n "$_ok" ]; then
+    log "  ok $_name healthy on :$_port"
+  else
+    log "  FAIL $_name not healthy on :$_port — aborting before touching the other instance"
+    exit 7
+  fi
+}
+
+log "reloading web instances (staggered, zero-downtime)..."
+reload_instance "$PM2_NAME" 3001
+reload_instance "outreach-2" 3003
 
 # Reload the WebSocket presence sidecar IF it's registered. It's a
 # separate PM2 app ("outreach-ws", realtime/ws-server.mjs) wired up
