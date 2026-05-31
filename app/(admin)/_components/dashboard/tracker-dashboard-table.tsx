@@ -59,7 +59,9 @@ interface Props {
   rows: TrackerRow[];
   staff: StaffOption[];
   /** Initial priority chip — dashboard defaults to top (1-4); the dedicated
-   *  /tracker page passes "all" to show every city by default. */
+   *  /tracker page passes "all" to show every city by default.
+   *  Operators on the dedicated page can switch to multi-select via the
+   *  individual P1 / P2 / P3 chips. */
   defaultPriorityFilter?: "top" | "all";
 }
 
@@ -226,7 +228,37 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   // moves focus on Arrow/Home/End and InlineCell handles Enter-moves-down.
   const gridNavRef = useRef<HTMLDivElement>(null);
   useGridArrowNav(gridNavRef);
-  const [priorityFilter, setPriorityFilter] = useState<"top" | "all">(defaultPriorityFilter);
+  // Priority filter state. The legacy "top" preset is a shortcut for
+  // {1,2,3,4}. "all" is represented as an empty Set (no filter applied).
+  // Operators can also click individual priority chips below for true
+  // multi-select. The dashboard defaults to top-4; the dedicated tracker
+  // page defaults to no filter.
+  const [priorityFilter, setPriorityFilter] = useState<Set<number>>(() => {
+    if (defaultPriorityFilter === "top") return new Set([1, 2, 3, 4]);
+    return new Set();
+  });
+  const togglePriority = useCallback((p: number) => {
+    setPriorityFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
+      return next;
+    });
+  }, []);
+  const clearPriorityFilter = useCallback(() => {
+    setPriorityFilter(new Set());
+  }, []);
+  // Synthesized "top" preset matches {1,2,3,4} exactly.
+  const isTopPreset = useMemo(() => {
+    if (priorityFilter.size !== 4) return false;
+    return [1, 2, 3, 4].every((p) => priorityFilter.has(p));
+  }, [priorityFilter]);
+
+  // Per-crawl KPI filter — when set, the table shows only cities that
+  // satisfy a specific predicate (e.g. "Saturday crawl 1 complete"). The
+  // value is a stringified key like "complete:saturday_night:1" or
+  // "complete:all:1" for the all-day-parts variant. null = no KPI filter.
+  const [kpiFilter, setKpiFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "priority",
     dir: "asc",
@@ -242,11 +274,35 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
     );
   }, []);
 
+  // KPI predicates — used both by the bottom cards (counts) AND the
+  // table filter when the operator clicks a card. The shape is:
+  //   key = "complete:<dayPart>:<crawlNumber>"  for a specific day part
+  //   key = "complete:all:<crawlNumber>"        for "every day part"
+  // A crawl is "complete" when none of its needs* flags are true. The
+  // "all" variant requires every crawl with that number across day
+  // parts in the city to be complete.
+  const matchesKpi = useCallback((row: TrackerRow, key: string): boolean => {
+    const [kind, dpKey, numStr] = key.split(":");
+    if (kind !== "complete") return true;
+    const num = Number(numStr);
+    if (!Number.isInteger(num)) return true;
+    const crawls = row.need.crawlBreakdown.filter((c) => c.crawlNumber === num);
+    if (crawls.length === 0) return false;
+    const isComplete = (c: (typeof crawls)[number]) =>
+      !c.needsWristband && !c.needsMiddle1 && !c.needsMiddle2 && !c.needsFinal;
+    if (dpKey === "all") {
+      return crawls.every(isComplete);
+    }
+    return crawls.some((c) => c.dayPart === dpKey && isComplete(c));
+  }, []);
+
   const visibleRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = priorityFilter === "top" ? rows.filter((r) => r.priority <= 4) : rows;
+    const base =
+      priorityFilter.size === 0 ? rows : rows.filter((r) => priorityFilter.has(r.priority));
+    const afterKpi = kpiFilter ? base.filter((r) => matchesKpi(r, kpiFilter)) : base;
     const filtered = q
-      ? base.filter((r) => {
+      ? afterKpi.filter((r) => {
           const assignee = r.leadStaffId ? (staffNameById.get(r.leadStaffId) ?? "") : "";
           return (
             r.cityName.toLowerCase().includes(q) ||
@@ -255,10 +311,76 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
             (r.dashboardNote ?? "").toLowerCase().includes(q)
           );
         })
-      : base;
+      : afterKpi;
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => compareRows(a, b, sort.key, staffNameById) * dir);
-  }, [rows, query, sort, staffNameById, priorityFilter]);
+  }, [rows, query, sort, staffNameById, priorityFilter, kpiFilter, matchesKpi]);
+
+  // Distinct priorities present in the data, sorted ascending. Drives
+  // the chip row — only render chips for priorities that actually
+  // exist in the campaign so the filter doesn't show empty buckets.
+  const availablePriorities = useMemo(() => {
+    const set = new Set<number>();
+    for (const r of rows) set.add(r.priority);
+    return [...set].sort((a, b) => a - b);
+  }, [rows]);
+
+  // KPI card data — per-day-part counts of cities whose crawl-N is
+  // complete. We only compute crawl number 1 since that's what
+  // operators asked for; trivially extendable to crawls 2/3/etc. if
+  // they ever want richer KPIs. Day parts that don't exist in the
+  // data are skipped — the card simply isn't rendered.
+  const kpiCards = useMemo(() => {
+    const dayPartCounts = new Map<string, number>();
+    let allCompleteCount = 0;
+    let citiesWithCrawl1 = 0;
+    for (const r of rows) {
+      const c1Rows = r.need.crawlBreakdown.filter((c) => c.crawlNumber === 1);
+      if (c1Rows.length === 0) continue;
+      citiesWithCrawl1++;
+      let everyOneComplete = true;
+      for (const c of c1Rows) {
+        const isComplete = !c.needsWristband && !c.needsMiddle1 && !c.needsMiddle2 && !c.needsFinal;
+        if (isComplete) {
+          dayPartCounts.set(c.dayPart, (dayPartCounts.get(c.dayPart) ?? 0) + 1);
+        } else {
+          everyOneComplete = false;
+        }
+      }
+      if (everyOneComplete) allCompleteCount++;
+    }
+    type Card = { key: string; label: string; count: number };
+    const cards: Card[] = [];
+    // Order day parts intentionally: Thu → Fri → Sat (Sun rare).
+    const dayPartOrder: Array<{ key: string; label: string }> = [
+      { key: "thursday_night", label: "Thu crawl 1 complete" },
+      { key: "friday_night", label: "Fri crawl 1 complete" },
+      { key: "saturday_day", label: "Sat day crawl 1 complete" },
+      { key: "saturday_night", label: "Sat night crawl 1 complete" },
+      { key: "sunday_day", label: "Sun day crawl 1 complete" },
+      { key: "sunday_night", label: "Sun night crawl 1 complete" },
+      { key: "other", label: "Other crawl 1 complete" },
+    ];
+    for (const dp of dayPartOrder) {
+      const count = dayPartCounts.get(dp.key) ?? 0;
+      // Skip cards whose day part has no completed crawls AND no crawls
+      // of any kind to potentially complete (i.e. the day part doesn't
+      // exist in this campaign).
+      const hasDayPart = rows.some((r) =>
+        r.need.crawlBreakdown.some((c) => c.crawlNumber === 1 && c.dayPart === dp.key),
+      );
+      if (!hasDayPart) continue;
+      cards.push({ key: `complete:${dp.key}:1`, label: dp.label, count });
+    }
+    if (citiesWithCrawl1 > 0) {
+      cards.push({
+        key: "complete:all:1",
+        label: "All crawl 1's complete",
+        count: allCompleteCount,
+      });
+    }
+    return { cards, citiesWithCrawl1 };
+  }, [rows]);
 
   // Multi-row selection for bulk "fill-down" edits (set priority / assign for
   // many cities at once). We only ever act on currently-visible selected rows.
@@ -302,27 +424,57 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   return (
     <div className="card-surface overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-zinc-200/80 border-b px-3 py-2 dark:border-zinc-800/40">
-        <div className="flex items-center gap-1">
-          {(
-            [
-              { key: "top", label: "Priority 1-4" },
-              { key: "all", label: "Show all" },
-            ] as const
-          ).map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={() => setPriorityFilter(chip.key)}
-              className={cn(
-                "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
-                priorityFilter === chip.key
-                  ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
-                  : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
-              )}
-            >
-              {chip.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-1">
+          {/* Legacy "top 4" + "all" shortcut chips. Single-click presets
+              for the two most common operator scopes. */}
+          <button
+            type="button"
+            onClick={() => setPriorityFilter(new Set([1, 2, 3, 4]))}
+            className={cn(
+              "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
+              isTopPreset
+                ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+                : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+            )}
+          >
+            Priority 1-4
+          </button>
+          <button
+            type="button"
+            onClick={clearPriorityFilter}
+            className={cn(
+              "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
+              priorityFilter.size === 0
+                ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+                : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+            )}
+          >
+            Show all
+          </button>
+          <span className="mx-1 hidden h-3 w-px shrink-0 bg-zinc-300 sm:inline-block dark:bg-zinc-700" />
+          {/* Per-priority multi-select. Click any combination — P1+P3,
+              P2+P4, etc. The chip is active when in the filter set;
+              the order of clicks doesn't matter. */}
+          {availablePriorities.map((p) => {
+            const active = priorityFilter.has(p);
+            const count = rows.filter((r) => r.priority === p).length;
+            return (
+              <button
+                key={`pri-${p}`}
+                type="button"
+                onClick={() => togglePriority(p)}
+                title={`Toggle priority ${p} (${count} ${count === 1 ? "city" : "cities"})`}
+                className={cn(
+                  "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
+                  active
+                    ? "bg-indigo-600 text-white ring-indigo-600 dark:bg-indigo-500 dark:ring-indigo-500"
+                    : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+                )}
+              >
+                P{p}
+              </button>
+            );
+          })}
         </div>
         <Input
           value={query}
@@ -330,12 +482,63 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           placeholder="Filter by city, status, assignee, or note…"
           className="h-8 max-w-sm text-sm"
         />
+        {/* Live count — Google Sheets style. Always shows "showing N
+            of M cities" so operators can see at a glance how their
+            filter is narrowing the view. When a KPI card is the
+            active filter, surface its label too with an X to clear. */}
+        <span className="ml-auto inline-flex items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+          <span>
+            <span className="text-zinc-900 dark:text-zinc-100">{visibleRows.length}</span>
+            {visibleRows.length !== rows.length && (
+              <>
+                <span className="mx-0.5 text-zinc-300 dark:text-zinc-600">/</span>
+                <span>{rows.length}</span>
+              </>
+            )}
+            <span className="ml-1">{visibleRows.length === 1 ? "city" : "cities"}</span>
+          </span>
+          {kpiFilter && (
+            <button
+              type="button"
+              onClick={() => setKpiFilter(null)}
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+              title="Clear KPI filter"
+            >
+              {(() => {
+                const card = kpiCards.cards.find((c) => c.key === kpiFilter);
+                return card ? `${card.label} ×` : "Clear ×";
+              })()}
+            </button>
+          )}
+        </span>
       </div>
       {selectedVisible.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 border-zinc-200/80 border-b bg-blue-50/60 px-3 py-2 dark:border-zinc-800/40 dark:bg-blue-950/20">
           <span className="font-medium text-sm text-zinc-700 dark:text-zinc-200">
             {selectedVisible.length} selected
           </span>
+          {/* Live aggregate of selected rows — Google Sheets style.
+              Sums every crawl and every sales total across the
+              selected cities so operators see scope at a glance. */}
+          {(() => {
+            const selSet = new Set(selectedVisible);
+            const sel = rows.filter((r) => selSet.has(r.cityCampaignId));
+            const crawls = sel.reduce((s, r) => s + r.need.crawlBreakdown.length, 0);
+            const sales = sel.reduce((s, r) => s + r.totalSalesCents, 0);
+            return (
+              <span className="inline-flex items-center gap-2 font-mono text-[10px] text-zinc-600 uppercase tracking-widest dark:text-zinc-300">
+                <span>
+                  <span className="text-zinc-900 dark:text-zinc-100">{crawls}</span>{" "}
+                  {crawls === 1 ? "crawl" : "crawls"}
+                </span>
+                <span className="text-zinc-300 dark:text-zinc-600">·</span>
+                <span>
+                  <span className="text-zinc-900 dark:text-zinc-100">{formatSales(sales)}</span>{" "}
+                  sales
+                </span>
+              </span>
+            );
+          })()}
           <label className="flex items-center gap-1.5 text-xs text-zinc-500">
             Priority
             <select
@@ -543,6 +746,61 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
           </tbody>
         </table>
       </div>
+
+      {/* Bottom KPI cards — per-day-part crawl-1-complete counts.
+          Click any card to filter the table to those cities. Only
+          rendered when there's at least one card to show (i.e.
+          the campaign has at least one crawl-1 to score). */}
+      {kpiCards.cards.length > 0 && (
+        <div className="border-zinc-200/80 border-t bg-zinc-50/30 px-3 py-3 dark:border-zinc-800/40 dark:bg-zinc-900/20">
+          <div className="mb-2 flex items-baseline gap-2">
+            <h3 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              Crawl 1 completion
+            </h3>
+            <span className="text-[10px] text-zinc-400">click a card to filter the table</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {kpiCards.cards.map((card) => {
+              const active = kpiFilter === card.key;
+              const pct =
+                kpiCards.citiesWithCrawl1 > 0
+                  ? Math.round((card.count / kpiCards.citiesWithCrawl1) * 100)
+                  : 0;
+              return (
+                <button
+                  key={card.key}
+                  type="button"
+                  onClick={() => setKpiFilter(active ? null : card.key)}
+                  className={cn(
+                    "flex flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition-all",
+                    active
+                      ? "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/30 dark:border-emerald-500 dark:bg-emerald-950/40 dark:ring-emerald-500/30"
+                      : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+                  )}
+                >
+                  <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+                    {card.label}
+                  </span>
+                  <span className="flex items-baseline gap-1.5">
+                    <span
+                      className={cn(
+                        "font-semibold text-2xl tabular-nums tracking-tight",
+                        active
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-zinc-900 dark:text-zinc-100",
+                      )}
+                    >
+                      {card.count}
+                    </span>
+                    <span className="text-xs text-zinc-500">/ {kpiCards.citiesWithCrawl1}</span>
+                    <span className="ml-auto font-mono text-[10px] text-zinc-400">{pct}%</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
