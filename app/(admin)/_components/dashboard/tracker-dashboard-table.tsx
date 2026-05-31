@@ -621,17 +621,27 @@ function CityCard({
   const [expanded, setExpanded] = useState(false);
   const hasBreakdown = row.need.crawlBreakdown.length > 0;
   // Mirror the desktop CityRow's cityComplete calc — see comments there.
+  // "City complete" — every crawl under this city has reached a
+  // terminal status: confirmed, contract_signed, completed, or
+  // cancelled. The earlier rule (every slot filled OR cancelled)
+  // was confusing for crawls that had explicit "confirmed" status
+  // but hadn't yet locked all 4 venue assignments — those would
+  // never read as complete even when operators considered them
+  // done. Status-driven is the operator's mental model.
+  //
+  // Cities with no crawl breakdown at all (rare — usually a
+  // freshly added city before crawl rows exist) are NOT considered
+  // complete; they shouldn't read as "done" just because they're
+  // empty.
   const cityComplete =
     hasBreakdown &&
-    row.need.crawlBreakdown.every((c) => {
-      if (c.status === "cancelled") return true;
-      const openSlots =
-        (c.needsWristband ? 1 : 0) +
-        (c.needsMiddle1 ? 1 : 0) +
-        (c.needsMiddle2 ? 1 : 0) +
-        (c.needsFinal ? 1 : 0);
-      return openSlots === 0;
-    });
+    row.need.crawlBreakdown.every(
+      (c) =>
+        c.status === "confirmed" ||
+        c.status === "contract_signed" ||
+        c.status === "completed" ||
+        c.status === "cancelled",
+    );
   return (
     <li
       className={cn(
@@ -747,17 +757,27 @@ function CityRow({
   // Cities with no crawl breakdown at all (rare — usually a freshly
   // added city before crawl rows exist) are NOT considered complete;
   // they shouldn't read as "done" just because they're empty.
+  // "City complete" — every crawl under this city has reached a
+  // terminal status: confirmed, contract_signed, completed, or
+  // cancelled. The earlier rule (every slot filled OR cancelled)
+  // was confusing for crawls that had explicit "confirmed" status
+  // but hadn't yet locked all 4 venue assignments — those would
+  // never read as complete even when operators considered them
+  // done. Status-driven is the operator's mental model.
+  //
+  // Cities with no crawl breakdown at all (rare — usually a
+  // freshly added city before crawl rows exist) are NOT considered
+  // complete; they shouldn't read as "done" just because they're
+  // empty.
   const cityComplete =
     hasBreakdown &&
-    row.need.crawlBreakdown.every((c) => {
-      if (c.status === "cancelled") return true;
-      const openSlots =
-        (c.needsWristband ? 1 : 0) +
-        (c.needsMiddle1 ? 1 : 0) +
-        (c.needsMiddle2 ? 1 : 0) +
-        (c.needsFinal ? 1 : 0);
-      return openSlots === 0;
-    });
+    row.need.crawlBreakdown.every(
+      (c) =>
+        c.status === "confirmed" ||
+        c.status === "contract_signed" ||
+        c.status === "completed" ||
+        c.status === "cancelled",
+    );
 
   // Alternating tones — operators flagged the prior light-mode tones
   // (white + zinc-50/70 ≈ 90% white) as "too light", washing out the
