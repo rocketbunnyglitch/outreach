@@ -532,45 +532,38 @@ export async function addCrawlToAllCities(input: {
    *  the (cityCampaignId, eventDate, slotNumber) unique index dedups
    *  correctly when operators schedule multiple same-day crawls. */
   crawlNumber?: number;
+  /** Range form of crawlNumber. When supplied, the action expands the
+   *  range into multiple events per city (e.g. [1, 2, 3] = three
+   *  events per city, one at each slot). Overrides crawlNumber if set.
+   *  Useful for "add 3 Saturday-night crawls to every P1-3 city." */
+  crawlNumbers?: number[];
   /** When set, restrict the bulk-add to just these cityCampaign IDs
    *  ("add crawl to selected cities" flow). When omitted, every city
    *  in the campaign receives the crawl ("add crawl to all" flow). */
   cityCampaignIds?: string[];
+  /** When set, restrict the bulk-add to cities whose priority lands
+   *  inside this inclusive range. Lets operators say "P1-P3 get 3
+   *  crawls" then "P4-P5 get 1 crawl" in two clicks. Defaults to
+   *  no priority filter — every city receives. */
+  priorityMin?: number;
+  priorityMax?: number;
 }): Promise<ActionResult<{ added: number; skipped: number; total: number }>> {
   const { staff } = await requireStaff();
 
-  const slot = input.crawlNumber ?? 1;
-  if (!Number.isInteger(slot) || slot < 1 || slot > 9) {
-    return { ok: false, error: "Crawl number must be a whole number between 1 and 9." };
-  }
-
-  // Pull every cityCampaign in this campaign — optionally filtered to a
-  // selected subset. We don't filter by status (even 'cancelled' rows
-  // can receive a new crawl; operator may be re-activating them). The
-  // cityCampaigns table has no archived_at column (CLAUDE.md §12.1) so
-  // no archive filter applies.
-  const ccRows = await (input.cityCampaignIds && input.cityCampaignIds.length > 0
-    ? db
-        .select({ id: cityCampaigns.id })
-        .from(cityCampaigns)
-        .where(
-          and(
-            eq(cityCampaigns.campaignId, input.campaignId),
-            inArray(cityCampaigns.id, input.cityCampaignIds),
-          ),
-        )
-    : db
-        .select({ id: cityCampaigns.id })
-        .from(cityCampaigns)
-        .where(eq(cityCampaigns.campaignId, input.campaignId)));
-
-  if (ccRows.length === 0) {
-    return {
-      ok: false,
-      error: input.cityCampaignIds
-        ? "None of the selected cities are still in this campaign."
-        : "This campaign has no cities yet. Add cities first, then bulk-add crawls.",
-    };
+  // Normalize crawl numbers: prefer the array form when provided, fall
+  // back to the single crawlNumber field for back-compat. Validate
+  // every entry is 1-9 (matches the slot-number domain).
+  const slots = (() => {
+    const arr =
+      input.crawlNumbers && input.crawlNumbers.length > 0
+        ? [...new Set(input.crawlNumbers)].sort((a, b) => a - b)
+        : [input.crawlNumber ?? 1];
+    return arr;
+  })();
+  for (const slot of slots) {
+    if (!Number.isInteger(slot) || slot < 1 || slot > 9) {
+      return { ok: false, error: "Crawl number must be a whole number between 1 and 9." };
+    }
   }
 
   // Schema validation on date — same regex as addCrawlSchema. The action
@@ -580,27 +573,72 @@ export async function addCrawlToAllCities(input: {
     return { ok: false, error: "Date must be in YYYY-MM-DD format." };
   }
 
+  // Priority bounds normalization. Default range covers everything
+  // (1..99) when not supplied. Reject inverted ranges.
+  const priMin = input.priorityMin ?? 1;
+  const priMax = input.priorityMax ?? 99;
+  if (priMin > priMax) {
+    return { ok: false, error: "Priority min must be <= max." };
+  }
+
+  // Pull every cityCampaign in this campaign — optionally filtered to a
+  // selected subset OR a priority window. We don't filter by status
+  // (even 'cancelled' rows can receive a new crawl; operator may be
+  // re-activating them). The cityCampaigns table has no archived_at
+  // column (CLAUDE.md §12.1) so no archive filter applies.
+  const conditions = [eq(cityCampaigns.campaignId, input.campaignId)];
+  if (input.cityCampaignIds && input.cityCampaignIds.length > 0) {
+    conditions.push(inArray(cityCampaigns.id, input.cityCampaignIds));
+  }
+  // Priority filter: include rows whose priority is within the inclusive
+  // range. NULL priorities (cities with no priority set) are excluded
+  // from priority-bucketed calls — operators should assign a priority
+  // before bucket-filtering them. When the range is the full default
+  // (1..99 with neither min nor max provided), the filter is skipped
+  // entirely so NULL-priority rows are included as before.
+  const priorityFilterActive = input.priorityMin !== undefined || input.priorityMax !== undefined;
+  if (priorityFilterActive) {
+    conditions.push(sql`${cityCampaigns.priority} BETWEEN ${priMin} AND ${priMax}`);
+  }
+
+  const ccRows = await db
+    .select({ id: cityCampaigns.id })
+    .from(cityCampaigns)
+    .where(and(...conditions));
+
+  if (ccRows.length === 0) {
+    return {
+      ok: false,
+      error: input.cityCampaignIds
+        ? "None of the selected cities are still in this campaign."
+        : priorityFilterActive
+          ? `No cities in priority ${priMin}-${priMax}. Set city priorities first.`
+          : "This campaign has no cities yet. Add cities first, then bulk-add crawls.",
+    };
+  }
+
   const isExtended = input.extendedMiddle === true;
   const totalRequired = isExtended ? 5 : 4;
   const middlesRequired = isExtended ? 3 : 2;
 
-  // Build the values list. slotNumber + crawlNumber are both set to the
-  // user-provided crawl number — operators wanting multiple same-day
-  // crawls increment this (1 = first, 2 = second, etc.). The unique
-  // index uses slotNumber for dedup.
-  const rows = ccRows.map((cc) => ({
-    cityCampaignId: cc.id,
-    eventDate: input.eventDate,
-    slotNumber: slot,
-    crawlNumber: slot,
-    dayPart: input.dayPart ?? null,
-    requiredVenueCountTotal: totalRequired,
-    requiredWristbandCount: 1,
-    requiredFinalCount: 1,
-    requiredMiddleCount: middlesRequired,
-    createdBy: staff.id,
-    updatedBy: staff.id,
-  }));
+  // Build the values list. For each city, emit one row per slot in the
+  // requested set. slotNumber + crawlNumber are both set to the slot
+  // value — the unique index uses slotNumber for dedup.
+  const rows = ccRows.flatMap((cc) =>
+    slots.map((slot) => ({
+      cityCampaignId: cc.id,
+      eventDate: input.eventDate,
+      slotNumber: slot,
+      crawlNumber: slot,
+      dayPart: input.dayPart ?? null,
+      requiredVenueCountTotal: totalRequired,
+      requiredWristbandCount: 1,
+      requiredFinalCount: 1,
+      requiredMiddleCount: middlesRequired,
+      createdBy: staff.id,
+      updatedBy: staff.id,
+    })),
+  );
 
   try {
     const inserted = await withAuditContext(staff.id, async (tx) =>
@@ -608,8 +646,8 @@ export async function addCrawlToAllCities(input: {
         .insert(events)
         .values(rows)
         // The unique index on (city_campaign_id, event_date, slot_number)
-        // does the dedup. Cities with an existing slot-1 crawl on this
-        // date are silently skipped — they appear in `skipped`.
+        // does the dedup. Cities with an existing slot crawl on this
+        // date+slot are silently skipped — they appear in `skipped`.
         .onConflictDoNothing()
         .returning({ id: events.id }),
     );
@@ -671,5 +709,96 @@ export async function removeCityCampaignsBulk(input: {
     return { ok: true, data: { removed: deleted.length } };
   } catch (err) {
     return wrapDbError(err, "bulk delete cities");
+  }
+}
+
+// =========================================================================
+// Bulk add: all remaining unassigned cities at next priority
+// =========================================================================
+
+/**
+ * Pull every city in the DB that's NOT already assigned to this
+ * campaign and add them all at MAX(existing priority) + 1. Lets
+ * operators clean-sweep the remainder after they've manually
+ * prioritized the top tier.
+ *
+ * Example: campaign has P1-5 manually set. Calling this adds every
+ * unassigned city at P6. A second call would add any newly-created
+ * cities at P7, and so on.
+ *
+ * Returns the count of cities added + the priority bucket they
+ * landed in.
+ */
+export async function addRemainingCitiesAtNextPriority(input: {
+  campaignId: string;
+}): Promise<ActionResult<{ added: number; priority: number; skipped: number }>> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Only admins can bulk-add the remaining cities." };
+  }
+
+  // Figure out the next priority bucket. MAX over existing rows in
+  // this campaign + 1; falls back to 1 when the campaign has no
+  // cities yet.
+  const maxRow = await db
+    .select({ maxP: sql<number | null>`MAX(${cityCampaigns.priority})` })
+    .from(cityCampaigns)
+    .where(eq(cityCampaigns.campaignId, input.campaignId));
+  const nextPriority = (maxRow[0]?.maxP ?? 0) + 1;
+
+  // All not-yet-archived cities that don't already have a row in
+  // this campaign.
+  const remaining = await db.execute<{ id: string }>(sql`
+    SELECT c.id::text
+    FROM cities c
+    WHERE c.archived_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM city_campaigns cc
+        WHERE cc.campaign_id = ${input.campaignId}
+          AND cc.city_id = c.id
+      )
+  `);
+  const rows = Array.isArray(remaining)
+    ? (remaining as { id: string }[])
+    : ((remaining as { rows: { id: string }[] }).rows ?? []);
+
+  if (rows.length === 0) {
+    return {
+      ok: true,
+      data: { added: 0, priority: nextPriority, skipped: 0 },
+    };
+  }
+
+  try {
+    const inserted = await withAuditContext(staff.id, async (tx) =>
+      tx
+        .insert(cityCampaigns)
+        .values(
+          rows.map((r) => ({
+            cityId: r.id,
+            campaignId: input.campaignId,
+            priority: nextPriority,
+            createdBy: staff.id,
+            updatedBy: staff.id,
+          })),
+        )
+        // Defensive: unique index on (campaign_id, city_id) handles any
+        // race condition where a city gets added between the
+        // NOT EXISTS check and the insert.
+        .onConflictDoNothing()
+        .returning({ id: cityCampaigns.id }),
+    );
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    return {
+      ok: true,
+      data: {
+        added: inserted.length,
+        priority: nextPriority,
+        skipped: rows.length - inserted.length,
+      },
+    };
+  } catch (err) {
+    return wrapDbError(err, "add remaining cities at next priority");
   }
 }

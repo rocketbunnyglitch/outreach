@@ -90,7 +90,16 @@ export function BulkAddCrawls({
   const [eventDate, setEventDate] = useState("");
   const [dayPart, setDayPart] = useState<DayPart | "_none">("_none");
   const [extendedMiddle, setExtendedMiddle] = useState(false);
-  const [crawlNumber, setCrawlNumber] = useState(1);
+  // Range form: "from" and "to" crawl numbers. When equal, behaves
+  // exactly like the old single-number flow. When different, expands
+  // to multiple crawls per city (e.g. 1..3 = three crawls per city).
+  const [crawlFrom, setCrawlFrom] = useState(1);
+  const [crawlTo, setCrawlTo] = useState(1);
+  // Priority filter: only cities whose priority falls within
+  // [priorityMin, priorityMax] receive the crawls. Blank = all
+  // cities regardless of priority (including NULL priority).
+  const [priorityMin, setPriorityMin] = useState<string>("");
+  const [priorityMax, setPriorityMax] = useState<string>("");
   const [pending, startTx] = useTransition();
   const [result, setResult] = useState<{ added: number; skipped: number; total: number } | null>(
     null,
@@ -111,17 +120,48 @@ export function BulkAddCrawls({
       setError("Pick a date for the crawl.");
       return;
     }
-    if (!Number.isInteger(crawlNumber) || crawlNumber < 1 || crawlNumber > 9) {
-      setError("Crawl number must be a whole number between 1 and 9.");
+    const from = crawlFrom;
+    const to = crawlTo;
+    if (!Number.isInteger(from) || from < 1 || from > 9) {
+      setError("Crawl 'from' must be between 1 and 9.");
       return;
     }
+    if (!Number.isInteger(to) || to < 1 || to > 9) {
+      setError("Crawl 'to' must be between 1 and 9.");
+      return;
+    }
+    if (to < from) {
+      setError("Crawl 'to' must be greater than or equal to 'from'.");
+      return;
+    }
+    const crawlNumbers: number[] = [];
+    for (let n = from; n <= to; n++) crawlNumbers.push(n);
+
+    // Priority bounds — empty inputs disable the filter for that side.
+    const pMin = priorityMin.trim() === "" ? undefined : Number.parseInt(priorityMin, 10);
+    const pMax = priorityMax.trim() === "" ? undefined : Number.parseInt(priorityMax, 10);
+    if (pMin !== undefined && (!Number.isInteger(pMin) || pMin < 1 || pMin > 99)) {
+      setError("Priority min must be a whole number between 1 and 99.");
+      return;
+    }
+    if (pMax !== undefined && (!Number.isInteger(pMax) || pMax < 1 || pMax > 99)) {
+      setError("Priority max must be a whole number between 1 and 99.");
+      return;
+    }
+    if (pMin !== undefined && pMax !== undefined && pMin > pMax) {
+      setError("Priority min must be <= max.");
+      return;
+    }
+
     startTx(async () => {
       const r = await addCrawlToAllCities({
         campaignId,
         eventDate,
         dayPart: dayPart === "_none" ? undefined : dayPart,
         extendedMiddle,
-        crawlNumber,
+        crawlNumbers,
+        priorityMin: pMin,
+        priorityMax: pMax,
         cityCampaignIds:
           selectedCityCampaignIds && selectedCityCampaignIds.length > 0
             ? selectedCityCampaignIds
@@ -212,23 +252,72 @@ export function BulkAddCrawls({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label
-                    htmlFor="bulk-crawl-number"
-                    className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]"
-                  >
-                    Crawl number
-                  </label>
-                  <Input
-                    id="bulk-crawl-number"
-                    type="number"
-                    min={1}
-                    max={9}
-                    value={crawlNumber}
-                    onChange={(e) => setCrawlNumber(Number.parseInt(e.target.value, 10) || 1)}
-                    disabled={pending}
-                    className="text-xs"
-                    title="The crawl number (e.g. 2 for the second crawl on this date). Also acts as the slot for dedup."
-                  />
+                  <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]">
+                    Crawls (from – to)
+                  </span>
+                  <div className="flex h-9 items-center gap-1">
+                    <Input
+                      id="bulk-crawl-from"
+                      type="number"
+                      min={1}
+                      max={9}
+                      value={crawlFrom}
+                      onChange={(e) => {
+                        const n = Number.parseInt(e.target.value, 10) || 1;
+                        setCrawlFrom(n);
+                        // Auto-bump "to" if it would invert.
+                        if (n > crawlTo) setCrawlTo(n);
+                      }}
+                      disabled={pending}
+                      className="h-9 text-xs"
+                      title="First crawl number to add (e.g. 1)."
+                    />
+                    <span className="px-1 text-zinc-400 text-xs">–</span>
+                    <Input
+                      id="bulk-crawl-to"
+                      type="number"
+                      min={1}
+                      max={9}
+                      value={crawlTo}
+                      onChange={(e) => setCrawlTo(Number.parseInt(e.target.value, 10) || crawlFrom)}
+                      disabled={pending}
+                      className="h-9 text-xs"
+                      title="Last crawl number to add. Same as 'from' for a single crawl."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.12em]">
+                    Priority (min – max)
+                  </span>
+                  <div className="flex h-9 items-center gap-1">
+                    <Input
+                      id="bulk-pri-min"
+                      type="number"
+                      min={1}
+                      max={99}
+                      placeholder="any"
+                      value={priorityMin}
+                      onChange={(e) => setPriorityMin(e.target.value)}
+                      disabled={pending}
+                      className="h-9 text-xs"
+                      title="Lowest priority bucket to include (e.g. 1). Blank = no lower bound."
+                    />
+                    <span className="px-1 text-zinc-400 text-xs">–</span>
+                    <Input
+                      id="bulk-pri-max"
+                      type="number"
+                      min={1}
+                      max={99}
+                      placeholder="any"
+                      value={priorityMax}
+                      onChange={(e) => setPriorityMax(e.target.value)}
+                      disabled={pending}
+                      className="h-9 text-xs"
+                      title="Highest priority bucket to include. Blank = no upper bound."
+                    />
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-1">
@@ -285,7 +374,17 @@ export function BulkAddCrawls({
                     ? "Scheduling…"
                     : scopedCount === 0
                       ? "Add cities first"
-                      : `Schedule crawl ${crawlNumber} for ${scopedCount} ${scopedCount === 1 ? "city" : "cities"}`}
+                      : (() => {
+                          const span =
+                            crawlFrom === crawlTo
+                              ? `crawl ${crawlFrom}`
+                              : `crawls ${crawlFrom}-${crawlTo}`;
+                          const priLabel =
+                            priorityMin || priorityMax
+                              ? ` · P${priorityMin || "*"}-${priorityMax || "*"}`
+                              : "";
+                          return `Schedule ${span} for ${scopedCount} ${scopedCount === 1 ? "city" : "cities"}${priLabel}`;
+                        })()}
                 </Button>
                 {error && <ErrorBanner>{error}</ErrorBanner>}
               </div>

@@ -84,6 +84,18 @@ Rules:
     NOW (asked yesterday or earlier). 'today' for active back-
     and-forth from the last 24h. 'this_week' for warm but not
     pressing. 'when_able' for nice-to-haves.
+  - DO NOT suggest "assign this to <someone>" — assignment is the
+    operator's call. The default working assumption is that Bryle
+    works any unassigned high-priority thread until a specialist
+    is explicitly assigned, so labels like "Assign to wristbands
+    specialist" or "Reassign to whoever owns Toronto" are noise.
+    If the thread looks like it needs specialist attention, say
+    that as a one-liner observation embedded in the reason —
+    don't make the action be the assignment.
+  - Skip the obvious. If the only thing to do is "wait for their
+    reply," set urgency 'when_able' and write a reason that
+    explains what to PREPARE in the meantime (draft the follow-up,
+    pull pricing, etc.) — not "wait."
   - Output the JSON object only. No markdown fences, no prose.`;
 
 export interface EnrichedAction {

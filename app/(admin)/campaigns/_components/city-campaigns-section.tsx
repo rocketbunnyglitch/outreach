@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { X } from "lucide-react";
 import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { AddRemainingCitiesButton } from "./add-remaining-cities-button";
 import { BulkAddCities } from "./bulk-add-cities";
 import { BulkAddCrawls } from "./bulk-add-crawls";
 import { CityProgressCard } from "./city-progress-card";
@@ -230,6 +231,14 @@ export function CityCampaignsSection({
       {cityCampaigns.length > 0 && (
         <BulkAddCrawls campaignId={campaignId} cityCount={cityCampaigns.length} />
       )}
+
+      {/* Add-remaining-cities — admin sweep that dumps every
+          un-assigned city into the campaign at MAX(priority) + 1.
+          Mounted alongside BulkAddCrawls so admins see the two
+          large-batch operations together. */}
+      <div className="flex justify-end">
+        <AddRemainingCitiesButton campaignId={campaignId} isAdmin={isAdmin} />
+      </div>
 
       {cityCampaigns.length === 0 ? (
         <Card className="border-dashed bg-transparent p-6 text-center text-sm text-zinc-500">
