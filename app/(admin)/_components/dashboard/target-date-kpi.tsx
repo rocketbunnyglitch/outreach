@@ -30,11 +30,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { updateCampaignTargetDate } from "../../_actions-cities-goal";
 
-/** Total bars in the ring. 144 bars at 2.5° each — gap between
- *  adjacent bars at radius 154 is ~3px (vs ~6px at 100 bars), so
- *  the ring reads as a near-continuous halo rather than discrete
- *  ticks. */
-const TOTAL_BARS = 144;
+/** Total bars in the ring. 100 bars at 3.6° each — dense enough
+ *  that the gaps between bars feel like minor breathing room
+ *  rather than empty wedges, but still discrete tick marks. */
+const TOTAL_BARS = 100;
 
 export function TargetDateKpi({
   endDate,
@@ -291,11 +290,13 @@ function RingOfBars({
   const height = 400;
   const cx = width / 2;
   const cy = height / 2;
-  // Tight ring sitting well inside the card. Bars short enough
-  // to read as tick marks, ring inset enough from the SVG edge
-  // that it doesn't crowd the card border.
-  const outerRadius = 172;
-  const innerRadius = 154; // 18px tall bars
+  // Smaller, well-inset ring. ~44px clearance from the SVG edge
+  // so the bars don't crowd the card border. At smaller radius
+  // the same 100 bars also pack tighter (arc per bar drops from
+  // ~9.7px to ~8.8px), so the ring reads denser without changing
+  // the bar count.
+  const outerRadius = 156;
+  const innerRadius = 138; // 18px tall bars
   const litColor = TONE_BAR[tone];
 
   // Bars laid out around the circle. Start angle at -90° (top) so
