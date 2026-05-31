@@ -34,9 +34,10 @@ import { db } from "@/lib/db";
 import { searchGmailContacts } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import type { SendUsage } from "@/lib/send-cap";
+import { startOfLocalDay } from "@/lib/send-cap";
 import type { DncBlock, DuplicateWarning, SuppressionBlock } from "@/lib/send-safety";
 import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -52,6 +53,15 @@ export interface ConnectedAccountOption {
    *  auto-appends it on send if the operator hasn't already inlined
    *  a different signature in the draft. NULL = no signature. */
   signatureHtml: string | null;
+  /** Cold sends used today on this account (operator-tz-aware day).
+   *  Surfaced beside each option in the From picker so the operator
+   *  can see remaining headroom before they pick. */
+  coldSendsUsed: number;
+  /** Daily cap (connected_accounts.daily_cold_send_cap). */
+  coldSendCap: number;
+  /** True when used >= cap. UI uses this to grey the option +
+   *  block cold-outreach sends. */
+  atCap: boolean;
 }
 
 /**
@@ -91,14 +101,60 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
   const ownerNameMap = new Map<string, string | null>();
   for (const o of ownerRows) ownerNameMap.set(o.id, o.displayName ?? null);
 
-  const opts: ConnectedAccountOption[] = usable.map((r) => ({
-    id: r.id,
-    emailAddress: r.emailAddress,
-    ownerDisplayName: r.ownerUserId ? (ownerNameMap.get(r.ownerUserId) ?? null) : null,
-    scope: r.ownerUserId === staff.id ? "mine" : "team",
-    status: r.status as ConnectedAccountOption["status"],
-    signatureHtml: r.signatureHtml ?? null,
-  }));
+  // Cold-send usage today, one GROUP BY across email_send_events. We
+  // use the operator's tz to anchor "today" so it matches what
+  // the rest of the UI shows. Same shape as lib/visible-accounts so
+  // the AccountSwitcher dropdown + the composer's From picker agree
+  // on the numbers.
+  const startOfDay = startOfLocalDay(staff.timezone ?? null);
+  const usageMap = new Map<string, number>();
+  if (usable.length > 0) {
+    const usage = await db.execute<{ account_id: string; used: number }>(sql`
+      SELECT
+        connected_account_id AS account_id,
+        COUNT(*) FILTER (WHERE category = 'cold' AND counted_against_cap = true)::int AS used
+      FROM email_send_events
+      WHERE sent_at >= ${startOfDay}
+      GROUP BY connected_account_id
+    `);
+    const list = Array.isArray(usage)
+      ? (usage as unknown as Array<{ account_id: string; used: number }>)
+      : ((usage as unknown as { rows: Array<{ account_id: string; used: number }> }).rows ?? []);
+    for (const r of list) usageMap.set(r.account_id, Number(r.used ?? 0));
+  }
+
+  // Pull cap from connected_accounts for each row. The usable rows
+  // already have it via the initial select — but we didn't carry it.
+  // Re-fetch in one go.
+  const capMap = new Map<string, number>();
+  if (usable.length > 0) {
+    const capRows = await db
+      .select({ id: connectedAccounts.id, cap: connectedAccounts.dailyColdSendCap })
+      .from(connectedAccounts)
+      .where(
+        inArray(
+          connectedAccounts.id,
+          usable.map((r) => r.id),
+        ),
+      );
+    for (const c of capRows) capMap.set(c.id, c.cap ?? 30);
+  }
+
+  const opts: ConnectedAccountOption[] = usable.map((r) => {
+    const cap = capMap.get(r.id) ?? 30;
+    const used = usageMap.get(r.id) ?? 0;
+    return {
+      id: r.id,
+      emailAddress: r.emailAddress,
+      ownerDisplayName: r.ownerUserId ? (ownerNameMap.get(r.ownerUserId) ?? null) : null,
+      scope: r.ownerUserId === staff.id ? "mine" : "team",
+      status: r.status as ConnectedAccountOption["status"],
+      signatureHtml: r.signatureHtml ?? null,
+      coldSendsUsed: used,
+      coldSendCap: cap,
+      atCap: used >= cap,
+    };
+  });
 
   opts.sort((a, b) => {
     if (a.scope !== b.scope) return a.scope === "mine" ? -1 : 1;

@@ -659,13 +659,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               className="flex-1 bg-transparent text-xs outline-none"
             >
               <option value="">— Select an inbox —</option>
-              {inboxes.map((inbox) => (
-                <option key={inbox.id} value={inbox.id}>
-                  {inbox.emailAddress}
-                  {inbox.status !== "connected" ? ` (${inbox.status})` : ""}
-                  {inbox.signatureHtml ? " · ✎" : ""}
-                </option>
-              ))}
+              {inboxes.map((inbox) => {
+                // Show the cap remaining beside each option. When the
+                // account is at cap, indicate so the operator sees it
+                // before clicking. The actual cold-outreach gate is
+                // enforced server-side via preflightSend; this is the
+                // UX hint.
+                const capHint =
+                  typeof inbox.coldSendsUsed === "number" && typeof inbox.coldSendCap === "number"
+                    ? ` · ${inbox.coldSendsUsed}/${inbox.coldSendCap}${inbox.atCap ? " (at cap)" : ""}`
+                    : "";
+                return (
+                  <option key={inbox.id} value={inbox.id} disabled={inbox.atCap}>
+                    {inbox.emailAddress}
+                    {inbox.status !== "connected" ? ` (${inbox.status})` : ""}
+                    {inbox.signatureHtml ? " · ✎" : ""}
+                    {capHint}
+                  </option>
+                );
+              })}
             </select>
           )}
         </div>
