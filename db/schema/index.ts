@@ -73,4 +73,5 @@ export * from "./staff-views";
 export * from "./notifications";
 export * from "./financial";
 export * from "./saved-filters";
+export * from "./places-enrichment-cache";
 export * from "./audit";
