@@ -33,6 +33,7 @@
  */
 
 import { cityCampaigns } from "@/db/schema";
+import { type CsvColumnMapping, applyMappingToCsv, suggestCsvMapping } from "@/lib/ai-csv-mapping";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -519,4 +520,50 @@ async function resolveCityNames(lowerNames: string[]): Promise<Map<string, CityM
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// =========================================================================
+// AI CSV column auto-mapping (Haiku ROI #2)
+// =========================================================================
+
+/**
+ * Suggest a column mapping for a raw CSV the operator pasted. Used
+ * when the strict importer rejected the paste because the headers
+ * don't match the canonical names.
+ *
+ * Returns BOTH the suggested mapping AND the rewritten CSV (canonical
+ * headers, columns reordered) so the UI can hand the rewritten
+ * version straight back to previewCsvImport without a roundtrip.
+ *
+ * Returns ok:false when:
+ *   - AI is not configured / kill switch off
+ *   - The model couldn't map required fields (UI surfaces a
+ *     "manual mapping" panel listing which fields didn't match)
+ *   - Rate limit hit
+ */
+export async function suggestColumnMappingForCsv(input: { csv: string }): Promise<
+  ActionResult<{
+    mapping: CsvColumnMapping;
+    /** Null when mapping has any unmapped required field. */
+    rewrittenCsv: string | null;
+  }>
+> {
+  const { staff } = await requireStaff();
+  if (!input.csv || input.csv.length === 0) {
+    return { ok: false, error: "Paste a CSV first." };
+  }
+  if (input.csv.length > 200_000) {
+    return { ok: false, error: "CSV too large for AI mapping (200KB limit)." };
+  }
+  const mapping = await suggestCsvMapping({ csv: input.csv, staffId: staff.id });
+  if (!mapping) {
+    return {
+      ok: false,
+      error:
+        "Couldn't suggest a mapping — AI may not be configured, or the CSV format isn't recognizable.",
+    };
+  }
+  const rewrittenCsv =
+    mapping.unmappedRequired.length === 0 ? applyMappingToCsv({ csv: input.csv, mapping }) : null;
+  return { ok: true, data: { mapping, rewrittenCsv } };
 }

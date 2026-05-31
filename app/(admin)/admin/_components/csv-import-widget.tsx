@@ -13,7 +13,12 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { AlertTriangle, CheckCircle2, FileUp, Loader2, Sparkles, XCircle } from "lucide-react";
 import { useState, useTransition } from "react";
-import { type ImportPreview, commitCsvImport, previewCsvImport } from "../_actions-import";
+import {
+  type ImportPreview,
+  commitCsvImport,
+  previewCsvImport,
+  suggestColumnMappingForCsv,
+} from "../_actions-import";
 
 interface CampaignOption {
   id: string;
@@ -59,7 +64,56 @@ export function CsvImportWidget({ campaigns }: Props) {
   const [commitResult, setCommitResult] = useState<Awaited<
     ReturnType<typeof commitCsvImport>
   > | null>(null);
+  const [mappingPending, startMapping] = useTransition();
+  const [mappingError, setMappingError] = useState<string | null>(null);
+  const [mappedFields, setMappedFields] = useState<string[] | null>(null);
   const toast = useToast();
+
+  /**
+   * Surface an "Auto-map columns" button when the strict importer
+   * has rejected the paste because of a header mismatch. The button
+   * runs Haiku on the first 4 rows, gets back a column mapping, and
+   * REWRITES the textarea contents to canonical-header CSV so the
+   * existing previewCsvImport can run unchanged.
+   */
+  function autoMapColumns() {
+    setMappingError(null);
+    setMappedFields(null);
+    startMapping(async () => {
+      const result = await suggestColumnMappingForCsv({ csv });
+      if (!result.ok) {
+        setMappingError(result.error ?? "Couldn't suggest a mapping.");
+        toast.show({ kind: "error", message: result.error ?? "Couldn't auto-map." });
+        return;
+      }
+      const { mapping, rewrittenCsv } = result.data;
+      if (!rewrittenCsv) {
+        // Partial mapping — surface which fields didn't match.
+        const missing = mapping.unmappedRequired.join(", ");
+        setMappingError(
+          `AI couldn't match required field(s): ${missing}. Edit your header row and try again.`,
+        );
+        toast.show({
+          kind: "error",
+          message: `Unmapped: ${missing}.`,
+        });
+        return;
+      }
+      // Show which fields were mapped for transparency
+      const mapped: string[] = [];
+      if (mapping.priority_number !== null) mapped.push("priority_number");
+      if (mapping.city_name !== null) mapped.push("city_name");
+      if (mapping.day !== null) mapped.push("day");
+      if (mapping.crawl_number !== null) mapped.push("crawl_number");
+      if (mapping.eventbrite_id !== null) mapped.push("eventbrite_id");
+      setMappedFields(mapped);
+      toast.show({
+        kind: "success",
+        message: `Auto-mapped ${mapped.length} columns. Review the preview below.`,
+      });
+      runPreview(rewrittenCsv);
+    });
+  }
 
   function runPreview(nextCsv: string) {
     setCsv(nextCsv);
@@ -197,6 +251,55 @@ export function CsvImportWidget({ campaigns }: Props) {
             )}
           />
         </div>
+
+        {/* AI auto-map columns — surfaced when the strict importer
+            rejected the paste with a header error. Click to ask
+            Haiku for a column mapping; on success, the textarea
+            contents are rewritten to canonical-header CSV and the
+            preview re-runs. */}
+        {csv.length > 0 &&
+          preview &&
+          preview.errors.some((e) => e.reason.startsWith("Header must include")) && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/40 px-3 py-2 dark:border-violet-900/40 dark:bg-violet-950/15">
+              <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+              <span className="text-violet-900 text-xs dark:text-violet-200">
+                Header doesn't match — let AI guess the column mapping.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={autoMapColumns}
+                disabled={mappingPending}
+                className="ml-auto"
+              >
+                {mappingPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                Auto-map columns
+              </Button>
+            </div>
+          )}
+
+        {/* Mapping success banner — shown when auto-map rewrote
+            the CSV. Operator can review the preview right below. */}
+        {mappedFields && mappedFields.length > 0 && !mappingError && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-emerald-900 text-xs dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Mapped {mappedFields.length} columns: {mappedFields.join(", ")}. Review the preview
+            below.
+          </div>
+        )}
+
+        {/* Mapping error — partial or full failure */}
+        {mappingError && (
+          <Alert tone="error">
+            <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
+            {mappingError}
+          </Alert>
+        )}
 
         {/* Live preview */}
         {previewPending && !preview && (
