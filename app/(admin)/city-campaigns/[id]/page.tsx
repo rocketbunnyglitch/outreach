@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { loadCitySheet } from "@/lib/city-sheet-data";
+import { loadCityVenues } from "@/lib/city-venues-data";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
@@ -24,6 +25,7 @@ import { AddCrawlRow } from "../_components/add-crawl-row";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CityPresence } from "../_components/city-presence";
 import { CitySheetHeader } from "../_components/city-sheet-header";
+import { CityVenuesTable } from "../_components/city-venues-table";
 import { ColdOutreachTable } from "../_components/cold-outreach-table";
 import { CrawlSlotTable } from "../_components/crawl-slot-table";
 import { PasteMapsUrl } from "../_components/paste-maps-url";
@@ -102,6 +104,15 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
 
   // Cold outreach pipeline for this city_campaign
   const coldOutreach = await loadColdOutreach(id);
+
+  // Every venue in the city DB + its slot history. Renders below
+  // the cold-outreach worksheet so the operator sees the full
+  // market footprint, with previously-used venues pinned to the
+  // top. See lib/city-venues-data.ts.
+  const cityVenues = await loadCityVenues({
+    cityId: cc.city.id,
+    cityCampaignId: id,
+  });
 
   // Escalation target list — eligible non-readonly active staff,
   // pre-sorted admin → lead → outreach. Passed into ColdOutreachTable
@@ -296,6 +307,20 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         googleMapsApiKey={
           process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
         }
+      />
+
+      {/* Every venue in the city DB + slot history. Mounts right
+          below the cold-outreach worksheet so the operator can
+          glance at "who do we already know in this market" and
+          add anyone missing to the cold pipeline with one click.
+          Previously-used venues pin to the top. */}
+      <CityVenuesTable
+        cityCampaignId={id}
+        cityId={cc.city.id}
+        cityName={cc.city.name}
+        rows={cityVenues.rows}
+        totalInCity={cityVenues.totalInCity}
+        capped={cityVenues.capped}
       />
 
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}
