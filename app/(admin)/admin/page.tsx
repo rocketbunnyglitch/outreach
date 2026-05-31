@@ -431,13 +431,25 @@ function CampaignRow({
     name: string;
     slug: string;
     status: string;
-    startDate: string | null;
+    startDate: string | Date | null;
     archivedAt: Date | null;
     cityCount: number;
   };
 }) {
-  // Extract year from startDate when present (e.g. "2026-10-30" → "2026")
-  const year = campaign.startDate ? campaign.startDate.slice(0, 4) : null;
+  // Extract year from startDate. Drizzle's `date()` column returns
+  // either a YYYY-MM-DD string OR a Date object depending on the
+  // pg-node type parser config. Handle both shapes so a single
+  // campaign with a startDate can't crash the entire page render.
+  const year = (() => {
+    if (!campaign.startDate) return null;
+    if (typeof campaign.startDate === "string") {
+      return campaign.startDate.slice(0, 4);
+    }
+    if (campaign.startDate instanceof Date) {
+      return String(campaign.startDate.getUTCFullYear());
+    }
+    return null;
+  })();
   return (
     <li>
       <Link

@@ -36,11 +36,12 @@ export async function runHalloween2025DryRun(input?: {
   cityLimit?: number | null;
   onlySheetName?: string | null;
 }): Promise<ActionResult<ImportReport>> {
-  const { staff } = await requireStaff();
-  if (staff.role !== "admin") return { ok: false, error: "Admin role required." };
-
   const op = newOpError("admin.halloween_import.dry_run");
   try {
+    const { staff } = await requireStaff();
+    if (staff.role !== "admin") {
+      return { ok: false, error: "Admin role required.", code: op.code };
+    }
     const report = await runHalloween2025Import({
       dryRun: true,
       cityLimit: input?.cityLimit ?? null,
@@ -59,11 +60,12 @@ export async function runHalloween2025Apply(input?: {
   cityLimit?: number | null;
   onlySheetName?: string | null;
 }): Promise<ActionResult<ImportReport>> {
-  const { staff } = await requireStaff();
-  if (staff.role !== "admin") return { ok: false, error: "Admin role required." };
-
   const op = newOpError("admin.halloween_import.apply");
   try {
+    const { staff } = await requireStaff();
+    if (staff.role !== "admin") {
+      return { ok: false, error: "Admin role required.", code: op.code };
+    }
     const report = await runHalloween2025Import({
       dryRun: false,
       cityLimit: input?.cityLimit ?? null,
@@ -78,10 +80,6 @@ export async function runHalloween2025Apply(input?: {
     return { ok: true, data: report };
   } catch (err) {
     op.log(err, { input });
-    // Include the actual underlying error message in the response
-    // so the operator can diagnose without PM2 grep. The op.code
-    // still ties it back to the structured log line if they want
-    // the stack.
     const detail = (err as Error)?.message ?? String(err);
     return {
       ok: false,
@@ -100,16 +98,44 @@ export async function runHalloween2025Apply(input?: {
 export async function generateReviewQueueMarkdown(
   report: ImportReport,
 ): Promise<ActionResult<{ markdown: string; queue: ReviewQueue }>> {
-  const { staff } = await requireStaff();
-  if (staff.role !== "admin") return { ok: false, error: "Admin role required." };
-
+  // Single top-level try/catch — never throw out of the action.
+  // Auth + report validation + build all inside so any failure
+  // gets a structured response with an operator-facing code.
   const op = newOpError("admin.halloween_import.review_queue");
   try {
+    const { staff } = await requireStaff();
+    if (staff.role !== "admin") {
+      return { ok: false, error: "Admin role required.", code: op.code };
+    }
+
+    // Validate the report shape we got from the client. The client
+    // casts a local interface to ImportReport — if a previous
+    // dry-run was partial / mis-shaped, decisions could be missing.
+    if (!report || typeof report !== "object") {
+      return {
+        ok: false,
+        error: "Invalid report — re-run dry-run first.",
+        code: op.code,
+      };
+    }
+    if (!Array.isArray(report.decisions)) {
+      return {
+        ok: false,
+        error: "Report has no decisions array — re-run dry-run first.",
+        code: op.code,
+      };
+    }
+
     const queue = buildReviewQueue(report);
     const markdown = renderReviewQueueMarkdown(queue);
     return { ok: true, data: { markdown, queue } };
   } catch (err) {
     op.log(err, {});
-    return { ok: false, error: "Couldn't build review queue.", code: op.code };
+    const detail = (err as Error)?.message ?? String(err);
+    return {
+      ok: false,
+      error: `Couldn't build review queue: ${detail}`,
+      code: op.code,
+    };
   }
 }
