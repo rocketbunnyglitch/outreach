@@ -22,7 +22,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sql } from "drizzle-orm";
 
-const TRGM_THRESHOLD = 0.6;
+const TRGM_THRESHOLD = 0.4;
 
 export interface CityMatchResult {
   cityId: string;

@@ -216,25 +216,62 @@ export function HalloweenImportPanel() {
         </div>
       )}
 
-      {/* Warnings */}
+      {/* City skip reasons — pulls every decision with cityMatch.ok=false
+          out as its own "X cities not matched" group so the operator
+          sees which sheets failed city resolution. The fix is usually
+          adding the missing city row to the cities table. */}
+      {report &&
+        (() => {
+          const skippedCities = Array.from(
+            new Set(report.decisions.filter((d) => !d.cityMatch.ok).map((d) => d.sourceCity)),
+          );
+          if (skippedCities.length === 0) return null;
+          return (
+            <div className="rounded-md border border-rose-200 bg-rose-50/40 px-3 py-2 text-xs dark:border-rose-900/40 dark:bg-rose-950/30">
+              <p className="font-mono text-[10px] text-rose-700 uppercase tracking-[0.08em] dark:text-rose-300">
+                Cities skipped (no DB match) — {skippedCities.length}
+              </p>
+              <p className="mt-1 text-rose-900 dark:text-rose-100">
+                These sheets had no matching row in the `cities` table. Add them there first (city
+                name + region + timezone), then re-run.
+              </p>
+              <ul className="mt-1 list-disc pl-4">
+                {skippedCities.map((name) => (
+                  <li key={name} className="text-rose-900 dark:text-rose-100">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
+
+      {/* Warnings — per-row failures that didn't kill the import. The
+          per-city + per-venue try/catch wrappers turn every failure
+          into a warning here instead of a fatal 500. Show ALL of them
+          (capped at 200 for sanity), with a click-to-expand for the
+          full list when very long. */}
       {report && report.warnings.length > 0 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50/40 px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
-          <p className="font-mono text-[10px] text-amber-700 uppercase tracking-[0.08em] dark:text-amber-300">
-            Warnings ({report.warnings.length})
-          </p>
-          <ul className="mt-1 list-disc pl-4">
-            {report.warnings.slice(0, 5).map((w, i) => (
-              <li key={`${i}-${w.slice(0, 20)}`} className="text-amber-900 dark:text-amber-100">
-                {w}
+        <details className="rounded-md border border-amber-200 bg-amber-50/40 px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
+          <summary className="cursor-pointer font-mono text-[10px] text-amber-700 uppercase tracking-[0.08em] dark:text-amber-300">
+            Per-row warnings ({report.warnings.length}) — click to expand
+          </summary>
+          <ul className="mt-2 list-disc pl-4">
+            {report.warnings.slice(0, 200).map((w, i) => (
+              <li
+                key={`${i}-${w.slice(0, 30)}`}
+                className="text-amber-900 leading-relaxed dark:text-amber-100"
+              >
+                <code className="font-mono text-[10px]">{w}</code>
               </li>
             ))}
-            {report.warnings.length > 5 && (
+            {report.warnings.length > 200 && (
               <li className="text-amber-700 dark:text-amber-300">
-                …+{report.warnings.length - 5} more
+                …+{report.warnings.length - 200} more (truncated; check server logs)
               </li>
             )}
           </ul>
-        </div>
+        </details>
       )}
 
       <p className="text-[11px] text-zinc-500 leading-relaxed dark:text-zinc-400">

@@ -302,42 +302,59 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
     }
     report.citiesMatched++;
 
-    // Ensure (or would-create) the city_campaign for this city
-    const cityCampaignId = campaignId
-      ? await ensureCityCampaign({
-          cityId: cityResult.cityId,
-          campaignId,
-          dryRun,
-          staffId: opts.staffId,
-        })
-      : null;
+    // Per-city try/catch — when something inside one city's
+    // processing throws, log + warn + move on to the next city
+    // rather than killing the whole import. Without this, a
+    // single bad venue (long name, constraint violation, etc.)
+    // would silently skip every city alphabetically after it.
+    try {
+      // Ensure (or would-create) the city_campaign for this city
+      const cityCampaignId = campaignId
+        ? await ensureCityCampaign({
+            cityId: cityResult.cityId,
+            campaignId,
+            dryRun,
+            staffId: opts.staffId,
+          })
+        : null;
 
-    // Process the three source buckets
-    await processConfirmedVenues({
-      body,
-      cityResult,
-      cityCampaignId,
-      campaignId,
-      sheetName,
-      dryRun,
-      report,
-    });
-    await processWarmLeads({
-      body,
-      cityResult,
-      cityCampaignId,
-      sheetName,
-      dryRun,
-      report,
-    });
-    await processColdOutreach({
-      body,
-      cityResult,
-      cityCampaignId,
-      sheetName,
-      dryRun,
-      report,
-    });
+      // Process the three source buckets — each is internally
+      // try/catched per-row so one bad row doesn't kill the rest
+      // of a city's data.
+      await processConfirmedVenues({
+        body,
+        cityResult,
+        cityCampaignId,
+        campaignId,
+        sheetName,
+        dryRun,
+        report,
+      });
+      await processWarmLeads({
+        body,
+        cityResult,
+        cityCampaignId,
+        sheetName,
+        dryRun,
+        report,
+      });
+      await processColdOutreach({
+        body,
+        cityResult,
+        cityCampaignId,
+        sheetName,
+        dryRun,
+        report,
+      });
+    } catch (cityErr) {
+      const msg = (cityErr as Error).message ?? String(cityErr);
+      logger.error(
+        { err: cityErr, sheetName, cityId: cityResult.cityId },
+        "halloween import: city loop failed",
+      );
+      report.warnings.push(`[${sheetName}] city loop failed: ${msg}`);
+      // Continue to next city — don't bail.
+    }
   }
 
   report.endedAt = new Date().toISOString();
@@ -489,21 +506,68 @@ async function processConfirmedVenues(args: {
   for (const v of args.body.confirmed_venues) {
     args.report.countsByOrigin.confirmed++;
 
-    const resolved = await resolveVenue({
-      name: v.venue_name,
-      cityId: args.cityResult.cityId,
-      source: {
-        email: v.venue_email ?? null,
-        phoneRaw: v.contact_phone ?? null,
-        address: v.address ?? null,
-        capacity: parseCapacity(v.capacity),
-      },
-      dryRun: args.dryRun,
-    });
-    bumpDecision(args.report, resolved.decision);
+    // Per-row try/catch — a single bad venue (long name, NULL
+    // violation, invalid enum, etc.) should not kill the rest
+    // of this city's data. Log + warn + move on.
+    try {
+      const resolved = await resolveVenue({
+        name: v.venue_name,
+        cityId: args.cityResult.cityId,
+        source: {
+          email: v.venue_email ?? null,
+          phoneRaw: v.contact_phone ?? null,
+          address: v.address ?? null,
+          capacity: parseCapacity(v.capacity),
+        },
+        dryRun: args.dryRun,
+      });
+      bumpDecision(args.report, resolved.decision);
 
-    // Skip when name was empty or unresolvable
-    if (resolved.decision === "skipped") {
+      // Skip when name was empty or unresolvable
+      if (resolved.decision === "skipped") {
+        args.report.decisions.push(
+          buildDecisionRow({
+            sheetName: args.sheetName,
+            cityResult: args.cityResult,
+            v: {
+              name: v.venue_name,
+              cluster: v.cluster_num,
+              role: v.slot_role,
+              pos: v.slot_position,
+            },
+            origin: "confirmed",
+            resolved,
+            wouldVE: false,
+            wouldCO: false,
+          }),
+        );
+        continue;
+      }
+
+      // Ensure the event for the cluster + write venue_event
+      let wouldVE = false;
+      if (args.cityCampaignId && resolved.venueId) {
+        const eventId = await ensureEvent({
+          cityCampaignId: args.cityCampaignId,
+          clusterNum: v.cluster_num,
+          dryRun: args.dryRun,
+        });
+        if (eventId) {
+          wouldVE = await maybeInsertVenueEvent({
+            eventId,
+            venueId: resolved.venueId,
+            role: mapSlotRole(v.slot_role),
+            slotPosition: v.slot_position,
+            dryRun: args.dryRun,
+          });
+        } else if (args.dryRun) {
+          // dry-run path: would-create the event AND would-add a venue_event
+          wouldVE = true;
+        }
+      } else if (args.dryRun) {
+        wouldVE = true;
+      }
+
       args.report.decisions.push(
         buildDecisionRow({
           sheetName: args.sheetName,
@@ -516,48 +580,22 @@ async function processConfirmedVenues(args: {
           },
           origin: "confirmed",
           resolved,
-          wouldVE: false,
+          wouldVE,
           wouldCO: false,
         }),
       );
-      continue;
+    } catch (rowErr) {
+      logger.error(
+        { err: rowErr, sheetName: args.sheetName, venueName: v.venue_name },
+        "halloween import: confirmed-venue row failed",
+      );
+      args.report.warnings.push(
+        `[${args.sheetName}] confirmed venue "${v.venue_name}" failed: ${
+          (rowErr as Error).message ?? String(rowErr)
+        }`,
+      );
+      // Continue to next row.
     }
-
-    // Ensure the event for the cluster + write venue_event
-    let wouldVE = false;
-    if (args.cityCampaignId && resolved.venueId) {
-      const eventId = await ensureEvent({
-        cityCampaignId: args.cityCampaignId,
-        clusterNum: v.cluster_num,
-        dryRun: args.dryRun,
-      });
-      if (eventId) {
-        wouldVE = await maybeInsertVenueEvent({
-          eventId,
-          venueId: resolved.venueId,
-          role: mapSlotRole(v.slot_role),
-          slotPosition: v.slot_position,
-          dryRun: args.dryRun,
-        });
-      } else if (args.dryRun) {
-        // dry-run path: would-create the event AND would-add a venue_event
-        wouldVE = true;
-      }
-    } else if (args.dryRun) {
-      wouldVE = true;
-    }
-
-    args.report.decisions.push(
-      buildDecisionRow({
-        sheetName: args.sheetName,
-        cityResult: args.cityResult,
-        v: { name: v.venue_name, cluster: v.cluster_num, role: v.slot_role, pos: v.slot_position },
-        origin: "confirmed",
-        resolved,
-        wouldVE,
-        wouldCO: false,
-      }),
-    );
   }
 }
 
@@ -571,37 +609,48 @@ async function processWarmLeads(args: {
 }): Promise<void> {
   for (const v of args.body.warm_leads) {
     args.report.countsByOrigin.warm++;
+    try {
+      const resolved = await resolveVenue({
+        name: v.venue_name,
+        cityId: args.cityResult.cityId,
+        source: {
+          email: v.venue_email ?? null,
+          phoneRaw: v.contact_phone ?? null,
+          capacity: parseCapacity(v.capacity),
+        },
+        dryRun: args.dryRun,
+      });
+      bumpDecision(args.report, resolved.decision);
 
-    const resolved = await resolveVenue({
-      name: v.venue_name,
-      cityId: args.cityResult.cityId,
-      source: {
-        email: v.venue_email ?? null,
-        phoneRaw: v.contact_phone ?? null,
-        capacity: parseCapacity(v.capacity),
-      },
-      dryRun: args.dryRun,
-    });
-    bumpDecision(args.report, resolved.decision);
+      const wouldCO = await maybeInsertColdOutreach({
+        cityCampaignId: args.cityCampaignId,
+        venueId: resolved.venueId,
+        status: "interested",
+        dryRun: args.dryRun,
+      });
 
-    const wouldCO = await maybeInsertColdOutreach({
-      cityCampaignId: args.cityCampaignId,
-      venueId: resolved.venueId,
-      status: "interested",
-      dryRun: args.dryRun,
-    });
-
-    args.report.decisions.push(
-      buildDecisionRow({
-        sheetName: args.sheetName,
-        cityResult: args.cityResult,
-        v: { name: v.venue_name, cluster: null, role: null, pos: null },
-        origin: "warm",
-        resolved,
-        wouldVE: false,
-        wouldCO,
-      }),
-    );
+      args.report.decisions.push(
+        buildDecisionRow({
+          sheetName: args.sheetName,
+          cityResult: args.cityResult,
+          v: { name: v.venue_name, cluster: null, role: null, pos: null },
+          origin: "warm",
+          resolved,
+          wouldVE: false,
+          wouldCO,
+        }),
+      );
+    } catch (rowErr) {
+      logger.error(
+        { err: rowErr, sheetName: args.sheetName, venueName: v.venue_name },
+        "halloween import: warm-lead row failed",
+      );
+      args.report.warnings.push(
+        `[${args.sheetName}] warm lead "${v.venue_name}" failed: ${
+          (rowErr as Error).message ?? String(rowErr)
+        }`,
+      );
+    }
   }
 }
 
@@ -615,36 +664,47 @@ async function processColdOutreach(args: {
 }): Promise<void> {
   for (const v of args.body.cold_outreach) {
     args.report.countsByOrigin.cold++;
+    try {
+      const resolved = await resolveVenue({
+        name: v.venue_name,
+        cityId: args.cityResult.cityId,
+        source: {
+          email: v.venue_email ?? v.alt_email ?? null,
+          phoneRaw: v.phone ?? v.other_contact ?? null,
+        },
+        dryRun: args.dryRun,
+      });
+      bumpDecision(args.report, resolved.decision);
 
-    const resolved = await resolveVenue({
-      name: v.venue_name,
-      cityId: args.cityResult.cityId,
-      source: {
-        email: v.venue_email ?? v.alt_email ?? null,
-        phoneRaw: v.phone ?? v.other_contact ?? null,
-      },
-      dryRun: args.dryRun,
-    });
-    bumpDecision(args.report, resolved.decision);
+      const wouldCO = await maybeInsertColdOutreach({
+        cityCampaignId: args.cityCampaignId,
+        venueId: resolved.venueId,
+        status: "not_contacted",
+        dryRun: args.dryRun,
+      });
 
-    const wouldCO = await maybeInsertColdOutreach({
-      cityCampaignId: args.cityCampaignId,
-      venueId: resolved.venueId,
-      status: "not_contacted",
-      dryRun: args.dryRun,
-    });
-
-    args.report.decisions.push(
-      buildDecisionRow({
-        sheetName: args.sheetName,
-        cityResult: args.cityResult,
-        v: { name: v.venue_name, cluster: null, role: null, pos: null },
-        origin: "cold",
-        resolved,
-        wouldVE: false,
-        wouldCO,
-      }),
-    );
+      args.report.decisions.push(
+        buildDecisionRow({
+          sheetName: args.sheetName,
+          cityResult: args.cityResult,
+          v: { name: v.venue_name, cluster: null, role: null, pos: null },
+          origin: "cold",
+          resolved,
+          wouldVE: false,
+          wouldCO,
+        }),
+      );
+    } catch (rowErr) {
+      logger.error(
+        { err: rowErr, sheetName: args.sheetName, venueName: v.venue_name },
+        "halloween import: cold-outreach row failed",
+      );
+      args.report.warnings.push(
+        `[${args.sheetName}] cold "${v.venue_name}" failed: ${
+          (rowErr as Error).message ?? String(rowErr)
+        }`,
+      );
+    }
   }
 }
 
