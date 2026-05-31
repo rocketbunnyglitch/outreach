@@ -77,13 +77,13 @@ module.exports = {
       // process jobs or double-send email. Realtime is Redis pub/sub.
       name: "outreach-2",
       cwd: "/var/www/outreach",
-      script: ".next/standalone/server.js",
+      script: "scripts/run-failover-3003.cjs",
       instances: 1,
       exec_mode: "fork",
       env: {
         NODE_ENV: "production",
       },
-      node_args: ["--env-file=/var/www/outreach/.env.3003"],
+      node_args: ["--env-file=/var/www/outreach/.env"],
       max_memory_restart: "2G",
       max_restarts: 50,
       min_uptime: "10s",
