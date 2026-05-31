@@ -243,22 +243,66 @@ export function SideNav({
     }
   }
 
+  // Whole-rail collapse — power-user mode that shrinks the rail to
+  // an icons-only column. Persists to localStorage. Defaults to
+  // expanded so the existing UX is unchanged.
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("sidenav.railCollapsed");
+      if (stored === "1") setRailCollapsed(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  function toggleRail() {
+    const next = !railCollapsed;
+    setRailCollapsed(next);
+    try {
+      window.localStorage.setItem("sidenav.railCollapsed", next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <aside
       className={cn(
-        // Pin under the sticky 3.5rem top bar (top-14). Without `sticky`
-        // the rail sat in normal flow, so on long pages it scrolled up
-        // and out of view and its bottom items (e.g. Audit) clipped.
-        // overflow-y-auto then only scrolls the rail itself in the rare
-        // case the item list is taller than the viewport.
-        "hidden h-[calc(100vh-3.5rem)] w-[200px] shrink-0 self-start overflow-y-auto",
+        // Pin under the sticky 3.5rem top bar (top-14).
+        "hidden h-[calc(100vh-3.5rem)] shrink-0 self-start overflow-y-auto transition-[width] duration-200",
+        railCollapsed ? "w-14" : "w-[200px]",
         "sticky top-14",
         "border-zinc-200/80 border-r bg-zinc-50/40 dark:border-zinc-800/60 dark:bg-zinc-950/40",
         "lg:block",
       )}
       aria-label="Primary navigation"
     >
-      <nav className="flex flex-col gap-5 px-3 py-5">
+      {/* Collapse toggle — sits at the top-right of the rail so it's
+          findable but out of the way. In collapsed mode the chevron
+          flips so the affordance reads as "expand". */}
+      <div
+        className={cn(
+          "flex border-zinc-200/60 border-b dark:border-zinc-800/40",
+          railCollapsed ? "justify-center" : "justify-end",
+          "px-2 py-2",
+        )}
+      >
+        <button
+          type="button"
+          onClick={toggleRail}
+          aria-label={railCollapsed ? "Expand navigation" : "Collapse navigation"}
+          title={railCollapsed ? "Expand navigation" : "Collapse navigation"}
+          className="rounded p-1 text-zinc-400 hover:bg-zinc-200/40 hover:text-zinc-700 dark:hover:bg-zinc-800/40 dark:hover:text-zinc-300"
+        >
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 transition-transform duration-150",
+              railCollapsed ? "-rotate-90" : "rotate-90",
+            )}
+          />
+        </button>
+      </div>
+      <nav className={cn("flex flex-col gap-5 py-3", railCollapsed ? "px-2" : "px-3")}>
         {sections.map((section) => {
           // Two collapsible groups: Admin and Settings. Both default to
           // collapsed; users can toggle via the chevron and we persist
@@ -278,7 +322,7 @@ export function SideNav({
               : undefined;
           return (
             <div key={section.label} className="flex flex-col gap-1">
-              {collapsible ? (
+              {!railCollapsed && collapsible ? (
                 <button
                   type="button"
                   onClick={onToggle}
@@ -293,12 +337,12 @@ export function SideNav({
                     )}
                   />
                 </button>
-              ) : (
+              ) : !railCollapsed ? (
                 <p className="px-2 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.16em] dark:text-zinc-600">
                   {section.label}
                 </p>
-              )}
-              {expanded && (
+              ) : null}
+              {(railCollapsed || expanded) && (
                 <ul className="flex flex-col gap-0.5">
                   {section.items.map((item) => {
                     const active = isActive(item.href);
@@ -306,8 +350,10 @@ export function SideNav({
                       <li key={item.href}>
                         <Link
                           href={item.href}
+                          title={railCollapsed ? item.label : undefined}
                           className={cn(
-                            "flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors",
+                            "flex items-center gap-2 rounded-md text-sm transition-colors",
+                            railCollapsed ? "justify-center px-1.5 py-2" : "px-2 py-1",
                             active
                               ? "bg-zinc-900 font-medium text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
                               : "text-zinc-700 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100",
@@ -323,7 +369,7 @@ export function SideNav({
                           >
                             {item.icon}
                           </span>
-                          {item.label}
+                          {!railCollapsed && item.label}
                         </Link>
                       </li>
                     );
