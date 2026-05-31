@@ -61,13 +61,15 @@ CREATE TABLE IF NOT EXISTS crawl_deliverables (
   notes text,
 
   -- Who flipped it last, when, and which staff member it's
-  -- currently waiting on (if any).
-  assigned_staff_id uuid REFERENCES staff_members(id) ON DELETE SET NULL,
+  -- currently waiting on (if any). The users table is the staff
+  -- registry (it was renamed from staff_members in an earlier
+  -- migration — references go to users now).
+  assigned_staff_id uuid REFERENCES users(id) ON DELETE SET NULL,
 
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW(),
-  created_by uuid REFERENCES staff_members(id) ON DELETE SET NULL,
-  updated_by uuid REFERENCES staff_members(id) ON DELETE SET NULL
+  created_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  updated_by uuid REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Unique per (venue_event, type) so we can upsert cleanly.
