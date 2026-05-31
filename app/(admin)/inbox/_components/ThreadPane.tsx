@@ -13,6 +13,7 @@ import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
 import { InlineReplyHost } from "./InlineReplyHost";
 import { MessageCard } from "./MessageCard";
+import { QuickReplyChips } from "./QuickReplyChips";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
@@ -241,6 +242,27 @@ export function ThreadPane({
           );
         })}
       </ol>
+
+      {/* AI-suggested smart-reply chips (Tier S #1 of the Haiku ROI
+          sprint). Render only when chips are cached AND fresh for
+          the current message_count. Click a chip → opens a reply
+          composer pre-populated with that text. Operator always
+          edits before sending.
+
+          Cached on email_threads.ai_quick_replies; the page-level
+          hook in [threadId]/page.tsx fires generation lazily so
+          this strip appears on the NEXT view after a new inbound
+          lands. */}
+      {(() => {
+        // Cached AND not stale (cache covers the current
+        // message_count or was generated AFTER all the messages
+        // we have on this thread).
+        const cached = thread.aiQuickReplies;
+        const cachedAtCount = thread.aiQuickRepliesMessageCount;
+        if (!cached || cached.length === 0) return null;
+        if (cachedAtCount !== null && cachedAtCount < thread.messageCount) return null;
+        return <QuickReplyChips threadId={thread.id} chips={cached} />;
+      })()}
 
       {/* Reply triggers — Reply / Reply All / Forward all hand off
           to the global composer, which carries the full Gmail-style

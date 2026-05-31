@@ -207,6 +207,24 @@ export const emailThreads = pgTable(
     aiNextActionMessageCount: integer("ai_next_action_message_count"),
 
     /**
+     * Smart-reply chips cache (Haiku ROI sprint — Tier S #1).
+     *
+     * 3 short one-tap reply suggestions surfaced above the reply
+     * buttons in the inbox thread page. Generated lazily on first
+     * view when the thread qualifies (latest message inbound,
+     * classification needs-reply, AI configured). Regenerated when
+     * message_count exceeds ai_quick_replies_message_count.
+     *
+     * Shape: ["short reply 1", "medium reply 2", "polite-no reply 3"]
+     * Each string ≤ 280 chars (mobile-tappable).
+     *
+     * Migration 0076.
+     */
+    aiQuickReplies: jsonb("ai_quick_replies").$type<string[] | null>(),
+    aiQuickRepliesAt: timestamp("ai_quick_replies_at", { withTimezone: true }),
+    aiQuickRepliesMessageCount: integer("ai_quick_replies_message_count"),
+
+    /**
      * Initial direction. 'mixed' once both inbound and outbound exist.
      */
     direction: threadDirection("direction").notNull().default("inbound"),

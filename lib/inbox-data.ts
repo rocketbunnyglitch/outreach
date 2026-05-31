@@ -849,6 +849,16 @@ export interface InboxThreadDetail {
       generatedAt: string;
       classification: string;
     } | null;
+    /** Cached AI smart-reply chips (Haiku ROI #1). Array of 3 short
+     *  reply suggestions surfaced above the inline reply composer.
+     *  null when the thread isn't eligible or hasn't been generated. */
+    aiQuickReplies: string[] | null;
+    aiQuickRepliesAt: Date | null;
+    aiQuickRepliesMessageCount: number | null;
+    /** AI-only classification field, used by the smart-reply eligibility
+     *  gate before chips are generated. Mirrors suggestedClassification
+     *  but exposed under the canonical AI-prefixed name. */
+    aiClassification: string | null;
     assignedStaffId: string | null;
     assignedStaffName: string | null;
     /** null when the thread hasn't been matched to a venue yet. */
@@ -919,6 +929,14 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       aiSummaryMessageCount: emailThreads.aiSummaryMessageCount,
       // Phase A.4
       aiNextAction: emailThreads.aiNextAction,
+      // Smart-reply chips cache (Haiku ROI #1)
+      aiQuickReplies: emailThreads.aiQuickReplies,
+      aiQuickRepliesAt: emailThreads.aiQuickRepliesAt,
+      aiQuickRepliesMessageCount: emailThreads.aiQuickRepliesMessageCount,
+      // AI-only classification (alias of suggestedClassification for
+      // the canonical-named accessor used by the quick-replies
+      // eligibility gate).
+      aiClassification: emailThreads.suggestedClassification,
       assignedStaffId: emailThreads.assignedStaffId,
       assignedStaffName: staffMembers.displayName,
       venueId: emailThreads.venueId,

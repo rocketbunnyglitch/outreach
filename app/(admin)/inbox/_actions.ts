@@ -909,6 +909,19 @@ export async function openReplyDraft(input: {
   /** Optional anchor message — defaults to the latest in the thread. */
   messageId?: string | null;
   mode: "reply" | "reply_all" | "forward";
+  /**
+   * Optional pre-filled body text. When set, the draft's bodyHtml
+   * is seeded with this string wrapped in a <div>. Used by the
+   * smart-reply chips on the thread page (Haiku ROI #1) — clicking
+   * a chip opens a reply with the suggested text already pasted in
+   * the editable surface, ready for the operator to edit before
+   * sending.
+   *
+   * Plain text only (HTML is escaped). The composer is a rich-
+   * text editor so paragraph/line-break behavior is handled
+   * downstream by the editor's value parser.
+   */
+  prefillBody?: string;
 }): Promise<ActionResult<{ draftId: string }>> {
   const { staff } = await requireStaff();
   if (!UUID_RE.test(input.threadId)) return { ok: false, error: "Invalid thread id." };
@@ -1057,6 +1070,25 @@ export async function openReplyDraft(input: {
   // Create the draft. ID generated server-side; client passes it
   // through to the composer hydration path.
   const draftId = crypto.randomUUID();
+  // When a smart-reply chip was clicked, seed the editable HTML
+  // surface with the suggested body. Escape to prevent HTML
+  // injection from the model output; wrap each line in <p> so
+  // the rich-text editor reads it as proper paragraphs.
+  const prefilledHtml = (() => {
+    const raw = input.prefillBody?.trim();
+    if (!raw) return null;
+    const paragraphs = raw
+      .split(/\n\s*\n/)
+      .map((p) =>
+        p
+          .split("\n")
+          .map((line) => escapeHtml(line))
+          .join("<br>"),
+      )
+      .map((p) => `<p>${p}</p>`)
+      .join("");
+    return paragraphs;
+  })();
   try {
     await db.insert(emailDrafts).values({
       id: draftId,
@@ -1067,8 +1099,8 @@ export async function openReplyDraft(input: {
       ccAddresses: ccList,
       bccAddresses: [],
       subject,
-      bodyText,
-      bodyHtml: null,
+      bodyText: prefilledHtml ? `${input.prefillBody}${bodyText}` : bodyText,
+      bodyHtml: prefilledHtml,
       venueId: thread.venueId,
       cityCampaignId: thread.cityCampaignId,
       attachments: [],

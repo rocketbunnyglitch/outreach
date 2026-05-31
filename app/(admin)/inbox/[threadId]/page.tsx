@@ -1,5 +1,6 @@
 import { parseAccountIds } from "@/lib/account-filter";
 import { enrichNextActionAsync } from "@/lib/ai-next-action";
+import { generateQuickRepliesAsync, isEligibleForQuickReplies } from "@/lib/ai-quick-replies";
 import { summarizeThreadAsync } from "@/lib/ai-summarize";
 import { requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
@@ -197,6 +198,31 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // when it's already current.
   if (process.env.AI_INBOX_NEXT_ACTION_ENABLED !== "0") {
     void enrichNextActionAsync({ threadId });
+  }
+
+  // Lazy AI smart-reply chips (Tier S #1 of the Haiku ROI sprint).
+  // Generate ONCE per (thread, message_count) and cache on the row.
+  // The eligibility check inside isEligibleForQuickReplies handles:
+  //   - classification (skip decline/unsubscribe/spam/auto_reply)
+  //   - existing cache freshness (skip when up-to-date chips exist)
+  //   - AI configured + AI_QUICK_REPLIES_ENABLED env flag
+  // The generator itself also re-checks the last-message direction
+  // (skip when outbound — operator just sent into this thread), so
+  // we don't need to compute that here.
+  // Fire-and-forget — page renders cached chips (if any) right now;
+  // a fresh batch shows on the next visit if the model produces them.
+  if (
+    isEligibleForQuickReplies({
+      messageCount: detail.thread.messageCount,
+      classification: detail.thread.classification,
+      aiClassification: detail.thread.aiClassification ?? null,
+      aiQuickRepliesMessageCount: detail.thread.aiQuickRepliesMessageCount ?? null,
+    })
+  ) {
+    void generateQuickRepliesAsync({
+      threadId,
+      messageCountAtGeneration: detail.thread.messageCount,
+    });
   }
 
   // Labels applied to THIS thread + the full team-label catalogue so
