@@ -18,11 +18,11 @@
 ALTER TABLE user_preferences
   ADD COLUMN IF NOT EXISTS daily_digest_enabled boolean DEFAULT TRUE;
 
-ALTER TABLE staff_members
+ALTER TABLE users
   ADD COLUMN IF NOT EXISTS digest_sent_at timestamptz;
 
 -- Cheap idempotency lookup. Partial = only rows that have ever
 -- received a digest, which keeps the index tiny.
 CREATE INDEX IF NOT EXISTS staff_members_digest_sent_idx
-  ON staff_members (digest_sent_at DESC)
+  ON users (digest_sent_at DESC)
   WHERE digest_sent_at IS NOT NULL;

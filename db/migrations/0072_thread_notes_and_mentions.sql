@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS email_thread_notes (
   thread_id uuid NOT NULL REFERENCES email_threads(id) ON DELETE CASCADE,
 
   -- Author (always required; notes can't be anonymous).
-  author_id uuid NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+  author_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
   -- Free text. Markdown-ish but rendered as plain text in the
   -- rail (no XSS surface). 2000 char cap enforced in the action.
@@ -62,11 +62,11 @@ CREATE TABLE IF NOT EXISTS email_thread_mentions (
   note_id uuid NOT NULL REFERENCES email_thread_notes(id) ON DELETE CASCADE,
 
   -- The staff member who was @-tagged.
-  mentioned_user_id uuid NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+  mentioned_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
   -- The author of the note (denormalized so the inbox scope can
   -- show "JC mentioned you" without joining notes every time).
-  author_id uuid NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+  author_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
   created_at timestamptz NOT NULL DEFAULT NOW(),
 

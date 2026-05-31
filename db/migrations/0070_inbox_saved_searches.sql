@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS inbox_saved_searches (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Owner of the saved search.
-  user_id uuid NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 
   -- Display name in the sidebar dropdown. 80 char cap.
   label text NOT NULL,
