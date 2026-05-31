@@ -7,6 +7,7 @@ import {
   usePresenceHeartbeat,
   useRealtimeChannel,
 } from "@/components/ui/data-table";
+import { useToast } from "@/components/ui/toast";
 import type { AllCrawlsRow } from "@/lib/all-crawls-data";
 import { cn } from "@/lib/cn";
 import {
@@ -747,6 +748,7 @@ function BulkActionBar({
   const [draftStart, setDraftStart] = useState("");
   const [draftEnd, setDraftEnd] = useState("");
   const router = useRouter();
+  const globalToast = useToast();
 
   useEffect(() => {
     if (!toast) return;
@@ -763,16 +765,21 @@ function BulkActionBar({
       const result = await bulkSyncEventbriteSales(null, fd);
       if (!result.ok) {
         setError(result.error ?? "Sync failed.");
+        globalToast.show({ kind: "error", message: result.error ?? "Sync failed." });
         return;
       }
       if (result.data && "notConfigured" in result.data) {
         setError("Eventbrite not configured — set EVENTBRITE_PRIVATE_TOKEN on the server.");
+        globalToast.show({
+          kind: "error",
+          message: "Eventbrite not configured on the server.",
+        });
         return;
       }
       const { synced, failed, ticketsTotal } = result.data;
-      setToast(
-        `Synced ${synced} crawl${synced === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} failed` : ""} · ${ticketsTotal} total tickets sold`,
-      );
+      const msg = `Synced ${synced} crawl${synced === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} failed` : ""} · ${ticketsTotal} total tickets sold`;
+      setToast(msg);
+      globalToast.show({ kind: "success", message: msg });
       onComplete();
     });
   }
@@ -786,16 +793,18 @@ function BulkActionBar({
       const result = await bulkPushEventbriteDescriptions(null, fd);
       if (!result.ok) {
         setError(result.error ?? "Push failed.");
+        globalToast.show({ kind: "error", message: result.error ?? "Push failed." });
         return;
       }
       if (result.data && "notConfigured" in result.data) {
         setError("Eventbrite not configured.");
+        globalToast.show({ kind: "error", message: "Eventbrite not configured." });
         return;
       }
       const { pushed, failed, skipped } = result.data;
-      setToast(
-        `Pushed ${pushed} description${pushed === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} failed` : ""}${skipped > 0 ? ` · ${skipped} not linked to EB` : ""}`,
-      );
+      const msg = `Pushed ${pushed} description${pushed === 1 ? "" : "s"}${failed > 0 ? ` · ${failed} failed` : ""}${skipped > 0 ? ` · ${skipped} not linked to EB` : ""}`;
+      setToast(msg);
+      globalToast.show({ kind: "success", message: msg });
       onComplete();
     });
   }
@@ -815,9 +824,12 @@ function BulkActionBar({
       const result = await bulkUnlinkEventbrite(null, fd);
       if (!result.ok) {
         setError(result.error ?? "Unlink failed.");
+        globalToast.show({ kind: "error", message: result.error ?? "Unlink failed." });
         return;
       }
-      setToast(`Unlinked ${result.data.unlinked} crawl${result.data.unlinked === 1 ? "" : "s"}`);
+      const msg = `Unlinked ${result.data.unlinked} crawl${result.data.unlinked === 1 ? "" : "s"}`;
+      setToast(msg);
+      globalToast.show({ kind: "success", message: msg });
       onComplete();
     });
   }
@@ -836,11 +848,14 @@ function BulkActionBar({
       });
       if (!result.ok) {
         setError(result.error ?? "Couldn't update times.");
+        globalToast.show({ kind: "error", message: result.error ?? "Couldn't update times." });
         return;
       }
       const { updated, skipped } = result.data;
       const skipNote = skipped > 0 ? `, ${skipped} skipped (no date)` : "";
-      setToast(`Updated ${updated} crawl${updated === 1 ? "" : "s"}${skipNote}`);
+      const msg = `Updated ${updated} crawl${updated === 1 ? "" : "s"}${skipNote}`;
+      setToast(msg);
+      globalToast.show({ kind: "success", message: msg });
       setTimesOpen(false);
       setDraftStart("");
       setDraftEnd("");
