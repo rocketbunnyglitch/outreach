@@ -28,6 +28,31 @@ export interface PaletteSearchResult {
     isCityCampaign: boolean;
   }>;
   staff: Array<{ id: string; displayName: string; primaryEmail: string }>;
+  /** Email threads matching the query — full-text body search via
+   *  the Phase B tsvector + subject/sender ILIKE fallback. Phase G. */
+  threads: Array<{
+    id: string;
+    subject: string | null;
+    snippet: string | null;
+    venueName: string | null;
+    lastMessageAt: Date;
+  }>;
+  /** Open tasks matching by title or description. Phase G. */
+  tasks: Array<{
+    id: string;
+    title: string;
+    targetType: string;
+    targetId: string | null;
+    dueAt: Date | null;
+  }>;
+  /** Crawl events matching by city/date. Phase G. */
+  events: Array<{
+    id: string;
+    cityName: string;
+    crawlDate: string;
+    crawlNumber: number;
+    dayPart: string;
+  }>;
 }
 
 const EMPTY_RESULT: PaletteSearchResult = {
@@ -35,10 +60,13 @@ const EMPTY_RESULT: PaletteSearchResult = {
   cities: [],
   campaigns: [],
   staff: [],
+  threads: [],
+  tasks: [],
+  events: [],
 };
 
 export async function paletteSearch(query: string): Promise<PaletteSearchResult> {
-  await requireStaff();
+  const { staff } = await requireStaff();
 
   const q = query.trim();
   if (q.length < 2) return EMPTY_RESULT;
@@ -62,6 +90,27 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
     is_city_campaign: boolean;
   };
   type StaffRow = { id: string; display_name: string; primary_email: string };
+  type ThreadRow = {
+    id: string;
+    subject: string | null;
+    snippet: string | null;
+    venue_name: string | null;
+    last_message_at: Date;
+  };
+  type TaskRow = {
+    id: string;
+    title: string;
+    target_type: string;
+    target_id: string | null;
+    due_at: Date | null;
+  };
+  type EventRow = {
+    id: string;
+    city_name: string;
+    crawl_date: string;
+    crawl_number: number;
+    day_part: string;
+  };
 
   // Per-query error logging (CLAUDE.md §12.4 fix).
   //
@@ -86,7 +135,15 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
     }
   }
 
-  const [venuesResult, citiesResult, campaignsResult, staffResult] = await Promise.all([
+  const [
+    venuesResult,
+    citiesResult,
+    campaignsResult,
+    staffResult,
+    threadsResult,
+    tasksResult,
+    eventsResult,
+  ] = await Promise.all([
     tagAndCatch<VenueRow>("venues", () =>
       db.execute<VenueRow>(sql`
       SELECT v.id::text, v.name, c.name AS city_name, v.address
@@ -157,6 +214,85 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       LIMIT 5
     `),
     ),
+    // Phase G — Email threads. Scoped to the operator's team via
+    // connected_accounts.team_id. Uses both ILIKE on subject/snippet
+    // AND the full-text tsvector from Phase B (search_tsv) so body
+    // hits surface too. Joins venue name for display in results.
+    tagAndCatch<ThreadRow>("threads", () =>
+      db.execute<ThreadRow>(sql`
+      SELECT
+        t.id::text,
+        t.subject,
+        t.snippet,
+        v.name AS venue_name,
+        t.last_message_at
+      FROM email_threads t
+      LEFT JOIN venues v ON v.id = t.venue_id
+      INNER JOIN connected_accounts ca ON ca.id = t.connected_account_id
+      WHERE ca.team_id = ${staff.teamId}
+        AND (
+          t.subject ILIKE ${pattern}
+          OR t.snippet ILIKE ${pattern}
+          OR EXISTS (
+            SELECT 1 FROM email_messages m
+            WHERE m.thread_id = t.id
+              AND m.search_tsv @@ websearch_to_tsquery('english', ${q})
+          )
+        )
+      ORDER BY t.last_message_at DESC
+      LIMIT 6
+    `),
+    ),
+    // Phase G — Tasks. Team-scoped via the assigned operator's team
+    // OR tasks created by the current operator. Open tasks first;
+    // recently-completed not surfaced (the palette is for "where do
+    // I go" not "what happened recently").
+    tagAndCatch<TaskRow>("tasks", () =>
+      db.execute<TaskRow>(sql`
+      SELECT
+        ta.id::text,
+        ta.title,
+        ta.target_type::text AS target_type,
+        ta.target_id::text AS target_id,
+        ta.due_at
+      FROM tasks ta
+      LEFT JOIN users u ON u.id = ta.assigned_staff_id
+      WHERE ta.status IN ('pending', 'in_progress')
+        AND (u.team_id = ${staff.teamId} OR ta.created_by = ${staff.id})
+        AND (ta.title ILIKE ${pattern} OR ta.description ILIKE ${pattern})
+      ORDER BY
+        CASE WHEN ta.due_at IS NULL THEN 1 ELSE 0 END,
+        ta.due_at ASC NULLS LAST
+      LIMIT 5
+    `),
+    ),
+    // Phase G — Events. Currently single-tenant (no team_id on
+    // outreach_brands; events are visible to every operator).
+    // Matches against the city name + the crawl date in YYYY-MM-DD
+    // form (so operators can type "2025-11" to find November
+    // crawls). Future + recent past — long-past crawls are noise
+    // in a palette.
+    tagAndCatch<EventRow>("events", () =>
+      db.execute<EventRow>(sql`
+      SELECT
+        e.id::text,
+        c.name AS city_name,
+        e.crawl_date::text AS crawl_date,
+        COALESCE(e.crawl_number, 1) AS crawl_number,
+        COALESCE(e.day_part::text, 'evening') AS day_part
+      FROM events e
+      LEFT JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      LEFT JOIN cities c ON c.id = cc.city_id
+      WHERE e.archived_at IS NULL
+        AND e.crawl_date >= CURRENT_DATE - INTERVAL '30 days'
+        AND (
+          c.name ILIKE ${pattern}
+          OR e.crawl_date::text ILIKE ${pattern}
+        )
+      ORDER BY e.crawl_date ASC
+      LIMIT 5
+    `),
+    ),
   ]);
 
   // tagAndCatch already normalizes to T[] (handles both the array
@@ -183,6 +319,27 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       id: s.id,
       displayName: s.display_name,
       primaryEmail: s.primary_email,
+    })),
+    threads: threadsResult.map((t) => ({
+      id: t.id,
+      subject: t.subject,
+      snippet: t.snippet,
+      venueName: t.venue_name,
+      lastMessageAt: t.last_message_at,
+    })),
+    tasks: tasksResult.map((t) => ({
+      id: t.id,
+      title: t.title,
+      targetType: t.target_type,
+      targetId: t.target_id,
+      dueAt: t.due_at,
+    })),
+    events: eventsResult.map((e) => ({
+      id: e.id,
+      cityName: e.city_name,
+      crawlDate: e.crawl_date,
+      crawlNumber: e.crawl_number,
+      dayPart: e.day_part,
     })),
   };
 }

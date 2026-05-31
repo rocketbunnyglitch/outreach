@@ -5,10 +5,13 @@ import {
   ArrowRight,
   Building2,
   Calendar,
+  CheckSquare,
   ChevronRight,
   Command,
   Loader2,
+  Mail,
   MapPin,
+  PartyPopper,
   Search,
   Sparkles,
   Users,
@@ -68,6 +71,30 @@ interface PaletteSearchResult {
     isCityCampaign: boolean;
   }>;
   staff: Array<{ id: string; displayName: string; primaryEmail: string }>;
+  /** Phase G — email threads matched by subject, snippet, or body. */
+  threads: Array<{
+    id: string;
+    subject: string | null;
+    snippet: string | null;
+    venueName: string | null;
+    lastMessageAt: Date;
+  }>;
+  /** Phase G — open tasks matched by title or description. */
+  tasks: Array<{
+    id: string;
+    title: string;
+    targetType: string;
+    targetId: string | null;
+    dueAt: Date | null;
+  }>;
+  /** Phase G — crawl events matched by city or date. */
+  events: Array<{
+    id: string;
+    cityName: string;
+    crawlDate: string;
+    crawlNumber: number;
+    dayPart: string;
+  }>;
 }
 
 /**
@@ -236,6 +263,52 @@ export function CommandPalette({
           group: "Staff",
           icon: Users,
           action: () => router.push(`/admin/analytics/${s.id}`),
+        });
+      }
+      // Phase G — Email threads (subject + body matches).
+      for (const t of results.threads) {
+        const subject = t.subject ?? "(no subject)";
+        const descParts = [
+          t.venueName ? t.venueName : null,
+          t.snippet ? t.snippet.slice(0, 80) : null,
+        ].filter(Boolean);
+        dynamic.push({
+          id: `thread:${t.id}`,
+          label: subject,
+          description: descParts.join(" · ") || undefined,
+          group: "Email threads",
+          icon: Mail,
+          action: () => router.push(`/inbox/${t.id}`),
+        });
+      }
+      // Phase G — Open tasks.
+      for (const t of results.tasks) {
+        const dueLabel = t.dueAt
+          ? `due ${new Date(t.dueAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+          : "no due date";
+        dynamic.push({
+          id: `task:${t.id}`,
+          label: t.title,
+          description: dueLabel,
+          group: "Tasks",
+          icon: CheckSquare,
+          action: () => router.push(`/tasks/${t.id}`),
+        });
+      }
+      // Phase G — Upcoming + recent crawl events.
+      for (const e of results.events) {
+        const dateLabel = new Date(`${e.crawlDate}T00:00:00`).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+        dynamic.push({
+          id: `event:${e.id}`,
+          label: `${e.cityName} · crawl ${e.crawlNumber} · ${e.dayPart}`,
+          description: dateLabel,
+          group: "Events",
+          icon: PartyPopper,
+          action: () => router.push(`/events/${e.id}`),
         });
       }
     }
