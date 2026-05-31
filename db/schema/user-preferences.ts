@@ -12,7 +12,7 @@
  * with the auth surface.
  */
 
-import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 export const userPreferences = pgTable("user_preferences", {
@@ -31,6 +31,10 @@ export const userPreferences = pgTable("user_preferences", {
     .$type<Record<string, string[]>>()
     .notNull()
     .default({}),
+  /** Daily digest opt-in flag (Phase D.4). NULL = opted-in (the row
+   *  may not exist for newly-onboarded users); FALSE = opted out;
+   *  TRUE = explicitly opted in. Default TRUE on insert. */
+  dailyDigestEnabled: boolean("daily_digest_enabled").default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

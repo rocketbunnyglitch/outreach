@@ -100,6 +100,11 @@ export const users = pgTable(
     weeklyEmailGoal: integer("weekly_email_goal").notNull().default(0),
     weeklyCallGoal: integer("weekly_call_goal").notNull().default(0),
 
+    /** Last time the daily digest was sent to this user (Phase D.4).
+     *  NULL = never sent. The cron uses this as a per-day idempotency
+     *  guard so re-running on the same UTC day no-ops. */
+    digestSentAt: timestamp("digest_sent_at", { withTimezone: true }),
+
     ...archivedAt,
     ...auditColumns,
     ...versionColumn,
