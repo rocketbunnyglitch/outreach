@@ -45,6 +45,42 @@ export const dynamic = "force-dynamic";
  *   4. Master cities directory (count + link to add)
  */
 export default async function AdminPage() {
+  try {
+    return await renderAdminPage();
+  } catch (err) {
+    // Last-resort safety net for anything not caught by the
+    // Promise.allSettled below or the JSX-tree error boundary.
+    // Renders an inline error UI with the ACTUAL error message
+    // (no PM2 grep needed) because we catch it in our own code
+    // before Next.js redacts it for production.
+    const detail = (err as Error)?.message ?? String(err);
+    const code = `S-${Math.floor(Date.now() / 60000)
+      .toString(36)
+      .toUpperCase()
+      .padStart(4, "0")
+      .slice(-4)}-${Math.random().toString(36).toUpperCase().slice(2, 6)}`;
+    logger.error({ err, code }, "admin page render: unhandled throw");
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <div className="rounded-md border border-rose-200 bg-rose-50/60 p-4 dark:border-rose-900/40 dark:bg-rose-950/30">
+          <p className="font-mono text-[10px] text-rose-700 uppercase tracking-[0.18em] dark:text-rose-300">
+            Render error — code {code}
+          </p>
+          <h1 className="mt-2 font-semibold text-lg tracking-tight">Couldn't render /admin</h1>
+          <p className="mt-2 text-sm text-rose-900 leading-relaxed dark:text-rose-100">
+            The admin page hit an error during data preparation. The full message is below — paste
+            it into Claude for a diagnosis.
+          </p>
+          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded bg-white/80 p-3 font-mono text-[11px] text-rose-900 dark:bg-zinc-950/60 dark:text-rose-100">
+            {detail}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+}
+
+async function renderAdminPage() {
   await requireAdmin();
 
   // Promise.allSettled so one broken query can't crash the whole
