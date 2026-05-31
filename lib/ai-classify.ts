@@ -31,6 +31,7 @@ import "server-only";
 
 import { cities, emailMessages, emailThreads, venues } from "@/db/schema";
 import { generateCompletion, isAiConfigured } from "@/lib/ai";
+import { syncColdStatusFromClassificationAsync } from "@/lib/ai-auto-status";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, desc, eq } from "drizzle-orm";
@@ -282,6 +283,17 @@ export async function classifyInboundMessage(
     },
     "[ai-classify] suggestion written",
   );
+
+  // Auto cold-outreach status update (Haiku ROI sprint #6). Free
+  // piggyback — we already paid for the classification; this just
+  // mirrors the result onto the cold pipeline. Fire-and-forget;
+  // never throws. See lib/ai-auto-status.ts for the mapping +
+  // the no-downgrade rule.
+  void syncColdStatusFromClassificationAsync({
+    threadId: input.threadId,
+    classification: parsed.classification,
+    confidence: parsed.confidence,
+  });
 
   return parsed;
 }
