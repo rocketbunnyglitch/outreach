@@ -35,6 +35,18 @@ const config: NextConfig = {
   // Sensible defaults for a server-rendered admin app behind Caddy.
   serverExternalPackages: ["pg", "ioredis", "bullmq"],
 
+  // Non-code data files Next.js needs to copy into the standalone
+  // output. Without this, files under data/ are stripped at build
+  // time and server actions that read them (e.g. the Halloween
+  // 2025 import) crash with ENOENT against
+  // /var/www/.../.next/standalone/data/<file>.json. The trace key
+  // is the route path that reads the file; the value lists the
+  // patterns to include from the repo root.
+  outputFileTracingIncludes: {
+    "/admin": ["./data/halloween_2025.json"],
+    "/admin/**/*": ["./data/halloween_2025.json"],
+  },
+
   // Compress responses (Caddy also compresses, but keeping at app level
   // ensures consistency in dev where there's no proxy).
   compress: true,

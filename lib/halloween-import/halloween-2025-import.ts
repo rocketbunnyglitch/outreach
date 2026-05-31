@@ -61,6 +61,51 @@ const CAMPAIGN_SLUG = "halloween-2025";
 const CAMPAIGN_NAME = "Halloween 2025";
 const JSON_PATH = "data/halloween_2025.json";
 
+/**
+ * Resolve the import JSON. Next.js standalone builds strip
+ * non-code files unless declared in outputFileTracingIncludes,
+ * so we look in a few likely locations + fall back to a path
+ * the operator can set via env. Returns the first one that
+ * exists; throws ENOENT only if all paths fail.
+ *
+ * Order:
+ *   1. HALLOWEEN_JSON_PATH env (escape hatch for ops)
+ *   2. <cwd>/data/halloween_2025.json (dev + standalone with
+ *       outputFileTracingIncludes)
+ *   3. <cwd>/../data/halloween_2025.json (standalone runs from
+ *       .next/standalone/; the repo root is the parent of cwd
+ *       when the operator deploys the standalone bundle next
+ *       to a copy of the repo)
+ *   4. <cwd>/.next/standalone/data/halloween_2025.json (dev
+ *       after a production build)
+ */
+async function resolveJsonPath(): Promise<string> {
+  const candidates = [
+    process.env.HALLOWEEN_JSON_PATH,
+    path.join(process.cwd(), JSON_PATH),
+    path.join(process.cwd(), "..", JSON_PATH),
+    path.join(process.cwd(), ".next", "standalone", JSON_PATH),
+  ].filter((p): p is string => typeof p === "string" && p.length > 0);
+
+  for (const c of candidates) {
+    try {
+      await fs.access(c);
+      return c;
+    } catch {
+      // try next
+    }
+  }
+
+  // Build a clear error message listing what we tried so the
+  // operator can see exactly which paths failed.
+  const tried = candidates.map((c) => `  - ${c}`).join("\n");
+  throw new Error(
+    `Halloween import JSON not found. Tried:
+${tried}
+Either deploy with data/halloween_2025.json included in the standalone bundle (see next.config.ts outputFileTracingIncludes), or set the HALLOWEEN_JSON_PATH env var to an absolute path on the server.`,
+  );
+}
+
 // Cluster N → event date mapping
 const CLUSTER_DATES: Record<number, { date: string; dayPart: string }> = {
   1: { date: "2025-10-31", dayPart: "friday_night" },
@@ -213,11 +258,13 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
   // ---------------- Read JSON ----------------
   let source: Record<string, SourceCity>;
   try {
-    const raw = await fs.readFile(path.join(process.cwd(), JSON_PATH), "utf-8");
+    const resolvedPath = await resolveJsonPath();
+    const raw = await fs.readFile(resolvedPath, "utf-8");
     source = JSON.parse(raw) as Record<string, SourceCity>;
+    logger.info({ resolvedPath }, "halloween import: JSON loaded");
   } catch (err) {
-    logger.error({ err, path: JSON_PATH }, "halloween import: failed to read JSON");
-    report.warnings.push(`Failed to read ${JSON_PATH}: ${(err as Error).message}`);
+    logger.error({ err }, "halloween import: failed to read JSON");
+    report.warnings.push((err as Error).message);
     report.endedAt = new Date().toISOString();
     return report;
   }

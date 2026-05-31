@@ -187,6 +187,17 @@ else
   # Copy static assets into standalone tree (next build doesn't do this)
   cp -r .next/static .next/standalone/.next/
   [ -d public ] && cp -r public .next/standalone/ 2>/dev/null || true
+
+  # Copy data/ — non-code import payloads (e.g. halloween_2025.json
+  # for the Halloween 2025 import action). outputFileTracingIncludes
+  # in next.config.ts SHOULD pull these in, but we also copy them
+  # here as a belt-and-suspenders so the standalone tree always has
+  # them. Idempotent: if data/ doesn't exist at the repo root, the
+  # copy is a no-op.
+  if [ -d data ]; then
+    mkdir -p .next/standalone/data
+    cp -r data/. .next/standalone/data/ 2>/dev/null || true
+  fi
 fi
 
 # === Step 5: Reload PM2 ===
