@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
+import { loadVenueCommunication } from "@/lib/venue-communication";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +33,7 @@ import {
 } from "../_actions";
 import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
 import { OutreachLogSection } from "../_components/outreach-log-section";
+import { VenueCommunicationSection } from "../_components/venue-communication-section";
 import { VenueForm } from "../_components/venue-form";
 import { VenueQuickLinks, VenueSummaryStrip } from "../_components/venue-summary-strip";
 import { VenueWristbandSection } from "../_components/venue-wristband-section";
@@ -44,24 +46,50 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   const { staff } = await requireStaff();
   const superUser = await getSuperUserOrNull();
 
-  const [venue, citiesList, outreachBrandsList, outreachEntries, currentCampaign, notesList] =
-    await Promise.all([
-      db
-        .select()
-        .from(venues)
-        .where(eq(venues.id, id))
-        .limit(1)
-        .then((r) => r[0]),
-      db
-        .select({ id: cities.id, name: cities.name, region: cities.region })
-        .from(cities)
-        .where(isNull(cities.archivedAt))
-        .orderBy(asc(cities.name)),
-      listOutreachBrands(),
-      getVenueOutreachLog(id),
-      getCurrentCampaign(),
-      listNotes("venue", id, staff.id),
-    ]);
+  const [
+    venue,
+    citiesList,
+    outreachBrandsList,
+    outreachEntries,
+    currentCampaign,
+    notesList,
+    venueCommunication,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(venues)
+      .where(eq(venues.id, id))
+      .limit(1)
+      .then((r) => r[0]),
+    db
+      .select({ id: cities.id, name: cities.name, region: cities.region })
+      .from(cities)
+      .where(isNull(cities.archivedAt))
+      .orderBy(asc(cities.name)),
+    listOutreachBrands(),
+    getVenueOutreachLog(id),
+    getCurrentCampaign(),
+    listNotes("venue", id, staff.id),
+    // Pulls every email thread tied to this venue across all
+    // matching signals (venue_id direct, sender-email match,
+    // website-domain match). Renders the Communication Timeline
+    // section below. CLAUDE.md §12.3 — wrap in try/catch so an
+    // email-side issue degrades the section instead of 500-ing the
+    // whole venue page.
+    loadVenueCommunication(id, staff.teamId).catch(() => ({
+      threads: [],
+      summary: {
+        totalThreads: 0,
+        totalMessages: 0,
+        lastInboundAt: null,
+        lastOutboundAt: null,
+        needsReplyCount: 0,
+        staleCount: 0,
+        staffEmails: [],
+        staffOwnerNames: [],
+      },
+    })),
+  ]);
   if (!venue) notFound();
 
   // Smart-note suggestions for these notes
@@ -220,6 +248,12 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         action={logOutreach}
         defaultOutreachBrandId={currentCampaign?.outreachBrand.id}
       />
+
+      {/* Email communication timeline — every thread tied to this
+          venue across every connected staff account, regardless of
+          Gmail subject. Renders nothing when the venue has no
+          email history yet (silent). */}
+      <VenueCommunicationSection data={venueCommunication} />
 
       <CrawlHistorySection rows={crawlHistory} />
 
