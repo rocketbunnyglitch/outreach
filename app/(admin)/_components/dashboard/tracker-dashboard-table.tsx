@@ -37,6 +37,7 @@ import {
   updateDashboardNote,
   updateEventStatus,
 } from "../../_actions-tracker";
+import { CrawlGlowGrid } from "./crawl-glow-grid";
 
 export interface TrackerRow {
   cityCampaignId: string;
@@ -671,6 +672,11 @@ function CityCard({
             <StatusOverridePill row={row} />
             <SlotPills slots={row.need.slots} />
           </div>
+          {row.need.crawlBreakdown.length > 0 && (
+            <div className="mt-2">
+              <CrawlGlowGrid crawls={row.need.crawlBreakdown} />
+            </div>
+          )}
           <div className="mt-2 grid grid-cols-[minmax(0,9rem)_1fr] gap-2">
             <AssignSelect row={row} staff={staff} />
             <NoteInput row={row} gridRow={gridRow} />
@@ -849,6 +855,17 @@ function CityRow({
         </td>
 
         <td className="px-2 py-2 align-middle sm:py-2.5">
+          {/* At-a-glance per-crawl × per-day status visualization.
+              One row per day, one glow pill per crawl on that day,
+              ordered by crawl number. Color maps booking progress:
+              grey/red/orange/yellow/blue/green. Renders nothing
+              when the city has no crawl breakdown yet (newly added
+              cities pre-crawl). */}
+          {row.need.crawlBreakdown.length > 0 && (
+            <div className="mb-1.5">
+              <CrawlGlowGrid crawls={row.need.crawlBreakdown} />
+            </div>
+          )}
           <StatusOverridePill row={row} />
         </td>
 

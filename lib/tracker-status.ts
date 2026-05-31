@@ -26,7 +26,7 @@ import "server-only";
 
 import { events, crawlHosts, venueEvents, wristbands } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 export type {
   CityStatusPill,
@@ -146,6 +146,45 @@ export async function computeCityNeeds(
     }
   }
 
+  // Outreach-started signal per event. Drives the dashboard glow
+  // visualization's "grey vs red" distinction:
+  //
+  //   grey = no cold outreach sent AND no venues confirmed
+  //   red  = cold outreach sent OR at least one venue assigned, but 0 booked
+  //
+  // We treat ANY email_send_event tied to a venue in this event's
+  // city_campaign as "outreach started for any crawl in that city."
+  // This is a slight over-attribution (the actual send is venue-
+  // scoped, not crawl-scoped) but matches operator mental model —
+  // they treat outreach as a city-wide push that lights up every
+  // crawl on that night. Refining to per-event requires a venue ->
+  // event join that's not worth the cost for v1.
+  //
+  // Wrapped in try/catch so a missing email_send_events table (test
+  // env, pre-migration deploys) degrades to "no signal" instead of
+  // 500-ing the tracker.
+  const eventsWithOutreach = new Set<string>();
+  try {
+    if (rows.length > 0) {
+      const eventIds = Array.from(new Set(rows.map((r) => r.eventId)));
+      const sendRows = (await db.execute<{ event_id: string }>(sql`
+        SELECT DISTINCT e.id AS event_id
+        FROM events e
+        INNER JOIN venue_events ve ON ve.event_id = e.id
+        INNER JOIN email_threads et ON et.venue_id = ve.venue_id
+        INNER JOIN email_send_events ese ON ese.thread_id = et.id
+        WHERE e.id = ANY(${eventIds})
+          AND ese.category = 'cold'
+      `)) as unknown;
+      const list: Array<{ event_id: string }> = Array.isArray(sendRows)
+        ? (sendRows as Array<{ event_id: string }>)
+        : ((sendRows as { rows: Array<{ event_id: string }> }).rows ?? []);
+      for (const r of list) eventsWithOutreach.add(r.event_id);
+    }
+  } catch (err) {
+    console.warn("[tracker-status] outreach-started lookup failed", err);
+  }
+
   // Group by (city_campaign, day_part, crawl_number)
   type CrawlBucket = {
     eventId: string;
@@ -215,6 +254,8 @@ export async function computeCityNeeds(
       wristbandStatus: b.wristbandStatus,
       hostType: hostTypeByEventId.get(b.eventId) ?? "none",
       notes: b.notes,
+      outreachStarted: eventsWithOutreach.has(b.eventId) || b.confirmedVenueCount > 0,
+      confirmedVenueCount: b.confirmedVenueCount,
     };
     const list = byCC.get(b.cityCampaignId) ?? [];
     list.push(need);

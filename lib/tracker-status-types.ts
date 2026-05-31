@@ -71,6 +71,16 @@ export interface CrawlNeed {
   /** Per-crawl operator note (events.notes). Edited inline from the
    *  tracker's expanded breakdown row. Empty string when not set. */
   notes: string;
+  /** True when at least one cold outreach email has been sent for a
+   *  venue tied to this crawl's event. Drives the "grey vs red"
+   *  distinction in the dashboard glow visualization — operators
+   *  want to see "haven't started" (grey) separately from "started
+   *  but nothing booked" (red). */
+  outreachStarted: boolean;
+  /** Filled-venue count for this crawl (0..4). Cached on the row so
+   *  the dashboard glow viz can pick a color without re-deriving
+   *  from the needsX booleans. */
+  confirmedVenueCount: number;
 }
 
 export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {
