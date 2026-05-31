@@ -16,6 +16,7 @@ import {
 } from "@/lib/inbox-data";
 import { listTeamLabels, listThreadLabels } from "@/lib/team-labels";
 import { getUserPreferences } from "@/lib/user-preferences";
+import { loadVenueCommunication } from "@/lib/venue-communication";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { notFound } from "next/navigation";
 import { AccountSwitcher } from "../_components/AccountSwitcher";
@@ -130,6 +131,18 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     ? await fetchVenueOutreachHistory(detail.thread.venueId)
     : [];
 
+  // Related threads — every OTHER thread tied to this thread's
+  // venue, across every connected Gmail account. Gmail breaks
+  // threading on subject changes; the engine stitches them back
+  // together so operators see the full relationship history in
+  // the CRM rail. Skipped when the thread isn't venue-matched yet
+  // (the rail's empty-state covers that case). Try/catch so a
+  // venue-side issue degrades to "no related threads" instead of
+  // 500-ing the whole thread page (CLAUDE.md §12.3).
+  const relatedCommunication = detail.thread.venueId
+    ? await loadVenueCommunication(detail.thread.venueId, currentStaff.teamId).catch(() => null)
+    : null;
+
   // Labels applied to THIS thread + the full team-label catalogue so
   // the inline picker can render checked/unchecked state without an
   // extra round trip. Both queries are small (single-team scope).
@@ -239,6 +252,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           <ThreadPane
             detail={detail}
             outreachHistory={outreachHistory}
+            relatedCommunication={relatedCommunication}
             threadLabels={threadLabels}
             allTeamLabels={teamLabelsAll}
             appliedGmailLabels={appliedGmailLabels}
