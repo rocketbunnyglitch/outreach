@@ -252,6 +252,16 @@ export interface InboxThreadRow {
   snoozeUntil: string | null;
   /** Team labels applied to this thread. */
   labels: Array<{ id: string; name: string; color: string | null }>;
+  /** Gmail-synced labels on this thread — distinct across every
+   *  message, joined to gmail_labels for name + Gmail's bg/text
+   *  color. System labels (INBOX, UNREAD, etc) are intentionally
+   *  excluded; only user-created labels surface here. */
+  gmailLabels: Array<{
+    gmailLabelId: string;
+    name: string;
+    backgroundColor: string | null;
+    textColor: string | null;
+  }>;
   /** Connected Gmail address this thread flows through. */
   accountEmail: string;
   accountId: string;
@@ -536,12 +546,84 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     labelsByThread.set(lr.threadId, arr);
   }
 
+  // Gmail labels per thread — distinct labels across every message
+  // on the thread, joined to gmail_labels for name + Gmail-synced
+  // colors. Skip system labels (INBOX, SENT, UNREAD, etc) — those
+  // aren't user-meaningful chips; they're already represented by
+  // the folder columns + unread counts. Only "user" type labels
+  // make it onto the row.
+  const gmailLabelsByThread = new Map<
+    string,
+    Array<{
+      gmailLabelId: string;
+      name: string;
+      backgroundColor: string | null;
+      textColor: string | null;
+    }>
+  >();
+  if (threadIds.length) {
+    const gmailLabelRows = await db.execute<{
+      thread_id: string;
+      gmail_label_id: string;
+      name: string;
+      background_color: string | null;
+      text_color: string | null;
+    }>(sql`
+      SELECT DISTINCT
+        em.thread_id,
+        gl.gmail_label_id,
+        gl.name,
+        gl.background_color,
+        gl.text_color
+      FROM email_messages em
+      INNER JOIN email_threads et ON et.id = em.thread_id
+      INNER JOIN gmail_labels gl
+        ON gl.connected_account_id = et.staff_outreach_email_id
+       AND gl.gmail_label_id = ANY(em.gmail_labels)
+      WHERE em.thread_id IN (${sql.join(
+        threadIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})
+        AND gl.type = 'user'
+    `);
+    const list = Array.isArray(gmailLabelRows)
+      ? (gmailLabelRows as unknown as Array<{
+          thread_id: string;
+          gmail_label_id: string;
+          name: string;
+          background_color: string | null;
+          text_color: string | null;
+        }>)
+      : ((
+          gmailLabelRows as unknown as {
+            rows: Array<{
+              thread_id: string;
+              gmail_label_id: string;
+              name: string;
+              background_color: string | null;
+              text_color: string | null;
+            }>;
+          }
+        ).rows ?? []);
+    for (const r of list) {
+      const arr = gmailLabelsByThread.get(r.thread_id) ?? [];
+      arr.push({
+        gmailLabelId: r.gmail_label_id,
+        name: r.name,
+        backgroundColor: r.background_color,
+        textColor: r.text_color,
+      });
+      gmailLabelsByThread.set(r.thread_id, arr);
+    }
+  }
+
   return rows.map((r) => {
     const { snoozeUntilDate, ...rest } = r;
     return {
-      ...(rest as Omit<InboxThreadRow, "slaBreached" | "labels" | "snoozeUntil">),
+      ...(rest as Omit<InboxThreadRow, "slaBreached" | "labels" | "gmailLabels" | "snoozeUntil">),
       snoozeUntil: snoozeUntilDate ? snoozeUntilDate.toISOString() : null,
       labels: labelsByThread.get(r.id) ?? [],
+      gmailLabels: gmailLabelsByThread.get(r.id) ?? [],
       slaBreached:
         r.state === "needs_reply" && r.lastInboundAt != null && r.lastInboundAt < slaCutoff,
     };

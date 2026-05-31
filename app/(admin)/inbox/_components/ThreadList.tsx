@@ -261,6 +261,42 @@ function ThreadRow({
             </span>
           )}
 
+          {/* Gmail labels — synced from each connected Gmail account.
+              Visual treatment is distinct from engine statuses (above)
+              and team labels (below):
+                - rounded-md (not pill) so they read as "tags"
+                - Gmail's own bg + text color via inline style; falls
+                  back to neutral zinc when Gmail didn't supply one
+                - cap at 3 visible; "+N" overflow chip when more so
+                  rows don't blow up on threads with many labels
+              Two-way sync is wired in the next commit (apply / remove
+              from the engine -> Gmail API). For now this is a
+              read-only display. */}
+          {thread.gmailLabels.slice(0, 3).map((g) => (
+            <span
+              key={g.gmailLabelId}
+              className="inline-flex items-center rounded-md px-1.5 py-0.5 font-medium text-[10px]"
+              style={{
+                backgroundColor: g.backgroundColor ?? "#f4f4f5",
+                color: g.textColor ?? "#3f3f46",
+              }}
+              title={`Gmail label: ${g.name}`}
+            >
+              {g.name}
+            </span>
+          ))}
+          {thread.gmailLabels.length > 3 && (
+            <span
+              className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono font-medium text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+              title={thread.gmailLabels
+                .slice(3)
+                .map((g) => g.name)
+                .join(", ")}
+            >
+              +{thread.gmailLabels.length - 3}
+            </span>
+          )}
+
           {/* Team labels — colored dot + name. Mirrored two-way with Gmail. */}
           {thread.labels.map((l) => (
             <span
