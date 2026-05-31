@@ -30,10 +30,11 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { updateCampaignTargetDate } from "../../_actions-cities-goal";
 
-/** Total bars in the ring. 100 bars at 3.6° each — dense enough
- *  that the gaps between bars feel like minor breathing room
- *  rather than empty wedges, but still discrete tick marks. */
-const TOTAL_BARS = 100;
+/** Total bars in the ring. 144 bars at 2.5° each — gap between
+ *  adjacent bars at radius 154 is ~3px (vs ~6px at 100 bars), so
+ *  the ring reads as a near-continuous halo rather than discrete
+ *  ticks. */
+const TOTAL_BARS = 144;
 
 export function TargetDateKpi({
   endDate,
