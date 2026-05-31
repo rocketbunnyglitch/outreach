@@ -107,6 +107,26 @@ export function ThreadPane({
                 | "spam"
                 | "unclassified"
             }
+            aiSuggestion={
+              thread.suggestedClassification
+                ? {
+                    classification: thread.suggestedClassification as
+                      | "interested"
+                      | "warm"
+                      | "confirmed"
+                      | "question"
+                      | "callback_requested"
+                      | "decline"
+                      | "unsubscribe"
+                      | "auto_reply"
+                      | "spam"
+                      | "unclassified",
+                    confidence: thread.suggestedClassificationConfidence
+                      ? Number(thread.suggestedClassificationConfidence)
+                      : 0,
+                  }
+                : null
+            }
           />
           <ThreadActions
             threadId={thread.id}

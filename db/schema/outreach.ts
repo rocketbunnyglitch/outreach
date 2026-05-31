@@ -16,6 +16,7 @@ import {
   boolean,
   index,
   integer,
+  numeric,
   pgTable,
   smallint,
   text,
@@ -148,6 +149,23 @@ export const emailThreads = pgTable(
      * rendering. Updated when the classifier runs on a new inbound msg.
      */
     classification: replyClassification("classification").notNull().default("unclassified"),
+
+    /**
+     * AI-suggested classification for the most recent inbound. Distinct
+     * from `classification` so the operator-confirmed value isn't
+     * overwritten by re-classification. The inbox UI shows this next
+     * to the (unclassified) pill as a one-click confirm; once the
+     * operator either confirms or overrides, this column is cleared
+     * back to NULL.
+     *
+     * Migration 0066.
+     */
+    suggestedClassification: replyClassification("suggested_classification"),
+    suggestedClassificationConfidence: numeric("suggested_classification_confidence", {
+      precision: 4,
+      scale: 3,
+    }),
+    suggestedClassificationAt: timestamp("suggested_classification_at", { withTimezone: true }),
 
     /**
      * Initial direction. 'mixed' once both inbound and outbound exist.

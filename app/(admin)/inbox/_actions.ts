@@ -1122,9 +1122,16 @@ export async function setThreadClassification(
 ): Promise<ActionResult<{ ok: true }>> {
   const { staff } = await requireStaff();
   try {
+    // Set the operator-confirmed classification AND clear any
+    // pending AI suggestion in the same statement — the
+    // suggestion pill is supposed to disappear the moment the
+    // operator either confirms or overrides. Phase A.1.
     await db.execute(sql`
       UPDATE email_threads
       SET classification = ${classification}::reply_classification,
+          suggested_classification = NULL,
+          suggested_classification_confidence = NULL,
+          suggested_classification_at = NULL,
           updated_at = NOW(),
           updated_by = ${staff.id}
       WHERE id = ${threadId}

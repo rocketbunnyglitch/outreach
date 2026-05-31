@@ -44,6 +44,15 @@ type Classification =
 interface Props {
   threadId: string;
   current: Classification;
+  /** AI-suggested classification — Phase A.1. When present AND
+   *  the operator-confirmed value is 'unclassified', the picker
+   *  renders a tiny pill next to the current value with the
+   *  suggestion + a one-click confirm. Disappears once the
+   *  operator confirms or overrides. */
+  aiSuggestion?: {
+    classification: Classification;
+    confidence: number;
+  } | null;
 }
 
 const OPTIONS: Array<{
@@ -114,7 +123,7 @@ const OPTIONS: Array<{
   },
 ];
 
-export function ClassificationPicker({ threadId, current }: Props) {
+export function ClassificationPicker({ threadId, current, aiSuggestion }: Props) {
   const [open, setOpen] = useState(false);
   const [optimistic, setOptimistic] = useState<Classification>(current);
   const [pending, startTx] = useTransition();
@@ -158,8 +167,22 @@ export function ClassificationPicker({ threadId, current }: Props) {
   if (!currentOption) return null;
   const CurrentIcon = currentOption.icon;
 
+  // AI suggestion pill renders alongside the main picker, but only
+  // when the thread is still unclassified AND the suggestion isn't
+  // itself 'unclassified'. Disappears the instant the operator
+  // confirms or overrides — clearing the suggestion is part of the
+  // setThreadClassification server action.
+  const showSuggestion =
+    !!aiSuggestion &&
+    optimistic === "unclassified" &&
+    aiSuggestion.classification !== "unclassified";
+  const suggestedOption = showSuggestion
+    ? OPTIONS.find((o) => o.value === aiSuggestion.classification)
+    : null;
+  const SuggestedIcon = suggestedOption?.icon ?? null;
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative inline-flex items-center gap-1.5">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -178,6 +201,33 @@ export function ClassificationPicker({ threadId, current }: Props) {
         )}
         <span>{currentOption.label}</span>
       </button>
+
+      {/* AI-suggested classification pill. One-click confirms.
+          Renders only when the thread is unclassified + the AI
+          actually returned a useful suggestion. Violet tone marks
+          this as AI-assisted (per project color convention). */}
+      {showSuggestion && suggestedOption && SuggestedIcon && aiSuggestion && (
+        <button
+          type="button"
+          onClick={() => choose(suggestedOption.value)}
+          disabled={pending}
+          title={`AI suggests ${suggestedOption.label} (${Math.round(
+            aiSuggestion.confidence * 100,
+          )}% confident). Click to confirm.`}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors",
+            "border-violet-300/70 bg-violet-50 text-violet-700",
+            "hover:bg-violet-100",
+            "dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/60",
+          )}
+        >
+          <Sparkles className="h-2.5 w-2.5" />
+          <SuggestedIcon className="h-2.5 w-2.5" />
+          <span>{suggestedOption.label}</span>
+          <span className="font-mono opacity-70">{Math.round(aiSuggestion.confidence * 100)}%</span>
+        </button>
+      )}
+
       {open && (
         <div
           className={cn(

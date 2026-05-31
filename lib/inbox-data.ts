@@ -790,6 +790,11 @@ export interface InboxThreadDetail {
     subject: string | null;
     state: ThreadStateValue;
     classification: string;
+    /** AI-suggested classification (Phase A.1). Null when the
+     *  thread is already operator-classified, or when ai-classify
+     *  hasn't run yet for this thread. */
+    suggestedClassification: string | null;
+    suggestedClassificationConfidence: string | null;
     assignedStaffId: string | null;
     assignedStaffName: string | null;
     /** null when the thread hasn't been matched to a venue yet. */
@@ -848,6 +853,11 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       subject: emailThreads.subject,
       state: emailThreads.state,
       classification: emailThreads.classification,
+      // AI-suggested classification (Phase A.1) — null when the
+      // thread is already operator-classified, or when ai-classify
+      // hasn't run yet.
+      suggestedClassification: emailThreads.suggestedClassification,
+      suggestedClassificationConfidence: emailThreads.suggestedClassificationConfidence,
       assignedStaffId: emailThreads.assignedStaffId,
       assignedStaffName: staffMembers.displayName,
       venueId: emailThreads.venueId,

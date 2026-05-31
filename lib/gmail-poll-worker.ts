@@ -42,6 +42,7 @@ import "server-only";
  */
 
 import { emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
+import { classifyInboundMessageAsync } from "@/lib/ai-classify";
 import { db, withAuditContext } from "@/lib/db";
 import { refreshAccessToken } from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
@@ -440,7 +441,7 @@ async function ingestMessage(opts: {
   }
 
   // Insert the message
-  await db
+  const inserted = await db
     .insert(emailMessages)
     .values({
       threadId,
@@ -467,7 +468,10 @@ async function ingestMessage(opts: {
     })
     .onConflictDoNothing({
       target: [emailMessages.gmailMessageId, emailMessages.staffOutreachEmailId],
-    });
+    })
+    .returning({ id: emailMessages.id });
+
+  const insertedMessageId = inserted[0]?.id ?? null;
 
   // Roll thread counters forward. Classification only auto-updates when
   // the thread is currently 'unclassified' AND the new inbound message
@@ -521,6 +525,39 @@ async function ingestMessage(opts: {
       });
     } catch (err) {
       logger.warn({ err, threadId }, "gmail label reconcile failed (non-fatal)");
+    }
+  }
+
+  // AI auto-classify suggestion for inbound messages — Phase A.1.
+  // Fire-and-forget so ingest latency isn't affected. The classifier
+  // itself skips when the thread is already operator-classified (or
+  // confidently regex-classified upstream), so this is cheap in
+  // steady-state and only runs on genuinely ambiguous threads.
+  if (
+    direction === "inbound" &&
+    insertedMessageId &&
+    process.env.AI_INBOX_CLASSIFY_ENABLED !== "0"
+  ) {
+    try {
+      // Resolve team id for the classifier (it doesn't need it for
+      // the model call but logs benefit from the breadcrumb).
+      const teamRow = await db
+        .select({ teamId: staffOutreachEmails.teamId })
+        .from(staffOutreachEmails)
+        .where(eq(staffOutreachEmails.id, inbox.id))
+        .limit(1);
+      const teamId = teamRow[0]?.teamId;
+      if (teamId) {
+        // Don't await — we want ingest to complete before the model
+        // call. Errors are logged inside classifyInboundMessageAsync.
+        void classifyInboundMessageAsync({
+          threadId,
+          messageId: insertedMessageId,
+          teamId,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, threadId }, "[gmail-poll] ai-classify dispatch failed (non-fatal)");
     }
   }
 
