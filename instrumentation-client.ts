@@ -17,7 +17,8 @@
 
 import * as Sentry from "@sentry/nextjs";
 
-if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
+const SENTRY_CLIENT_DISABLED = true;
+if (!SENTRY_CLIENT_DISABLED && process.env.NEXT_PUBLIC_SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
     release: process.env.NEXT_PUBLIC_BUILD_VERSION ?? undefined,
