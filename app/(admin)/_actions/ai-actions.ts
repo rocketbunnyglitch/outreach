@@ -30,6 +30,14 @@ const schema = z.object({
   intendedRole: z
     .enum(["wristband", "middle", "final", "alt_final", "unspecified"])
     .default("unspecified"),
+  /**
+   * Quality tier for the draft (Haiku ROI sprint #4):
+   *   "fast"   = Haiku (default) — ~5x cheaper, fine for first-pass.
+   *   "polish" = Opus — only when the operator clicks "Polish with
+   *              Opus" on a specific draft they want to send clean.
+   * The bulk-AI-draft modal omits this so it inherits "fast".
+   */
+  quality: z.enum(["fast", "polish"]).default("fast"),
 });
 
 interface DraftResult {
@@ -46,6 +54,7 @@ export async function draftOutreachEmail(
     venueId: formData.get("venueId"),
     cityCampaignId: formData.get("cityCampaignId"),
     intendedRole: formData.get("intendedRole") ?? "unspecified",
+    quality: formData.get("quality") ?? "fast",
   });
   if (!parsed.success) return { ok: false, error: "Invalid draft payload." };
 
@@ -238,6 +247,9 @@ export async function draftOutreachEmail(
     upcomingCrawlDate: ctx.upcoming_crawl_date,
     slotInventory,
     history,
+    // Haiku for first-pass (~5x cheaper); operator can rerun with
+    // quality="polish" to ask Opus for a final-pass cleanup.
+    quality: parsed.data.quality,
   });
 
   if (!draft.ok) {

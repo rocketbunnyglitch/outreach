@@ -45,6 +45,10 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
   const [draft, setDraft] = useState<{ subject: string; body: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
+  /** Last-used quality tier — drives the badge in the draft header
+   *  ("Drafted with Haiku" vs "Polished with Opus") so the operator
+   *  knows which model produced what they're looking at. */
+  const [lastQuality, setLastQuality] = useState<"fast" | "polish">("fast");
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-generate on first open with the current role hint
@@ -73,7 +77,7 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
     };
   }, [open]);
 
-  function generate(roleOverride?: typeof intendedRole) {
+  function generate(roleOverride?: typeof intendedRole, quality: "fast" | "polish" = "fast") {
     setError(null);
     setDraft(null);
     setNotConfigured(false);
@@ -81,6 +85,7 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
     fd.set("venueId", venueId);
     fd.set("cityCampaignId", cityCampaignId);
     fd.set("intendedRole", roleOverride ?? intendedRole);
+    fd.set("quality", quality);
     startTx(async () => {
       const result = await draftOutreachEmail(null, fd);
       if (!result.ok) {
@@ -92,6 +97,7 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
         return;
       }
       setDraft(result.data);
+      setLastQuality(quality);
     });
   }
 
@@ -197,12 +203,14 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
             {draft && !pending && (
               <DraftEditor
                 draft={draft}
+                lastQuality={lastQuality}
                 onChange={setDraft}
                 onUse={() => {
                   onUseDraft(draft);
                   setOpen(false);
                 }}
-                onRegenerate={() => generate()}
+                onRegenerate={() => generate(undefined, "fast")}
+                onPolish={() => generate(undefined, "polish")}
               />
             )}
           </div>
@@ -214,14 +222,18 @@ export function AiDraftButton({ venueId, venueName, cityCampaignId, onUseDraft }
 
 function DraftEditor({
   draft,
+  lastQuality,
   onChange,
   onUse,
   onRegenerate,
+  onPolish,
 }: {
   draft: { subject: string; body: string };
+  lastQuality: "fast" | "polish";
   onChange: (d: { subject: string; body: string }) => void;
   onUse: () => void;
   onRegenerate: () => void;
+  onPolish: () => void;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -255,14 +267,31 @@ function DraftEditor({
           className="mt-0.5 w-full resize-y rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs leading-snug transition-colors focus:border-zinc-400 focus:outline-none dark:border-zinc-800 dark:bg-zinc-950"
         />
       </div>
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onRegenerate}
-          className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
-        >
-          <RefreshCw className="h-2.5 w-2.5" /> Regenerate
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRegenerate}
+            className="inline-flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+          >
+            <RefreshCw className="h-2.5 w-2.5" /> Regenerate
+          </button>
+          {lastQuality === "fast" && (
+            <button
+              type="button"
+              onClick={onPolish}
+              title="Re-draft with Opus (~5x cost, slower) for a higher-quality polish"
+              className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] text-violet-700 uppercase tracking-[0.08em] hover:bg-violet-500/20 dark:text-violet-300"
+            >
+              <Sparkles className="h-2.5 w-2.5" /> Polish with Opus
+            </button>
+          )}
+          {lastQuality === "polish" && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 font-mono text-[10px] text-violet-700 uppercase tracking-[0.08em] dark:text-violet-300">
+              <Sparkles className="h-2.5 w-2.5" /> Polished
+            </span>
+          )}
+        </div>
         <Button type="button" size="sm" onClick={onUse}>
           Use this draft
         </Button>

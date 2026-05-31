@@ -348,6 +348,19 @@ export async function draftOutreachEmail(input: {
     notes: string | null;
     daysAgo: number;
   }>;
+  /**
+   * Quality tier for the draft (Haiku ROI sprint #4):
+   *   - "fast"   = Haiku 4.5. Default. ~5x cheaper than Opus, near-
+   *                Sonnet quality for templated cold outreach. Used
+   *                for first-pass drafts and the bulk-AI-draft modal.
+   *   - "polish" = Opus 4.7. Used when the operator clicks "Polish
+   *                with Opus" on a specific draft they want to ship
+   *                clean. ~5x more expensive, slower, but better at
+   *                long-tail nuance.
+   * Default "fast" — operators edit every draft anyway, and the bulk
+   * modal can fire dozens of drafts per session.
+   */
+  quality?: "fast" | "polish";
 }): Promise<
   | { ok: true; data: { subject: string; body: string } }
   | { ok: false; reason: AiReason; message: string }
@@ -483,7 +496,16 @@ Draft the email now.`;
   const result = await generateCompletion({
     system,
     prompt,
-    tag: "outreach_draft",
+    // Haiku for "fast" (default) → ~5x cheaper than Opus, plenty
+    // good for templated cold outreach the operator edits anyway.
+    // Opus for "polish" → operator pressed the dedicated button on
+    // a draft they want to ship clean. The bulk-AI-draft modal
+    // doesn't set quality so it inherits "fast".
+    model:
+      input.quality === "polish"
+        ? undefined // = DEFAULT_MODEL (claude-opus-4-7)
+        : "claude-haiku-4-5-20251001",
+    tag: input.quality === "polish" ? "outreach_draft_polish" : "outreach_draft",
     maxTokens: 600,
   });
   if (!result.ok) return { ok: false, reason: result.reason, message: result.message };
