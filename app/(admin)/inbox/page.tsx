@@ -206,6 +206,7 @@ export default async function InboxPage({ searchParams }: Props) {
     <>
       <UserPreferencesHydrator userId={currentStaff.id} />
       <InboxShell
+        hasThreadSelected={false}
         topRight={
           <AccountSwitcher
             accounts={visibleAccounts}

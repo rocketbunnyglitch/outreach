@@ -598,8 +598,11 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           // pushing the whole thread out of view.
           "w-full max-h-[60vh]"
         : effectiveMode === "expanded"
-          ? "w-[720px] h-[640px] max-h-[80vh]"
-          : "w-[540px] h-[580px] max-h-[80vh]";
+          ? // Mobile: full-bleed (minus a small safe-area margin) so
+            // the composer doesn't horizontally overflow on a 375px
+            // screen. Desktop keeps the 720px expanded width.
+            "fixed inset-x-2 bottom-2 top-12 sm:static sm:w-[720px] sm:h-[640px] sm:max-h-[80vh] sm:inset-auto"
+          : "fixed inset-x-2 bottom-2 top-16 sm:static sm:w-[540px] sm:h-[580px] sm:max-h-[80vh] sm:inset-auto";
 
   return (
     <div

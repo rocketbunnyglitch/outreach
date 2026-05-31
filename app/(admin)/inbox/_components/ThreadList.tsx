@@ -129,7 +129,7 @@ function ThreadRow({
       <Link
         href={href}
         className={cn(
-          "inbox-row group/row block border-zinc-200/60 border-b px-4 py-3 transition-colors",
+          "inbox-row group/row block border-zinc-200/60 border-b px-4 py-3.5 transition-colors sm:py-3",
           "dark:border-zinc-800/40",
           // Active (currently-open thread) wins over selection wins
           // over unread highlight wins over default.

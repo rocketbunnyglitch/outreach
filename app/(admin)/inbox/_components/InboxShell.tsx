@@ -3,14 +3,25 @@ import { cn } from "@/lib/cn";
 /**
  * Three-pane Inbox shell.
  *
- *   • Left  (220px):  folder list + filter chips
- *   • Middle (380px): thread list
- *   • Right (flex):   thread detail + CRM rail (or empty state)
+ *   Desktop (lg+):
+ *     Left   (220px)   folder list + filter chips
+ *     Middle (380px)   thread list
+ *     Right  (flex)    thread detail + CRM rail
  *
- * On narrow screens (<lg breakpoint) the right pane stacks below. We don't
- * try to be clever about hiding the middle pane on mobile — small screens
- * get the same three columns, just narrower. Inbox-as-destination means
- * users are on desktop most of the time.
+ *   Mobile (<lg) — Phase F redesign:
+ *     With a thread selected   show the RIGHT pane full-width.
+ *                               The middle pane is hidden so the
+ *                               operator gets a focused read +
+ *                               reply surface, like a native mail
+ *                               app.
+ *     With no thread           show the MIDDLE pane (thread list)
+ *     selected                  at full width. The left pane is
+ *                               hidden — the InboxScopeBar inside
+ *                               `middle` surfaces the essential
+ *                               folder pivots inline.
+ *
+ *   The right pane is responsible for surfacing its own "back to
+ *   list" affordance on mobile (the ThreadPane header renders one).
  *
  * The middle pane scrolls independently of the right; both inherit
  * height from the (admin) layout's main element.
@@ -20,6 +31,7 @@ export function InboxShell({
   middle,
   right,
   topRight,
+  hasThreadSelected = false,
 }: {
   left: React.ReactNode;
   middle: React.ReactNode;
@@ -28,6 +40,10 @@ export function InboxShell({
    *  shell so it floats above the right pane. Used by the Gmail-style
    *  AccountSwitcher dropdown. */
   topRight?: React.ReactNode;
+  /** Drives mobile pane swap (Phase F). True when the operator is
+   *  inside a thread; false on the list view. Desktop (lg+)
+   *  ignores this entirely — all three panes always show. */
+  hasThreadSelected?: boolean;
 }) {
   return (
     <div
@@ -42,25 +58,38 @@ export function InboxShell({
       {topRight && (
         <div className="absolute top-3 right-4 z-20 lg:top-4 lg:right-5">{topRight}</div>
       )}
+      {/* Left pane — folder list. Hidden on mobile; the scope bar
+          inside `middle` covers the essential folder pivots. */}
       <aside
         className={cn(
-          "shrink-0 border-zinc-200/80 border-b lg:w-[220px] lg:border-r lg:border-b-0",
+          "hidden shrink-0 border-zinc-200/80 lg:block lg:w-[220px] lg:border-r",
           "dark:border-zinc-800/60",
           "p-3",
         )}
       >
         {left}
       </aside>
+      {/* Middle pane — thread list. Mobile: full width when no
+          thread is selected; hidden when a thread is open. */}
       <section
         className={cn(
-          "shrink-0 border-zinc-200/80 border-b lg:w-[380px] lg:border-r lg:border-b-0",
+          "shrink-0 overflow-y-auto border-zinc-200/80 lg:w-[380px] lg:border-r",
           "dark:border-zinc-800/60",
-          "overflow-y-auto",
+          hasThreadSelected ? "hidden lg:block" : "flex-1 lg:flex-none",
         )}
       >
         {middle}
       </section>
-      <section className="flex-1 overflow-y-auto">{right}</section>
+      {/* Right pane — thread detail. Mobile: full width when a
+          thread is selected; hidden when on the list view. */}
+      <section
+        className={cn(
+          "overflow-y-auto",
+          hasThreadSelected ? "flex-1" : "hidden lg:block lg:flex-1",
+        )}
+      >
+        {right}
+      </section>
     </div>
   );
 }

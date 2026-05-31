@@ -137,13 +137,15 @@ export function InboxFilterBar({
           searches don't get a redundant repeat below the input. */}
       <ParsedOperatorChips raw={search} />
 
-      {/* Row 2: mine-assigned + mine-inbox toggles + alias select */}
-      <div className="flex items-center gap-2">
+      {/* Row 2: mine-assigned + mine-inbox toggles + alias select.
+          Scrolls horizontally on mobile to avoid wrapping when the
+          alias picker label is long. */}
+      <div className="flex items-center gap-2 overflow-x-auto">
         <button
           type="button"
           onClick={() => setMineInbox(!mineInbox)}
           className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium text-[11px] transition-colors",
+            "inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
             mineInbox
               ? "border-emerald-400 bg-emerald-100 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100"
               : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
@@ -163,7 +165,7 @@ export function InboxFilterBar({
           type="button"
           onClick={() => setMineAssigned(!mineAssigned)}
           className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium text-[11px] transition-colors",
+            "inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
             mineAssigned
               ? "border-blue-400 bg-blue-100 text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100"
               : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
@@ -181,7 +183,7 @@ export function InboxFilterBar({
             onChange={(e) => setAlias(e.target.value)}
             aria-label="Filter by alias"
             className={cn(
-              "max-w-[200px] flex-1 truncate rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[11px]",
+              "max-w-[200px] flex-1 truncate rounded-md border border-zinc-200 bg-white px-2 py-1.5 font-mono text-[11px] sm:py-0.5",
               "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
               "dark:border-zinc-700 dark:bg-zinc-900",
             )}

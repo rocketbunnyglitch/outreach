@@ -5,7 +5,7 @@ import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import type { ThreadNoteRow } from "@/lib/thread-notes";
 import type { Classification } from "@/lib/triage-classifier";
 import type { VenueCommunication } from "@/lib/venue-communication";
-import { CalendarClock, Check, MailOpen, Sparkles, User } from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, MailOpen, Sparkles, User } from "lucide-react";
 import Link from "next/link";
 import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
@@ -76,16 +76,27 @@ export function ThreadPane({
   return (
     <div className="flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-zinc-200/80 border-b bg-white/90 px-6 py-4 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/80">
-        <div className="flex items-baseline justify-between gap-3">
-          <h1 className="min-w-0 truncate font-semibold text-lg tracking-tight">
-            {thread.subject ?? "(no subject)"}
-          </h1>
+      <header className="sticky top-0 z-10 border-zinc-200/80 border-b bg-white/90 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4 dark:border-zinc-800/60 dark:bg-zinc-950/80">
+        <div className="flex items-baseline justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {/* Mobile back-arrow — returns to the thread list pane.
+                Hidden on lg+ where the list pane is always visible. */}
+            <Link
+              href="/inbox"
+              aria-label="Back to inbox"
+              className="-ml-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <h1 className="min-w-0 truncate font-semibold text-base tracking-tight sm:text-lg">
+              {thread.subject ?? "(no subject)"}
+            </h1>
+          </div>
           <div className="flex shrink-0 items-center gap-2">
             {/* Phase D.3 — soft-lock pill. Renders only when other
                 operators are looking at this thread right now. */}
             <ThreadViewersPill threadId={thread.id} currentStaffId={currentStaffId} />
-            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            <span className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-widest sm:inline">
               {thread.messageCount} message{thread.messageCount === 1 ? "" : "s"}
             </span>
           </div>
