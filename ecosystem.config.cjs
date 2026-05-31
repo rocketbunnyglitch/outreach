@@ -39,6 +39,7 @@ module.exports = {
       // crash-loops the outreach process.
       env: {
         NODE_ENV: "production",
+        PORT: "3001",
       },
       node_args: ["--env-file=/var/www/outreach/.env"],
 
@@ -51,7 +52,7 @@ module.exports = {
       // without restarts. Drop back to 1G if multiple new services
       // land on the same box.
       max_memory_restart: "2G",
-      max_restarts: 10,
+      max_restarts: 50,
       min_uptime: "10s",
       restart_delay: 2000,
 
@@ -64,6 +65,36 @@ module.exports = {
       // Graceful shutdown: PM2 sends SIGINT then SIGKILL after the wait.
       // Next.js standalone handles SIGINT to drain in-flight requests.
       kill_timeout: 10000, // 10s for active requests + BullMQ workers to drain
+      wait_ready: false,
+      listen_timeout: 30000,
+    },
+    {
+      // Failover web instance. Identical to "outreach" but on PORT 3003.
+      // nginx load-balances 3001+3003 with proxy_next_upstream, so a
+      // reload/crash/hang of one instance never 502s the site. Safe to
+      // run two instances: the BullMQ/cron workers are NOT embedded in
+      // the web process (they're system-cron -> /api/cron/* HTTP endpoints
+      // with SKIP LOCKED / idempotency), so two instances do not double
+      // process jobs or double-send email. Realtime is Redis pub/sub.
+      name: "outreach-2",
+      cwd: "/var/www/outreach",
+      script: ".next/standalone/server.js",
+      instances: 1,
+      exec_mode: "fork",
+      env: {
+        NODE_ENV: "production",
+        PORT: "3003",
+      },
+      node_args: ["--env-file=/var/www/outreach/.env"],
+      max_memory_restart: "2G",
+      max_restarts: 50,
+      min_uptime: "10s",
+      restart_delay: 2000,
+      out_file: "/var/log/crawl-engine/out-2.log",
+      error_file: "/var/log/crawl-engine/err-2.log",
+      merge_logs: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      kill_timeout: 10000,
       wait_ready: false,
       listen_timeout: 30000,
     },
