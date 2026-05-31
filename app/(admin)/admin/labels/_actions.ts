@@ -1,14 +1,21 @@
 "use server";
 
 /**
- * Admin team-label CRUD. Creates, renames, and deletes labels in the
+ * Team-label CRUD. Creates, renames, and deletes labels in the
  * team's namespace. createTeamLabel also fans out to every connected
  * Gmail to keep both sides in sync.
  *
- * Admin-only via requireAdmin (non-admins get 404).
+ * Permissions:
+ *   - Create / rename: any team operator (requireStaff). Matches
+ *     Gmail's behavior where any user can create labels in their own
+ *     mailbox; here, labels are team-scoped so any operator
+ *     contributing to the team should be able to add an organizing
+ *     label on the fly.
+ *   - Delete: admin-only (still requireAdmin). Deletion is
+ *     destructive across the whole team's threads — keep that gated.
  */
 
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireStaff } from "@/lib/auth";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { createTeamLabel, deleteTeamLabel, renameTeamLabel } from "@/lib/team-labels";
@@ -32,7 +39,7 @@ export async function createTeamLabelAction(
   _prev: unknown,
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
-  const ctx = await requireAdmin();
+  const ctx = await requireStaff();
   const name = String(formData.get("name") ?? "").trim();
   const colorRaw = String(formData.get("color") ?? "").trim();
   if (!name) return { ok: false, error: "Label name is required." };
@@ -64,7 +71,7 @@ export async function renameTeamLabelAction(
   _prev: unknown,
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
-  const ctx = await requireAdmin();
+  const ctx = await requireStaff();
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!UUID_RE.test(id)) return { ok: false, error: "Invalid label id." };

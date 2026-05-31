@@ -15,6 +15,7 @@
  * surface a small inline error.
  */
 
+import { createTeamLabelAction } from "@/app/(admin)/admin/labels/_actions";
 import { cn } from "@/lib/cn";
 import { Loader2, Plus, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -69,6 +70,11 @@ export function ThreadLabelsRow({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  // Live-managed list of labels; starts with the prop and grows when
+  // the operator creates a new one inline.
+  const [labels, setLabels] = useState<TeamLabel[]>(allTeamLabels);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
   const [, startTx] = useTransition();
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +82,9 @@ export function ThreadLabelsRow({
   // a poll-worker run brought in a Gmail-applied label).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setLocalApplied(applied), [applied.map((a) => a.id).join(",")]);
+  // Same sync for the labels list if a parent push brings new ones in.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setLabels(allTeamLabels), [allTeamLabels.map((l) => l.id).join(",")]);
 
   // Close picker on outside click.
   useEffect(() => {
@@ -133,7 +142,38 @@ export function ThreadLabelsRow({
     });
   }
 
-  const unappliedLabels = allTeamLabels.filter((l) => !localApplied.some((a) => a.id === l.id));
+  const unappliedLabels = labels.filter((l) => !localApplied.some((a) => a.id === l.id));
+
+  async function createAndApply() {
+    const name = newName.trim();
+    if (!name || creating) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.set("name", name);
+      // Default color when created inline — operators can recolor
+      // from the admin labels page later.
+      fd.set("color", "blue");
+      const res = await createTeamLabelAction(null, fd);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      const newId = res.data.id;
+      // Push into local state so the new label appears immediately
+      // (server revalidatePath will eventually refresh too).
+      const newLabel: TeamLabel = { id: newId, name, color: "blue" };
+      setLabels((prev) => [...prev, newLabel]);
+      setNewName("");
+      // Auto-apply the just-created label to the current thread —
+      // matches Gmail's behavior where typing into the "Create new"
+      // input immediately tags the open conversation.
+      applyLabel(newLabel);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -180,15 +220,9 @@ export function ThreadLabelsRow({
           Label
         </button>
         {pickerOpen && (
-          <div className="absolute top-full left-0 z-20 mt-1 w-56 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
-            {allTeamLabels.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">
-                No labels on the team. Create one in /admin/labels.
-              </p>
-            ) : unappliedLabels.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">All labels are already applied.</p>
-            ) : (
-              <ul className="max-h-64 overflow-y-auto py-1">
+          <div className="absolute top-full left-0 z-20 mt-1 w-64 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+            {unappliedLabels.length > 0 && (
+              <ul className="max-h-56 overflow-y-auto py-1">
                 {unappliedLabels.map((l) => (
                   <li key={l.id}>
                     <button
@@ -217,6 +251,42 @@ export function ThreadLabelsRow({
                 ))}
               </ul>
             )}
+            {labels.length > 0 && unappliedLabels.length === 0 && (
+              <p className="px-3 py-2 text-xs text-zinc-500">All labels are already applied.</p>
+            )}
+            {/* Inline create — Gmail's pattern. Type a name, press Enter
+                (or click +) to create-and-apply in one step. Any team
+                operator can create labels — no admin gate. */}
+            <div className="border-zinc-200 border-t bg-zinc-50/60 p-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  createAndApply();
+                }}
+                className="flex items-center gap-1"
+              >
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Create new label…"
+                  className="flex-1 rounded border border-zinc-200 bg-white px-2 py-1 text-xs outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-500"
+                  disabled={creating}
+                />
+                <button
+                  type="submit"
+                  disabled={!newName.trim() || creating}
+                  className="rounded p-1 text-zinc-600 disabled:opacity-40 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  aria-label="Create label"
+                >
+                  {creating ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Plus className="h-3 w-3" />
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </div>
