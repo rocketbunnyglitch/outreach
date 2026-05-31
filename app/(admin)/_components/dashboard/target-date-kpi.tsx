@@ -220,12 +220,21 @@ function pickTone(daysLeft: number | null): Tone {
   return "green";
 }
 
-/** How many bars to light. Linear with a 90-day full ring (lit ==
- *  full ring far from the deadline; drains to ~5 bars at 1 day; at
- *  0 or overdue, force the ring full so the urgency reads). */
+/** How many bars to light. The ring FILLS UP as the deadline
+ *  approaches — far out = nearly empty, at the wall = fully lit.
+ *  Reads as a countdown that's "filling up to zero."
+ *
+ *  Anchored to a 90-day campaign so the math is consistent regardless
+ *  of when the operator sets the date. Stretches/compresses at the
+ *  edges:
+ *    - Always at least 2 bars lit (so the ring's tone is visible
+ *      even when the campaign is fresh — otherwise it'd look broken
+ *      at "90 days out")
+ *    - 0 days or overdue forces the full ring lit + locked-red tone
+ *      so the urgency is unmistakable */
 function litBarsFor(daysLeft: number): number {
   if (daysLeft <= 0) return TOTAL_BARS;
-  const ratio = Math.min(daysLeft, 90) / 90;
+  const ratio = 1 - Math.min(daysLeft, 90) / 90;
   return Math.max(2, Math.round(TOTAL_BARS * ratio));
 }
 
