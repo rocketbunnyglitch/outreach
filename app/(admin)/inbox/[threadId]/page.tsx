@@ -20,6 +20,7 @@ import { AccountSwitcher } from "../_components/AccountSwitcher";
 import { FolderList } from "../_components/FolderList";
 import { InboxFilterBar } from "../_components/InboxFilterBar";
 import { InboxPresenceBar } from "../_components/InboxPresenceBar";
+import { InboxScopeBar } from "../_components/InboxScopeBar";
 import { InboxShell } from "../_components/InboxShell";
 import { ThreadListWithBulk } from "../_components/ThreadListWithBulk";
 import { ThreadPane } from "../_components/ThreadPane";
@@ -41,6 +42,8 @@ interface Props {
     q?: string;
     mine?: string;
     accounts?: string;
+    unassigned?: string;
+    stale?: string;
   }>;
 }
 
@@ -85,6 +88,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         labelId: search.label,
         aliasId: search.alias,
         accountIds,
+        unassigned: search.unassigned === "1",
+        staleOnly: search.stale === "1",
         search: search.q,
       }),
       fetchFolderCounts({
@@ -147,6 +152,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (search.label) preservedQuery.set("label", search.label);
   if (search.alias) preservedQuery.set("alias", search.alias);
   if (search.accounts) preservedQuery.set("accounts", search.accounts);
+  if (search.unassigned === "1") preservedQuery.set("unassigned", "1");
+  if (search.stale === "1") preservedQuery.set("stale", "1");
   if (search.q) preservedQuery.set("q", search.q);
 
   return (
@@ -187,6 +194,10 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         }
         middle={
           <div className="flex h-full flex-col">
+            <InboxScopeBar
+              currentUserId={currentStaff.id}
+              isAdmin={currentStaff.role === "admin"}
+            />
             <InboxFilterBar
               aliases={aliases}
               currentStaffId={currentStaff.id}

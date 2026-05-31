@@ -18,6 +18,7 @@ import { DraftList } from "./_components/DraftList";
 import { FolderList } from "./_components/FolderList";
 import { InboxFilterBar } from "./_components/InboxFilterBar";
 import { InboxPresenceBar } from "./_components/InboxPresenceBar";
+import { InboxScopeBar } from "./_components/InboxScopeBar";
 import { InboxShell } from "./_components/InboxShell";
 import { ThreadListWithBulk } from "./_components/ThreadListWithBulk";
 import { UserPreferencesHydrator } from "./_components/UserPreferencesHydrator";
@@ -50,6 +51,10 @@ interface Props {
      * validated as a UUID; non-UUIDs are dropped silently.
      */
     accounts?: string;
+    /** "1" -> Unassigned scope preset from InboxScopeBar. */
+    unassigned?: string;
+    /** "1" -> Stale scope preset from InboxScopeBar. */
+    stale?: string;
   }>;
 }
 
@@ -115,6 +120,8 @@ export default async function InboxPage({ searchParams }: Props) {
         labelId: params.label,
         aliasId: params.alias,
         accountIds,
+        unassigned: params.unassigned === "1",
+        staleOnly: params.stale === "1",
         search: params.q,
       }),
       fetchFolderCounts({
@@ -159,6 +166,8 @@ export default async function InboxPage({ searchParams }: Props) {
   if (params.label) preservedQuery.set("label", params.label);
   if (params.alias) preservedQuery.set("alias", params.alias);
   if (params.accounts) preservedQuery.set("accounts", params.accounts);
+  if (params.unassigned === "1") preservedQuery.set("unassigned", "1");
+  if (params.stale === "1") preservedQuery.set("stale", "1");
   if (params.q) preservedQuery.set("q", params.q);
 
   return (
@@ -201,6 +210,10 @@ export default async function InboxPage({ searchParams }: Props) {
         }
         middle={
           <div className="flex h-full flex-col">
+            <InboxScopeBar
+              currentUserId={currentStaff.id}
+              isAdmin={currentStaff.role === "admin"}
+            />
             <InboxFilterBar
               aliases={aliases}
               currentStaffId={currentStaff.id}

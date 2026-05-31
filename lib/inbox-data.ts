@@ -179,6 +179,21 @@ export interface ThreadListFilter {
    */
   accountIds?: string[];
   /**
+   * Scope filter: "Unassigned" preset from InboxScopeBar — restricts
+   * to threads with no assigned operator (assigned_staff_id IS NULL).
+   * Distinct from passing assignedStaffId=undefined which means "no
+   * assignment filter at all"; this is an explicit "show me what
+   * nobody owns yet".
+   */
+  unassigned?: boolean;
+  /**
+   * Scope filter: "Stale" preset — restricts to threads currently
+   * flagged stale by the cadence engine (is_stale = true). Existing
+   * stale-tagger surface; this just exposes it as a top-level filter
+   * for the scope bar.
+   */
+  staleOnly?: boolean;
+  /**
    * Free-text search applied to subject, snippet, venue name, and
    * last-sender name via case-insensitive substring match. Empty or
    * whitespace-only inputs are ignored.
@@ -402,6 +417,10 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         filter.accountIds && filter.accountIds.length > 0
           ? inArray(emailThreads.staffOutreachEmailId, filter.accountIds)
           : undefined,
+        // Scope: Unassigned — threads with no assigned operator.
+        filter.unassigned ? isNull(emailThreads.assignedStaffId) : undefined,
+        // Scope: Stale — threads flagged by the stale-tagger.
+        filter.staleOnly ? eq(emailThreads.isStale, true) : undefined,
         // Operator-aware search. parseSearchQuery splits the raw input
         // into structured operators (`from:`, `subject:`, `is:starred`,
         // etc) + a free-text residue. Each operator becomes its own
