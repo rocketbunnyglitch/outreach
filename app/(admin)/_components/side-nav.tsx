@@ -275,6 +275,10 @@ export function SideNav({
       className={cn(
         // Pin under the sticky 3.5rem top bar (top-14).
         "hidden h-[calc(100vh-3.5rem)] shrink-0 self-start overflow-y-auto transition-[width] duration-200",
+        // Hide scrollbar across browsers — content still scrolls,
+        // the chrome just disappears. Firefox uses scrollbar-width;
+        // WebKit/Blink ignore that and need the pseudo-element rule.
+        "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         railCollapsed ? "w-14" : "w-[200px]",
         "sticky top-14",
         "border-zinc-200/80 border-r bg-zinc-50/40 dark:border-zinc-800/60 dark:bg-zinc-950/40",
