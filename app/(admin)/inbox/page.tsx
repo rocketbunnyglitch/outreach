@@ -188,6 +188,7 @@ export default async function InboxPage({ searchParams }: Props) {
                   folderLabel={FOLDER_LABELS[folder]}
                   preservedQuery={preservedQuery.toString()}
                   isTrashView={folder === "trash"}
+                  isArchiveView={folder === "archive"}
                 />
               )}
               {/* Mounts at the bottom so it's always rendered but

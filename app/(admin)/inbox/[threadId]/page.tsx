@@ -178,6 +178,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
                 folderLabel={FOLDER_LABELS[folder]}
                 preservedQuery={preservedQuery.toString()}
                 isTrashView={folder === "trash"}
+                isArchiveView={folder === "archive"}
               />
               {/* j/k navigation between threads in the current folder
                 + ? for the shortcut help dialog. Mounts here so it

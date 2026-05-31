@@ -9,6 +9,7 @@ import {
 import type { InboxFilterFacets, TeamGmailLabel } from "@/lib/inbox-data";
 import {
   AlarmClock,
+  Archive,
   CheckCheck,
   CheckCircle2,
   Clock4,
@@ -40,6 +41,7 @@ const FOLDER_ICONS: Record<InboxFolder, React.ReactNode> = {
   starred: <Star className="h-4 w-4" />,
   snoozed: <AlarmClock className="h-4 w-4" />,
   scheduled: <Clock4 className="h-4 w-4" />,
+  archive: <Archive className="h-4 w-4" />,
   all_mail: <MailOpen className="h-4 w-4" />,
   trash: <Trash2 className="h-4 w-4" />,
   // Engine smart views

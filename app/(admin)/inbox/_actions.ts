@@ -799,6 +799,7 @@ export async function bulkUpdateThreads(
     "trash",
     "restore",
     "archive",
+    "unarchive",
     "mark_read",
     "mark_unread",
   ] as const;
@@ -843,6 +844,14 @@ export async function bulkUpdateThreads(
       patch.staleReason = null;
       patch.followUpStage = 0;
       patch.followUpNextDueAt = null;
+      break;
+    case "unarchive":
+      // Restore an archived thread back to active. We don't try to
+      // remember the prior state (the engine doesn't store the
+      // pre-archive state); needs_reply is the right default —
+      // operator can re-classify after the thread re-surfaces.
+      patch.state = "needs_reply";
+      patch.archivedAt = null;
       break;
     case "mark_read":
       patch.unreadCount = 0;

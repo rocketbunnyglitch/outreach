@@ -15,7 +15,7 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { AlarmClock, Archive, CheckCircle2, Loader2, Trash2, XCircle } from "lucide-react";
+import { AlarmClock, Archive, CheckCircle2, Inbox, Loader2, Trash2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { markThreadRead, setThreadState, setThreadTrash } from "../_actions";
@@ -130,16 +130,41 @@ export function ThreadActions({
         <XCircle className="h-3 w-3" />
         Declined
       </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => changeState("archived")}
-        disabled={pending}
-        title="Archive — out of the active inbox view."
-      >
-        <Archive className="h-3 w-3" />
-        Archive
-      </Button>
+      {currentState === "archived" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            // Restore from archive — same path the bulk action uses.
+            // setThreadState validates the state value; needs_reply is
+            // the only sensible default for restoration since the
+            // engine doesn't remember the pre-archive state.
+            startTx(async () => {
+              const fd = new FormData();
+              fd.set("threadId", threadId);
+              fd.set("state", "needs_reply");
+              await setThreadState(null, fd);
+              router.refresh();
+            });
+          }}
+          disabled={pending}
+          title="Move back to Inbox — unarchive this thread."
+        >
+          <Inbox className="h-3 w-3" />
+          Move to Inbox
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => changeState("archived")}
+          disabled={pending}
+          title="Archive — out of the active inbox view."
+        >
+          <Archive className="h-3 w-3" />
+          Archive
+        </Button>
+      )}
       <div className="relative">
         <Button
           size="sm"

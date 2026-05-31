@@ -24,6 +24,7 @@ import {
   Archive,
   Check,
   ChevronDown,
+  Inbox,
   Loader2,
   Mail,
   MailOpen,
@@ -43,6 +44,8 @@ interface Props {
   preservedQuery: string;
   /** "trash" view shows Restore instead of Trash + Archive. */
   isTrashView?: boolean;
+  /** "archive" view shows "Move to Inbox" (unarchive) instead of Archive. */
+  isArchiveView?: boolean;
 }
 
 export function ThreadListWithBulk({
@@ -51,6 +54,7 @@ export function ThreadListWithBulk({
   folderLabel,
   preservedQuery,
   isTrashView,
+  isArchiveView,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTx] = useTransition();
@@ -133,12 +137,20 @@ export function ThreadListWithBulk({
             <span className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums">
               {selected.size} selected
             </span>
-            {!isTrashView && (
+            {!isTrashView && !isArchiveView && (
               <ToolbarButton
                 onClick={() => applyBulk("archive")}
                 disabled={pending}
                 icon={<Archive className="h-3.5 w-3.5" />}
                 label="Archive"
+              />
+            )}
+            {isArchiveView && (
+              <ToolbarButton
+                onClick={() => applyBulk("unarchive")}
+                disabled={pending}
+                icon={<Inbox className="h-3.5 w-3.5" />}
+                label="Move to Inbox"
               />
             )}
             {isTrashView ? (

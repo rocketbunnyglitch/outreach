@@ -67,6 +67,7 @@ export const GMAIL_MAILBOX_FOLDERS = [
   "starred",
   "snoozed",
   "scheduled",
+  "archive",
   "all_mail",
   "trash",
 ] as const;
@@ -101,6 +102,7 @@ export const FOLDER_LABELS: Record<InboxFolder, string> = {
   starred: "Starred",
   snoozed: "Snoozed",
   scheduled: "Scheduled",
+  archive: "Archive",
   all_mail: "All Mail",
   trash: "Trash",
   // Engine smart views
@@ -269,6 +271,13 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       case "all_mail":
         // Everything except deleted/trashed.
         return isNull(emailThreads.deletedAt);
+      case "archive":
+        // Archived conversations — operator manually archived via the
+        // bulk toolbar / thread state action. Not deleted. State =
+        // 'archived' is the filter — we don't intersect with direction
+        // here so archived sent-only threads also surface (the operator
+        // archived them for a reason; show them on unarchive).
+        return and(isNull(emailThreads.deletedAt), eq(emailThreads.state, "archived"));
       case "trash":
         // Only deleted threads — recoverable view.
         return sql`${emailThreads.deletedAt} IS NOT NULL`;
@@ -479,6 +488,7 @@ export async function fetchFolderCounts(opts: {
     sent: number;
     starred: number;
     snoozed: number;
+    archive: number;
     all_mail: number;
     trash: number;
     needs_reply: number;
@@ -522,6 +532,10 @@ export async function fetchFolderCounts(opts: {
       )::int AS snoozed,
       COUNT(*) FILTER (
         WHERE deleted_at IS NULL
+          AND state = 'archived'
+      )::int AS archive,
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
       )::int AS all_mail,
       COUNT(*) FILTER (
         WHERE deleted_at IS NOT NULL
@@ -563,6 +577,7 @@ export async function fetchFolderCounts(opts: {
     starred: Number(r.starred ?? 0),
     snoozed: Number(r.snoozed ?? 0),
     scheduled: Number(r.scheduled ?? 0),
+    archive: Number(r.archive ?? 0),
     all_mail: Number(r.all_mail ?? 0),
     trash: Number(r.trash ?? 0),
     needs_reply: Number(r.needs_reply ?? 0),
