@@ -194,12 +194,19 @@ export function CrawlGlowGrid({
                         bar, so it overflows by ~1.5px top and
                         bottom; absolute-centered + pointer-events
                         none + leading-none keeps the rendering
-                        clean. */}
+                        clean.
+
+                        White text on every tone — operator wants
+                        a consistent visual. On the yellow pill
+                        (where white-on-yellow has poor contrast),
+                        a tight dark text-shadow restores
+                        legibility without changing the color. */}
                     <span
                       aria-hidden
                       className={cn(
-                        "pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 select-none font-bold font-mono text-[7px] leading-none tabular-nums",
-                        tone === "yellow" ? "text-zinc-900" : "text-white",
+                        "pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 select-none font-bold font-mono text-[7px] text-white leading-none tabular-nums",
+                        tone === "yellow" &&
+                          "[text-shadow:_0_0_2px_rgba(0,0,0,0.85),_0_1px_1px_rgba(0,0,0,0.7)]",
                       )}
                     >
                       {sold}
