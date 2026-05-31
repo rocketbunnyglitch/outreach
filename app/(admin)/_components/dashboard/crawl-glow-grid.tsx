@@ -163,19 +163,48 @@ export function CrawlGlowGrid({
             <div className="flex flex-wrap items-center gap-1">
               {list.map((c) => {
                 const tone = cancelled ? "slate" : toneForCrawl(c);
+                // Tickets sold lives on CrawlNeed (sourced from
+                // events.ticket_sales_count). Capped at 999 — the
+                // operator's spec is max 3 digits in the overlay.
+                const sold = Math.max(0, Math.min(999, Math.round(c.ticketsSold ?? 0)));
+                const longLabel = `${labelForCrawl(c, tone)} · ${c.ticketsSold ?? 0} sold`;
                 return (
                   <span
                     key={`${c.dayPart}-${c.crawlNumber}`}
-                    aria-label={`Crawl ${c.crawlNumber}: ${labelForCrawl(c, tone)}`}
-                    title={`Crawl ${c.crawlNumber} · ${labelForCrawl(c, tone)}`}
+                    aria-label={`Crawl ${c.crawlNumber}: ${longLabel}`}
+                    title={`Crawl ${c.crawlNumber} · ${longLabel}`}
                     className={cn(
-                      // Pill: 16px wide × 4px tall, rounded full. Tight
-                      // so a city with 4 crawls × 3 days still fits in
-                      // a normal row without pushing the row height.
-                      "inline-block h-1 w-4 rounded-full",
+                      // Pill stays exactly 16px wide × 4px tall.
+                      // The sales-count overlay is absolutely
+                      // positioned so it can overflow the pill's
+                      // vertical bounds without forcing the
+                      // pill itself to grow.
+                      "relative inline-block h-1 w-4 rounded-full",
                       GLOW_CLASS[tone],
                     )}
-                  />
+                  >
+                    {/* In-pill sales count. Sized so the widest
+                        3-digit number ("888" / "999") at mono +
+                        tabular-nums lands at ~13px wide, fitting
+                        inside the 16px bar with ~1.5px breathing
+                        room on each side. text-[7px] is right at
+                        Chrome's "ignore minimum font size"
+                        threshold — readable but unmistakably
+                        small. Vertically the text is 7px in a 4px
+                        bar, so it overflows by ~1.5px top and
+                        bottom; absolute-centered + pointer-events
+                        none + leading-none keeps the rendering
+                        clean. */}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 select-none font-bold font-mono text-[7px] leading-none tabular-nums",
+                        tone === "yellow" ? "text-zinc-900" : "text-white",
+                      )}
+                    >
+                      {sold}
+                    </span>
+                  </span>
                 );
               })}
             </div>
