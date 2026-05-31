@@ -18,6 +18,7 @@ import { KpiCard } from "./_components/dashboard/kpi-strip";
 import { MeetingMode } from "./_components/dashboard/meeting-mode";
 import { NextBestActionsWidget } from "./_components/dashboard/next-best-actions-widget";
 import { NotesWidget } from "./_components/dashboard/notes-widget";
+import { TargetDateKpi } from "./_components/dashboard/target-date-kpi";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
 import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
 import { TodayWidget } from "./_components/dashboard/today-widget";
@@ -203,14 +204,32 @@ export default async function DashboardHome({
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-3 sm:gap-4">
-        <CitiesCompletedKpi
-          completed={data.kpis.citiesCompleted}
-          goal={data.kpis.citiesGoal}
-          campaignId={campaignId}
-          isAdmin={staff.role === "admin"}
-        />
-        <div className="card-surface col-span-3 grid grid-cols-1 gap-px overflow-hidden bg-zinc-200 sm:grid-cols-2 dark:bg-zinc-800/40">
+      {/* KPI band layout:
+            Mobile (default): 2 columns. Cities-completed + Target-date
+                              sit side-by-side at 1/2 each. KPI strip
+                              drops to its own row spanning full width.
+            Desktop (sm+):    6 columns. Cities-completed col-span-2
+                              (= 1/3). Target-date col-span-2 (= 1/3).
+                              KPI strip col-span-2 (= 1/3).
+          The 6-col base gives the flexibility to land at thirds on
+          desktop while keeping the mobile layout clean. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-6 sm:gap-4">
+        <div className="col-span-1 sm:col-span-2">
+          <CitiesCompletedKpi
+            completed={data.kpis.citiesCompleted}
+            goal={data.kpis.citiesGoal}
+            campaignId={campaignId}
+            isAdmin={staff.role === "admin"}
+          />
+        </div>
+        <div className="col-span-1 sm:col-span-2">
+          <TargetDateKpi
+            endDate={currentCampaign?.campaign.endDate ?? null}
+            campaignId={campaignId}
+            isAdmin={staff.role === "admin"}
+          />
+        </div>
+        <div className="card-surface col-span-2 grid grid-cols-1 gap-px overflow-hidden bg-zinc-200 sm:col-span-2 sm:grid-cols-2 dark:bg-zinc-800/40">
           {kpis.map((kpi) => (
             <KpiCard key={kpi.label} kpi={kpi} />
           ))}
