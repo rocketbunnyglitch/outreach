@@ -36,7 +36,11 @@ export function PendingExternalHostsSection({
       setBusyId(null);
       if (!res.ok) {
         setError(res.error ?? "Couldn't assign.");
-        toast.show({ kind: "error", message: res.error ?? "Couldn't assign host." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't assign host.",
+          code: res.code,
+        });
         return;
       }
       toast.show({

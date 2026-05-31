@@ -67,7 +67,11 @@ function Row({ label }: { label: TeamLabelRow }) {
         setEditing(false);
       } else {
         setError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't rename label." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't rename label.",
+          code: result.code,
+        });
       }
     });
   }
@@ -82,7 +86,11 @@ function Row({ label }: { label: TeamLabelRow }) {
         toast.show({ kind: "success", message: `Label "${label.name}" deleted.` });
       } else {
         setError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't delete label." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't delete label.",
+          code: result.code,
+        });
       }
     });
   }

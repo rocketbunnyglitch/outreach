@@ -61,7 +61,11 @@ export function HostShipmentControl({
       });
       if (!res.ok) {
         setError(res.error);
-        toast.show({ kind: "error", message: res.error ?? "Couldn't save shipment." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't save shipment.",
+          code: (res as { code?: string }).code,
+        });
         return;
       }
       setOpen(false);

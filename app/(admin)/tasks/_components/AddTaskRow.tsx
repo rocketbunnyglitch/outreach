@@ -117,7 +117,11 @@ export function AddTaskRow({ staffList, currentUserId }: Props) {
       const result = await createTask(null, fd);
       if (!result.ok) {
         setError(result.error ?? "Couldn't create task.");
-        toast.show({ kind: "error", message: result.error ?? "Couldn't create task." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't create task.",
+          code: result.code,
+        });
         return;
       }
       setTitle("");

@@ -37,7 +37,11 @@ export function AddSuppressionForm() {
         toast.show({ kind: "success", message: `Suppressed ${submittedEmail}.` });
       } else {
         setError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't add suppression." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't add suppression.",
+          code: result.code,
+        });
       }
     });
   }

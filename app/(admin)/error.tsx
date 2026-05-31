@@ -8,21 +8,20 @@
  * default white "Application error" screen which exposes nothing
  * actionable.
  *
- * The boundary:
- *   - Renders a friendly recoverable card
- *   - Logs the digest server-side via the existing logger
- *     (the digest is the only crumb Next exposes from the
- *     server side without leaking internals)
- *   - Offers a "Try again" button (Next-provided `reset`) and
- *     a "Back to dashboard" escape hatch
+ * For developer-free operation, this boundary also offers:
+ *   - The Next.js digest reference (always shown if present)
+ *   - A "Copy for Claude" button that puts a diagnosis-ready blob
+ *     on the clipboard. Paste it into a Claude chat alongside
+ *     docs/CLAUDE_TROUBLESHOOTING.md and Claude can grep the
+ *     server logs for the matching entry by digest.
  *
- * If the user keeps hitting the same error, the second action
- * gives them a way out without learning the URL structure.
+ * If the user keeps hitting the same error, the "Back to dashboard"
+ * action gives them a way out without learning the URL structure.
  */
 
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ClipboardCopy, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function AdminError({
   error,
@@ -31,6 +30,8 @@ export default function AdminError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     // Log the digest to the browser console for the operator to
     // share with support. The actual stack stays server-side in
@@ -41,6 +42,41 @@ export default function AdminError({
       digest: error.digest,
     });
   }, [error]);
+
+  async function copyForClaude() {
+    const url =
+      typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "";
+    const time = new Date().toISOString();
+    const blob = [
+      `Next.js digest: ${error.digest ?? "(no digest)"}`,
+      `Message: ${error.message}`,
+      `URL: ${url}`,
+      `Time: ${time}`,
+      "",
+      "Please diagnose this for me. Grep the PM2 logs for the Next.js digest to find the matching server-side stack trace. See docs/CLAUDE_TROUBLESHOOTING.md in the repo for the codebase tour.",
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(blob);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Best-effort fallback
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = blob;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {
+        // Operator can still read the digest off the screen.
+      }
+    }
+  }
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6 py-12">
@@ -57,8 +93,8 @@ export default function AdminError({
               Something went wrong rendering this page
             </h2>
             <p className="mt-1 text-sm text-zinc-600 leading-relaxed dark:text-zinc-400">
-              The page hit an error mid-render. The team has been notified. You can try again, or
-              head back to the dashboard.
+              The page hit an error mid-render. You can try again, head back to the dashboard, or
+              copy the diagnostic info and paste it into Claude / Claude Code.
             </p>
             {error.digest && (
               <p className="mt-2 font-mono text-[10px] text-zinc-400 uppercase tracking-widest dark:text-zinc-500">
@@ -82,6 +118,15 @@ export default function AdminError({
           >
             Back to dashboard
           </Link>
+          <button
+            type="button"
+            onClick={copyForClaude}
+            className="inline-flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50/40 px-3 py-1.5 font-medium text-violet-800 text-xs hover:bg-violet-100/60 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-200 dark:hover:bg-violet-950/50"
+            title="Copy a Claude-ready diagnostic blob to your clipboard"
+          >
+            <ClipboardCopy className="h-3 w-3" />
+            {copied ? "Copied" : "Copy for Claude"}
+          </button>
         </div>
       </div>
     </div>

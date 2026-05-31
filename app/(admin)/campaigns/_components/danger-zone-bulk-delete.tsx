@@ -77,7 +77,11 @@ function WipeRosterPanel({
       });
       if (!result.ok) {
         setError(result.error ?? "Couldn't wipe roster.");
-        toast.show({ kind: "error", message: result.error ?? "Couldn't wipe roster." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't wipe roster.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       toast.show({
@@ -227,7 +231,11 @@ function DeleteDatePanel({ campaignId }: { campaignId: string }) {
       const result = await deleteCrawlsOnDate({ campaignId, eventDate: date });
       if (!result.ok) {
         setError(result.error ?? "Couldn't delete.");
-        toast.show({ kind: "error", message: result.error ?? "Couldn't delete." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't delete.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       toast.show({

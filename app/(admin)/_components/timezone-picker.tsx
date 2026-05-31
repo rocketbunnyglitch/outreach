@@ -62,7 +62,11 @@ export function TimezonePicker({ currentTimezone }: Props) {
       const result = await setStaffTimezone(tz);
       if (!result.ok) {
         setFeedback(result.error ?? "Couldn't save.");
-        toast.show({ kind: "error", message: result.error ?? "Couldn't change timezone." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change timezone.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       setOpen(false);

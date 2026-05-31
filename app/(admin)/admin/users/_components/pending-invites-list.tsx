@@ -58,7 +58,11 @@ function PendingInviteRow({ invite }: { invite: PendingInvite }) {
       const res = await revokePendingInvite(null, fd);
       if (!res.ok) {
         setError(res.error);
-        toast.show({ kind: "error", message: res.error ?? "Couldn't revoke invite." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't revoke invite.",
+          code: res.code,
+        });
       } else {
         toast.show({ kind: "success", message: `Revoked invite for ${invite.email}.` });
       }

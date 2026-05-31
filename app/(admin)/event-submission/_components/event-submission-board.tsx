@@ -80,7 +80,11 @@ export function EventSubmissionBoard({
         });
         if (!result.ok) {
           setError(result.error ?? "Couldn't save.");
-          toast.show({ kind: "error", message: result.error ?? "Couldn't save site." });
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't save site.",
+            code: result.code,
+          });
           return;
         }
         setDraft(null);

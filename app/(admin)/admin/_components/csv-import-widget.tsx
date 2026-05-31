@@ -83,7 +83,11 @@ export function CsvImportWidget({ campaigns }: Props) {
       const result = await suggestColumnMappingForCsv({ csv });
       if (!result.ok) {
         setMappingError(result.error ?? "Couldn't suggest a mapping.");
-        toast.show({ kind: "error", message: result.error ?? "Couldn't auto-map." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't auto-map.",
+          code: result.code,
+        });
         return;
       }
       const { mapping, rewrittenCsv } = result.data;

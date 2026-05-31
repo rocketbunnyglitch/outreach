@@ -34,4 +34,17 @@ export function formToObject(form: FormData): Record<string, unknown> {
 
 export type ActionResult<T = void> =
   | { ok: true; data: T }
-  | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: Record<string, string[]>;
+      /**
+       * Operator error code (E-XXXX-YYYY). Generated server-side
+       * by lib/op-error.ts and included whenever the action's
+       * failure path went through a catch block that called
+       * `op.log(err)`. The UI surfaces the code next to the
+       * message so the operator can paste it into Claude / Claude
+       * Code along with a grep of the logs. See docs/CLAUDE_TROUBLESHOOTING.md.
+       */
+      code?: string;
+    };

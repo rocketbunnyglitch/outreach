@@ -134,7 +134,11 @@ export function NotificationsBell() {
     startTx(async () => {
       const result = await markNotificationsRead(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't mark read." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't mark read.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       // Optimistic update — drop unread badge on these rows locally
@@ -153,7 +157,11 @@ export function NotificationsBell() {
     startTx(async () => {
       const result = await markNotificationsRead(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't mark all read." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't mark all read.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       setListing((prev) => ({

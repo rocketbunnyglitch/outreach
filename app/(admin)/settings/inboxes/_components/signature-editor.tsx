@@ -44,7 +44,11 @@ export function SignatureEditor({ connectedAccountId, initialSignatureHtml }: Pr
       });
       if (!res.ok) {
         setError(res.error);
-        toast.show({ kind: "error", message: res.error ?? "Couldn't save signature." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't save signature.",
+          code: (res as { code?: string }).code,
+        });
         return;
       }
       setSaved(res.signatureHtml ?? "");

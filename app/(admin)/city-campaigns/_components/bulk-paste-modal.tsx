@@ -110,7 +110,11 @@ export function BulkPasteModal({
     startTx(async () => {
       const result = await bulkPasteVenues(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't import." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't import.",
+          code: result.code,
+        });
         return;
       }
       const { created, updated, skipped } = result.data ?? { created: 0, updated: 0, skipped: 0 };

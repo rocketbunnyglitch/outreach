@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { CheckCircle2, Loader2, Undo2, X, XCircle } from "lucide-react";
+import { CheckCircle2, ClipboardCopy, Loader2, Undo2, X, XCircle } from "lucide-react";
 import {
   type ReactNode,
   createContext,
@@ -28,6 +28,23 @@ export interface Toast {
       6500 for error, ∞ if undo present (so the operator has time
       to react). */
   durationMs?: number;
+  /**
+   * Operator error code (E-XXXX-YYYY). When present on an error
+   * toast, the toast renders the code in monospace + a "Copy"
+   * button that puts a Claude-ready blob on the clipboard:
+   *
+   *   E-2K9P-7F3M · <toast message> · <action tag>
+   *   URL: /city-campaigns/abc-123
+   *   Time: 2026-05-31T20:42:00.123Z
+   *
+   * The operator pastes that into Claude / Claude Code with
+   * "What does this mean?" and Claude can grep the matching log
+   * line via docs/CLAUDE_TROUBLESHOOTING.md.
+   */
+  code?: string;
+  /** Optional tag — short identifier of the action that produced
+   *  the error, e.g. "inbox.send_reply". Goes into the copy blob. */
+  tag?: string;
 }
 
 interface ToastContextValue {
@@ -171,45 +188,139 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   return (
     <output
       className={cn(
-        "pointer-events-auto flex max-w-[28rem] items-center gap-3 rounded-lg border px-4 py-2.5 shadow-lg transition-all",
+        "pointer-events-auto flex max-w-[28rem] flex-col gap-1 rounded-lg border px-4 py-2.5 shadow-lg transition-all",
         "translate-y-0 opacity-100",
         tone,
       )}
     >
-      {Icon && <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />}
+      <div className="flex items-center gap-3">
+        {Icon && <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />}
 
-      <p className="flex-1 text-sm leading-snug">
-        {state === "restored" ? "Restored." : toast.message}
-      </p>
+        <p className="flex-1 text-sm leading-snug">
+          {state === "restored" ? "Restored." : toast.message}
+        </p>
 
-      {state === "showing" && toast.undo && (
-        <button
-          type="button"
-          onClick={handleUndo}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-current/30 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors hover:bg-current/10"
-        >
-          <Undo2 className="h-2.5 w-2.5" />
-          Undo
-        </button>
-      )}
+        {state === "showing" && toast.undo && (
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-current/30 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors hover:bg-current/10"
+          >
+            <Undo2 className="h-2.5 w-2.5" />
+            Undo
+          </button>
+        )}
 
-      {state === "undoing" && (
-        <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] opacity-60">
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Undoing…
-        </span>
-      )}
+        {state === "undoing" && (
+          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] uppercase tracking-[0.08em] opacity-60">
+            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            Undoing…
+          </span>
+        )}
 
-      {state !== "undoing" && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="rounded p-0.5 opacity-40 transition-opacity hover:opacity-100"
-          aria-label="Dismiss"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        {state !== "undoing" && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded p-0.5 opacity-40 transition-opacity hover:opacity-100"
+            aria-label="Dismiss"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+
+      {/* Error code row — visible only on error toasts that have a
+          code attached. The "Copy" button puts a Claude-ready blob
+          on the clipboard so the operator can paste it into a chat
+          with the question "what does this mean?". */}
+      {toast.code && toast.kind === "error" && state === "showing" && (
+        <ErrorCodeRow code={toast.code} message={toast.message} tag={toast.tag} />
       )}
     </output>
   );
+}
+
+/**
+ * The "code + copy" row on error toasts. Pulled into its own
+ * component because the copy handler closes over the toast
+ * details + needs its own copied-state for the brief "Copied"
+ * confirmation.
+ */
+function ErrorCodeRow({
+  code,
+  message,
+  tag,
+}: {
+  code: string;
+  message: string;
+  tag?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    const blob = buildClaudeBlob({ code, message, tag });
+    try {
+      await navigator.clipboard.writeText(blob);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard permission denied or unavailable — fall back to
+      // a hidden textarea + execCommand. Best-effort; if both fail
+      // the operator can still see + retype the code from the toast.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = blob;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {
+        // Give up silently — the code is visible on the toast either way.
+      }
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 pl-7">
+      <code className="font-mono text-[10px] tracking-[0.05em] opacity-70">{code}</code>
+      <button
+        type="button"
+        onClick={copy}
+        className="inline-flex items-center gap-1 rounded border border-current/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] transition-colors hover:bg-current/10"
+        title="Copy a Claude-ready blob to your clipboard. Paste into a Claude chat with 'what does this mean?'"
+      >
+        <ClipboardCopy className="h-2.5 w-2.5" />
+        {copied ? "Copied" : "Copy for Claude"}
+      </button>
+    </div>
+  );
+}
+
+function buildClaudeBlob({
+  code,
+  message,
+  tag,
+}: {
+  code: string;
+  message: string;
+  tag?: string;
+}): string {
+  const url =
+    typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "";
+  const time = new Date().toISOString();
+  const lines = [
+    `Error code: ${code}`,
+    `Message: ${message}`,
+    tag ? `Action: ${tag}` : null,
+    `URL: ${url}`,
+    `Time: ${time}`,
+    "",
+    "Please diagnose this for me. Grep the PM2 logs for the error code to find the matching log entry. See docs/CLAUDE_TROUBLESHOOTING.md in the repo for the codebase tour.",
+  ].filter(Boolean);
+  return lines.join("\n");
 }

@@ -81,7 +81,11 @@ function SuppressionRow({ row, onError }: { row: Row; onError: (msg: string | nu
       const result = await removeSuppression(null, fd);
       if (!result.ok) {
         onError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't remove suppression." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't remove suppression.",
+          code: result.code,
+        });
       } else {
         toast.show({ kind: "success", message: `${row.email} can now receive emails again.` });
       }

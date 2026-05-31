@@ -87,7 +87,11 @@ function UserRowEl({
         });
       } else {
         setError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't reset password." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't reset password.",
+          code: result.code,
+        });
       }
     });
   }
@@ -102,7 +106,11 @@ function UserRowEl({
       const result = await setUserStatus(null, fd);
       if (!result.ok) {
         setError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't change status." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change status.",
+          code: result.code,
+        });
       } else {
         toast.show({
           kind: "success",
@@ -284,7 +292,11 @@ function RoleDropdown({
       if (!result.ok) {
         setRole(previous);
         onError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't change role." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change role.",
+          code: result.code,
+        });
       } else {
         toast.show({
           kind: "success",

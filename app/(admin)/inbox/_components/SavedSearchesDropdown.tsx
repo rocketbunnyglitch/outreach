@@ -84,7 +84,11 @@ export function SavedSearchesDropdown({ saved, currentQuery, onApply }: Props) {
       });
       if (!res.ok) {
         setError(res.error ?? "Couldn't save.");
-        toast.show({ kind: "error", message: res.error ?? "Couldn't save search." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't save search.",
+          code: (res as { code?: string }).code,
+        });
         return;
       }
       setShowSaveForm(false);
@@ -101,7 +105,11 @@ export function SavedSearchesDropdown({ saved, currentQuery, onApply }: Props) {
       const res = await deleteSavedSearchAction({ id });
       if (!res.ok) {
         setError(res.error ?? "Couldn't delete.");
-        toast.show({ kind: "error", message: res.error ?? "Couldn't delete search." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't delete search.",
+          code: (res as { code?: string }).code,
+        });
       } else {
         toast.show({
           kind: "success",

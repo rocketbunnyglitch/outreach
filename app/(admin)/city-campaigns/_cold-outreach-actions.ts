@@ -28,6 +28,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { detectRemarkFollowUp } from "@/lib/detect-remark-followup";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
+import { newOpError } from "@/lib/op-error";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -102,8 +103,16 @@ export async function upsertColdOutreachEntry(
     revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
     return { ok: true, data: { id } };
   } catch (err) {
-    logger.error({ err }, "upsertColdOutreachEntry failed");
-    return { ok: false, error: "Couldn't add to cold outreach." };
+    const op = newOpError("city_campaigns.upsertColdOutreachEntry");
+    op.log(err, {
+      cityCampaignId: parsed.data.cityCampaignId,
+      venueId: parsed.data.venueId,
+    });
+    return {
+      ok: false,
+      error: "Couldn't add to cold outreach.",
+      code: op.code,
+    };
   }
 }
 
@@ -204,8 +213,9 @@ export async function updateColdOutreachField(
 
     return { ok: true, data: { id: entryId, followUp } };
   } catch (err) {
-    logger.error({ err }, "updateColdOutreachField failed");
-    return { ok: false, error: "Save failed." };
+    const op = newOpError("city_campaigns.updateColdOutreachField");
+    op.log(err, { entryId, field: parsed.data.field });
+    return { ok: false, error: "Save failed.", code: op.code };
   }
 }
 

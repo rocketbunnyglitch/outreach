@@ -46,7 +46,11 @@ export function AddLabelButton() {
         close();
       } else {
         setError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't create label." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't create label.",
+          code: result.code,
+        });
       }
     });
   }

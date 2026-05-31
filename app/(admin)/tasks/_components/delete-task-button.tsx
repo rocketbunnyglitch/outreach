@@ -25,7 +25,11 @@ export function DeleteTaskButton({ taskId }: { taskId: string }) {
       } else {
         setError(res.error);
         setConfirming(false);
-        toast.show({ kind: "error", message: res.error ?? "Couldn't delete task." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't delete task.",
+          code: res.code,
+        });
       }
     });
   }

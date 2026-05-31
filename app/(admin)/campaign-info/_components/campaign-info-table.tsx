@@ -121,7 +121,11 @@ function Row({
       if (!result.ok) {
         onUpdate(previous);
         onError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't change owner." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change owner.",
+          code: result.code,
+        });
       }
     });
   }
@@ -139,7 +143,11 @@ function Row({
       if (!result.ok) {
         onUpdate(previous);
         onError(result.error);
-        toast.show({ kind: "error", message: result.error ?? "Couldn't change assignment." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change assignment.",
+          code: result.code,
+        });
       }
     });
   }

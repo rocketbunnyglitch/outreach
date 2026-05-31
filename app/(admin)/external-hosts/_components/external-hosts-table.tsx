@@ -91,7 +91,11 @@ export function ExternalHostsTable({ hosts }: { hosts: ExternalHostRow[] }) {
         });
         if (!result.ok) {
           setError(result.error ?? "Couldn't save.");
-          toast.show({ kind: "error", message: result.error ?? "Couldn't save host." });
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't save host.",
+            code: result.code,
+          });
           return;
         }
         setDraft(null);
@@ -115,7 +119,11 @@ export function ExternalHostsTable({ hosts }: { hosts: ExternalHostRow[] }) {
         const result = await archiveExternalHost({ id: h.id });
         if (!result.ok) {
           setError(result.error ?? "Couldn't remove.");
-          toast.show({ kind: "error", message: result.error ?? "Couldn't remove host." });
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't remove host.",
+            code: result.code,
+          });
           return;
         }
         toast.show({ kind: "success", message: `${h.fullName} removed from external hosts.` });

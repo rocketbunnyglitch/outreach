@@ -49,7 +49,11 @@ export function HardDeleteButton({
       const res = await action();
       if (!res.ok) {
         setError(res.error ?? "Delete failed.");
-        toast.show({ kind: "error", message: res.error ?? "Couldn't delete." });
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't delete.",
+          code: (res as { code?: string }).code,
+        });
         return;
       }
       toast.show({ kind: "success", message: `${label} deleted.` });

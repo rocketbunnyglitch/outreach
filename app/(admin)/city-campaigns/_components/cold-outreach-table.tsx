@@ -1104,7 +1104,11 @@ function ColdRow({
         note: entry.remarks ?? undefined,
       });
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't schedule." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't schedule.",
+          code: result.code,
+        });
         return;
       }
       setFollowUp(null);
@@ -1123,7 +1127,11 @@ function ColdRow({
     startTx(async () => {
       const result = await archiveColdOutreachEntry(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't archive." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't archive.",
+          code: result.code,
+        });
         return;
       }
       toast.show({
@@ -2320,7 +2328,11 @@ function BulkActionBar({
     startStatus(async () => {
       const result = await bulkUpdateColdOutreachStatus(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Status update failed." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Status update failed.",
+          code: result.code,
+        });
         return;
       }
       const label = STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
@@ -2343,7 +2355,11 @@ function BulkActionBar({
     startAssign(async () => {
       const result = await bulkAssignColdOutreach(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Assignment failed." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Assignment failed.",
+          code: result.code,
+        });
         return;
       }
       const assignee = staff.find((s) => s.id === staffMemberId)?.displayName ?? "unassigned";
@@ -2365,7 +2381,11 @@ function BulkActionBar({
     startArchive(async () => {
       const result = await bulkArchiveColdOutreach(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Archive failed." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Archive failed.",
+          code: result.code,
+        });
         return;
       }
       const count = result.data?.archived ?? 0;

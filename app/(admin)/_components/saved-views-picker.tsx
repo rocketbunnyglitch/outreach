@@ -137,7 +137,11 @@ export function SavedViewsPicker({
     startTx(async () => {
       const result = await saveCurrentView(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't save view." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't save view.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       toast.show({ kind: "success", message: `Saved view "${draftName.trim()}"` });
@@ -155,7 +159,11 @@ export function SavedViewsPicker({
     startTx(async () => {
       const result = await deleteSavedView(null, fd);
       if (!result.ok) {
-        toast.show({ kind: "error", message: result.error ?? "Couldn't delete." });
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't delete.",
+          code: (result as { code?: string }).code,
+        });
         return;
       }
       setViews(null); // Re-fetch on next open

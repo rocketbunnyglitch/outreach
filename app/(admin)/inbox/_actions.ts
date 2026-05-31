@@ -34,6 +34,7 @@ import {
   removeGmailLabelFromThread,
 } from "@/lib/gmail-thread-labels";
 import { logger } from "@/lib/logger";
+import { newOpError } from "@/lib/op-error";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
@@ -203,10 +204,12 @@ export async function sendThreadReply(
     sentId = result.id;
     sentThreadId = result.threadId;
   } catch (err) {
-    logger.error({ err, threadId }, "thread reply send failed");
+    const op = newOpError("inbox.sendThreadReply");
+    op.log(err, { threadId });
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Couldn't send the reply.",
+      code: op.code,
     };
   }
 
@@ -1112,8 +1115,9 @@ export async function openReplyDraft(input: {
     revalidatePath(`/inbox/${input.threadId}`);
     return { ok: true, data: { draftId } };
   } catch (err) {
-    logger.error({ err, threadId: input.threadId, mode: input.mode }, "openReplyDraft failed");
-    return { ok: false, error: "Couldn't open reply." };
+    const op = newOpError("inbox.openReplyDraft");
+    op.log(err, { threadId: input.threadId, mode: input.mode });
+    return { ok: false, error: "Couldn't open reply.", code: op.code };
   }
 }
 
