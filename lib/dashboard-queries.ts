@@ -523,56 +523,60 @@ export async function loadDashboardData(
     if (row[0]) scopedCampaign = { id: row[0].id, name: row[0].name };
   }
 
-  // Cities completed + goal — for the dotted-arc KPI on the dashboard.
+  // Cities completed + goal — for the dotted-arc KPI on the
+  // dashboard.
   //
-  // A city counts as "complete" when EVERY one of its crawls has
-  // reached a terminal status: confirmed, contract_signed,
-  // completed, or cancelled. This matches the operator's mental
-  // model — "all crawls are done" — and the tracker row's
-  // emerald-tint heuristic, so the KPI count and the visible
-  // completion signal on the tracker stay in lockstep.
+  // Operator mental model: a crawl is "done" when EITHER
+  //   - all 4 venue slots are confirmed (the COMPLETE pill on
+  //     the tracker — operators read this as "we booked it"),
+  //     OR
+  //   - the crawl is explicitly cancelled
   //
-  // Cities with NO crawls yet (freshly added, pre-event-creation)
-  // are not counted as complete — an empty city shouldn't read as
-  // "done" just because it has nothing to do yet.
+  // A city counts as completed when:
+  //   - city.status != 'cancelled'
+  //   - every crawl is done (booked or cancelled)
+  //   - AT LEAST ONE crawl actually succeeded (not just all-
+  //     cancelled)
   //
-  // The city_campaign.status field is no longer the source of
-  // truth for this KPI; it's been observed to drift from the
-  // actual per-crawl state (operators rarely manually flip
-  // city-campaigns to 'confirmed', so most cities sat as
-  // 'planning' even when all their crawls were locked).
-  const TERMINAL_EVENT_STATUSES = new Set([
-    "confirmed",
-    "contract_signed",
-    "completed",
-    "cancelled",
-  ]);
-  // "Success" subset of terminal statuses — these are the ones that
-  // mean a crawl actually happened (or is locked to happen). A city
-  // whose every event is in TERMINAL_EVENT_STATUSES but ALL of them
-  // are 'cancelled' is an abandoned city, not a completed one, and
-  // shouldn't tick the completion count.
-  const SUCCESS_EVENT_STATUSES = new Set(["confirmed", "contract_signed", "completed"]);
-  const eventsByCityCampaign = new Map<string, Array<{ status: string | null }>>();
+  // Earlier versions checked events.status against the terminal
+  // values (confirmed/contract_signed/completed). That was
+  // wrong: operators don't manually flip events.status to those
+  // — the per-crawl override surface only writes 'planned' or
+  // 'cancelled'. So the operator's "this crawl is done" signal
+  // is the confirmedVenueCount, not the events.status enum.
+  //
+  // Cities with NO crawls yet (freshly added) are not counted
+  // as complete — an empty city shouldn't read as "done" just
+  // because it has nothing to do yet.
+  const TARGET_VENUES_PER_CRAWL = 4;
+  type EventDoneState = { confirmedCount: number; isCancelled: boolean };
+  const eventStateMap = new Map<string, EventDoneState>();
   for (const e of eventRows) {
+    eventStateMap.set(e.eventId, {
+      confirmedCount: 0,
+      isCancelled: e.status === "cancelled",
+    });
+  }
+  for (const r of venueEventCountsRaw) {
+    if (r.status !== "confirmed") continue;
+    const slot = eventStateMap.get(r.eventId);
+    if (slot) slot.confirmedCount += r.count;
+  }
+  const eventsByCityCampaign = new Map<string, EventDoneState[]>();
+  for (const e of eventRows) {
+    const slot = eventStateMap.get(e.eventId);
+    if (!slot) continue;
     const list = eventsByCityCampaign.get(e.cityCampaignId) ?? [];
-    list.push({ status: e.status });
+    list.push(slot);
     eventsByCityCampaign.set(e.cityCampaignId, list);
   }
   const citiesCompleted = cityCampaignRows.filter((r) => {
-    // City itself flagged cancelled by the operator -> abandoned,
-    // not done. Doesn't count toward completion.
     if (r.status === "cancelled") return false;
-    const events = eventsByCityCampaign.get(r.cityCampaignId);
-    if (!events || events.length === 0) return false;
-    // Every event has reached a terminal status (or is cancelled).
-    const allTerminal = events.every(
-      (e) => e.status !== null && TERMINAL_EVENT_STATUSES.has(e.status),
-    );
-    if (!allTerminal) return false;
-    // And at least one event actually succeeded — an all-cancelled
-    // city is abandoned, not completed.
-    return events.some((e) => e.status !== null && SUCCESS_EVENT_STATUSES.has(e.status));
+    const list = eventsByCityCampaign.get(r.cityCampaignId);
+    if (!list || list.length === 0) return false;
+    const allDone = list.every((e) => e.isCancelled || e.confirmedCount >= TARGET_VENUES_PER_CRAWL);
+    if (!allDone) return false;
+    return list.some((e) => !e.isCancelled && e.confirmedCount >= TARGET_VENUES_PER_CRAWL);
   }).length;
   const seenCampaigns = new Map<string, number>();
   for (const r of cityCampaignRows) {

@@ -633,25 +633,19 @@ function CityCard({
   // freshly added city before crawl rows exist) are NOT considered
   // complete; they shouldn't read as "done" just because they're
   // empty.
+  // Operator mental model: a crawl is "done" when EITHER
+  //   - all 4 venue slots are confirmed (the COMPLETE pill —
+  //     "we booked it"), OR
+  //   - the crawl is explicitly cancelled
+  //
+  // A city is complete when city.status != 'cancelled' AND
+  // every crawl is done AND at least one crawl actually
+  // succeeded (booked). Mirrors lib/dashboard-queries.ts.
   const cityComplete =
     hasBreakdown &&
-    // City flagged cancelled at the city level -> abandoned, not
-    // done. Doesn't get the emerald tint.
     row.status !== "cancelled" &&
-    // Every crawl has reached a terminal status (or is cancelled).
-    row.need.crawlBreakdown.every(
-      (c) =>
-        c.status === "confirmed" ||
-        c.status === "contract_signed" ||
-        c.status === "completed" ||
-        c.status === "cancelled",
-    ) &&
-    // And at least one crawl actually succeeded — an all-cancelled
-    // city is abandoned, not completed. Mirrors the dashboard KPI
-    // logic in lib/dashboard-queries.ts.
-    row.need.crawlBreakdown.some(
-      (c) => c.status === "confirmed" || c.status === "contract_signed" || c.status === "completed",
-    );
+    row.need.crawlBreakdown.every((c) => c.status === "cancelled" || c.confirmedVenueCount >= 4) &&
+    row.need.crawlBreakdown.some((c) => c.status !== "cancelled" && c.confirmedVenueCount >= 4);
   return (
     <li
       className={cn(
@@ -779,25 +773,19 @@ function CityRow({
   // freshly added city before crawl rows exist) are NOT considered
   // complete; they shouldn't read as "done" just because they're
   // empty.
+  // Operator mental model: a crawl is "done" when EITHER
+  //   - all 4 venue slots are confirmed (the COMPLETE pill —
+  //     "we booked it"), OR
+  //   - the crawl is explicitly cancelled
+  //
+  // A city is complete when city.status != 'cancelled' AND
+  // every crawl is done AND at least one crawl actually
+  // succeeded (booked). Mirrors lib/dashboard-queries.ts.
   const cityComplete =
     hasBreakdown &&
-    // City flagged cancelled at the city level -> abandoned, not
-    // done. Doesn't get the emerald tint.
     row.status !== "cancelled" &&
-    // Every crawl has reached a terminal status (or is cancelled).
-    row.need.crawlBreakdown.every(
-      (c) =>
-        c.status === "confirmed" ||
-        c.status === "contract_signed" ||
-        c.status === "completed" ||
-        c.status === "cancelled",
-    ) &&
-    // And at least one crawl actually succeeded — an all-cancelled
-    // city is abandoned, not completed. Mirrors the dashboard KPI
-    // logic in lib/dashboard-queries.ts.
-    row.need.crawlBreakdown.some(
-      (c) => c.status === "confirmed" || c.status === "contract_signed" || c.status === "completed",
-    );
+    row.need.crawlBreakdown.every((c) => c.status === "cancelled" || c.confirmedVenueCount >= 4) &&
+    row.need.crawlBreakdown.some((c) => c.status !== "cancelled" && c.confirmedVenueCount >= 4);
 
   // Alternating tones — operators flagged the prior light-mode tones
   // (white + zinc-50/70 ≈ 90% white) as "too light", washing out the
