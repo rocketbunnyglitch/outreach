@@ -48,6 +48,7 @@
     "@tiptap/pm": "^2.27.2",
     "@tiptap/react": "^2.27.2",
     "@tiptap/starter-kit": "^2.27.2",
+    "@tiptap/suggestion": "^2.27.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/papaparse": "^5.5.2",
     "@types/qrcode": "^1.5.6",

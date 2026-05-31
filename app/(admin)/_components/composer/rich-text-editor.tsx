@@ -55,7 +55,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
-import { BubbleMenu, type Editor, EditorContent, useEditor } from "@tiptap/react";
+import { BubbleMenu, type Editor, EditorContent, ReactRenderer, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   AlignCenter,
@@ -77,8 +77,11 @@ import {
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import tippy, { type Instance as TippyInstance } from "tippy.js";
 import { FontSize } from "./tiptap-font-size";
 import { SignatureBlock } from "./tiptap-signature-block";
+import { SlashCommands } from "./tiptap-slash-commands";
+import { SlashCommandsList, type SlashCommandsListRef } from "./tiptap-slash-commands-list";
 
 interface Props {
   /** HTML representation (the canonical source for the editor). */
@@ -171,6 +174,64 @@ export function RichTextEditor({
       }),
       Placeholder.configure({
         placeholder: placeholder ?? "Write your message…",
+      }),
+      SlashCommands.configure({
+        suggestion: {
+          char: "/",
+          startOfLine: false,
+          // Tiptap calls render() with mount/update/destroy hooks.
+          // We mount a ReactRenderer-wrapped SlashCommandsList into
+          // a tippy.js popover anchored at the typed "/".
+          render: () => {
+            let component: ReactRenderer<SlashCommandsListRef> | null = null;
+            let popup: TippyInstance | null = null;
+
+            return {
+              onStart: (props) => {
+                component = new ReactRenderer(SlashCommandsList, {
+                  props,
+                  editor: props.editor,
+                });
+                const clientRect = props.clientRect?.();
+                if (!clientRect) return;
+                popup = tippy(document.body, {
+                  getReferenceClientRect: () => clientRect,
+                  appendTo: () => document.body,
+                  content: component.element,
+                  showOnCreate: true,
+                  interactive: true,
+                  trigger: "manual",
+                  placement: "bottom-start",
+                  // Keep within viewport — if the operator types "/" near
+                  // the bottom of the composer, flip above.
+                  popperOptions: {
+                    modifiers: [{ name: "flip", enabled: true }],
+                  },
+                });
+              },
+              onUpdate: (props) => {
+                component?.updateProps(props);
+                const clientRect = props.clientRect?.();
+                if (clientRect && popup) {
+                  popup.setProps({ getReferenceClientRect: () => clientRect });
+                }
+              },
+              onKeyDown: (props) => {
+                if (props.event.key === "Escape") {
+                  popup?.hide();
+                  return true;
+                }
+                return component?.ref?.onKeyDown(props) ?? false;
+              },
+              onExit: () => {
+                popup?.destroy();
+                component?.destroy();
+                popup = null;
+                component = null;
+              },
+            };
+          },
+        },
       }),
     ],
     content: valueHtml ?? "",

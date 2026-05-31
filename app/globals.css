@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tippy.js/dist/tippy.css";
 
 /* Dark-mode variant strategy:
    We keep the OS @media query for components that style via raw CSS (the
