@@ -20,6 +20,7 @@ import { getUnclassifiedCount } from "./_actions-classifier";
 import { getUntaggedVenueCount } from "./_actions-venue-tag";
 import { ClassifierBackfillPanel } from "./_components/classifier-backfill-panel";
 import { CsvImportWidget } from "./_components/csv-import-widget";
+import { HalloweenImportPanel } from "./_components/halloween-import-panel";
 import { VenueTagBackfillPanel } from "./_components/venue-tag-backfill-panel";
 
 export const metadata = { title: "Admin" };
@@ -270,6 +271,27 @@ export default async function AdminPage() {
           </div>
         </header>
         <VenueTagBackfillPanel initialUntaggedCount={untaggedVenueCount} />
+      </section>
+
+      {/* Halloween 2025 import (Phase 3). Reads data/halloween_2025.json
+          parsed from the operator's xlsx and writes the Halloween 2025
+          campaign + city_campaigns + events + venue_events + cold_outreach.
+          No external API calls — exact + trigram match against existing
+          venues, stub-create for the rest. The review queue is the
+          handoff to Claude in Chrome for Maps verification of stubs. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-start gap-3 px-6 pt-4 pb-2">
+          <Sparkles className="mt-0.5 h-5 w-5 text-violet-500" />
+          <div>
+            <h2 className="font-semibold text-lg tracking-tight">Halloween 2025 import</h2>
+            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+              One-time import from the parsed Halloween 2025 xlsx. Run dry-run first to review
+              decisions, then apply for real. After applying, download the review queue markdown and
+              hand it to Claude Code to verify stubs against Google Maps via Claude in Chrome.
+            </p>
+          </div>
+        </header>
+        <HalloweenImportPanel />
       </section>
     </div>
   );
