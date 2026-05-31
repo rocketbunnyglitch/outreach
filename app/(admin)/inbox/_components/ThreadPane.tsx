@@ -20,6 +20,7 @@ import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 import { ThreadNotesBlock } from "./ThreadNotesBlock";
 import { ThreadReplyButtons } from "./ThreadReplyButtons";
+import { ThreadViewersPill } from "./ThreadViewersPill";
 
 /**
  * Right pane — full thread conversation + CRM rail below.
@@ -80,9 +81,14 @@ export function ThreadPane({
           <h1 className="min-w-0 truncate font-semibold text-lg tracking-tight">
             {thread.subject ?? "(no subject)"}
           </h1>
-          <span className="shrink-0 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-            {thread.messageCount} message{thread.messageCount === 1 ? "" : "s"}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Phase D.3 — soft-lock pill. Renders only when other
+                operators are looking at this thread right now. */}
+            <ThreadViewersPill threadId={thread.id} currentStaffId={currentStaffId} />
+            <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              {thread.messageCount} message{thread.messageCount === 1 ? "" : "s"}
+            </span>
+          </div>
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
           {thread.venueId && thread.venueName ? (
