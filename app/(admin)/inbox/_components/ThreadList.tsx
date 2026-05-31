@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   HelpCircle,
   Inbox as InboxIcon,
+  Mail,
   PhoneCall,
   ShieldOff,
   Sparkles,
@@ -221,6 +222,19 @@ function ThreadRow({
               {thread.campaignName}
               {thread.eventDayPart && ` · ${formatDayPart(thread.eventDayPart)}`}
               {thread.eventCrawlNumber ? ` #${thread.eventCrawlNumber}` : ""}
+            </Chip>
+          )}
+
+          {/* Account owner + Gmail address — surfaced as a small
+              "sender mailbox" chip so operators can see which
+              connected account this thread flows through without
+              opening the thread. Matches the Gmail-parity spec
+              requirement to show: staff owner + connected email
+              chip. The owner glyph is a Mail icon for clarity. */}
+          {thread.accountOwnerName && (
+            <Chip tone="text-zinc-500">
+              <Mail className="mr-0.5 inline h-2.5 w-2.5" />
+              {thread.accountOwnerName} · {thread.accountEmail}
             </Chip>
           )}
 

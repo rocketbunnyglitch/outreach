@@ -32,7 +32,21 @@ import {
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { parseSearchQuery } from "@/lib/inbox-search";
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import {
+  aliasedTable,
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 
 // =========================================================================
 // Folders
@@ -238,6 +252,14 @@ export interface InboxThreadRow {
   snoozeUntil: string | null;
   /** Team labels applied to this thread. */
   labels: Array<{ id: string; name: string; color: string | null }>;
+  /** Connected Gmail address this thread flows through. */
+  accountEmail: string;
+  accountId: string;
+  /** Owner of the connected account (the staff member whose Gmail
+   *  this is). Distinct from assignedStaff* which is who's working
+   *  the thread. */
+  accountOwnerId: string;
+  accountOwnerName: string | null;
 }
 
 /**
@@ -249,6 +271,13 @@ export interface InboxThreadRow {
  */
 export async function fetchInboxThreads(filter: ThreadListFilter): Promise<InboxThreadRow[]> {
   const slaCutoff = new Date(Date.now() - INBOX_SLA_HOURS * 3_600_000);
+
+  // Aliased join target for the connected-account OWNER (the staff
+  // member whose Gmail this is). Different from the existing
+  // staffMembers join which resolves the ASSIGNED operator on the
+  // thread. We surface both so thread rows can render "JC ·
+  // jc@halloweenbrand.com" with both pieces visible at once.
+  const accountOwners = aliasedTable(staffMembers, "account_owners");
 
   // Drafts + Scheduled are rendered from email_drafts, not threads.
   // Return empty here — the page will branch on the folder slug and
@@ -358,6 +387,17 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       staleReason: emailThreads.staleReason,
       isStarred: emailThreads.isStarred,
       snoozeUntilDate: emailThreads.snoozeUntil,
+      /** Connected Gmail address this thread flows through — surfaced
+       *  on the row as a chip so operators can see "which mailbox"
+       *  without opening the thread. Driven by the existing
+       *  staffOutreachEmailId join. */
+      accountEmail: connectedAccounts.emailAddress,
+      accountId: connectedAccounts.id,
+      /** Owner of the connected account (the staff member whose
+       *  Gmail this is). Distinct from assignedStaffName, which is
+       *  who's working the THREAD. */
+      accountOwnerId: connectedAccounts.ownerUserId,
+      accountOwnerName: accountOwners.displayName,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
@@ -375,6 +415,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     // hidden from the new team-scoped inbox — they should be
     // backfilled with a connected_account before they reappear.
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .leftJoin(accountOwners, eq(accountOwners.id, connectedAccounts.ownerUserId))
     .where(
       and(
         // Team scope: ALWAYS applied. Inbox is per-team.
