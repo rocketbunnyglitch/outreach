@@ -524,15 +524,40 @@ export async function loadDashboardData(
   }
 
   // Cities completed + goal — for the dotted-arc KPI on the dashboard.
-  // "Completed" here means the city-campaign has reached the final / sealed
-  // state in the campaign workflow: confirmed OR contract_signed. (There's
-  // no 'completed' value on city_campaign_status; the closest equivalent
-  // is contract_signed, and most teams treat confirmed as "all crawls
-  // locked" too — so we count both.) Goal lives on the campaign row
-  // (targetCitiesScheduled); we sum across campaigns in scope. Falls back
-  // to 10 when no goal has been set so the viz always renders.
-  const COMPLETED_STATUSES = new Set(["confirmed", "contract_signed"]);
-  const citiesCompleted = cityCampaignRows.filter((r) => COMPLETED_STATUSES.has(r.status)).length;
+  //
+  // A city counts as "complete" when EVERY one of its crawls has
+  // reached a terminal status: confirmed, contract_signed,
+  // completed, or cancelled. This matches the operator's mental
+  // model — "all crawls are done" — and the tracker row's
+  // emerald-tint heuristic, so the KPI count and the visible
+  // completion signal on the tracker stay in lockstep.
+  //
+  // Cities with NO crawls yet (freshly added, pre-event-creation)
+  // are not counted as complete — an empty city shouldn't read as
+  // "done" just because it has nothing to do yet.
+  //
+  // The city_campaign.status field is no longer the source of
+  // truth for this KPI; it's been observed to drift from the
+  // actual per-crawl state (operators rarely manually flip
+  // city-campaigns to 'confirmed', so most cities sat as
+  // 'planning' even when all their crawls were locked).
+  const TERMINAL_EVENT_STATUSES = new Set([
+    "confirmed",
+    "contract_signed",
+    "completed",
+    "cancelled",
+  ]);
+  const eventsByCityCampaign = new Map<string, Array<{ status: string | null }>>();
+  for (const e of eventRows) {
+    const list = eventsByCityCampaign.get(e.cityCampaignId) ?? [];
+    list.push({ status: e.status });
+    eventsByCityCampaign.set(e.cityCampaignId, list);
+  }
+  const citiesCompleted = cityCampaignRows.filter((r) => {
+    const events = eventsByCityCampaign.get(r.cityCampaignId);
+    if (!events || events.length === 0) return false;
+    return events.every((e) => e.status !== null && TERMINAL_EVENT_STATUSES.has(e.status));
+  }).length;
   const seenCampaigns = new Map<string, number>();
   for (const r of cityCampaignRows) {
     if (!seenCampaigns.has(r.campaignId)) {

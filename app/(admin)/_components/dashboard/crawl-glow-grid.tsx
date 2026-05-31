@@ -28,9 +28,16 @@ type GlowTone = "grey" | "red" | "orange" | "yellow" | "blue" | "green" | "slate
 
 /** Pick the tone for a crawl based on its confirmed-venue count +
  *  outreach-started signal. The mapping is the operator-supplied
- *  spec — don't change without checking with the team. */
+ *  spec — don't change without checking with the team.
+ *
+ *  Cancelled crawls render RED, not grey. Operator's call: a
+ *  cancelled crawl is a problem signal (an event the team WAS
+ *  planning that fell through) and the urgency matters. Grey
+ *  would read as "neutral, ignore me," which hides the
+ *  cancellation in the at-a-glance read. The 'slate' tone is
+ *  reserved for the CITY-level cancellation (entire grid dims). */
 function toneForCrawl(c: CrawlNeed): GlowTone {
-  if (c.status === "cancelled") return "slate";
+  if (c.status === "cancelled") return "red";
   if (c.confirmedVenueCount >= 4) return "green";
   if (c.confirmedVenueCount === 3) return "blue";
   if (c.confirmedVenueCount === 2) return "yellow";
@@ -100,6 +107,16 @@ const TONE_LABEL: Record<GlowTone, string> = {
   slate: "Cancelled",
 };
 
+/** Tooltip / aria text for a crawl. Cancelled crawls render with
+ *  the red tone but a "Cancelled" label, since the same red tone
+ *  is also used for "outreach started · 0 booked" — without the
+ *  crawl-aware label the screen-reader text would be misleading
+ *  on cancelled rows. */
+function labelForCrawl(c: CrawlNeed, tone: GlowTone): string {
+  if (c.status === "cancelled") return "Cancelled";
+  return TONE_LABEL[tone];
+}
+
 export function CrawlGlowGrid({
   crawls,
   onClick,
@@ -149,8 +166,8 @@ export function CrawlGlowGrid({
                 return (
                   <span
                     key={`${c.dayPart}-${c.crawlNumber}`}
-                    aria-label={`Crawl ${c.crawlNumber}: ${TONE_LABEL[tone]}`}
-                    title={`Crawl ${c.crawlNumber} · ${TONE_LABEL[tone]}`}
+                    aria-label={`Crawl ${c.crawlNumber}: ${labelForCrawl(c, tone)}`}
+                    title={`Crawl ${c.crawlNumber} · ${labelForCrawl(c, tone)}`}
                     className={cn(
                       // Pill: 16px wide × 4px tall, rounded full. Tight
                       // so a city with 4 crawls × 3 days still fits in
