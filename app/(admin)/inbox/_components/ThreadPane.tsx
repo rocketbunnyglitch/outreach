@@ -1,10 +1,10 @@
 import type { CampaignSuggestion } from "@/lib/campaign-matcher";
-import type { InboxThreadDetail, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
+import type { InboxThreadDetail, ThreadTaskRow, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
 import { type ThreadState, suggestNextAction } from "@/lib/suggested-next-action";
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import type { Classification } from "@/lib/triage-classifier";
 import type { VenueCommunication } from "@/lib/venue-communication";
-import { MailOpen, User } from "lucide-react";
+import { CalendarClock, Check, MailOpen, Sparkles, User } from "lucide-react";
 import Link from "next/link";
 import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
@@ -35,6 +35,7 @@ export function ThreadPane({
   detail,
   outreachHistory,
   relatedCommunication,
+  threadTasks,
   threadLabels,
   allTeamLabels,
   appliedGmailLabels,
@@ -47,6 +48,9 @@ export function ThreadPane({
    *  account/subject). null when the thread isn't venue-matched
    *  yet — the rail's empty-state covers that case. */
   relatedCommunication: VenueCommunication | null;
+  /** Open tasks targeting this thread — both manual and AI-
+   *  extracted from inbound messages (Phase A.2). */
+  threadTasks: ThreadTaskRow[];
   threadLabels: ThreadLabelRow[];
   allTeamLabels: TeamLabelSummary[];
   appliedGmailLabels: Array<{
@@ -222,6 +226,7 @@ export function ThreadPane({
           thread={thread}
           outreachHistory={outreachHistory}
           relatedCommunication={relatedCommunication}
+          threadTasks={threadTasks}
         />
       </div>
     </div>
@@ -236,10 +241,12 @@ function VenueRail({
   thread,
   outreachHistory,
   relatedCommunication,
+  threadTasks,
 }: {
   thread: InboxThreadDetail["thread"];
   outreachHistory: VenueOutreachHistoryEntry[];
   relatedCommunication: VenueCommunication | null;
+  threadTasks: ThreadTaskRow[];
 }) {
   return (
     <>
@@ -349,6 +356,11 @@ function VenueRail({
           )}
         </section>
       </div>
+      {/* Open tasks on this thread — both manual and AI-extracted
+          (Phase A.2). Includes auto-tasks the model created from
+          inbound messages ("send pricing for the 26th" -> task
+          due the 25th). Hidden when the thread has no tasks. */}
+      {threadTasks.length > 0 && <ThreadTasksBlock tasks={threadTasks} />}
       {/* Related threads — every OTHER thread from this venue across
         every Gmail subject and connected account. Gmail breaks
         conversation when the subject changes (operator starts
@@ -364,6 +376,71 @@ function VenueRail({
         />
       )}
     </>
+  );
+}
+
+function ThreadTasksBlock({ tasks: rows }: { tasks: ThreadTaskRow[] }) {
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="inline-flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.14em]">
+          <CalendarClock className="h-3 w-3" />
+          Tasks on this thread ({rows.length})
+        </h3>
+      </div>
+      <ul className="flex flex-col gap-1.5">
+        {rows.map((t) => (
+          <li
+            key={t.id}
+            className="flex items-start gap-2 rounded-md border border-zinc-100 px-2 py-1.5 text-xs dark:border-zinc-900"
+          >
+            <span
+              className={`mt-0.5 inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full border ${
+                t.status === "completed"
+                  ? "border-emerald-500 bg-emerald-500/10"
+                  : "border-zinc-300 dark:border-zinc-700"
+              }`}
+            >
+              {t.status === "completed" && <Check className="h-2 w-2 text-emerald-600" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <p
+                  className={`leading-tight ${
+                    t.status === "completed"
+                      ? "text-zinc-400 line-through"
+                      : "text-zinc-900 dark:text-zinc-100"
+                  }`}
+                >
+                  {t.title}
+                </p>
+                {t.isAi && (
+                  <span
+                    title="Auto-created by AI from an inbound message"
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded border border-violet-300/70 bg-violet-50 px-1 py-0.5 font-mono text-[9px] text-violet-700 uppercase tracking-wider dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-200"
+                  >
+                    <Sparkles className="h-2 w-2" />
+                    AI
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-500">
+                {t.dueAt && (
+                  <span className="font-mono">
+                    Due{" "}
+                    {t.dueAt.toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                )}
+                {t.assignedStaffName && <span>· {t.assignedStaffName}</span>}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

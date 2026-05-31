@@ -26,6 +26,7 @@ import {
   outreachBrands,
   outreachLog,
   staffMembers,
+  tasks,
   venueEvents,
   venues,
 } from "@/db/schema";
@@ -1366,4 +1367,63 @@ export async function fetchTeamGmailLabels(opts: {
   return Array.from(byName.values()).sort(
     (a, b) => b.unreadCount - a.unreadCount || a.name.localeCompare(b.name),
   );
+}
+
+// =========================================================================
+// fetchThreadTasks — Phase A.2
+// =========================================================================
+
+/**
+ * Open tasks targeting this thread. Used by the inbox CRM rail
+ * to surface AI-extracted follow-ups + any manual tasks the
+ * operator has pinned to the conversation.
+ *
+ * Returns pending tasks only, ordered by due date (soonest
+ * first). Capped at 10 — anything beyond that is in the main
+ * tasks list, not the rail.
+ */
+export interface ThreadTaskRow {
+  id: string;
+  title: string;
+  dueAt: Date | null;
+  source: string;
+  status: string;
+  assignedStaffName: string | null;
+  /** True when this task was auto-created by the AI extractor
+   *  (source = 'smart_note'). Drives the violet "AI" badge. */
+  isAi: boolean;
+  /** Excerpted reason — first non-empty description line OR
+   *  empty when the description was generic. Used in tooltips. */
+  excerpt: string | null;
+}
+
+export async function fetchThreadTasks(threadId: string): Promise<ThreadTaskRow[]> {
+  const rows = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      dueAt: tasks.dueAt,
+      source: tasks.source,
+      status: tasks.status,
+      description: tasks.description,
+      assignedStaffName: staffMembers.displayName,
+    })
+    .from(tasks)
+    .leftJoin(staffMembers, eq(staffMembers.id, tasks.assignedStaffId))
+    .where(and(eq(tasks.targetType, "email_thread"), eq(tasks.targetId, threadId)))
+    .orderBy(tasks.status, tasks.dueAt)
+    .limit(10);
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    dueAt: r.dueAt,
+    source: r.source,
+    status: r.status,
+    assignedStaffName: r.assignedStaffName,
+    isAi: r.source === "smart_note",
+    excerpt: r.description
+      ? (r.description.split("\n").find((l) => l.trim().length > 0) ?? null)
+      : null,
+  }));
 }

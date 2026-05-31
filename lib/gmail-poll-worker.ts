@@ -43,6 +43,7 @@ import "server-only";
 
 import { emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { classifyInboundMessageAsync } from "@/lib/ai-classify";
+import { extractPromisesAsync } from "@/lib/ai-extract-promises";
 import { db, withAuditContext } from "@/lib/db";
 import { refreshAccessToken } from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
@@ -555,9 +556,21 @@ async function ingestMessage(opts: {
           messageId: insertedMessageId,
           teamId,
         });
+        // Same fire-and-forget pattern: pull date-anchored promises
+        // out of the message and auto-create tasks for them. Phase
+        // A.2. Independent of the classifier — extraction can
+        // succeed when classification fails (or vice versa). Gated
+        // by its own env flag so ops can disable just one.
+        if (process.env.AI_INBOX_EXTRACT_PROMISES_ENABLED !== "0") {
+          void extractPromisesAsync({
+            threadId,
+            messageId: insertedMessageId,
+            teamId,
+          });
+        }
       }
     } catch (err) {
-      logger.warn({ err, threadId }, "[gmail-poll] ai-classify dispatch failed (non-fatal)");
+      logger.warn({ err, threadId }, "[gmail-poll] ai dispatch failed (non-fatal)");
     }
   }
 

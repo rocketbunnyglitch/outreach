@@ -11,6 +11,7 @@ import {
   fetchInboxThreads,
   fetchTeamGmailLabels,
   fetchThreadDetail,
+  fetchThreadTasks,
   fetchVenueOutreachHistory,
   isInboxFolder,
 } from "@/lib/inbox-data";
@@ -145,6 +146,12 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     ? await loadVenueCommunication(detail.thread.venueId, currentStaff.teamId).catch(() => null)
     : null;
 
+  // Open tasks on this thread — both manual and AI-extracted
+  // (Phase A.2). Surfaces in the CRM rail so operators see at a
+  // glance what they've committed to do. Try/catch wrapped so a
+  // tasks-table issue degrades gracefully.
+  const threadTasks = await fetchThreadTasks(threadId).catch(() => []);
+
   // Labels applied to THIS thread + the full team-label catalogue so
   // the inline picker can render checked/unchecked state without an
   // extra round trip. Both queries are small (single-team scope).
@@ -256,6 +263,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             detail={detail}
             outreachHistory={outreachHistory}
             relatedCommunication={relatedCommunication}
+            threadTasks={threadTasks}
             threadLabels={threadLabels}
             allTeamLabels={teamLabelsAll}
             appliedGmailLabels={appliedGmailLabels}
