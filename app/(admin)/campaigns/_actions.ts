@@ -782,6 +782,144 @@ export async function removeCityCampaignsBulk(input: {
 }
 
 // =========================================================================
+// Danger-zone bulk deletes — admin only, confirmation-gated
+// =========================================================================
+
+/**
+ * Hard-delete EVERY city_campaign row in this campaign. Cascades to
+ * events + cold_outreach_entries via FK ON DELETE CASCADE.
+ *
+ * Admin-only. The confirmText must match the campaign name exactly
+ * (the same friction model as deleteCampaignWithConfirmation). The
+ * campaign itself is preserved — only its city sheet roster + every
+ * crawl is wiped. The campaign can then be re-populated from scratch
+ * via bulk-add-cities, CSV import, or the cold-outreach worksheet.
+ *
+ * Use case: operator wants to reset a campaign's roster without
+ * deleting the campaign itself (e.g. wrong cities imported, want to
+ * start over with a different set).
+ */
+export async function deleteAllCitiesFromCampaign(input: {
+  campaignId: string;
+  confirmCampaignName: string;
+}): Promise<ActionResult<{ cityCampaignsDeleted: number; eventsDeleted: number }>> {
+  const { staff } = await requireAdmin();
+
+  // Load the campaign to verify confirmation text against actual name.
+  const campaign = await db
+    .select({ id: campaigns.id, name: campaigns.name })
+    .from(campaigns)
+    .where(eq(campaigns.id, input.campaignId))
+    .limit(1)
+    .then((r) => r[0]);
+  if (!campaign) return { ok: false, error: "Campaign not found." };
+
+  if (input.confirmCampaignName.trim() !== campaign.name) {
+    return {
+      ok: false,
+      error: `Confirmation didn't match. Type "${campaign.name}" exactly to wipe the city roster.`,
+    };
+  }
+
+  try {
+    const result = await withAuditContext(staff.id, async (tx) => {
+      // Count events that will cascade-delete so we can report it
+      // back to the operator (the cascade itself is implicit via FK).
+      const evCount = await tx
+        .select({ n: sql<number>`COUNT(*)::int` })
+        .from(events)
+        .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+        .where(eq(cityCampaigns.campaignId, input.campaignId));
+      const eventsToDelete = evCount[0]?.n ?? 0;
+
+      const deleted = await tx
+        .delete(cityCampaigns)
+        .where(eq(cityCampaigns.campaignId, input.campaignId))
+        .returning({ id: cityCampaigns.id });
+
+      return {
+        cityCampaignsDeleted: deleted.length,
+        eventsDeleted: eventsToDelete,
+      };
+    });
+
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    revalidatePath("/campaigns");
+    return { ok: true, data: result };
+  } catch (err) {
+    return wrapDbError(err, "delete all cities from campaign");
+  }
+}
+
+/**
+ * Hard-delete EVERY event (crawl) in this campaign on a specific
+ * date. Use case: operator added wrong-day crawls (e.g. picked Oct
+ * 31 thinking it was Saturday but it's actually Friday) and wants to
+ * nuke the whole date without per-city click-through.
+ *
+ * Scope: events rows ONLY. The city_campaign rows themselves are
+ * untouched — every city stays on the campaign, they just lose
+ * their crawl(s) for that date. Wristband / cold-outreach rows hang
+ * off events.id via FK ON DELETE CASCADE so they go away too.
+ *
+ * Admin-only. Date must be a valid YYYY-MM-DD and must already have
+ * at least one event scheduled (the action surfaces an error
+ * otherwise so the operator can't accidentally pick a date with
+ * nothing to do).
+ */
+export async function deleteCrawlsOnDate(input: {
+  campaignId: string;
+  eventDate: string;
+}): Promise<ActionResult<{ deleted: number }>> {
+  const { staff } = await requireAdmin();
+
+  // Cheap guard on the input shape — the action accepts what the
+  // <input type="date"> emits.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.eventDate)) {
+    return { ok: false, error: "eventDate must be YYYY-MM-DD." };
+  }
+
+  try {
+    const deleted = await withAuditContext(staff.id, async (tx) => {
+      // Find every event in this campaign on this date, scoped by
+      // joining through city_campaigns. We don't have a campaign_id
+      // on events directly (events live under city_campaigns), so
+      // the IN-subquery is the cheapest filter.
+      const eventIds = await tx
+        .select({ id: events.id })
+        .from(events)
+        .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+        .where(
+          and(
+            eq(cityCampaigns.campaignId, input.campaignId),
+            eq(events.eventDate, input.eventDate),
+          ),
+        );
+      if (eventIds.length === 0) return [];
+
+      return tx
+        .delete(events)
+        .where(
+          inArray(
+            events.id,
+            eventIds.map((r) => r.id),
+          ),
+        )
+        .returning({ id: events.id });
+    });
+
+    if (deleted.length === 0) {
+      return { ok: false, error: `No crawls scheduled on ${input.eventDate} for this campaign.` };
+    }
+
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    return { ok: true, data: { deleted: deleted.length } };
+  } catch (err) {
+    return wrapDbError(err, "delete crawls on date");
+  }
+}
+
+// =========================================================================
 // Bulk add: all remaining unassigned cities at next priority
 // =========================================================================
 

@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { archiveCampaign, updateCampaign } from "../_actions";
 import { CampaignForm } from "../_components/campaign-form";
 import { CityCampaignsSection } from "../_components/city-campaigns-section";
+import { DangerZoneBulkDelete } from "../_components/danger-zone-bulk-delete";
 import { DeleteCampaignButton } from "../_components/delete-campaign-button";
 
 export const dynamic = "force-dynamic";
@@ -124,6 +125,13 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
           Archive
         </Button>
       </form>
+
+      <DangerZoneBulkDelete
+        campaignId={id}
+        campaignName={campaign.name}
+        isAdmin={staff.role === "admin"}
+        cityCount={ccRows.length}
+      />
 
       <DeleteCampaignButton
         campaignId={id}
