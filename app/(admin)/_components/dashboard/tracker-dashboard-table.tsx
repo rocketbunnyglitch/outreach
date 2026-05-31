@@ -32,12 +32,11 @@ import {
   bulkUpdateCityCampaigns,
   reassignCityCampaign,
   updateCityCampaignPriority,
-  updateCityCampaignStatus,
   updateCrawlNote,
   updateDashboardNote,
   updateEventStatus,
 } from "../../_actions-tracker";
-import { CrawlGlowGrid } from "./crawl-glow-grid";
+import { CityStatusGrid, CrawlSlotNeedGrid } from "./crawl-slot-need-grid";
 
 export interface TrackerRow {
   cityCampaignId: string;
@@ -668,13 +667,18 @@ function CityCard({
               {formatSales(row.totalSalesCents)}
             </span>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <StatusOverridePill row={row} />
-            <SlotPills slots={row.need.slots} />
-          </div>
-          {row.need.crawlBreakdown.length > 0 && (
-            <div className="mt-2">
-              <CrawlGlowGrid crawls={row.need.crawlBreakdown} />
+          {row.need.crawlBreakdown.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-2">
+              <CityStatusGrid
+                cityCampaignId={row.cityCampaignId}
+                crawls={row.need.crawlBreakdown}
+                status={row.status}
+              />
+              <CrawlSlotNeedGrid crawls={row.need.crawlBreakdown} />
+            </div>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <SlotPills slots={row.need.slots} />
             </div>
           )}
           <div className="mt-2 grid grid-cols-[minmax(0,9rem)_1fr] gap-2">
@@ -855,22 +859,40 @@ function CityRow({
         </td>
 
         <td className="px-2 py-2 align-middle sm:py-2.5">
-          {/* At-a-glance per-crawl × per-day status visualization.
-              One row per day, one glow pill per crawl on that day,
-              ordered by crawl number. Color maps booking progress:
-              grey/red/orange/yellow/blue/green. Renders nothing
-              when the city has no crawl breakdown yet (newly added
-              cities pre-crawl). */}
-          {row.need.crawlBreakdown.length > 0 && (
-            <div className="mb-1.5">
-              <CrawlGlowGrid crawls={row.need.crawlBreakdown} />
-            </div>
+          {/* Per-crawl × per-day status visualization. Doubles as
+              the click target for the Active / Cancelled picker
+              on the city row — operators only ever set the city
+              status as a binary; the prior multi-state pill never
+              earned its keep, so it's been retired in favor of
+              clicking the grid directly. Falls back to a small
+              dash when the city has no crawl breakdown yet
+              (newly added cities pre-crawl). */}
+          {row.need.crawlBreakdown.length > 0 ? (
+            <CityStatusGrid
+              cityCampaignId={row.cityCampaignId}
+              crawls={row.need.crawlBreakdown}
+              status={row.status}
+            />
+          ) : (
+            <span className="font-mono text-xs text-zinc-400">—</span>
           )}
-          <StatusOverridePill row={row} />
         </td>
 
         <td className="px-2 py-2 align-middle sm:py-2.5">
-          <SlotPills slots={row.need.slots} />
+          {/* Per-crawl × per-day venue-need visualization. Same
+              dayPart × crawlNumber layout as the status grid, but
+              each pill is split into 4 colored sub-segments —
+              one per slot (wristband / middle1 / middle2 / final).
+              A segment glows the slot's pill color (yellow /
+              orange / red) when that slot is still open. Replaces
+              the city-level SlotPills aggregate since this gives
+              the operator the same info plus per-crawl
+              attribution. */}
+          {row.need.crawlBreakdown.length > 0 ? (
+            <CrawlSlotNeedGrid crawls={row.need.crawlBreakdown} />
+          ) : (
+            <SlotPills slots={row.need.slots} />
+          )}
         </td>
 
         <td className="px-2 py-2 align-middle sm:py-2.5">
@@ -898,162 +920,6 @@ function CityRow({
           />
         ))}
     </>
-  );
-}
-
-function StatusOverridePill({ row }: { row: TrackerRow }) {
-  const [open, setOpen] = useState(false);
-  const [pending, startTx] = useTransition();
-  const [saved, setSaved] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  // Portaled menu ref — the menu renders into document.body to escape
-  // the tracker table's overflow clipping (the operator's "override
-  // gets cut off, limited to the table" bug, session 12). Outside-
-  // click must check this ref too, otherwise clicking a menu option
-  // (which lives in document.body) closes the menu before the option's
-  // onClick runs — same class of bug as the venue picker (51ea440).
-  const menuRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  const MENU_WIDTH = 192; // w-48
-
-  const recomputePos = useCallback(() => {
-    const el = buttonRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    // Anchor below-left of the pill, but clamp so the menu never
-    // overflows the right edge (8px gutter).
-    const maxLeft = window.innerWidth - MENU_WIDTH - 8;
-    const left = Math.max(8, Math.min(rect.left, maxLeft));
-    setPos({ top: rect.bottom + 4, left });
-  }, []);
-
-  // Recompute on open + keep glued on scroll/resize.
-  useLayoutEffect(() => {
-    if (!open) return;
-    recomputePos();
-    function onScrollOrResize() {
-      recomputePos();
-    }
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
-    return () => {
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      window.removeEventListener("resize", onScrollOrResize);
-    };
-  }, [open, recomputePos]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onPointer(e: PointerEvent) {
-      const target = e.target as Node;
-      const inContainer = containerRef.current?.contains(target) ?? false;
-      const inMenu = menuRef.current?.contains(target) ?? false;
-      if (!inContainer && !inMenu) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  function setStatus(status: "planning" | "active" | "confirmed" | "cancelled") {
-    if (status === row.status) {
-      setOpen(false);
-      return;
-    }
-    const fd = new FormData();
-    fd.set("cityCampaignId", row.cityCampaignId);
-    fd.set("status", status);
-    startTx(async () => {
-      try {
-        const result = await updateCityCampaignStatus(null, fd);
-        if (result.ok) {
-          setSaved(true);
-          setOpen(false);
-          setTimeout(() => setSaved(false), 1200);
-        }
-      } catch (err) {
-        console.error("[status-override] updateCityCampaignStatus failed", err);
-      }
-    });
-  }
-
-  return (
-    <div ref={containerRef} className="relative inline-block">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        disabled={pending}
-        title="Click to override · pill auto-suggests from open slots"
-        className={cn(
-          "group/pill inline-flex items-center gap-1 rounded-full py-0.5 pr-1.5 pl-2.5 font-mono text-[10px] uppercase tracking-[0.1em] ring-1 ring-inset transition-all duration-150",
-          "hover:scale-[1.03] hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-zinc-300/40",
-          STATUS_PILL_TONE[row.need.statusPill],
-          pending && "opacity-50",
-        )}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        {pending ? (
-          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-        ) : saved ? (
-          <Check className="h-2.5 w-2.5" />
-        ) : null}
-        {STATUS_PILL_LABEL[row.need.statusPill]}
-        <ChevronDown
-          aria-hidden="true"
-          className="-mr-0.5 h-2.5 w-2.5 opacity-50 transition-opacity duration-150 group-hover/pill:opacity-90"
-        />
-      </button>
-
-      {open &&
-        pos != null &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="menu"
-            style={{
-              position: "fixed",
-              top: pos.top,
-              left: pos.left,
-              width: MENU_WIDTH,
-            }}
-            className="z-[60] rounded-lg border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <p className="px-2.5 pt-1 pb-1.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
-              Override status
-            </p>
-            {(["planning", "active", "confirmed", "cancelled"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatus(s)}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors",
-                  "hover:bg-zinc-100 dark:hover:bg-zinc-800",
-                  s === row.status && "bg-zinc-50 dark:bg-zinc-800/60",
-                )}
-              >
-                <span className="capitalize">{s}</span>
-                {s === row.status && <Check className="h-3 w-3 text-zinc-700 dark:text-zinc-300" />}
-              </button>
-            ))}
-            <p className="border-zinc-200 border-t px-2.5 pt-2 pb-1 text-[10px] text-zinc-500 leading-relaxed dark:border-zinc-800">
-              Auto-suggests from open slot count — override sticks until you change it.
-            </p>
-          </div>,
-          document.body,
-        )}
-    </div>
   );
 }
 

@@ -100,7 +100,21 @@ const TONE_LABEL: Record<GlowTone, string> = {
   slate: "Cancelled",
 };
 
-export function CrawlGlowGrid({ crawls }: { crawls: CrawlNeed[] }) {
+export function CrawlGlowGrid({
+  crawls,
+  onClick,
+  status,
+}: {
+  crawls: CrawlNeed[];
+  /** When provided, the grid renders as a button — clicking
+   *  anywhere on it fires this callback. Used to open the
+   *  active/cancelled picker for the parent city. */
+  onClick?: () => void;
+  /** Current city status. When 'cancelled', the entire grid is
+   *  dimmed + strikethrough-style so the operator can see at a
+   *  glance that the row is dead without expanding it. */
+  status?: "planning" | "active" | "confirmed" | "cancelled";
+}) {
   // Group crawls by dayPart, sort within each by crawlNumber so the
   // pill row reads as "crawl 1 ... crawl N" left-to-right exactly
   // like the operator expects.
@@ -119,8 +133,9 @@ export function CrawlGlowGrid({ crawls }: { crawls: CrawlNeed[] }) {
 
   if (days.length === 0) return null;
 
-  return (
-    <div className="flex flex-col gap-0.5">
+  const cancelled = status === "cancelled";
+  const inner = (
+    <div className={cn("flex flex-col gap-0.5", cancelled && "opacity-40")}>
       {days.map((d) => {
         const list = byDay.get(d) ?? [];
         return (
@@ -130,7 +145,7 @@ export function CrawlGlowGrid({ crawls }: { crawls: CrawlNeed[] }) {
             </span>
             <div className="flex flex-wrap items-center gap-1">
               {list.map((c) => {
-                const tone = toneForCrawl(c);
+                const tone = cancelled ? "slate" : toneForCrawl(c);
                 return (
                   <span
                     key={`${c.dayPart}-${c.crawlNumber}`}
@@ -152,4 +167,18 @@ export function CrawlGlowGrid({ crawls }: { crawls: CrawlNeed[] }) {
       })}
     </div>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Click to set city status"
+        className="rounded-md p-0.5 text-left transition-colors hover:bg-zinc-200/40 focus:outline-none focus:ring-1 focus:ring-zinc-400/40 dark:hover:bg-zinc-800/40"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return inner;
 }
