@@ -1,3 +1,4 @@
+import { parseAccountIds } from "@/lib/account-filter";
 import { requireStaff } from "@/lib/auth";
 import {
   FOLDER_LABELS,
@@ -43,6 +44,12 @@ interface Props {
      * team inboxes so anyone can pick up a thread.
      */
     mine?: string;
+    /**
+     * Comma-separated list of connected_accounts.id — visibility
+     * scope from the Gmail-style AccountSwitcher dropdown. Each id
+     * validated as a UUID; non-UUIDs are dropped silently.
+     */
+    accounts?: string;
   }>;
 }
 
@@ -89,6 +96,12 @@ export default async function InboxPage({ searchParams }: Props) {
 
   const isDraftFolder = folder === "drafts" || folder === "scheduled";
 
+  // Parse the ?accounts=<id>,<id> visibility scope from the
+  // AccountSwitcher dropdown. Validate each id as a UUID to keep
+  // SQL safe + drop garbage silently. Empty list => no filter
+  // (default = every account the operator can see).
+  const accountIds = parseAccountIds(params.accounts);
+
   const [threads, counts, aliases, facets, gmailLabels, drafts, visibleAccounts] =
     await Promise.all([
       fetchInboxThreads({
@@ -101,12 +114,14 @@ export default async function InboxPage({ searchParams }: Props) {
         outreachBrandId: params.brand,
         labelId: params.label,
         aliasId: params.alias,
+        accountIds,
         search: params.q,
       }),
       fetchFolderCounts({
         currentTeamId: currentStaff.teamId,
         currentUserId: currentStaff.id,
         mine,
+        accountIds,
       }),
       fetchInboxAliases({
         currentTeamId: currentStaff.teamId,
@@ -143,6 +158,7 @@ export default async function InboxPage({ searchParams }: Props) {
   if (params.brand) preservedQuery.set("brand", params.brand);
   if (params.label) preservedQuery.set("label", params.label);
   if (params.alias) preservedQuery.set("alias", params.alias);
+  if (params.accounts) preservedQuery.set("accounts", params.accounts);
   if (params.q) preservedQuery.set("q", params.q);
 
   return (

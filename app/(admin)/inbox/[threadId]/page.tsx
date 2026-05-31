@@ -1,3 +1,4 @@
+import { parseAccountIds } from "@/lib/account-filter";
 import { requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
 import {
@@ -39,6 +40,7 @@ interface Props {
     alias?: string;
     q?: string;
     mine?: string;
+    accounts?: string;
   }>;
 }
 
@@ -66,6 +68,9 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         : undefined;
   const mineAssigned = assignedStaffId === currentStaff.id;
 
+  // Account-switcher scope from the ?accounts=<id>,<id> URL param.
+  const accountIds = parseAccountIds(search.accounts);
+
   const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts] =
     await Promise.all([
       fetchThreadDetail(threadId),
@@ -79,12 +84,14 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         outreachBrandId: search.brand,
         labelId: search.label,
         aliasId: search.alias,
+        accountIds,
         search: search.q,
       }),
       fetchFolderCounts({
         currentTeamId: currentStaff.teamId,
         currentUserId: currentStaff.id,
         mine,
+        accountIds,
       }),
       fetchInboxAliases({
         currentTeamId: currentStaff.teamId,
@@ -139,6 +146,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (search.brand) preservedQuery.set("brand", search.brand);
   if (search.label) preservedQuery.set("label", search.label);
   if (search.alias) preservedQuery.set("alias", search.alias);
+  if (search.accounts) preservedQuery.set("accounts", search.accounts);
   if (search.q) preservedQuery.set("q", search.q);
 
   return (

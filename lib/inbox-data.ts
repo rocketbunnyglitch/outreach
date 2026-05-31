@@ -170,6 +170,15 @@ export interface ThreadListFilter {
    */
   aliasId?: string;
   /**
+   * Restrict threads to a subset of connected accounts. Set by the
+   * Gmail-style AccountSwitcher dropdown via the `?accounts=<id>,<id>`
+   * URL param. When undefined / empty, every account the operator can
+   * see is included. The visibility scope above (team-level via
+   * connected_accounts.team_id) still applies — this just narrows
+   * within that.
+   */
+  accountIds?: string[];
+  /**
    * Free-text search applied to subject, snippet, venue name, and
    * last-sender name via case-insensitive substring match. Empty or
    * whitespace-only inputs are ignored.
@@ -383,6 +392,16 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
           : undefined,
         // Alias filter — match a specific connected_accounts row.
         filter.aliasId ? eq(emailThreads.staffOutreachEmailId, filter.aliasId) : undefined,
+        // Account-switcher filter — narrow to a subset of connected
+        // accounts. inArray over a UUID list is index-friendly via the
+        // existing staff_outreach_email_id FK. Empty arrays would
+        // collapse to "WHERE false" (matches nothing), so we skip
+        // emitting the predicate when the list is empty — the
+        // operator's intent for an empty list is "default to every
+        // account I can see," handled at the URL-param parse layer.
+        filter.accountIds && filter.accountIds.length > 0
+          ? inArray(emailThreads.staffOutreachEmailId, filter.accountIds)
+          : undefined,
         // Operator-aware search. parseSearchQuery splits the raw input
         // into structured operators (`from:`, `subject:`, `is:starred`,
         // etc) + a free-text residue. Each operator becomes its own
@@ -477,12 +496,29 @@ export async function fetchFolderCounts(opts: {
   currentTeamId: string;
   currentUserId: string;
   mine?: boolean;
+  /** Same scope filter as fetchInboxThreads — narrows the count CTE
+   *  to a subset of connected accounts so the left-rail counts
+   *  reflect what the operator will see when they click into a
+   *  folder. */
+  accountIds?: string[];
 }): Promise<Record<InboxFolder, number>> {
   // Pull one count per logical predicate. Rather than one big GROUP BY
   // (which doesn't compose with the new direction / starred / snooze
   // predicates), run a single aggregate query that returns each count
   // in its own column via FILTER. Postgres optimizes this into one
   // table scan.
+  //
+  // accountIds binding: we pass each id as a separate sql placeholder
+  // and join via the IN(...) form. inArray on raw sql is the safest
+  // way to avoid string-interpolating UUIDs into a query — every id
+  // becomes a $N parameter under the hood.
+  const accountFilter =
+    opts.accountIds && opts.accountIds.length > 0
+      ? sql`AND ca.id IN (${sql.join(
+          opts.accountIds.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )})`
+      : sql``;
   const result = await db.execute<{
     inbox: number;
     sent: number;
@@ -504,6 +540,7 @@ export async function fetchFolderCounts(opts: {
       INNER JOIN connected_accounts ca ON ca.id = et.staff_outreach_email_id
       WHERE ca.team_id = ${opts.currentTeamId}
         ${opts.mine ? sql`AND ca.owner_user_id = ${opts.currentUserId}` : sql``}
+        ${accountFilter}
     ),
     draft_counts AS (
       SELECT
