@@ -471,3 +471,75 @@ html[data-inbox-reading-pane="none"] [data-inbox-right-pane="true"] {
   border-left-color: rgb(63 63 70); /* zinc-700 */
   color: rgb(161 161 170); /* zinc-400 */
 }
+
+/* Tiptap composer list styling — the global Tailwind preflight
+   resets list-style on ul/ol so bullets/numbers don't render
+   without an explicit declaration. The composer needs these to
+   match Gmail's behavior. */
+.ProseMirror ul {
+  list-style: disc;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.ProseMirror ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.ProseMirror ul ul {
+  list-style: circle;
+}
+.ProseMirror ul ul ul {
+  list-style: square;
+}
+.ProseMirror li > p {
+  margin: 0;
+}
+.ProseMirror li {
+  margin: 0.15em 0;
+}
+
+/* Headings — Tiptap StarterKit's heading node renders <h1>/<h2>/etc
+   raw; Tailwind preflight strips their default sizes. Restore so
+   /h1 + /h2 slash commands produce visibly-distinct blocks. */
+.ProseMirror h1 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+.ProseMirror h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+.ProseMirror h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.5em 0 0.25em;
+}
+.ProseMirror blockquote {
+  border-left: 3px solid rgb(228 228 231);
+  padding-left: 0.75em;
+  color: rgb(82 82 91);
+  margin: 0.5em 0;
+}
+.dark .ProseMirror blockquote {
+  border-left-color: rgb(63 63 70);
+  color: rgb(161 161 170);
+}
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid rgb(228 228 231);
+  margin: 1em 0;
+}
+.dark .ProseMirror hr {
+  border-top-color: rgb(63 63 70);
+}
+.ProseMirror a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dark .ProseMirror a {
+  color: rgb(96 165 250);
+}

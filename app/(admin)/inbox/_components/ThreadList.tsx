@@ -126,11 +126,15 @@ function ThreadRow({
         className={cn(
           "inbox-row group/row block border-zinc-200/60 border-b px-4 py-3 transition-colors",
           "dark:border-zinc-800/40",
+          // Active (currently-open thread) wins over selection wins
+          // over unread highlight wins over default.
           isActive
             ? "bg-zinc-100 dark:bg-zinc-900"
             : isSelected
               ? "bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50"
-              : "hover:bg-zinc-50 dark:hover:bg-zinc-900/50",
+              : thread.unreadCount > 0
+                ? "bg-white font-semibold hover:bg-zinc-50 dark:bg-zinc-900/70 dark:hover:bg-zinc-900"
+                : "bg-zinc-50/40 hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900/50",
           // Unread threads get a slightly heavier left border accent
           thread.unreadCount > 0 && "border-l-2 border-l-indigo-500",
         )}

@@ -658,9 +658,12 @@ function ColorPopover({
       {open && (
         <div
           ref={popRef}
-          className="absolute top-full left-0 z-30 mt-1 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute top-full left-0 z-30 mt-1 w-44 rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
         >
-          <div className="grid grid-cols-4 gap-1">
+          <div className="mb-1.5 px-0.5 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
+            Text color
+          </div>
+          <div className="grid grid-cols-4 gap-2">
             {TEXT_COLORS.map((c) => (
               <button
                 key={c}
@@ -671,11 +674,23 @@ function ColorPopover({
                   setOpen(false);
                 }}
                 aria-label={`Text color ${c}`}
-                className="h-4 w-4 rounded border border-zinc-300 dark:border-zinc-700"
+                title={c}
+                className="h-7 w-7 rounded-md border border-zinc-300 ring-offset-1 transition-transform hover:scale-110 hover:ring-2 hover:ring-zinc-400 dark:border-zinc-700 dark:hover:ring-zinc-500"
                 style={{ backgroundColor: c }}
               />
             ))}
           </div>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onPick("inherit");
+              setOpen(false);
+            }}
+            className="mt-2 w-full rounded px-2 py-1 text-left font-mono text-[10px] text-zinc-500 uppercase tracking-widest hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            Reset color
+          </button>
         </div>
       )}
     </div>
