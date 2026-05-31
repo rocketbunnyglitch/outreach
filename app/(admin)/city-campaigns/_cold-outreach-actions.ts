@@ -64,14 +64,23 @@ export async function upsertColdOutreachEntry(
   _prev: unknown,
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
-  const { staff } = await requireStaff();
-  const parsed = upsertSchema.safeParse({
-    cityCampaignId: formData.get("cityCampaignId"),
-    venueId: formData.get("venueId"),
-  });
-  if (!parsed.success) return { ok: false, error: "Invalid input." };
-
+  // Single top-level try/catch ensures we ALWAYS return a
+  // structured ActionResult — never throw out of the action.
+  // Throwing out of a server action corrupts the RSC stream
+  // and the client sees a generic "unexpected response" with
+  // no error code. The operator-error system depends on
+  // structured returns.
+  const op = newOpError("city_campaigns.upsertColdOutreachEntry");
   try {
+    const { staff } = await requireStaff();
+    const parsed = upsertSchema.safeParse({
+      cityCampaignId: formData.get("cityCampaignId"),
+      venueId: formData.get("venueId"),
+    });
+    if (!parsed.success) {
+      return { ok: false, error: "Invalid input.", code: op.code };
+    }
+
     const id = await withAuditContext(staff.id, async (tx) => {
       const existing = await tx
         .select({ id: coldOutreachEntries.id })
@@ -103,14 +112,17 @@ export async function upsertColdOutreachEntry(
     revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
     return { ok: true, data: { id } };
   } catch (err) {
-    const op = newOpError("city_campaigns.upsertColdOutreachEntry");
     op.log(err, {
-      cityCampaignId: parsed.data.cityCampaignId,
-      venueId: parsed.data.venueId,
+      cityCampaignId: formData.get("cityCampaignId"),
+      venueId: formData.get("venueId"),
     });
+    // Surface the actual error message so the operator can
+    // diagnose without PM2 grep. The op.code still ties back
+    // to the structured log line for the full stack.
+    const detail = (err as Error)?.message ?? String(err);
     return {
       ok: false,
-      error: "Couldn't add to cold outreach.",
+      error: `Couldn't add to cold outreach: ${detail}`,
       code: op.code,
     };
   }

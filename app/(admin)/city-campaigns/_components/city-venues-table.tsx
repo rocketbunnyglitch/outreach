@@ -34,6 +34,7 @@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { CityVenueRow, SlotHistoryEntry } from "@/lib/city-venues-data";
+import { captureClientError } from "@/lib/client-error";
 import { cn } from "@/lib/cn";
 import { Check, Globe, History, Mail, Phone, Plus, Search, Sparkles, X } from "lucide-react";
 import Link from "next/link";
@@ -77,12 +78,42 @@ export function CityVenuesTable({ cityCampaignId, cityName, rows, totalInCity, c
     fd.set("cityCampaignId", cityCampaignId);
     fd.set("venueId", venueId);
     startTx(async () => {
-      const res = await upsertColdOutreachEntry(null, fd);
-      if (!res.ok) {
+      try {
+        const res = await upsertColdOutreachEntry(null, fd);
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error || "Couldn't add to cold outreach.",
+            code: (res as { code?: string }).code,
+            tag: "city_venues.add",
+          });
+          setAdding((s) => {
+            const n = new Set(s);
+            n.delete(venueId);
+            return n;
+          });
+          return;
+        }
+        toast.show({ kind: "success", message: `Added ${venueName} to cold outreach.` });
+        router.refresh();
+      } catch (err) {
+        // Client-side capture for ANY thrown error (Next.js
+        // "unexpected response", network failure, etc). The
+        // server-side op-error system only catches errors inside
+        // the action's try/catch — Next.js render-streaming
+        // failures or serialization errors bypass that and end
+        // up here. captureClientError generates a C-XXXX-YYYY
+        // code + logs the underlying error to the browser
+        // console so the operator can search there + paste the
+        // code into Claude.
+        const captured = captureClientError(err, {
+          tag: "city_venues.add",
+          fallback: "Couldn't add to cold outreach.",
+        });
         toast.show({
           kind: "error",
-          message: res.error || "Couldn't add to cold outreach.",
-          code: (res as { code?: string }).code,
+          message: captured.message,
+          code: captured.code,
           tag: "city_venues.add",
         });
         setAdding((s) => {
@@ -90,10 +121,7 @@ export function CityVenuesTable({ cityCampaignId, cityName, rows, totalInCity, c
           n.delete(venueId);
           return n;
         });
-        return;
       }
-      toast.show({ kind: "success", message: `Added ${venueName} to cold outreach.` });
-      router.refresh();
     });
   }
 

@@ -21,6 +21,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { captureClientError } from "@/lib/client-error";
 import { cn } from "@/lib/cn";
 import { ClipboardCopy, Download, Loader2, Play, Sparkles } from "lucide-react";
 import { useState, useTransition } from "react";
@@ -64,19 +65,35 @@ export function HalloweenImportPanel() {
   function runDry() {
     setMarkdown(null);
     startRun(async () => {
-      const res = await runHalloween2025DryRun({ cityLimit: null });
-      if (!res.ok) {
+      try {
+        const res = await runHalloween2025DryRun({ cityLimit: null });
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error,
+            code: (res as { code?: string }).code,
+            tag: "halloween.dry_run",
+          });
+          return;
+        }
+        setReport(res.data as Report);
+        setStage("dry");
+        toast.show({
+          kind: "success",
+          message: `Dry-run done — ${res.data.decisions.length} rows.`,
+        });
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "halloween.dry_run",
+          fallback: "Dry-run failed.",
+        });
         toast.show({
           kind: "error",
-          message: res.error,
-          code: (res as { code?: string }).code,
+          message: cap.message,
+          code: cap.code,
           tag: "halloween.dry_run",
         });
-        return;
       }
-      setReport(res.data as Report);
-      setStage("dry");
-      toast.show({ kind: "success", message: `Dry-run done — ${res.data.decisions.length} rows.` });
     });
   }
 
@@ -86,53 +103,78 @@ export function HalloweenImportPanel() {
     )
       return;
     startRun(async () => {
-      const res = await runHalloween2025Apply({ cityLimit: null });
-      if (!res.ok) {
+      try {
+        const res = await runHalloween2025Apply({ cityLimit: null });
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error,
+            code: (res as { code?: string }).code,
+            tag: "halloween.apply",
+          });
+          return;
+        }
+        setReport(res.data as Report);
+        setStage("applied");
+        toast.show({
+          kind: "success",
+          message: "Import applied. Generate the review queue to verify stubs.",
+        });
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "halloween.apply",
+          fallback: "Import apply failed.",
+        });
         toast.show({
           kind: "error",
-          message: res.error,
-          code: (res as { code?: string }).code,
+          message: cap.message,
+          code: cap.code,
           tag: "halloween.apply",
         });
-        return;
       }
-      setReport(res.data as Report);
-      setStage("applied");
-      toast.show({
-        kind: "success",
-        message: "Import applied. Generate the review queue to verify stubs.",
-      });
     });
   }
 
   function downloadReviewQueue() {
     if (!report) return;
     startRun(async () => {
-      const res = await generateReviewQueueMarkdown(
-        report as unknown as Parameters<typeof generateReviewQueueMarkdown>[0],
-      );
-      if (!res.ok) {
+      try {
+        const res = await generateReviewQueueMarkdown(
+          report as unknown as Parameters<typeof generateReviewQueueMarkdown>[0],
+        );
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error,
+            code: (res as { code?: string }).code,
+            tag: "halloween.review_queue",
+          });
+          return;
+        }
+        setMarkdown(res.data.markdown);
+        const blob = new Blob([res.data.markdown], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "halloween_2025_review_queue.md";
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.show({
+          kind: "success",
+          message: `Review queue downloaded — ${res.data.queue.items.length} venues to verify.`,
+        });
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "halloween.review_queue",
+          fallback: "Couldn't build review queue.",
+        });
         toast.show({
           kind: "error",
-          message: res.error,
-          code: (res as { code?: string }).code,
+          message: cap.message,
+          code: cap.code,
           tag: "halloween.review_queue",
         });
-        return;
       }
-      setMarkdown(res.data.markdown);
-      // Trigger a download
-      const blob = new Blob([res.data.markdown], { type: "text/markdown" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "halloween_2025_review_queue.md";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.show({
-        kind: "success",
-        message: `Review queue downloaded — ${res.data.queue.items.length} venues to verify.`,
-      });
     });
   }
 
