@@ -63,6 +63,7 @@ import { PreviewModal } from "./preview-modal";
 import { RecipientChips } from "./recipient-chips";
 import { RichTextEditor } from "./rich-text-editor";
 import { SendMenu } from "./send-menu";
+import { SubjectSuggestButton } from "./subject-suggest-button";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Gmail's undo-send window is configurable up to 30s; 15s is the
@@ -834,13 +835,26 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         )}
 
         {/* Subject */}
-        <div className="border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+        <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
           <input
             type="text"
             value={instance.subject}
             onChange={(e) => setField(instance.id, { subject: e.target.value })}
             placeholder="Subject"
-            className="w-full bg-transparent font-medium text-xs outline-none"
+            className="min-w-0 flex-1 bg-transparent font-medium text-xs outline-none"
+          />
+          {/* AI subject-line suggester (Haiku ROI #3). Visible when
+              the body has > 30 chars; clicking opens 3 chip options
+              the operator picks from. Cheap (~$0.001/call). */}
+          <SubjectSuggestButton
+            bodyText={instance.bodyText}
+            currentSubject={instance.subject}
+            venueName={null}
+            cityName={null}
+            recipientName={null}
+            recipientEmail={instance.to.split(",")[0]?.trim() || null}
+            mode={instance.composeMode === "new" ? "cold" : "reply"}
+            onApply={(s) => setField(instance.id, { subject: s })}
           />
         </div>
 

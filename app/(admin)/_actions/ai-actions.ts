@@ -13,6 +13,7 @@
  * decides whether to send.
  */
 
+import { suggestSubjectLines } from "@/lib/ai-subject-suggest";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -279,4 +280,61 @@ function messageForAiReason(reason: import("@/lib/ai").AiReason, message: string
     default:
       return `AI failed: ${message}`;
   }
+}
+
+// =========================================================================
+// Subject-line suggester (Haiku ROI #3)
+// =========================================================================
+
+/**
+ * Suggest 3 subject lines for the operator's current draft. Reads
+ * the body + optional recipient/venue context, returns 3 options
+ * the operator can click to set as the subject.
+ *
+ * Returns ok:false (with a reason) when:
+ *   - AI not configured
+ *   - kill switch off
+ *   - draft body is too short (< 30 chars — nothing to base
+ *     a suggestion on)
+ *   - rate limited
+ *   - model failed
+ *
+ * The caller's reasonString is more useful in the UI than the
+ * generic ActionResult.error, so we surface the failure mode.
+ */
+export async function suggestEmailSubject(input: {
+  bodyText: string;
+  recipientName?: string | null;
+  recipientEmail?: string | null;
+  venueName?: string | null;
+  cityName?: string | null;
+  currentSubject?: string;
+  mode?: "cold" | "reply";
+}): Promise<ActionResult<{ subjects: string[] }> & { reason?: string }> {
+  const { staff } = await requireStaff();
+  const result = await suggestSubjectLines({
+    staffId: staff.id,
+    bodyText: input.bodyText,
+    recipientName: input.recipientName,
+    recipientEmail: input.recipientEmail,
+    venueName: input.venueName,
+    cityName: input.cityName,
+    currentSubject: input.currentSubject,
+    mode: input.mode,
+  });
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      not_configured: "AI is not configured on this server.",
+      disabled: "Subject suggestions are disabled.",
+      too_short: "Write a few sentences first so AI has something to base a subject on.",
+      rate_limited: "Too many subject requests — wait a moment and try again.",
+      failed: "AI couldn't generate subjects right now. Try again.",
+    };
+    return {
+      ok: false,
+      error: messages[result.reason] ?? "Subject suggestions failed.",
+      reason: result.reason,
+    };
+  }
+  return { ok: true, data: { subjects: result.subjects } };
 }
