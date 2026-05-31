@@ -27,6 +27,11 @@ import { db, withAuditContext } from "@/lib/db";
 import { clearCadenceOnAction } from "@/lib/follow-up-cadence";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { modifyGmailThreadLabels, sendGmailMessage } from "@/lib/gmail";
+import {
+  applyGmailLabelToThread,
+  listGmailLabelsForThread,
+  removeGmailLabelFromThread,
+} from "@/lib/gmail-thread-labels";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
@@ -1317,6 +1322,104 @@ export async function removeLabelFromThreadAction(
   revalidatePath(`/inbox/${threadId}`);
   revalidatePath("/inbox");
   return { ok: true, data: { threadId, labelId: teamLabelId } };
+}
+
+// =========================================================================
+// Gmail label actions (apply / remove directly via Gmail API).
+//
+// Distinct from the team-label actions above: these apply a Gmail-side
+// label to the thread and mirror the change to the local
+// email_messages.gmail_labels array. The team-label namespace isn't
+// touched.
+// =========================================================================
+
+export async function applyGmailLabelToThreadAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ threadId: string; gmailLabelId: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const gmailLabelId = String(formData.get("gmailLabelId") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (!gmailLabelId) return { ok: false, error: "Missing gmailLabelId." };
+
+  // Team scope: validate the thread belongs to the operator's team.
+  const [row] = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!row || row.teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not on your team." };
+  }
+
+  try {
+    await applyGmailLabelToThread({ threadId, gmailLabelId });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Gmail rejected the change.";
+    logger.warn({ err, threadId, gmailLabelId }, "applyGmailLabelToThreadAction failed");
+    return { ok: false, error: msg };
+  }
+
+  revalidatePath(`/inbox/${threadId}`);
+  revalidatePath("/inbox");
+  return { ok: true, data: { threadId, gmailLabelId } };
+}
+
+export async function removeGmailLabelFromThreadAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ threadId: string; gmailLabelId: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const gmailLabelId = String(formData.get("gmailLabelId") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (!gmailLabelId) return { ok: false, error: "Missing gmailLabelId." };
+
+  const [row] = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!row || row.teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not on your team." };
+  }
+
+  try {
+    await removeGmailLabelFromThread({ threadId, gmailLabelId });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Gmail rejected the change.";
+    logger.warn({ err, threadId, gmailLabelId }, "removeGmailLabelFromThreadAction failed");
+    return { ok: false, error: msg };
+  }
+
+  revalidatePath(`/inbox/${threadId}`);
+  revalidatePath("/inbox");
+  return { ok: true, data: { threadId, gmailLabelId } };
+}
+
+/**
+ * List the Gmail labels picker can offer for a thread. Scoped to
+ * the thread's connected_account so labels from a different account
+ * don't accidentally appear.
+ */
+export async function listGmailLabelsForThreadAction(threadId: string): Promise<
+  ActionResult<
+    Array<{
+      id: string;
+      gmailLabelId: string;
+      name: string;
+      backgroundColor: string | null;
+      textColor: string | null;
+    }>
+  >
+> {
+  await requireStaff();
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  const labels = await listGmailLabelsForThread(threadId);
+  return { ok: true, data: labels };
 }
 
 /**
