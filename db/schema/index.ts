@@ -55,6 +55,7 @@ export * from "./inbox-alerts";
 export * from "./team-labels";
 export * from "./gmail-labels";
 export * from "./user-preferences";
+export * from "./inbox-saved-searches";
 export * from "./campaign-connected-accounts";
 export * from "./email-messages";
 export * from "./cold-outreach";

@@ -491,7 +491,14 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         // into structured operators (`from:`, `subject:`, `is:starred`,
         // etc) + a free-text residue. Each operator becomes its own
         // AND predicate; free text drives the existing OR across
-        // subject/snippet/venue/sender.
+        // subject/snippet/venue/sender plus an EXISTS against the
+        // full-text-indexed email_messages.search_tsv (Phase B).
+        //
+        // The body-search adds an EXISTS subquery using websearch_to_tsquery
+        // — that variant accepts natural-language input including quoted
+        // phrases ("foo bar") and OR operators without erroring on
+        // malformed input. plainto_tsquery would 400 on quotes; we want
+        // operators to type freely.
         //
         // Engine-specific operators (campaign:, brand:, venue:,
         // assigned:) override the corresponding top-level filter
@@ -503,6 +510,11 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
               ilike(emailThreads.snippet, `%${parsed.freeText}%`),
               ilike(venues.name, `%${parsed.freeText}%`),
               ilike(emailThreads.lastSenderName, `%${parsed.freeText}%`),
+              sql`EXISTS (
+                SELECT 1 FROM email_messages em
+                WHERE em.thread_id = ${emailThreads.id}
+                  AND em.search_tsv @@ websearch_to_tsquery('english', ${parsed.freeText})
+              )`,
             )
           : undefined,
         parsed.from ? ilike(emailThreads.lastSenderName, `%${parsed.from}%`) : undefined,

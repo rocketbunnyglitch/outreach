@@ -11,6 +11,7 @@ import {
   fetchTeamGmailLabels,
   isInboxFolder,
 } from "@/lib/inbox-data";
+import { loadSavedSearches } from "@/lib/inbox-saved-searches";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { Inbox as InboxIcon } from "lucide-react";
@@ -110,57 +111,67 @@ export default async function InboxPage({ searchParams }: Props) {
   // (default = every account the operator can see).
   const accountIds = parseAccountIds(params.accounts);
 
-  const [threads, counts, aliases, facets, gmailLabels, drafts, visibleAccounts, userPrefs] =
-    await Promise.all([
-      fetchInboxThreads({
-        folder,
-        currentTeamId: currentStaff.teamId,
-        currentUserId: currentStaff.id,
-        mine,
-        assignedStaffId,
-        cityCampaignId: params.campaign,
-        outreachBrandId: params.brand,
-        labelId: params.label,
-        aliasId: params.alias,
-        accountIds,
-        unassigned: params.unassigned === "1",
-        staleOnly: params.stale === "1",
-        unmatchedOnly: params.unmatched === "1",
-        search: params.q,
-      }),
-      fetchFolderCounts({
-        currentTeamId: currentStaff.teamId,
-        currentUserId: currentStaff.id,
-        mine,
-        accountIds,
-      }),
-      fetchInboxAliases({
-        currentTeamId: currentStaff.teamId,
-        currentUserId: currentStaff.id,
-      }),
-      fetchInboxFilterFacets({
-        currentTeamId: currentStaff.teamId,
-        currentUserId: currentStaff.id,
-        mine,
-      }),
-      fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
-      isDraftFolder
-        ? fetchDraftList({
-            currentUserId: currentStaff.id,
-            currentTeamId: currentStaff.teamId,
-            mode: folder === "scheduled" ? "scheduled" : "drafts",
-          })
-        : Promise.resolve([]),
-      loadVisibleAccounts({
-        currentUserId: currentStaff.id,
-        currentTeamId: currentStaff.teamId,
-        // Admin / lead see every team account. Staff see only their
-        // own. Future: a finer-grained "team accounts I have access
-        // to" model will go here.
-        canSeeAllTeamAccounts: currentStaff.role === "admin",
-      }),
-      getUserPreferences(currentStaff.id),
-    ]);
+  const [
+    threads,
+    counts,
+    aliases,
+    facets,
+    gmailLabels,
+    drafts,
+    visibleAccounts,
+    userPrefs,
+    savedSearches,
+  ] = await Promise.all([
+    fetchInboxThreads({
+      folder,
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
+      assignedStaffId,
+      cityCampaignId: params.campaign,
+      outreachBrandId: params.brand,
+      labelId: params.label,
+      aliasId: params.alias,
+      accountIds,
+      unassigned: params.unassigned === "1",
+      staleOnly: params.stale === "1",
+      unmatchedOnly: params.unmatched === "1",
+      search: params.q,
+    }),
+    fetchFolderCounts({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
+      accountIds,
+    }),
+    fetchInboxAliases({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+    }),
+    fetchInboxFilterFacets({
+      currentTeamId: currentStaff.teamId,
+      currentUserId: currentStaff.id,
+      mine,
+    }),
+    fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
+    isDraftFolder
+      ? fetchDraftList({
+          currentUserId: currentStaff.id,
+          currentTeamId: currentStaff.teamId,
+          mode: folder === "scheduled" ? "scheduled" : "drafts",
+        })
+      : Promise.resolve([]),
+    loadVisibleAccounts({
+      currentUserId: currentStaff.id,
+      currentTeamId: currentStaff.teamId,
+      // Admin / lead see every team account. Staff see only their
+      // own. Future: a finer-grained "team accounts I have access
+      // to" model will go here.
+      canSeeAllTeamAccounts: currentStaff.role === "admin",
+    }),
+    getUserPreferences(currentStaff.id),
+    loadSavedSearches(currentStaff.id),
+  ]);
 
   // AccountSwitcher seed selection: prefer the per-campaign
   // server-side entry when present. The "_default" key is used when
@@ -236,6 +247,7 @@ export default async function InboxPage({ searchParams }: Props) {
               mineInbox={mine}
               activeAliasId={params.alias}
               initialSearch={params.q}
+              savedSearches={savedSearches}
             />
             <div className="flex-1 overflow-y-auto">
               {isDraftFolder ? (

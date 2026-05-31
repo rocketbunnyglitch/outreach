@@ -17,6 +17,7 @@ import {
   fetchVenueOutreachHistory,
   isInboxFolder,
 } from "@/lib/inbox-data";
+import { loadSavedSearches } from "@/lib/inbox-saved-searches";
 import { listTeamLabels, listThreadLabels } from "@/lib/team-labels";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVenueCommunication } from "@/lib/venue-communication";
@@ -187,18 +188,20 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // the most plausible active city_campaign for the thread. Returns
   // empty list when the thread is already attributed or nothing
   // crosses the confidence threshold.
-  const [threadLabels, teamLabelsAll, campaignSuggestions, appliedGmailLabels] = await Promise.all([
-    listThreadLabels(threadId),
-    listTeamLabels(currentStaff.teamId),
-    suggestCampaignsForThread({
-      threadId,
-      currentCityCampaignId: detail.thread.cityCampaignId,
-      venueId: detail.thread.venueId,
-      subject: detail.thread.subject,
-      teamId: currentStaff.teamId,
-    }),
-    loadAppliedGmailLabelsForThread(threadId),
-  ]);
+  const [threadLabels, teamLabelsAll, campaignSuggestions, appliedGmailLabels, savedSearches] =
+    await Promise.all([
+      listThreadLabels(threadId),
+      listTeamLabels(currentStaff.teamId),
+      suggestCampaignsForThread({
+        threadId,
+        currentCityCampaignId: detail.thread.cityCampaignId,
+        venueId: detail.thread.venueId,
+        subject: detail.thread.subject,
+        teamId: currentStaff.teamId,
+      }),
+      loadAppliedGmailLabelsForThread(threadId),
+      loadSavedSearches(currentStaff.id),
+    ]);
 
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
@@ -265,6 +268,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
               mineInbox={mine}
               activeAliasId={search.alias}
               initialSearch={search.q}
+              savedSearches={savedSearches}
             />
             <div className="flex-1 overflow-y-auto">
               <ThreadListWithBulk

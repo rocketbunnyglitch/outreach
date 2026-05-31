@@ -77,6 +77,19 @@ export const emailMessages = pgTable(
     bodyHtml: text("body_html"),
     snippet: text("snippet"),
 
+    /**
+     * Full-text search vector (Phase B). Generated column —
+     * Postgres re-computes on insert/update from:
+     *   subject (weight A) || body_text (weight B) || from_address (weight C)
+     *
+     * Drizzle doesn't model GENERATED ALWAYS AS (...) STORED
+     * cleanly, so we declare it as a regular tsvector + ignore
+     * writes. Migration 0069 creates the actual generated
+     * column; this declaration is just so we can reference it
+     * in `where` clauses.
+     */
+    searchTsv: text("search_tsv"),
+
     gmailLabels: text("gmail_labels").array().notNull().default([]),
     rawPayload: jsonb("raw_payload"),
 

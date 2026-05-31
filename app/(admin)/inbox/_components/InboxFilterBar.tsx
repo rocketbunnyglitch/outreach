@@ -18,11 +18,13 @@
  */
 
 import { cn } from "@/lib/cn";
+import type { SavedSearch } from "@/lib/inbox-saved-searches";
 import { parseSearchQuery } from "@/lib/inbox-search";
 import { Inbox, Search, User, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { InboxDensityToggle } from "./InboxDensityToggle";
+import { SavedSearchesDropdown } from "./SavedSearchesDropdown";
 
 interface AliasOption {
   id: string;
@@ -39,6 +41,8 @@ interface Props {
   mineInbox: boolean;
   activeAliasId?: string;
   initialSearch?: string;
+  /** Saved searches for the current operator (Phase B.2). */
+  savedSearches?: SavedSearch[];
 }
 
 export function InboxFilterBar({
@@ -48,6 +52,7 @@ export function InboxFilterBar({
   mineInbox,
   activeAliasId,
   initialSearch,
+  savedSearches = [],
 }: Props) {
   const router = useRouter();
   const params = useSearchParams();
@@ -88,34 +93,44 @@ export function InboxFilterBar({
         "dark:border-zinc-800/60 dark:bg-zinc-900/30",
       )}
     >
-      {/* Row 1: search input */}
-      <div className="relative">
-        <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3 w-3 text-zinc-400" />
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search · try from: subject: is:unread is:starred has:attachment"
-          aria-label="Search inbox"
-          className={cn(
-            "w-full rounded-md border border-zinc-200 bg-white py-1 pr-8 pl-7 text-xs",
-            "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
-            "dark:border-zinc-700 dark:bg-zinc-900",
+      {/* Row 1: search input + saved searches */}
+      <div className="flex items-center gap-1.5">
+        <div className="relative flex-1">
+          <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 h-3 w-3 text-zinc-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search subjects + bodies · try from: subject: is:unread "exact phrase"'
+            aria-label="Search inbox"
+            className={cn(
+              "w-full rounded-md border border-zinc-200 bg-white py-1 pr-8 pl-7 text-xs",
+              "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
+              "dark:border-zinc-700 dark:bg-zinc-900",
+            )}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                router.push(buildNextUrl({ q: null }));
+              }}
+              className="-translate-y-1/2 absolute top-1/2 right-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+              aria-label="Clear search"
+            >
+              <X className="h-3 w-3" />
+            </button>
           )}
+        </div>
+        <SavedSearchesDropdown
+          saved={savedSearches}
+          currentQuery={search}
+          onApply={(q) => {
+            setSearch(q);
+            router.push(buildNextUrl({ q: q.trim() || null }));
+          }}
         />
-        {search && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              router.push(buildNextUrl({ q: null }));
-            }}
-            className="-translate-y-1/2 absolute top-1/2 right-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-            aria-label="Clear search"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        )}
       </div>
       {/* Parsed-operator hint chips. Shown only when the active query
           contains at least one recognized operator, so plain free-text
