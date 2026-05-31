@@ -843,6 +843,16 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           showToolbar={toolbarOpen}
         />
 
+        {/* Collapsed quoted-thread chip — Gmail-parity. Shows when
+            this is a reply/forward draft (quotedHtml present) so the
+            operator sees a single "..." button instead of the
+            quoted original wall-of-text by default. Click to expand
+            in place; click again to re-collapse. The quoted content
+            is read-only here — the operator types their reply above
+            the editor; compose-send-impl re-attaches the quote on
+            send. */}
+        {instance.quotedHtml && <QuotedThreadBlock html={instance.quotedHtml} />}
+
         {sendError && (
           <div className="flex items-start gap-2 border-zinc-200 border-t bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
             <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
@@ -1366,6 +1376,49 @@ function MoreMenu({
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * QuotedThreadBlock — Gmail-style "..." chip that toggles a
+ * read-only preview of the quoted original message. Collapsed by
+ * default so the editable surface above stays uncluttered. The
+ * actual quoted content is stored on draft.quoted_html and gets
+ * concatenated onto bodyHtml at send time inside sendDraftAsUser,
+ * so it's always delivered regardless of whether the operator
+ * expanded the chip in the composer.
+ *
+ * dangerouslySetInnerHTML is safe here because:
+ *   1. The HTML originated server-side from openReplyDraft which
+ *      HTML-escapes the message text before wrapping in the quote
+ *      structure. We never store user-typed HTML into quotedHtml.
+ *   2. The rendered block is non-editable and isolated from form
+ *      submission paths — its content travels with the draft row,
+ *      not through any client-side form parsing.
+ */
+function QuotedThreadBlock({ html }: { html: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="border-zinc-200 border-t bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        title={expanded ? "Hide quoted text" : "Show trimmed content"}
+        aria-label={expanded ? "Hide quoted text" : "Show trimmed content"}
+        className="inline-flex items-center gap-0.5 rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+      >
+        <span className="h-1 w-1 rounded-full bg-current" />
+        <span className="h-1 w-1 rounded-full bg-current" />
+        <span className="h-1 w-1 rounded-full bg-current" />
+      </button>
+      {expanded && (
+        <div
+          className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 [&_blockquote]:my-1 [&_blockquote]:border-l [&_blockquote]:border-zinc-300 [&_blockquote]:pl-2 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic dark:[&_blockquote]:border-zinc-700"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-built quote markup, see comment above
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       )}
     </div>
   );

@@ -56,6 +56,10 @@ export interface UpsertDraftInput {
   replyToThreadId?: string | null;
   /** Specific message anchor within the thread. */
   replyToMessageId?: string | null;
+  /** Read-only quoted original message for replies/forwards. Stored
+   *  separate from bodyHtml; composer renders behind a "..." chip;
+   *  compose-send-impl concatenates on send. See migration 0065. */
+  quotedHtml?: string | null;
   /** team_labels.id[] queued during compose. For replies (existing
    *  thread), labels apply immediately via applyLabelToThreadAction.
    *  For NEW compose, they're stored here and applied after send
@@ -118,6 +122,7 @@ export async function upsertDraft(
           replyToThreadId: input.replyToThreadId ?? null,
           replyToMessageId: input.replyToMessageId ?? null,
           pendingLabelIds: input.pendingLabelIds ?? [],
+          quotedHtml: input.quotedHtml ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -152,6 +157,7 @@ export async function upsertDraft(
   if (input.replyToThreadId !== undefined) patch.replyToThreadId = input.replyToThreadId;
   if (input.replyToMessageId !== undefined) patch.replyToMessageId = input.replyToMessageId;
   if (input.pendingLabelIds !== undefined) patch.pendingLabelIds = input.pendingLabelIds;
+  if (input.quotedHtml !== undefined) patch.quotedHtml = input.quotedHtml;
 
   try {
     await db
@@ -191,6 +197,7 @@ export async function listMyDrafts(): Promise<
     replyToThreadId: string | null;
     replyToMessageId: string | null;
     pendingLabelIds: string[];
+    quotedHtml: string | null;
   }>
 > {
   const { staff } = await requireStaff();
@@ -218,6 +225,7 @@ export async function listMyDrafts(): Promise<
     replyToThreadId: r.replyToThreadId ?? null,
     replyToMessageId: r.replyToMessageId ?? null,
     pendingLabelIds: r.pendingLabelIds ?? [],
+    quotedHtml: r.quotedHtml ?? null,
   }));
 }
 
@@ -386,7 +394,16 @@ async function sendDraftAsUser(input: {
   }
   fd.set("subject", draft.subject);
   fd.set("body", draft.bodyText);
-  if (draft.bodyHtml) fd.set("bodyHtml", draft.bodyHtml);
+  // Concatenate the operator's edited bodyHtml with the read-only
+  // quoted original (if any) so the recipient receives the full
+  // thread regardless of whether the operator expanded the
+  // "..." chip in the composer. The quote sits below an empty
+  // <br> for visual separation in the rendered email.
+  if (draft.bodyHtml || draft.quotedHtml) {
+    const bodyPart = draft.bodyHtml ?? "";
+    const quotePart = draft.quotedHtml ? `<br><br>${draft.quotedHtml}` : "";
+    fd.set("bodyHtml", bodyPart + quotePart);
+  }
   if (draft.venueId) fd.set("venueId", draft.venueId);
   // Reply/forward context — composeAndSendImpl branches on these to
   // attach the new message to the existing Gmail thread instead of

@@ -1027,7 +1027,23 @@ export async function openReplyDraft(input: {
     : `${subjectPrefix}${originalSubject}`;
 
   // Quoted body. Format mirrors Gmail's reply quote header.
+  // Stored in quotedHtml separately from bodyText/bodyHtml so the
+  // composer can render the editable surface clean (just the
+  // operator's cursor) with the quote behind a collapsible "..."
+  // chip below. compose-send-impl concatenates on send so the
+  // recipient still sees the quote regardless of whether the
+  // operator expanded it. See migration 0065.
   const quoteHeader = `On ${message.sentAt.toLocaleString()}, ${message.fromName ?? message.fromAddress} wrote:`;
+  const escapeHtml = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const quotedTextBody = (message.bodyText ?? "")
+    .split("\n")
+    .map((line: string) => escapeHtml(line))
+    .join("<br>");
+  const quotedHtml = `<div class="gmail_quote"><div class="gmail_attr">${escapeHtml(quoteHeader)}</div><blockquote class="gmail_quote_body" style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">${quotedTextBody}</blockquote></div>`;
+  // bodyText keeps the legacy quoted lines so plain-text-only mail
+  // clients still see context. The composer reads bodyHtml as the
+  // source of truth for the editable surface.
   const quotedLines = (message.bodyText ?? "")
     .split("\n")
     .map((line: string) => `> ${line}`)
@@ -1055,6 +1071,7 @@ export async function openReplyDraft(input: {
       mode: input.mode,
       replyToThreadId: input.threadId,
       replyToMessageId: message.id,
+      quotedHtml,
     });
     revalidatePath(`/inbox/${input.threadId}`);
     return { ok: true, data: { draftId } };

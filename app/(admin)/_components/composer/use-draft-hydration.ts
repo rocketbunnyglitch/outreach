@@ -63,6 +63,7 @@ export function useDraftHydration() {
           replyToThreadId: r.replyToThreadId ?? null,
           replyToMessageId: r.replyToMessageId ?? null,
           pendingLabelIds: r.pendingLabelIds ?? [],
+          quotedHtml: r.quotedHtml ?? null,
         }));
         hydrate(instances);
       })

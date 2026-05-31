@@ -59,6 +59,13 @@ export const emailDrafts = pgTable(
      *  Replies apply labels directly to their existing thread via
      *  applyLabelToThreadAction at toggle time. See migration 0064. */
     pendingLabelIds: uuid("pending_label_ids").array().notNull().default([]),
+    /** Quoted original message for replies/forwards. Stored separate
+     *  from bodyHtml so the composer can render it as a collapsible
+     *  "..." block below the editable surface (Gmail parity). On
+     *  send, compose-send-impl concatenates bodyHtml + quotedHtml so
+     *  the recipient sees the full thread regardless of whether the
+     *  operator expanded it. See migration 0065. */
+    quotedHtml: text("quoted_html"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

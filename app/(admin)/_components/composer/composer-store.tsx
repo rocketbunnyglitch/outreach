@@ -85,6 +85,10 @@ export interface ComposerInstance {
    *  persisted to draft.pending_label_ids; applied after Gmail send
    *  creates the new thread row. */
   pendingLabelIds: string[];
+  /** Read-only quoted original message for replies/forwards.
+   *  Rendered behind a "..." chip below the editable surface;
+   *  concatenated onto bodyHtml at send time. */
+  quotedHtml: string | null;
 }
 
 export interface OpenComposerInput {
@@ -227,6 +231,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       replyToThreadId: input.replyToThreadId ?? null,
       replyToMessageId: input.replyToMessageId ?? null,
       pendingLabelIds: [],
+      quotedHtml: null,
     };
     dispatch({ type: "open", payload: { id, instance } });
     return id;
@@ -361,6 +366,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               replyToThreadId: row.replyToThreadId,
               replyToMessageId: row.replyToMessageId,
               pendingLabelIds: row.pendingLabelIds ?? [],
+              quotedHtml: row.quotedHtml ?? null,
             },
           ]);
         });
