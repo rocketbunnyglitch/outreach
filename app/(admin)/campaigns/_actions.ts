@@ -547,7 +547,7 @@ export async function addCrawlToAllCities(input: {
    *  no priority filter — every city receives. */
   priorityMin?: number;
   priorityMax?: number;
-}): Promise<ActionResult<{ added: number; skipped: number; total: number }>> {
+}): Promise<ActionResult<{ added: number; updated: number; total: number }>> {
   const { staff } = await requireStaff();
 
   // Normalize crawl numbers: prefer the array form when provided, fall
@@ -640,24 +640,93 @@ export async function addCrawlToAllCities(input: {
     })),
   );
 
+  // Key helper so the pre-fetch lookup matches the row generation.
+  const rowKey = (cityCampaignId: string, slotNumber: number): string =>
+    `${cityCampaignId}::${slotNumber}`;
+
   try {
-    const inserted = await withAuditContext(staff.id, async (tx) =>
-      tx
-        .insert(events)
-        .values(rows)
-        // The unique index on (city_campaign_id, event_date, slot_number)
-        // does the dedup. Cities with an existing slot crawl on this
-        // date+slot are silently skipped — they appear in `skipped`.
-        .onConflictDoNothing()
-        .returning({ id: events.id }),
-    );
+    const result = await withAuditContext(staff.id, async (tx) => {
+      // Pre-fetch existing rows that would conflict on the unique
+      // (city_campaign_id, event_date, slot_number) index. This lets
+      // us split INSERTs from UPDATEs and report distinct counts.
+      //
+      // Previously this used onConflictDoNothing which silently kept
+      // the existing row's day_part + venue mix. That caused the
+      // operator-reported bug: bulk-adding crawls 1-3 with Saturday
+      // Night to a city that already had a slot-1 crawl with a
+      // different day_part (or null) would keep the OLD slot 1 with
+      // the OLD day_part, while inserting slots 2-3 fresh. Result:
+      // crawl 1 appeared on a separate row in the dashboard grid
+      // and its city-sheet header showed no Saturday prefix.
+      const existing = await tx
+        .select({
+          id: events.id,
+          cityCampaignId: events.cityCampaignId,
+          slotNumber: events.slotNumber,
+        })
+        .from(events)
+        .where(
+          and(
+            inArray(
+              events.cityCampaignId,
+              ccRows.map((c) => c.id),
+            ),
+            eq(events.eventDate, input.eventDate),
+            inArray(events.slotNumber, slots),
+          ),
+        );
+      const existingById = new Map<string, string>();
+      for (const e of existing) {
+        existingById.set(rowKey(e.cityCampaignId, e.slotNumber), e.id);
+      }
+
+      // Split rows: new ones get INSERTed, existing get UPDATEd so
+      // their day_part + venue mix counts align to the new bulk-add
+      // intent. operator-set fields (status, crawlFormat, crawlName,
+      // notes, ticketSalesCount, eventbrite linkage, startsAt/endsAt,
+      // routeLabel, middleVenueGroupId) are NOT touched on update —
+      // a bulk-add is "make this slot match these scheduling
+      // parameters," not "blow away everything about this crawl."
+      const toInsert = rows.filter(
+        (r) => !existingById.has(rowKey(r.cityCampaignId, r.slotNumber)),
+      );
+      const toUpdate = rows.filter((r) => existingById.has(rowKey(r.cityCampaignId, r.slotNumber)));
+
+      let addedCount = 0;
+      if (toInsert.length > 0) {
+        const ins = await tx.insert(events).values(toInsert).returning({ id: events.id });
+        addedCount = ins.length;
+      }
+
+      let updatedCount = 0;
+      for (const r of toUpdate) {
+        const id = existingById.get(rowKey(r.cityCampaignId, r.slotNumber));
+        if (!id) continue;
+        await tx
+          .update(events)
+          .set({
+            dayPart: r.dayPart,
+            crawlNumber: r.crawlNumber,
+            requiredVenueCountTotal: r.requiredVenueCountTotal,
+            requiredWristbandCount: r.requiredWristbandCount,
+            requiredFinalCount: r.requiredFinalCount,
+            requiredMiddleCount: r.requiredMiddleCount,
+            updatedAt: new Date(),
+            updatedBy: staff.id,
+          })
+          .where(eq(events.id, id));
+        updatedCount++;
+      }
+
+      return { added: addedCount, updated: updatedCount };
+    });
 
     revalidatePath(`/campaigns/${input.campaignId}`);
     return {
       ok: true,
       data: {
-        added: inserted.length,
-        skipped: rows.length - inserted.length,
+        added: result.added,
+        updated: result.updated,
         total: rows.length,
       },
     };

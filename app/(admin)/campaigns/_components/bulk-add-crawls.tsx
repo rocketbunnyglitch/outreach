@@ -101,7 +101,7 @@ export function BulkAddCrawls({
   const [priorityMin, setPriorityMin] = useState<string>("");
   const [priorityMax, setPriorityMax] = useState<string>("");
   const [pending, startTx] = useTransition();
-  const [result, setResult] = useState<{ added: number; skipped: number; total: number } | null>(
+  const [result, setResult] = useState<{ added: number; updated: number; total: number } | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
@@ -209,15 +209,20 @@ export function BulkAddCrawls({
         <div className="flex flex-col gap-3 border-zinc-200 border-t pt-3 dark:border-zinc-800">
           {result ? (
             <SuccessBanner>
-              Scheduled {result.added} {result.added === 1 ? "crawl" : "crawls"} on{" "}
-              {eventDateLabel(eventDate, result)}.
-              {result.skipped > 0 && (
+              {result.added > 0 && (
                 <>
-                  {" "}
-                  Skipped {result.skipped} {result.skipped === 1 ? "city" : "cities"} that already
-                  had a crawl on this date.
+                  Scheduled {result.added} new {result.added === 1 ? "crawl" : "crawls"} on{" "}
+                  {eventDateLabel(eventDate, result)}.
                 </>
               )}
+              {result.updated > 0 && (
+                <>
+                  {result.added > 0 ? " " : ""}
+                  Realigned {result.updated} existing {result.updated === 1 ? "crawl" : "crawls"} to
+                  the new day-part + venue mix.
+                </>
+              )}
+              {result.added === 0 && result.updated === 0 && "No matching cities for this filter."}
               <button
                 type="button"
                 onClick={() => setResult(null)}
@@ -230,7 +235,8 @@ export function BulkAddCrawls({
             <>
               <p className="text-sm text-zinc-700 dark:text-zinc-300">
                 Adds one crawl to every city in this campaign on the date you pick. Cities that
-                already have a crawl on that date are skipped silently.
+                already have a crawl at that slot get their day-part + venue mix realigned to this
+                configuration (their venue assignments, status, and notes are kept).
               </p>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -272,7 +278,7 @@ export function BulkAddCrawls({
                       className="h-9 text-xs"
                       title="First crawl number to add (e.g. 1)."
                     />
-                    <span className="px-1 text-zinc-400 text-xs">–</span>
+                    <span className="px-1 text-xs text-zinc-400">–</span>
                     <Input
                       id="bulk-crawl-to"
                       type="number"
@@ -304,7 +310,7 @@ export function BulkAddCrawls({
                       className="h-9 text-xs"
                       title="Lowest priority bucket to include (e.g. 1). Blank = no lower bound."
                     />
-                    <span className="px-1 text-zinc-400 text-xs">–</span>
+                    <span className="px-1 text-xs text-zinc-400">–</span>
                     <Input
                       id="bulk-pri-max"
                       type="number"
