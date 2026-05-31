@@ -20,6 +20,7 @@ import { useFormStatus } from "react-dom";
 import { AddRemainingCitiesButton } from "./add-remaining-cities-button";
 import { BulkAddCities } from "./bulk-add-cities";
 import { BulkAddCrawls } from "./bulk-add-crawls";
+import { BulkAddWeekend } from "./bulk-add-weekend";
 import { CityProgressCard } from "./city-progress-card";
 
 interface CityOption {
@@ -230,6 +231,16 @@ export function CityCampaignsSection({
           error). */}
       {cityCampaigns.length > 0 && (
         <BulkAddCrawls campaignId={campaignId} cityCount={cityCampaigns.length} />
+      )}
+
+      {/* Smart weekend bulk-add — compose multiple passes (per-day
+          plus optional priority-filtered tiers) in one form. Used
+          when the operator wants to schedule an entire long-
+          weekend (Thu/Fri/Sat night + Sat day, plus extra crawls
+          for the top-4 cities) without clicking through the
+          single-pass BulkAddCrawls six times. */}
+      {cityCampaigns.length > 0 && (
+        <BulkAddWeekend campaignId={campaignId} cityCount={cityCampaigns.length} />
       )}
 
       {/* Add-remaining-cities — admin sweep that dumps every

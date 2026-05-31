@@ -736,6 +736,177 @@ export async function addCrawlToAllCities(input: {
 }
 
 // =========================================================================
+// Smart weekend bulk-add — multiple passes in one shot
+// =========================================================================
+
+/**
+ * Run multiple bulk-add passes against a campaign in a single
+ * operator action. The natural use case is an entire weekend:
+ *
+ *   pass 1 — Thursday Night · Oct 30 · slot 1 · all cities
+ *   pass 2 — Friday Night · Oct 31 · slot 1 · all cities
+ *   pass 3 — Saturday Night · Nov 1 · slot 1 · all cities
+ *   pass 4 — Saturday Day · Nov 1 · slot 1 · all cities
+ *   pass 5 — Friday Night · Oct 31 · slots 2-4 · priority 1-4
+ *   pass 6 — Saturday Night · Nov 1 · slots 2-4 · priority 1-4
+ *
+ * Each pass is independent: passes can hit different day-parts,
+ * different dates, different slot ranges, different priority
+ * windows, and different city subsets. The "smart" part is that
+ * the operator composes the entire weekend in one form instead of
+ * clicking through the single-pass bulk-add six times.
+ *
+ * Implementation: delegates each pass to addCrawlToAllCities so
+ * the validation, filtering, and the insert/update split logic
+ * (commit d9a7f69 — pre-fetch + split) stay in one place. Result
+ * counts aggregate across passes; per-pass errors are surfaced so
+ * a single bad pass doesn't fail the whole operation. Successful
+ * passes commit independently — partial completion is possible
+ * but the operator gets full per-pass visibility to re-run any
+ * failures.
+ *
+ * revalidatePath is a no-op for the same path after the first call
+ * inside a single Server Action, so the N pass invocations all
+ * piggyback on each other's revalidation.
+ */
+export async function bulkAddWeekend(input: {
+  campaignId: string;
+  passes: Array<{
+    eventDate: string;
+    dayPart?:
+      | "thursday_night"
+      | "friday_night"
+      | "saturday_day"
+      | "saturday_night"
+      | "sunday_day"
+      | "sunday_night"
+      | "other";
+    crawlNumbers: number[];
+    extendedMiddle?: boolean;
+    priorityMin?: number;
+    priorityMax?: number;
+    cityCampaignIds?: string[];
+  }>;
+}): Promise<
+  ActionResult<{
+    totalAdded: number;
+    totalUpdated: number;
+    totalRows: number;
+    passResults: Array<{
+      passIndex: number;
+      label: string;
+      added: number;
+      updated: number;
+      total: number;
+      error?: string;
+    }>;
+  }>
+> {
+  await requireStaff();
+
+  if (input.passes.length === 0) {
+    return { ok: false, error: "Add at least one pass to schedule." };
+  }
+  if (input.passes.length > 12) {
+    return { ok: false, error: "Too many passes — limit 12 per weekend bulk-add." };
+  }
+
+  const passResults: Array<{
+    passIndex: number;
+    label: string;
+    added: number;
+    updated: number;
+    total: number;
+    error?: string;
+  }> = [];
+
+  for (let i = 0; i < input.passes.length; i++) {
+    const p = input.passes[i];
+    if (!p) continue;
+    const label = buildPassLabel(p);
+    const res = await addCrawlToAllCities({
+      campaignId: input.campaignId,
+      eventDate: p.eventDate,
+      dayPart: p.dayPart,
+      extendedMiddle: p.extendedMiddle,
+      crawlNumbers: p.crawlNumbers,
+      priorityMin: p.priorityMin,
+      priorityMax: p.priorityMax,
+      cityCampaignIds: p.cityCampaignIds,
+    });
+    if (res.ok) {
+      passResults.push({
+        passIndex: i,
+        label,
+        added: res.data.added,
+        updated: res.data.updated,
+        total: res.data.total,
+      });
+    } else {
+      passResults.push({
+        passIndex: i,
+        label,
+        added: 0,
+        updated: 0,
+        total: 0,
+        error: res.error,
+      });
+    }
+  }
+
+  const totalAdded = passResults.reduce((s, r) => s + r.added, 0);
+  const totalUpdated = passResults.reduce((s, r) => s + r.updated, 0);
+  const totalRows = passResults.reduce((s, r) => s + r.total, 0);
+
+  // If literally every pass failed, treat as error so the UI can
+  // surface a banner. If even one succeeded the result is "ok"
+  // with per-pass breakdown shown to the operator.
+  const anyOk = passResults.some((r) => !r.error);
+  if (!anyOk) {
+    return {
+      ok: false,
+      error: passResults[0]?.error ?? "Every pass failed.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: { totalAdded, totalUpdated, totalRows, passResults },
+  };
+}
+
+/** Human-readable summary of a single pass — used in the response
+ *  so the UI can render a per-pass breakdown without recomputing. */
+function buildPassLabel(p: {
+  eventDate: string;
+  dayPart?: string;
+  crawlNumbers: number[];
+  priorityMin?: number;
+  priorityMax?: number;
+  cityCampaignIds?: string[];
+}): string {
+  const dayLabel = p.dayPart
+    ? p.dayPart
+        .split("_")
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join(" ")
+    : "No day part";
+  const slots =
+    p.crawlNumbers.length === 1
+      ? `slot ${p.crawlNumbers[0]}`
+      : `slots ${Math.min(...p.crawlNumbers)}-${Math.max(...p.crawlNumbers)}`;
+  let scope = "all cities";
+  if (p.cityCampaignIds && p.cityCampaignIds.length > 0) {
+    scope = `${p.cityCampaignIds.length} selected`;
+  } else if (p.priorityMin !== undefined || p.priorityMax !== undefined) {
+    const lo = p.priorityMin ?? 1;
+    const hi = p.priorityMax ?? 99;
+    scope = lo === hi ? `priority ${lo}` : `priority ${lo}-${hi}`;
+  }
+  return `${dayLabel} · ${p.eventDate} · ${slots} · ${scope}`;
+}
+
+// =========================================================================
 // Bulk delete city_campaigns (admin only — hard delete)
 // =========================================================================
 
