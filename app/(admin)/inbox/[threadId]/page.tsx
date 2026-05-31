@@ -13,7 +13,9 @@ import {
   isInboxFolder,
 } from "@/lib/inbox-data";
 import { listTeamLabels, listThreadLabels } from "@/lib/team-labels";
+import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { notFound } from "next/navigation";
+import { AccountSwitcher } from "../_components/AccountSwitcher";
 import { FolderList } from "../_components/FolderList";
 import { InboxFilterBar } from "../_components/InboxFilterBar";
 import { InboxPresenceBar } from "../_components/InboxPresenceBar";
@@ -64,36 +66,42 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         : undefined;
   const mineAssigned = assignedStaffId === currentStaff.id;
 
-  const [detail, threads, counts, aliases, facets, gmailLabels] = await Promise.all([
-    fetchThreadDetail(threadId),
-    fetchInboxThreads({
-      folder,
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-      mine,
-      assignedStaffId,
-      cityCampaignId: search.campaign,
-      outreachBrandId: search.brand,
-      labelId: search.label,
-      aliasId: search.alias,
-      search: search.q,
-    }),
-    fetchFolderCounts({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-      mine,
-    }),
-    fetchInboxAliases({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-    }),
-    fetchInboxFilterFacets({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-      mine,
-    }),
-    fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
-  ]);
+  const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts] =
+    await Promise.all([
+      fetchThreadDetail(threadId),
+      fetchInboxThreads({
+        folder,
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+        mine,
+        assignedStaffId,
+        cityCampaignId: search.campaign,
+        outreachBrandId: search.brand,
+        labelId: search.label,
+        aliasId: search.alias,
+        search: search.q,
+      }),
+      fetchFolderCounts({
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+        mine,
+      }),
+      fetchInboxAliases({
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+      }),
+      fetchInboxFilterFacets({
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+        mine,
+      }),
+      fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
+      loadVisibleAccounts({
+        currentUserId: currentStaff.id,
+        currentTeamId: currentStaff.teamId,
+        canSeeAllTeamAccounts: currentStaff.role === "admin",
+      }),
+    ]);
 
   if (!detail) notFound();
 
@@ -137,6 +145,14 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     <>
       <UserPreferencesHydrator userId={currentStaff.id} />
       <InboxShell
+        topRight={
+          <AccountSwitcher
+            accounts={visibleAccounts}
+            currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
+              .trim()
+              .charAt(0)}
+          />
+        }
         left={
           <div className="flex h-full flex-col">
             <FolderList

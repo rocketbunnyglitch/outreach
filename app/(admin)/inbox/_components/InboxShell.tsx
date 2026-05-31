@@ -19,22 +19,29 @@ export function InboxShell({
   left,
   middle,
   right,
+  topRight,
 }: {
   left: React.ReactNode;
   middle: React.ReactNode;
   right: React.ReactNode;
+  /** Optional top-right slot — renders absolutely-positioned over the
+   *  shell so it floats above the right pane. Used by the Gmail-style
+   *  AccountSwitcher dropdown. */
+  topRight?: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
-        "flex animate-[fade-in_300ms_ease-out] flex-col lg:flex-row",
-        // Full-height of the admin shell minus header padding. The admin
-        // layout uses overflow management; we just need to consume height.
+        "relative flex animate-[fade-in_300ms_ease-out] flex-col lg:flex-row",
+        // Full-height of the admin shell minus header padding.
         "min-h-[calc(100vh-8rem)]",
         // Subtle outer card so the three panes read as one composed surface.
         "card-surface overflow-hidden p-0",
       )}
     >
+      {topRight && (
+        <div className="absolute top-3 right-4 z-20 lg:top-4 lg:right-5">{topRight}</div>
+      )}
       <aside
         className={cn(
           "shrink-0 border-zinc-200/80 border-b lg:w-[220px] lg:border-r lg:border-b-0",

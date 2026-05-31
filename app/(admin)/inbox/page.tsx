@@ -10,7 +10,9 @@ import {
   fetchTeamGmailLabels,
   isInboxFolder,
 } from "@/lib/inbox-data";
+import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { Inbox as InboxIcon } from "lucide-react";
+import { AccountSwitcher } from "./_components/AccountSwitcher";
 import { DraftList } from "./_components/DraftList";
 import { FolderList } from "./_components/FolderList";
 import { InboxFilterBar } from "./_components/InboxFilterBar";
@@ -87,42 +89,51 @@ export default async function InboxPage({ searchParams }: Props) {
 
   const isDraftFolder = folder === "drafts" || folder === "scheduled";
 
-  const [threads, counts, aliases, facets, gmailLabels, drafts] = await Promise.all([
-    fetchInboxThreads({
-      folder,
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-      mine,
-      assignedStaffId,
-      cityCampaignId: params.campaign,
-      outreachBrandId: params.brand,
-      labelId: params.label,
-      aliasId: params.alias,
-      search: params.q,
-    }),
-    fetchFolderCounts({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-      mine,
-    }),
-    fetchInboxAliases({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-    }),
-    fetchInboxFilterFacets({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-      mine,
-    }),
-    fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
-    isDraftFolder
-      ? fetchDraftList({
-          currentUserId: currentStaff.id,
-          currentTeamId: currentStaff.teamId,
-          mode: folder === "scheduled" ? "scheduled" : "drafts",
-        })
-      : Promise.resolve([]),
-  ]);
+  const [threads, counts, aliases, facets, gmailLabels, drafts, visibleAccounts] =
+    await Promise.all([
+      fetchInboxThreads({
+        folder,
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+        mine,
+        assignedStaffId,
+        cityCampaignId: params.campaign,
+        outreachBrandId: params.brand,
+        labelId: params.label,
+        aliasId: params.alias,
+        search: params.q,
+      }),
+      fetchFolderCounts({
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+        mine,
+      }),
+      fetchInboxAliases({
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+      }),
+      fetchInboxFilterFacets({
+        currentTeamId: currentStaff.teamId,
+        currentUserId: currentStaff.id,
+        mine,
+      }),
+      fetchTeamGmailLabels({ currentTeamId: currentStaff.teamId }),
+      isDraftFolder
+        ? fetchDraftList({
+            currentUserId: currentStaff.id,
+            currentTeamId: currentStaff.teamId,
+            mode: folder === "scheduled" ? "scheduled" : "drafts",
+          })
+        : Promise.resolve([]),
+      loadVisibleAccounts({
+        currentUserId: currentStaff.id,
+        currentTeamId: currentStaff.teamId,
+        // Admin / lead see every team account. Staff see only their
+        // own. Future: a finer-grained "team accounts I have access
+        // to" model will go here.
+        canSeeAllTeamAccounts: currentStaff.role === "admin",
+      }),
+    ]);
 
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
@@ -138,6 +149,14 @@ export default async function InboxPage({ searchParams }: Props) {
     <>
       <UserPreferencesHydrator userId={currentStaff.id} />
       <InboxShell
+        topRight={
+          <AccountSwitcher
+            accounts={visibleAccounts}
+            currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
+              .trim()
+              .charAt(0)}
+          />
+        }
         left={
           <div className="flex h-full flex-col">
             <FolderList
