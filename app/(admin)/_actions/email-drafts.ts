@@ -20,7 +20,12 @@
  */
 
 import { type EmailDraftAttachment, emailDrafts } from "@/db/schema";
-import { createSignedUpload, deleteAttachment, isValidStorageKey } from "@/lib/attachment-storage";
+import {
+  createSignedUpload,
+  deleteAttachment,
+  isAttachmentStorageEnabled,
+  isValidStorageKey,
+} from "@/lib/attachment-storage";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -526,4 +531,19 @@ export async function deleteAttachmentObject(
   }
   await deleteAttachment(storageKey);
   return { ok: true, data: { deleted: true } };
+}
+
+/**
+ * Tiny mount-time probe — returns whether attachment storage is
+ * actually configured on this deployment. The composer uses this to
+ * decide whether to enable the paperclip button at all, rather than
+ * surfacing a confusing post-pick warning to operators (who can't
+ * fix env vars themselves).
+ *
+ * Returns { enabled: boolean }. Auth via requireStaff so this isn't
+ * a public probe; only signed-in operators can ping it.
+ */
+export async function probeAttachmentsEnabled(): Promise<{ enabled: boolean }> {
+  await requireStaff();
+  return { enabled: isAttachmentStorageEnabled() };
 }

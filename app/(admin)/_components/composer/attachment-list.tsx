@@ -4,31 +4,35 @@
  * AttachmentList — chip-style list of attached files.
  *
  * Storage flow:
- *   1. Operator picks/drops a file
- *   2. Client calls createAttachmentUpload action -> signed PUT URL
- *   3. Client PUTs the file directly to object storage (bypasses
+ *   1. On mount, probeAttachmentsEnabled returns whether object
+ *      storage is configured on this deployment. If not, the
+ *      paperclip button renders disabled with an explanatory
+ *      tooltip — operators can't get into a state where they
+ *      attach files that won't actually upload.
+ *   2. Operator picks/drops a file
+ *   3. Client calls createAttachmentUpload action -> signed PUT URL
+ *   4. Client PUTs the file directly to object storage (bypasses
  *      Next route handlers + body-size limits)
- *   4. On success, the chip's storage_key is set and the parent
+ *   5. On success, the chip's storage_key is set and the parent
  *      composer's upsertDraft persists the attachment record on its
  *      next autosave tick
  *
- *   If the server returns { enabled: false } (ATTACHMENTS_ENABLED
- *   unset), the chip falls back to a "memory only" warning state —
- *   chip persists in the draft JSONB but the bytes are never stored,
- *   so the send pipeline can't attach them. This preserves the
- *   pre-storage UX for environments where storage isn't configured.
+ *   The legacy "memory_only" chip state is kept in the type union
+ *   for backward compat with old drafts that may carry chips
+ *   created before this probe existed, but the paperclip-gate
+ *   means no NEW chip lands there.
  *
  *   Chip states:
  *     uploading   — spinner; PUT in flight
  *     uploaded    — green check; storage_key set
- *     memory_only — amber warning; storage not configured
+ *     memory_only — amber warning; legacy / unreachable for new picks
  *     error       — rose; remove + retry via the X button
  */
 
 import { cn } from "@/lib/cn";
-import { Check, File as FileIcon, Loader2, Paperclip, Upload, X } from "lucide-react";
+import { Check, File as FileIcon, Loader2, Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createAttachmentUpload } from "../../_actions/email-drafts";
+import { createAttachmentUpload, probeAttachmentsEnabled } from "../../_actions/email-drafts";
 import type { ComposerAttachment } from "./composer-store";
 
 interface Props {
@@ -52,6 +56,19 @@ export function AttachmentList({ draftId, attachments, onChange }: Props) {
   const [transient, setTransient] = useState<Record<string, { state: ChipState; error?: string }>>(
     {},
   );
+  // null = probe in flight; boolean = result. While in flight we
+  // optimistically enable the paperclip so a fast-clicker doesn't
+  // get a dead button on a snappy network; the actual upload path
+  // re-checks via createAttachmentUpload anyway.
+  const [storageEnabled, setStorageEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    probeAttachmentsEnabled()
+      .then((r) => setStorageEnabled(r.enabled))
+      .catch(() => setStorageEnabled(false));
+  }, []);
+  // Render-time gate: disable the paperclip only after we know
+  // storage is unavailable. Probe-pending state stays enabled.
+  const attachmentsDisabled = storageEnabled === false;
 
   function setChip(id: string, patch: { state: ChipState; error?: string }) {
     setTransient((prev) => ({ ...prev, [id]: patch }));
@@ -144,11 +161,6 @@ export function AttachmentList({ draftId, attachments, onChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId]);
 
-  // Computed: are any chips backed by storage?
-  const anyMemoryOnly = attachments.some(
-    (a) => !a.storage_key && transient[a.id]?.state !== "uploading",
-  );
-
   return (
     <div className="flex flex-col gap-1">
       <div
@@ -198,9 +210,16 @@ export function AttachmentList({ draftId, attachments, onChange }: Props) {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          title="Attach files (drag-drop also works)"
+          disabled={attachmentsDisabled}
+          title={
+            attachmentsDisabled
+              ? "Attachments aren't enabled on this deployment"
+              : "Attach files (drag-drop also works)"
+          }
           className={cn(
             "inline-flex items-center gap-1 rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+            attachmentsDisabled &&
+              "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-zinc-500 dark:hover:bg-transparent dark:hover:text-zinc-500",
           )}
         >
           <Paperclip className="h-3 w-3" />
@@ -210,16 +229,10 @@ export function AttachmentList({ draftId, attachments, onChange }: Props) {
           type="file"
           multiple
           className="hidden"
+          disabled={attachmentsDisabled}
           onChange={(e) => void add(e.target.files)}
         />
       </div>
-      {anyMemoryOnly && (
-        <p className="font-mono text-[9px] text-amber-600 dark:text-amber-400">
-          <Upload className="mr-0.5 inline h-2.5 w-2.5" />
-          Object storage not configured — these files won't attach to the sent email. Set
-          ATTACHMENTS_ENABLED + bucket env vars.
-        </p>
-      )}
     </div>
   );
 }
