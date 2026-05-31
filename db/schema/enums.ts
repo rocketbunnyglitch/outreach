@@ -63,6 +63,12 @@ export const eventStatus = pgEnum("event_status", [
   "cancelled",
 ]);
 
+/** Crawl shape — drives the tracker row format + completion predicate.
+ *  - 'standard': wristband + 2 middles + final (4 venues)
+ *  - 'day_party': wristband + 2 middles, NO final (3 venues). Day
+ *    parties wrap before the final hour. Migration 0074. */
+export const crawlFormat = pgEnum("crawl_format", ["standard", "day_party"]);
+
 // =========================================================================
 // Venues
 // =========================================================================

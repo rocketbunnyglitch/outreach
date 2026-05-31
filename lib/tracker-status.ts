@@ -73,6 +73,11 @@ export async function computeCityNeeds(
     eventStatus: string | null;
     ticketsSold: number | null;
     notes: string | null;
+    /** Per-event venue mix target. Drives the open-slot predicate so
+     *  day-party events (total=3, final=0) don't get "needsFinal"
+     *  forever. Migration 0074. */
+    requiredVenueCountTotal: number;
+    requiredFinalCount: number;
     venueEventStatus: string | null;
     venueRole: string | null;
     wristbandStatus: CrawlNeed["wristbandStatus"];
@@ -88,6 +93,8 @@ export async function computeCityNeeds(
         eventStatus: events.status,
         ticketsSold: events.ticketSalesCount,
         notes: events.notes,
+        requiredVenueCountTotal: events.requiredVenueCountTotal,
+        requiredFinalCount: events.requiredFinalCount,
         venueEventStatus: venueEvents.status,
         venueRole: venueEvents.role,
         wristbandStatus: wristbands.status,
@@ -105,6 +112,8 @@ export async function computeCityNeeds(
         crawlNumber: events.crawlNumber,
         eventStatus: events.status,
         ticketsSold: events.ticketSalesCount,
+        requiredVenueCountTotal: events.requiredVenueCountTotal,
+        requiredFinalCount: events.requiredFinalCount,
         venueEventStatus: venueEvents.status,
         venueRole: venueEvents.role,
         wristbandStatus: wristbands.status,
@@ -205,6 +214,11 @@ export async function computeCityNeeds(
     ticketsSold: number;
     wristbandStatus: CrawlNeed["wristbandStatus"];
     notes: string;
+    /** Per-event venue mix totals — pulled from the event row so the
+     *  open-slot predicate respects day-party events (total=3,
+     *  final=0). Migration 0074. */
+    requiredVenueCountTotal: number;
+    requiredFinalCount: number;
   };
   const bucketKey = (cc: string, d: string, n: number) => `${cc}::${d}::${n}`;
   const buckets = new Map<string, CrawlBucket>();
@@ -224,6 +238,8 @@ export async function computeCityNeeds(
         ticketsSold: r.ticketsSold ?? 0,
         wristbandStatus: null,
         notes: r.notes ?? "",
+        requiredVenueCountTotal: r.requiredVenueCountTotal ?? 4,
+        requiredFinalCount: r.requiredFinalCount ?? 1,
       };
       buckets.set(k, b);
     }
@@ -237,24 +253,29 @@ export async function computeCityNeeds(
     if (b.ticketsSold === 0 && r.ticketsSold) b.ticketsSold = r.ticketsSold;
   }
 
-  // Per crawl: 4 slots needed (wristband, middle 1, middle 2, final)
-  // Confirmed count maps loosely — if confirmed >= 4 all filled.
-  // Future: explicit slot positions.
-  const SLOT_TARGET = 4;
+  // Per crawl: number of open slots = required_venue_count_total -
+  // confirmed. The slot ATTRIBUTION (wristband / middle1 / middle2 /
+  // final) is order-preserving: as open shrinks we tick off in the
+  // order wristband → middle1 → middle2 → final. Day-party events
+  // ship with required_final_count = 0, so needsFinal is suppressed
+  // regardless of open count (their venue mix has no final slot).
   const byCC = new Map<string, CrawlNeed[]>();
   for (const b of buckets.values()) {
-    const open = Math.max(0, SLOT_TARGET - b.confirmedVenueCount);
-    // Simplified attribution: assume open slots fall in order
-    // wristband → middle1 → middle2 → final
+    const slotTarget = b.requiredVenueCountTotal;
+    const open = Math.max(0, slotTarget - b.confirmedVenueCount);
+    const noFinalSlot = b.requiredFinalCount === 0;
     const need: CrawlNeed = {
       eventId: b.eventId,
       dayPart: b.dayPart,
       crawlNumber: b.crawlNumber,
       status: b.status,
-      needsWristband: open >= 4,
-      needsMiddle1: open >= 3,
-      needsMiddle2: open >= 2,
-      needsFinal: open >= 1,
+      // Day party (no final slot): we tick off in order wristband ->
+      // middle1 -> middle2 with target = 3.
+      // Standard: wristband -> middle1 -> middle2 -> final with target = 4.
+      needsWristband: open >= slotTarget,
+      needsMiddle1: open >= slotTarget - 1,
+      needsMiddle2: open >= slotTarget - 2,
+      needsFinal: noFinalSlot ? false : open >= 1,
       ticketsSold: b.ticketsSold,
       // Per-crawl sales is tickets × $30 (cents), mirroring the city-level
       // salesMap in tracker-data.ts. Will be replaced by a real Eventbrite

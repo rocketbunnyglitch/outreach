@@ -32,7 +32,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { cityCampaigns } from "./city-campaigns";
-import { dayPart, eventStatus } from "./enums";
+import { crawlFormat, dayPart, eventStatus } from "./enums";
 import { middleVenueGroups } from "./middle-venue-groups";
 
 export const events = pgTable(
@@ -83,6 +83,17 @@ export const events = pgTable(
     requiredMiddleCount: smallint("required_middle_count").notNull().default(2),
 
     status: eventStatus("status").notNull().default("planned"),
+
+    /** Crawl shape — 'standard' (wristband + 2 middles + final) or
+     *  'day_party' (wristband + 2 middles, no final). Drives the
+     *  tracker row format + the completion predicate. Migration 0074. */
+    crawlFormat: crawlFormat("crawl_format").notNull().default("standard"),
+
+    /** Free-text display name override. NULL = use the auto-generated
+     *  label ("Saturday night crawl 1"); set = the operator gave this
+     *  crawl a custom name like "Day Party" or "Pre-game". Bulk-renamed
+     *  via a tracker-tab admin action. Migration 0074. */
+    crawlName: text("crawl_name"),
 
     ...archivedAt,
     ...auditColumns,

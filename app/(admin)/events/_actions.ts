@@ -15,7 +15,7 @@ import {
   eventCreateSchema,
   eventUpdateSchema,
 } from "@/lib/validation/events";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
@@ -147,4 +147,103 @@ export async function archiveEvent(id: string): Promise<void> {
   );
   if (row?.cityCampaignId) revalidatePath(`/city-campaigns/${row.cityCampaignId}`);
   redirect(row?.cityCampaignId ? `/city-campaigns/${row.cityCampaignId}` : "/campaigns");
+}
+
+// =========================================================================
+// Bulk operations across many events at once
+// =========================================================================
+
+/**
+ * Bulk-rename: set crawl_name for every event matching the filter.
+ * Used by the tracker tab so an operator can say "all Saturday crawl
+ * 4's are Day Parties" in one shot.
+ *
+ * Filter shape:
+ *   - campaignId required (scopes the bulk to one campaign)
+ *   - crawlNumber required (which slot to rename)
+ *   - dayPart optional (when omitted, applies across every day part)
+ *
+ * setFormat is parallel: same filter, sets crawl_format = 'day_party'
+ * or 'standard'. Operators usually pair them: "name + format" for
+ * day-party crawls.
+ */
+export async function bulkRenameCrawls(input: {
+  campaignId: string;
+  crawlNumber: number;
+  dayPart?:
+    | "thursday_night"
+    | "friday_night"
+    | "saturday_day"
+    | "saturday_night"
+    | "sunday_day"
+    | "sunday_night"
+    | "other";
+  /** New name. Null/empty clears the override and reverts to the auto label. */
+  crawlName?: string | null;
+  /** Optional format change applied at the same time. */
+  crawlFormat?: "standard" | "day_party";
+}): Promise<ActionResult<{ updated: number }>> {
+  const { staff } = await requireStaff();
+
+  if (!Number.isInteger(input.crawlNumber) || input.crawlNumber < 1 || input.crawlNumber > 9) {
+    return { ok: false, error: "Crawl number must be 1-9." };
+  }
+  if (input.crawlName !== undefined && input.crawlName !== null && input.crawlName.length > 60) {
+    return { ok: false, error: "Crawl name must be 60 characters or fewer." };
+  }
+
+  // Validation only — the actual UPDATE is built as raw SQL further
+  // down so it can carry a CITY_CAMPAIGN -> CAMPAIGN join in the
+  // WHERE clause. Either crawlName or crawlFormat must be set.
+  if (input.crawlName === undefined && input.crawlFormat === undefined) {
+    return { ok: false, error: "Provide at least one of crawlName or crawlFormat." };
+  }
+
+  try {
+    const result = await withAuditContext(staff.id, async (tx) => {
+      // Build the SET clause as a list of SQL fragments. Only fields
+      // explicitly provided get written — bulk-rename without format
+      // change leaves format alone, and vice versa.
+      const setParts: import("drizzle-orm").SQL[] = [
+        sql`updated_at = NOW()`,
+        sql`updated_by = ${staff.id}`,
+      ];
+      if (input.crawlName !== undefined) {
+        const v = input.crawlName === "" ? null : input.crawlName;
+        setParts.push(sql`crawl_name = ${v}`);
+      }
+      if (input.crawlFormat !== undefined) {
+        setParts.push(sql`crawl_format = ${input.crawlFormat}::crawl_format`);
+        // Day-party format also overrides venue mix: no final, still
+        // 1 wristband + 2 middles. Standard restores defaults.
+        if (input.crawlFormat === "day_party") {
+          setParts.push(sql`required_final_count = 0`);
+          setParts.push(sql`required_venue_count_total = 3`);
+        } else {
+          setParts.push(sql`required_final_count = 1`);
+          setParts.push(sql`required_venue_count_total = 4`);
+        }
+      }
+      const setClause = sql.join(setParts, sql`, `);
+      const dpClause = input.dayPart ? sql`AND e.day_part = ${input.dayPart}` : sql``;
+      const upd = await tx.execute(sql`
+        UPDATE events e
+        SET ${setClause}
+        FROM city_campaigns cc
+        WHERE cc.id = e.city_campaign_id
+          AND cc.campaign_id = ${input.campaignId}
+          AND e.crawl_number = ${input.crawlNumber}
+          AND e.archived_at IS NULL
+          ${dpClause}
+        RETURNING e.id
+      `);
+      const rows = Array.isArray(upd) ? upd : ((upd as { rows?: unknown[] }).rows ?? []);
+      return { updated: rows.length };
+    });
+    revalidatePath("/tracker");
+    revalidatePath(`/campaigns/${input.campaignId}`);
+    return { ok: true, data: result };
+  } catch (err) {
+    return wrapDbError(err, "bulk rename crawls");
+  }
 }

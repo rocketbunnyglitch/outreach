@@ -3,6 +3,7 @@ import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
 import { TrackerDashboardTable } from "../_components/dashboard/tracker-dashboard-table";
+import { BulkRenameCrawls } from "./_components/bulk-rename-crawls";
 
 export const metadata = { title: "Tracker" };
 export const dynamic = "force-dynamic";
@@ -13,11 +14,11 @@ export const dynamic = "force-dynamic";
  * to "Show all" (no priority filtering) since this is the dedicated view.
  */
 export default async function TrackerPage() {
-  await requireStaff();
+  const { staff } = await requireStaff();
   const currentCampaign = await getCurrentCampaign();
   const campaignId = currentCampaign ? currentCampaign.campaign.id : null;
 
-  const { rows, staff } = campaignId
+  const { rows, staff: staffOpts } = campaignId
     ? await loadTrackerData({ campaignId }).catch(() => ({ rows: [], staff: [] }))
     : { rows: [], staff: [] };
 
@@ -35,8 +36,10 @@ export default async function TrackerPage() {
         </div>
       </header>
 
+      {campaignId && <BulkRenameCrawls campaignId={campaignId} isAdmin={staff.role === "admin"} />}
+
       {campaignId && rows.length > 0 ? (
-        <TrackerDashboardTable rows={rows} staff={staff} defaultPriorityFilter="all" />
+        <TrackerDashboardTable rows={rows} staff={staffOpts} defaultPriorityFilter="all" />
       ) : (
         <div className="rounded-2xl border border-zinc-200 border-dashed p-12 text-center dark:border-zinc-800">
           <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
