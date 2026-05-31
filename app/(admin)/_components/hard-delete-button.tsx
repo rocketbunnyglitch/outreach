@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -31,6 +32,7 @@ export function HardDeleteButton({
   const [confirm, setConfirm] = useState("");
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const matches = confirm === matchText;
 
@@ -47,8 +49,10 @@ export function HardDeleteButton({
       const res = await action();
       if (!res.ok) {
         setError(res.error ?? "Delete failed.");
+        toast.show({ kind: "error", message: res.error ?? "Couldn't delete." });
         return;
       }
+      toast.show({ kind: "success", message: `${label} deleted.` });
       reset();
       router.push(redirectTo);
       router.refresh();

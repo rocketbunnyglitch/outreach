@@ -13,6 +13,7 @@
  * surface the message inline.
  */
 
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
@@ -100,6 +101,7 @@ function Row({
   onError: (msg: string | null) => void;
 }) {
   const [isPending, startTx] = useTransition();
+  const toast = useToast();
 
   function changeOwner(ownerUserId: string) {
     const previous = row;
@@ -119,6 +121,7 @@ function Row({
       if (!result.ok) {
         onUpdate(previous);
         onError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't change owner." });
       }
     });
   }
@@ -136,6 +139,7 @@ function Row({
       if (!result.ok) {
         onUpdate(previous);
         onError(result.error);
+        toast.show({ kind: "error", message: result.error ?? "Couldn't change assignment." });
       }
     });
   }

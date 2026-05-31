@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import {
   Check,
@@ -42,6 +43,7 @@ export function EventSubmissionBoard({
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTx] = useTransition();
+  const toast = useToast();
 
   function startAdd(cityId: string) {
     setError(null);
@@ -65,6 +67,8 @@ export function EventSubmissionBoard({
       setError("Site name is required.");
       return;
     }
+    const wasEdit = !!draft.id;
+    const siteName = draft.name.trim();
     startTx(async () => {
       try {
         const result = await upsertSubmissionSite({
@@ -76,13 +80,19 @@ export function EventSubmissionBoard({
         });
         if (!result.ok) {
           setError(result.error ?? "Couldn't save.");
+          toast.show({ kind: "error", message: result.error ?? "Couldn't save site." });
           return;
         }
         setDraft(null);
+        toast.show({
+          kind: "success",
+          message: wasEdit ? `Updated "${siteName}".` : `Added "${siteName}".`,
+        });
         router.refresh();
       } catch (err) {
         console.error("[event-submission] save failed", err);
         setError("Couldn't save — try again.");
+        toast.show({ kind: "error", message: "Couldn't save — try again." });
       }
     });
   }
@@ -91,10 +101,17 @@ export function EventSubmissionBoard({
     startTx(async () => {
       try {
         await toggleSubmissionSite({ id: site.id, submitted: !site.submitted });
+        toast.show({
+          kind: "success",
+          message: !site.submitted
+            ? `Marked "${site.name}" submitted.`
+            : `Marked "${site.name}" not submitted.`,
+        });
         router.refresh();
       } catch (err) {
         console.error("[event-submission] toggle failed", err);
         setError("Couldn't update — try again.");
+        toast.show({ kind: "error", message: "Couldn't update site status." });
       }
     });
   }
@@ -104,10 +121,12 @@ export function EventSubmissionBoard({
     startTx(async () => {
       try {
         await archiveSubmissionSite({ id: site.id });
+        toast.show({ kind: "success", message: `Removed "${site.name}".` });
         router.refresh();
       } catch (err) {
         console.error("[event-submission] remove failed", err);
         setError("Couldn't remove — try again.");
+        toast.show({ kind: "error", message: "Couldn't remove site." });
       }
     });
   }

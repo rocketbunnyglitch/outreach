@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { AlertTriangle, CheckCircle2, FileUp, Loader2, Sparkles, XCircle } from "lucide-react";
 import { useState, useTransition } from "react";
@@ -58,6 +59,7 @@ export function CsvImportWidget({ campaigns }: Props) {
   const [commitResult, setCommitResult] = useState<Awaited<
     ReturnType<typeof commitCsvImport>
   > | null>(null);
+  const toast = useToast();
 
   function runPreview(nextCsv: string) {
     setCsv(nextCsv);
@@ -90,12 +92,22 @@ export function CsvImportWidget({ campaigns }: Props) {
       const result = await commitCsvImport(null, fd);
       setCommitResult(result);
       if (result.ok) {
+        const inserted = result.data.cityCampaignsCreated + result.data.eventsCreated;
+        toast.show({
+          kind: "success",
+          message: `Imported ${result.data.cityCampaignsCreated} ${result.data.cityCampaignsCreated === 1 ? "city" : "cities"} and ${result.data.eventsCreated} ${result.data.eventsCreated === 1 ? "crawl" : "crawls"} (${inserted} total).`,
+        });
         // Clear after successful commit
         setTimeout(() => {
           setCsv("");
           setPreview(null);
           setCommitResult(null);
         }, 3000);
+      } else {
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't import — check the error details.",
+        });
       }
     });
   }
