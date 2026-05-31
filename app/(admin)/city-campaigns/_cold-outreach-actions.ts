@@ -22,6 +22,7 @@ import {
   tasks,
   venues,
 } from "@/db/schema";
+import { backfillLeadScores } from "@/lib/ai-lead-score";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { detectRemarkFollowUp } from "@/lib/detect-remark-followup";
@@ -951,6 +952,14 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     escalatedToName: string | null;
     escalatedAt: string | null;
     escalationNotes: string | null;
+    /**
+     * AI lead score (Haiku ROI #5). 0..100 conversion-likelihood
+     * score with a 1-line reason. Drives the default sort on the
+     * cold-outreach table when present. NULL = not scored yet.
+     */
+    aiLeadScore: number | null;
+    aiLeadScoreReason: string | null;
+    aiLeadScoreAt: Date | null;
   }>
 > {
   await requireStaff();
@@ -981,6 +990,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       escalatedToName: escalatedStaff.displayName,
       escalatedAt: coldOutreachEntries.escalatedAt,
       escalationNotes: coldOutreachEntries.escalationNotes,
+      aiLeadScore: coldOutreachEntries.aiLeadScore,
+      aiLeadScoreReason: coldOutreachEntries.aiLeadScoreReason,
+      aiLeadScoreAt: coldOutreachEntries.aiLeadScoreAt,
     })
     .from(coldOutreachEntries)
     .innerJoin(venues, eq(venues.id, coldOutreachEntries.venueId))
@@ -1062,6 +1074,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     escalatedToName: r.escalatedToName,
     escalatedAt: r.escalatedAt ? r.escalatedAt.toISOString() : null,
     escalationNotes: r.escalationNotes,
+    aiLeadScore: r.aiLeadScore,
+    aiLeadScoreReason: r.aiLeadScoreReason,
+    aiLeadScoreAt: r.aiLeadScoreAt,
   }));
 }
 
@@ -1319,5 +1334,47 @@ export async function createFollowUpFromRemark(
   } catch (err) {
     logger.error({ err, entryId }, "createFollowUpFromRemark failed");
     return { ok: false, error: "Couldn't create follow-up task." };
+  }
+}
+
+// =========================================================================
+// AI lead-score backfill (Haiku ROI #5)
+// =========================================================================
+
+/**
+ * Score un-scored OR stale cold-outreach entries in this city
+ * campaign. Each invocation processes up to 200 rows (10 batches
+ * of 20); the caller re-runs when hasMore is true.
+ *
+ * Caller MUST be authenticated; gating by role lives one layer up
+ * (the UI is only rendered for admins). The action revalidates
+ * the campaign page so new scores show up immediately.
+ */
+export async function backfillLeadScoresForCampaign(input: {
+  cityCampaignId: string;
+}): Promise<
+  ActionResult<{
+    scanned: number;
+    scored: number;
+    failed: number;
+    batches: number;
+    hasMore: boolean;
+  }>
+> {
+  const { staff } = await requireStaff();
+  if (!input.cityCampaignId) return { ok: false, error: "cityCampaignId is required." };
+
+  try {
+    const result = await backfillLeadScores({
+      staffId: staff.id,
+      cityCampaignId: input.cityCampaignId,
+    });
+    // Reach the city-campaign page from any of the standard routes
+    // so the cold-outreach table re-renders with the fresh scores.
+    revalidatePath(`/city-campaigns/${input.cityCampaignId}`);
+    return { ok: true, data: result };
+  } catch (err) {
+    logger.error({ err, cityCampaignId: input.cityCampaignId }, "lead score backfill failed");
+    return { ok: false, error: "Lead score backfill failed." };
   }
 }

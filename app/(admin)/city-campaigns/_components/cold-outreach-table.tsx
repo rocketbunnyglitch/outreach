@@ -60,6 +60,7 @@ import { BulkPasteModal } from "./bulk-paste-modal";
 import { EscalationPopover } from "./escalation-popover";
 import { EscalationStatusPopover } from "./escalation-status-popover";
 import { FindEmailButton } from "./find-email-button";
+import { LeadScoreChip, ScoreAllButton } from "./lead-score-ui";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
@@ -110,6 +111,15 @@ interface ColdEntry {
   escalatedToName: string | null;
   escalatedAt: string | null;
   escalationNotes: string | null;
+  /**
+   * AI lead score (0..100) + reason, plus when it was generated.
+   * Drives the default sort + the score chip in the row. Null when
+   * the entry hasn't been scored yet (operator hasn't run the
+   * backfill or the entry is brand new).
+   */
+  aiLeadScore: number | null;
+  aiLeadScoreReason: string | null;
+  aiLeadScoreAt: Date | null;
 }
 
 interface Props {
@@ -122,6 +132,13 @@ interface Props {
   staff: Array<{ id: string; displayName: string }>;
   /** Current logged-in staff id — used by realtime + presence hooks. */
   currentStaffId: string;
+  /**
+   * Whether the viewer is an admin. Drives admin-only affordances:
+   *   - Lead-score backfill button (Haiku ROI #5) — only admins
+   *     can spend on AI batches; everyone else sees the read-only
+   *     score chips that admins have populated.
+   */
+  currentStaffIsAdmin?: boolean;
   /**
    * Staff eligible to receive an escalation (admin/lead/outreach,
    * not readonly). Loaded server-side and passed through so the
@@ -291,6 +308,7 @@ export function ColdOutreachTable({
   entries: rawEntries,
   staff,
   currentStaffId,
+  currentStaffIsAdmin = false,
   escalationTargets,
   googleMapsApiKey,
   mode = "cold",
@@ -712,6 +730,17 @@ export function ColdOutreachTable({
             <Sparkles className="h-2.5 w-2.5" />
             Suggest venues
           </button>
+          {/* AI lead-score backfill (Haiku ROI #5). Renders for
+              admins only and only when there are un-scored or stale
+              entries. Chained backfill — operator clicks once,
+              button loops up to 10 hops with live progress. */}
+          <ScoreAllButton
+            cityCampaignId={cityCampaignId}
+            isAdmin={currentStaffIsAdmin}
+            unscoredCount={
+              entries.filter((e) => e.aiLeadScore === null || e.aiLeadScoreAt === null).length
+            }
+          />
           <p className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] sm:block dark:text-zinc-400">
             status + ZeroBounce auto-tracked
           </p>
@@ -1193,6 +1222,9 @@ function ColdRow({
                   pending={pending}
                   onChange={(v) => commitField("status", v)}
                 />
+                {/* AI lead score chip (Haiku ROI #5). Shows score
+                    0-100 + tooltip reason; tone scales with score. */}
+                <LeadScoreChip score={entry.aiLeadScore} reason={entry.aiLeadScoreReason} />
                 <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
                   ·
                 </span>

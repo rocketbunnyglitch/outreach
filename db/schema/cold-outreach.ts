@@ -7,7 +7,16 @@
  * column duplication here.
  */
 
-import { index, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  pgEnum,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn } from "../types";
 import { cityCampaigns } from "./city-campaigns";
 import { staffMembers } from "./users";
@@ -76,6 +85,19 @@ export const coldOutreachEntries = pgTable(
     /** Free-text context: "wants a call at 7pm Tue, asking about insurance" */
     escalationNotes: text("escalation_notes"),
 
+    /**
+     * AI lead scoring (Haiku ROI #5). 0..100 conversion-likelihood
+     * score with a 1-line reason. Drives the default sort on the
+     * cold-outreach worksheet so operators work the highest-signal
+     * rows first. NULL = not scored yet. See lib/ai-lead-score.ts
+     * for the prompt + caching rules.
+     *
+     * Migration 0077.
+     */
+    aiLeadScore: smallint("ai_lead_score"),
+    aiLeadScoreReason: text("ai_lead_score_reason"),
+    aiLeadScoreAt: timestamp("ai_lead_score_at", { withTimezone: true }),
+
     ...archivedAt,
     ...auditColumns,
   },
@@ -91,6 +113,12 @@ export const coldOutreachEntries = pgTable(
     escalatedToIdx: index("cold_outreach_entries_escalated_to_idx").on(
       table.escalatedToStaffId,
       table.escalatedAt,
+    ),
+    /** Drives default-sort on the cold-outreach worksheet —
+     *  highest-scoring venues bubble up. NULLs last. */
+    aiLeadScoreIdx: index("cold_outreach_entries_ai_lead_score_idx").on(
+      table.cityCampaignId,
+      table.aiLeadScore,
     ),
   }),
 );
