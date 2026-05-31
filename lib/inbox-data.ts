@@ -796,6 +796,16 @@ export interface InboxThreadDetail {
      *  hasn't run yet for this thread. */
     suggestedClassification: string | null;
     suggestedClassificationConfidence: string | null;
+    /** Cached AI 3-line thread summary (Phase A.3). null when
+     *  the thread is too short, or hasn't been summarized yet.
+     *  Refreshed lazily on view. */
+    aiSummary: {
+      headline: string;
+      context: string;
+      next: string;
+    } | null;
+    aiSummaryAt: Date | null;
+    aiSummaryMessageCount: number | null;
     assignedStaffId: string | null;
     assignedStaffName: string | null;
     /** null when the thread hasn't been matched to a venue yet. */
@@ -859,6 +869,11 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
       // hasn't run yet.
       suggestedClassification: emailThreads.suggestedClassification,
       suggestedClassificationConfidence: emailThreads.suggestedClassificationConfidence,
+      // AI 3-line summary (Phase A.3) — lazy-generated on view
+      // when message_count >= 10.
+      aiSummary: emailThreads.aiSummary,
+      aiSummaryAt: emailThreads.aiSummaryAt,
+      aiSummaryMessageCount: emailThreads.aiSummaryMessageCount,
       assignedStaffId: emailThreads.assignedStaffId,
       assignedStaffName: staffMembers.displayName,
       venueId: emailThreads.venueId,

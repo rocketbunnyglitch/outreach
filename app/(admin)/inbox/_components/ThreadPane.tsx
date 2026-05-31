@@ -178,6 +178,13 @@ export function ThreadPane({
         <CampaignSuggestionRow threadId={thread.id} suggestions={campaignSuggestions} />
       </header>
 
+      {/* AI-generated 3-line summary for long threads (Phase A.3).
+          Renders only when an AI summary exists on the row. The
+          page loader fires summarizeThreadAsync in the background
+          when the thread is long enough + the cached summary is
+          stale; the summary itself materializes on the next view. */}
+      {thread.aiSummary && <ThreadSummaryBlock summary={thread.aiSummary} />}
+
       {/* Messages — long threads collapse older messages by default.
           When there are 3+ messages, all but the most recent render
           as a one-line summary; click to expand. Newest message is
@@ -376,6 +383,36 @@ function VenueRail({
         />
       )}
     </>
+  );
+}
+
+function ThreadSummaryBlock({
+  summary,
+}: {
+  summary: { headline: string; context: string; next: string };
+}) {
+  return (
+    <aside
+      // Violet for AI-assisted, per project color convention.
+      // Sits between the header and the messages list so it's
+      // unmissable when opening a long thread.
+      className="border-zinc-200/80 border-b bg-violet-50/40 px-6 py-4 dark:border-zinc-800/60 dark:bg-violet-950/20"
+    >
+      <div className="mb-1.5 inline-flex items-center gap-1.5 font-mono text-[10px] text-violet-700 uppercase tracking-[0.18em] dark:text-violet-300">
+        <Sparkles className="h-3 w-3" />
+        AI Summary
+      </div>
+      <p className="font-semibold text-sm text-zinc-900 leading-snug dark:text-zinc-100">
+        {summary.headline}
+      </p>
+      <p className="mt-1.5 text-sm text-zinc-700 leading-relaxed dark:text-zinc-300">
+        {summary.context}
+      </p>
+      <p className="mt-1.5 inline-flex items-start gap-1.5 text-sm text-violet-700 leading-relaxed dark:text-violet-300">
+        <span className="font-mono text-[10px] uppercase tracking-wider opacity-70">Next:</span>
+        <span>{summary.next}</span>
+      </p>
+    </aside>
   );
 }
 

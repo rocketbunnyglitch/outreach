@@ -1,4 +1,5 @@
 import { parseAccountIds } from "@/lib/account-filter";
+import { summarizeThreadAsync } from "@/lib/ai-summarize";
 import { requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
 import { loadAppliedGmailLabelsForThread } from "@/lib/gmail-thread-labels";
@@ -151,6 +152,20 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // glance what they've committed to do. Try/catch wrapped so a
   // tasks-table issue degrades gracefully.
   const threadTasks = await fetchThreadTasks(threadId).catch(() => []);
+
+  // Lazy AI thread summary (Phase A.3). On every page-load,
+  // fire a background refresh if the thread is long enough AND
+  // the cached summary is stale (or missing). The page itself
+  // shows whatever summary is currently persisted on the row —
+  // the next visit picks up the fresh one. This way the first
+  // viewer doesn't pay the model latency.
+  if (
+    detail.thread.messageCount >= 10 &&
+    detail.thread.aiSummaryMessageCount !== detail.thread.messageCount &&
+    process.env.AI_INBOX_SUMMARIZE_ENABLED !== "0"
+  ) {
+    void summarizeThreadAsync({ threadId });
+  }
 
   // Labels applied to THIS thread + the full team-label catalogue so
   // the inline picker can render checked/unchecked state without an

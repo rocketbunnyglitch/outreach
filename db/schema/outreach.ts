@@ -16,6 +16,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   smallint,
@@ -166,6 +167,24 @@ export const emailThreads = pgTable(
       scale: 3,
     }),
     suggestedClassificationAt: timestamp("suggested_classification_at", { withTimezone: true }),
+
+    /**
+     * AI-generated 3-line thread summary (Phase A.3). Cached on the
+     * thread row so the model isn't called per page-load. Regenerated
+     * lazily when message_count > ai_summary_message_count and the
+     * operator opens the thread.
+     *
+     * Shape: { "headline": "...", "context": "...", "next": "..." }
+     *
+     * Migration 0067.
+     */
+    aiSummary: jsonb("ai_summary").$type<{
+      headline: string;
+      context: string;
+      next: string;
+    } | null>(),
+    aiSummaryAt: timestamp("ai_summary_at", { withTimezone: true }),
+    aiSummaryMessageCount: integer("ai_summary_message_count"),
 
     /**
      * Initial direction. 'mixed' once both inbound and outbound exist.
