@@ -33,17 +33,37 @@
  */
 
 import { cn } from "@/lib/cn";
-import { AlertTriangle, HelpCircle, Inbox, Mail, MailQuestion, User, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  AtSign,
+  HelpCircle,
+  Inbox,
+  Mail,
+  MailQuestion,
+  User,
+  Users,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 interface Props {
   currentUserId: string;
   isAdmin: boolean;
+  /** Unread @-mention count for the current user (Phase D). Drives
+   *  the badge on the Mentioned scope pill. */
+  mentionCount?: number;
 }
 
-type ScopeKey = "team" | "assigned" | "mine" | "unassigned" | "unmatched" | "needs_reply" | "stale";
+type ScopeKey =
+  | "team"
+  | "assigned"
+  | "mine"
+  | "unassigned"
+  | "unmatched"
+  | "needs_reply"
+  | "stale"
+  | "mentioned";
 
-export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
+export function InboxScopeBar({ currentUserId, isAdmin, mentionCount = 0 }: Props) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -51,6 +71,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
   // specific predicates win so e.g. "Unassigned" beats "Team Inbox"
   // even though both share the cleared assigned filter otherwise.
   const active: ScopeKey | null = (() => {
+    if (params.get("mentioned") === "1") return "mentioned";
     if (params.get("unmatched") === "1") return "unmatched";
     if (params.get("stale") === "1") return "stale";
     if (params.get("unassigned") === "1") return "unassigned";
@@ -94,6 +115,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
             unassigned: null,
             unmatched: null,
             stale: null,
+            mentioned: null,
             folder: null,
           })
         }
@@ -109,6 +131,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
             unassigned: null,
             unmatched: null,
             stale: null,
+            mentioned: null,
             folder: null,
             accounts: null, // explicit escape: clear visibility scope too
           })
@@ -120,7 +143,14 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
       <ScopePill
         active={active === "assigned"}
         onClick={() =>
-          go({ staff: "mine", mine: null, unassigned: null, unmatched: null, stale: null })
+          go({
+            staff: "mine",
+            mine: null,
+            unassigned: null,
+            unmatched: null,
+            stale: null,
+            mentioned: null,
+          })
         }
         icon={<User className="h-3 w-3" />}
         label="Assigned to Me"
@@ -128,7 +158,14 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
       <ScopePill
         active={active === "mine"}
         onClick={() =>
-          go({ mine: "1", staff: null, unassigned: null, unmatched: null, stale: null })
+          go({
+            mine: "1",
+            staff: null,
+            unassigned: null,
+            unmatched: null,
+            stale: null,
+            mentioned: null,
+          })
         }
         icon={<Mail className="h-3 w-3" />}
         label="My Inboxes"
@@ -136,7 +173,14 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
       <ScopePill
         active={active === "unassigned"}
         onClick={() =>
-          go({ unassigned: "1", staff: null, mine: null, unmatched: null, stale: null })
+          go({
+            unassigned: "1",
+            staff: null,
+            mine: null,
+            unmatched: null,
+            stale: null,
+            mentioned: null,
+          })
         }
         icon={<MailQuestion className="h-3 w-3" />}
         label="Unassigned"
@@ -144,7 +188,14 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
       <ScopePill
         active={active === "unmatched"}
         onClick={() =>
-          go({ unmatched: "1", staff: null, mine: null, unassigned: null, stale: null })
+          go({
+            unmatched: "1",
+            staff: null,
+            mine: null,
+            unassigned: null,
+            stale: null,
+            mentioned: null,
+          })
         }
         icon={<HelpCircle className="h-3 w-3" />}
         label="Unmatched"
@@ -160,6 +211,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
             unassigned: null,
             unmatched: null,
             stale: null,
+            mentioned: null,
           })
         }
         icon={<Mail className="h-3 w-3" />}
@@ -168,10 +220,34 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
       <ScopePill
         active={active === "stale"}
         onClick={() =>
-          go({ stale: "1", staff: null, mine: null, unassigned: null, unmatched: null })
+          go({
+            stale: "1",
+            staff: null,
+            mine: null,
+            unassigned: null,
+            unmatched: null,
+            mentioned: null,
+          })
         }
         icon={<AlertTriangle className="h-3 w-3" />}
         label="Stale"
+      />
+      <ScopePill
+        active={active === "mentioned"}
+        onClick={() =>
+          go({
+            mentioned: "1",
+            staff: null,
+            mine: null,
+            unassigned: null,
+            unmatched: null,
+            stale: null,
+            folder: null,
+          })
+        }
+        icon={<AtSign className="h-3 w-3" />}
+        label="Mentioned"
+        badge={mentionCount > 0 ? mentionCount : undefined}
       />
     </div>
   );
@@ -182,11 +258,15 @@ function ScopePill({
   onClick,
   icon,
   label,
+  badge,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  /** Optional unread badge — shown when > 0. Used by the
+   *  Mentioned scope to surface pending @-tags (Phase D). */
+  badge?: number;
 }) {
   return (
     <button
@@ -201,6 +281,16 @@ function ScopePill({
     >
       {icon}
       <span>{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span
+          className={cn(
+            "inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 font-mono text-[9px]",
+            active ? "bg-indigo-600 text-white" : "bg-violet-600 text-white dark:bg-violet-500",
+          )}
+        >
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

@@ -12,6 +12,7 @@ import {
   isInboxFolder,
 } from "@/lib/inbox-data";
 import { loadSavedSearches } from "@/lib/inbox-saved-searches";
+import { countUnacknowledgedMentions } from "@/lib/thread-notes";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { Inbox as InboxIcon } from "lucide-react";
@@ -59,6 +60,9 @@ interface Props {
     stale?: string;
     /** "1" -> Unmatched scope preset (no venue linked yet). */
     unmatched?: string;
+    /** "1" -> Mentioned scope preset (Phase D) — threads where
+     *  the current user has unacknowledged @-mentions. */
+    mentioned?: string;
   }>;
 }
 
@@ -121,6 +125,7 @@ export default async function InboxPage({ searchParams }: Props) {
     visibleAccounts,
     userPrefs,
     savedSearches,
+    mentionCount,
   ] = await Promise.all([
     fetchInboxThreads({
       folder,
@@ -136,6 +141,7 @@ export default async function InboxPage({ searchParams }: Props) {
       unassigned: params.unassigned === "1",
       staleOnly: params.stale === "1",
       unmatchedOnly: params.unmatched === "1",
+      mentionedOnly: params.mentioned === "1",
       search: params.q,
     }),
     fetchFolderCounts({
@@ -171,6 +177,7 @@ export default async function InboxPage({ searchParams }: Props) {
     }),
     getUserPreferences(currentStaff.id),
     loadSavedSearches(currentStaff.id),
+    countUnacknowledgedMentions(currentStaff.id),
   ]);
 
   // AccountSwitcher seed selection: prefer the per-campaign
@@ -239,6 +246,7 @@ export default async function InboxPage({ searchParams }: Props) {
             <InboxScopeBar
               currentUserId={currentStaff.id}
               isAdmin={currentStaff.role === "admin"}
+              mentionCount={mentionCount}
             />
             <InboxFilterBar
               aliases={aliases}

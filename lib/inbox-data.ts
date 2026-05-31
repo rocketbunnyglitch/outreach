@@ -217,6 +217,12 @@ export interface ThreadListFilter {
    */
   unmatchedOnly?: boolean;
   /**
+   * Scope filter: "Mentioned" preset — restricts to threads where
+   * the calling user has unacknowledged @-mentions in any internal
+   * note (Phase D).
+   */
+  mentionedOnly?: boolean;
+  /**
    * Free-text search applied to subject, snippet, venue name, and
    * last-sender name via case-insensitive substring match. Empty or
    * whitespace-only inputs are ignored.
@@ -486,6 +492,19 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         // can't meaningfully be "unmatched."
         filter.unmatchedOnly
           ? and(isNull(emailThreads.venueId), eq(emailThreads.direction, "inbound"))
+          : undefined,
+        // Scope: Mentioned — threads where the current user has at
+        // least one unacknowledged @-mention. EXISTS subquery
+        // against email_thread_mentions; the partial index on
+        // (mentioned_user_id, created_at) WHERE acknowledged_at
+        // IS NULL keeps this cheap (Phase D).
+        filter.mentionedOnly
+          ? sql`EXISTS (
+              SELECT 1 FROM email_thread_mentions etm
+              WHERE etm.thread_id = ${emailThreads.id}
+                AND etm.mentioned_user_id = ${filter.currentUserId}
+                AND etm.acknowledged_at IS NULL
+            )`
           : undefined,
         // Operator-aware search. parseSearchQuery splits the raw input
         // into structured operators (`from:`, `subject:`, `is:starred`,

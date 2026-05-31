@@ -2,6 +2,7 @@ import type { CampaignSuggestion } from "@/lib/campaign-matcher";
 import type { InboxThreadDetail, ThreadTaskRow, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
 import { type ThreadState, suggestNextAction } from "@/lib/suggested-next-action";
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
+import type { ThreadNoteRow } from "@/lib/thread-notes";
 import type { Classification } from "@/lib/triage-classifier";
 import type { VenueCommunication } from "@/lib/venue-communication";
 import { CalendarClock, Check, MailOpen, Sparkles, User } from "lucide-react";
@@ -17,6 +18,7 @@ import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
+import { ThreadNotesBlock } from "./ThreadNotesBlock";
 import { ThreadReplyButtons } from "./ThreadReplyButtons";
 
 /**
@@ -36,11 +38,13 @@ export function ThreadPane({
   outreachHistory,
   relatedCommunication,
   threadTasks,
+  threadNotes,
   threadLabels,
   allTeamLabels,
   appliedGmailLabels,
   campaignSuggestions,
   isAdmin: _isAdmin,
+  currentStaffId,
 }: {
   detail: InboxThreadDetail;
   outreachHistory: VenueOutreachHistoryEntry[];
@@ -51,6 +55,8 @@ export function ThreadPane({
   /** Open tasks targeting this thread — both manual and AI-
    *  extracted from inbound messages (Phase A.2). */
   threadTasks: ThreadTaskRow[];
+  /** Internal team notes on the thread (Phase D). */
+  threadNotes: ThreadNoteRow[];
   threadLabels: ThreadLabelRow[];
   allTeamLabels: TeamLabelSummary[];
   appliedGmailLabels: Array<{
@@ -61,6 +67,8 @@ export function ThreadPane({
   }>;
   campaignSuggestions: CampaignSuggestion[];
   isAdmin: boolean;
+  /** For per-row author check on the notes feed. */
+  currentStaffId: string;
 }) {
   const { thread, messages } = detail;
 
@@ -243,6 +251,8 @@ export function ThreadPane({
           outreachHistory={outreachHistory}
           relatedCommunication={relatedCommunication}
           threadTasks={threadTasks}
+          threadNotes={threadNotes}
+          currentStaffId={currentStaffId}
         />
       </div>
     </div>
@@ -258,11 +268,15 @@ function VenueRail({
   outreachHistory,
   relatedCommunication,
   threadTasks,
+  threadNotes,
+  currentStaffId,
 }: {
   thread: InboxThreadDetail["thread"];
   outreachHistory: VenueOutreachHistoryEntry[];
   relatedCommunication: VenueCommunication | null;
   threadTasks: ThreadTaskRow[];
+  threadNotes: ThreadNoteRow[];
+  currentStaffId: string;
 }) {
   return (
     <>
@@ -372,6 +386,13 @@ function VenueRail({
           )}
         </section>
       </div>
+      {/* Internal team notes (Phase D). Always visible — operators
+          use this for any coordination context that doesn't belong
+          in the outbound email itself ("called this owner", "they
+          want to talk to Mike", etc). @-mentions notify teammates
+          and surface in their Mentioned scope. */}
+      <ThreadNotesBlock threadId={thread.id} notes={threadNotes} currentStaffId={currentStaffId} />
+
       {/* Open tasks on this thread — both manual and AI-extracted
           (Phase A.2). Includes auto-tasks the model created from
           inbound messages ("send pricing for the 26th" -> task
