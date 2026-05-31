@@ -54,6 +54,9 @@ export default auth((req) => {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
     pathname === "/api/health" ||
+    // Temporary public diagnostic beacon (lib/client-diag.ts) — must be
+    // reachable pre-auth since the load failure can happen before login.
+    pathname === "/api/client-diag" ||
     pathname === "/login" ||
     // Static client-state reset page. Must be reachable even when the
     // user is signed out or the main app is broken — that's the whole

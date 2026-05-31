@@ -1,5 +1,6 @@
 import { ChunkReloadGuard } from "@/components/chunk-reload-guard";
 import { VersionFooter } from "@/components/version-footer";
+import { CLIENT_DIAG_SCRIPT } from "@/lib/client-diag";
 import { cn } from "@/lib/cn";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-init";
 import { GeistMono } from "geist/font/mono";
@@ -36,6 +37,8 @@ export default function RootLayout({
       <head>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: inline theme-init script must run before paint to avoid FOUC */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: temporary pre-React diagnostic beacon, see lib/client-diag.ts */}
+        <script dangerouslySetInnerHTML={{ __html: CLIENT_DIAG_SCRIPT }} />
       </head>
       <body
         className={cn("min-h-screen font-sans antialiased", "text-zinc-900 dark:text-zinc-100")}

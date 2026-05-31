@@ -11,6 +11,9 @@ import { useEffect } from "react";
  */
 export function ChunkReloadGuard() {
   useEffect(() => {
+    // Mark hydration complete so the pre-React diagnostic watchdog
+    // (lib/client-diag.ts) knows React actually booted in this tab.
+    (window as unknown as { __perseHydrated?: boolean }).__perseHydrated = true;
     function onError(event: ErrorEvent) {
       maybeReloadForChunkError(event.error ?? event.message);
     }
