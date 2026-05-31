@@ -196,3 +196,64 @@ export async function listGmailLabelsForThread(threadId: string): Promise<
     .where(and(eq(gmailLabels.connectedAccountId, thread.accountId), eq(gmailLabels.type, "user")))
     .orderBy(sql`lower(${gmailLabels.name})`);
 }
+
+/**
+ * Currently-applied Gmail labels on a thread — distinct across every
+ * message, joined to gmail_labels for the bg/text colors. Identical
+ * shape to the per-thread chips on the inbox row, used by the
+ * single-thread detail surface for the picker's initial state.
+ */
+export async function loadAppliedGmailLabelsForThread(threadId: string): Promise<
+  Array<{
+    gmailLabelId: string;
+    name: string;
+    backgroundColor: string | null;
+    textColor: string | null;
+  }>
+> {
+  const rows = await db.execute<{
+    gmail_label_id: string;
+    name: string;
+    background_color: string | null;
+    text_color: string | null;
+  }>(sql`
+    SELECT DISTINCT
+      gl.gmail_label_id,
+      gl.name,
+      gl.background_color,
+      gl.text_color
+    FROM email_messages em
+    INNER JOIN email_threads et ON et.id = em.thread_id
+    INNER JOIN gmail_labels gl
+      ON gl.connected_account_id = et.staff_outreach_email_id
+     AND gl.gmail_label_id = ANY(em.gmail_labels)
+    WHERE em.thread_id = ${threadId}::uuid
+      AND gl.type = 'user'
+    ORDER BY gl.name
+  `);
+
+  const list = Array.isArray(rows)
+    ? (rows as unknown as Array<{
+        gmail_label_id: string;
+        name: string;
+        background_color: string | null;
+        text_color: string | null;
+      }>)
+    : ((
+        rows as unknown as {
+          rows: Array<{
+            gmail_label_id: string;
+            name: string;
+            background_color: string | null;
+            text_color: string | null;
+          }>;
+        }
+      ).rows ?? []);
+
+  return list.map((r) => ({
+    gmailLabelId: r.gmail_label_id,
+    name: r.name,
+    backgroundColor: r.background_color,
+    textColor: r.text_color,
+  }));
+}

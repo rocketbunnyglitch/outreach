@@ -12,6 +12,7 @@ import { ClassificationPicker } from "./ClassificationPicker";
 import { MessageCard } from "./MessageCard";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
+import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 import { ThreadReplyButtons } from "./ThreadReplyButtons";
@@ -33,6 +34,7 @@ export function ThreadPane({
   outreachHistory,
   threadLabels,
   allTeamLabels,
+  appliedGmailLabels,
   campaignSuggestions,
   isAdmin: _isAdmin,
 }: {
@@ -40,6 +42,12 @@ export function ThreadPane({
   outreachHistory: VenueOutreachHistoryEntry[];
   threadLabels: ThreadLabelRow[];
   allTeamLabels: TeamLabelSummary[];
+  appliedGmailLabels: Array<{
+    gmailLabelId: string;
+    name: string;
+    backgroundColor: string | null;
+    textColor: string | null;
+  }>;
   campaignSuggestions: CampaignSuggestion[];
   isAdmin: boolean;
 }) {
@@ -127,6 +135,11 @@ export function ThreadPane({
           applied={threadLabels}
           allTeamLabels={allTeamLabels}
         />
+        {/* Gmail labels — applied directly via Gmail API. Distinct
+            visual treatment from team labels (rounded-md chips with
+            Gmail's bg/text colors). Parallel surface so operators
+            can pick either namespace without confusion. */}
+        <ThreadGmailLabelsRow threadId={thread.id} appliedGmailLabels={appliedGmailLabels} />
         {/* Smart-detection: rule-based matcher suggests an active
             city_campaign for unattributed threads. Empty list = no
             suggestion meets the confidence threshold; component

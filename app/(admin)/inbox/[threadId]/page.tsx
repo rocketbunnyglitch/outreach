@@ -1,6 +1,7 @@
 import { parseAccountIds } from "@/lib/account-filter";
 import { requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
+import { loadAppliedGmailLabelsForThread } from "@/lib/gmail-thread-labels";
 import {
   FOLDER_LABELS,
   type InboxFolder,
@@ -131,7 +132,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // the most plausible active city_campaign for the thread. Returns
   // empty list when the thread is already attributed or nothing
   // crosses the confidence threshold.
-  const [threadLabels, teamLabelsAll, campaignSuggestions] = await Promise.all([
+  const [threadLabels, teamLabelsAll, campaignSuggestions, appliedGmailLabels] = await Promise.all([
     listThreadLabels(threadId),
     listTeamLabels(currentStaff.teamId),
     suggestCampaignsForThread({
@@ -141,6 +142,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       subject: detail.thread.subject,
       teamId: currentStaff.teamId,
     }),
+    loadAppliedGmailLabelsForThread(threadId),
   ]);
 
   const preservedQuery = new URLSearchParams();
@@ -232,6 +234,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             outreachHistory={outreachHistory}
             threadLabels={threadLabels}
             allTeamLabels={teamLabelsAll}
+            appliedGmailLabels={appliedGmailLabels}
             campaignSuggestions={campaignSuggestions}
             isAdmin={currentStaff.role === "admin"}
           />
