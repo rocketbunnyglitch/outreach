@@ -37,6 +37,7 @@ import {
   Calendar,
   CheckSquare,
   ChevronDown,
+  ClipboardCheck,
   Clock,
   FileCode,
   Globe,
@@ -73,6 +74,11 @@ const SECTIONS: Array<{
     items: [
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3.5 w-3.5" /> },
+      {
+        href: "/crawl-management",
+        label: "Crawl Management",
+        icon: <ClipboardCheck className="h-3.5 w-3.5" />,
+      },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3.5 w-3.5" /> },
       {
         href: "/campaign-info",

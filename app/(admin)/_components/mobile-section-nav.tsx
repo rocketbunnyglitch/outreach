@@ -60,6 +60,7 @@ import {
   Building2,
   Calendar,
   CheckSquare,
+  ClipboardCheck,
   Clock,
   FileCode,
   Globe,
@@ -100,6 +101,11 @@ const SECTIONS: Section[] = [
     items: [
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3 w-3" /> },
       { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3 w-3" /> },
+      {
+        href: "/crawl-management",
+        label: "Crawl Management",
+        icon: <ClipboardCheck className="h-3 w-3" />,
+      },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3 w-3" /> },
       {
         href: "/campaign-info",

@@ -69,6 +69,24 @@ export const eventStatus = pgEnum("event_status", [
  *    parties wrap before the final hour. Migration 0074. */
 export const crawlFormat = pgEnum("crawl_format", ["standard", "day_party"]);
 
+/** Crawl management deliverables (Migration 0075). One row per
+ *  (venue_event, deliverable_type) in the crawl_deliverables table.
+ *  The 'wristbands' deliverable is informational on this side —
+ *  actual status comes from the existing wristbands table. */
+export const crawlDeliverableType = pgEnum("crawl_deliverable_type", [
+  "social_media_graphics",
+  "staff_sheet",
+  "participant_poster",
+  "wristbands",
+  "week_of_confirmation",
+]);
+
+export const crawlDeliverableStatus = pgEnum("crawl_deliverable_status", [
+  "pending",
+  "done",
+  "n_a",
+]);
+
 // =========================================================================
 // Venues
 // =========================================================================
