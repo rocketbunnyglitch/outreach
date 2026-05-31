@@ -607,12 +607,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex flex-col overflow-hidden border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-950",
+        "pointer-events-auto flex flex-col overflow-hidden bg-white dark:bg-zinc-950",
+        // Inline lives INSIDE the thread surface — borderless, shadowless,
+        // flat. Reads as "part of the thread" the way Gmail web does.
         // Docked / expanded / fullscreen sit on a fixed-position layer
-        // with a strong shadow and a flat bottom edge. Inline lives
-        // inside the thread surface so it rounds on all corners and
-        // drops the shadow — reads as "part of the thread."
-        effectiveMode === "inline" ? "rounded-lg shadow-sm" : "rounded-t-lg border-b-0 shadow-2xl",
+        // with the chrome that signals "floating window."
+        effectiveMode === "inline"
+          ? ""
+          : "rounded-t-lg border border-zinc-200 border-b-0 shadow-2xl dark:border-zinc-700",
         effectiveMode === "fullscreen" ? "z-[200] sm:rounded-lg sm:border" : "",
         widthClass,
       )}

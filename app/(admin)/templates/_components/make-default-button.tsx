@@ -9,6 +9,7 @@
  * renders the existing Star + Badge for that case.
  */
 
+import { useToast } from "@/components/ui/toast";
 import { Loader2, Star } from "lucide-react";
 import { useTransition } from "react";
 import { setTemplateAsDefault } from "../_actions";
@@ -19,6 +20,7 @@ interface Props {
 
 export function MakeDefaultButton({ templateId }: Props) {
   const [pending, startTx] = useTransition();
+  const toast = useToast();
 
   function run(e: React.MouseEvent) {
     // Templates list rows are Links — stop propagation so clicking
@@ -26,7 +28,15 @@ export function MakeDefaultButton({ templateId }: Props) {
     e.preventDefault();
     e.stopPropagation();
     startTx(async () => {
-      await setTemplateAsDefault(templateId);
+      try {
+        await setTemplateAsDefault(templateId);
+        toast.show({ kind: "success", message: "Set as default for stage" });
+      } catch (err) {
+        toast.show({
+          kind: "error",
+          message: err instanceof Error ? err.message : "Couldn't update default",
+        });
+      }
     });
   }
 

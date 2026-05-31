@@ -44,13 +44,12 @@ export function ThreadReplyButtons({ threadId }: Props) {
 
   function open(mode: "reply" | "reply_all" | "forward") {
     // Reuse: if a not-yet-sent draft already exists in the store for
-    // this thread, just flip its mode instead of creating another
-    // row. Prevents the "click Reply twice -> two drafts" trap.
-    // Reply-All / Forward go straight to docked even if there's an
-    // existing reply draft so the operator can distinguish the two
-    // intents.
+    // this thread, just flip its mode to inline instead of creating
+    // another row. Prevents the "click Reply twice -> two drafts"
+    // trap. Applies to every mode (Reply / Reply All / Forward) now
+    // that all three open inline.
     const existing = Array.from(composers.values()).find((c) => c.replyToThreadId === threadId);
-    if (existing && mode === "reply") {
+    if (existing) {
       setMode(existing.id, "inline");
       return;
     }
@@ -60,11 +59,11 @@ export function ThreadReplyButtons({ threadId }: Props) {
         alert(res.error);
         return;
       }
-      // Default Reply to INLINE — Gmail-parity: a single-recipient
-      // reply lives at the bottom of the thread. Reply All + Forward
-      // get the docked composer since their recipient lists are
-      // non-trivial and benefit from the wider chrome.
-      const initialMode: "inline" | "docked" = mode === "reply" ? "inline" : "docked";
+      // All three modes (Reply, Reply All, Forward) open INLINE so
+      // the operator stays in the thread context. They can still pop
+      // out to a docked/expanded/fullscreen window via the composer
+      // header's maximize button if they want a wider chrome.
+      const initialMode: "inline" | "docked" = "inline";
       window.dispatchEvent(
         new CustomEvent("compose-email", {
           detail: { hydrateDraftId: res.data.draftId, initialMode },
@@ -111,7 +110,7 @@ export function ThreadReplyButtons({ threadId }: Props) {
         label="Forward"
       />
       <span className="ml-auto inline-flex items-center gap-1 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
-        Reply opens inline · pop out for full window
+        Opens inline · pop out for full window
       </span>
     </div>
   );

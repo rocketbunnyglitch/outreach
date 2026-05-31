@@ -13,6 +13,7 @@
  * All actions require requireAdmin() — non-admins get 404.
  */
 
+import { signIn } from "@/auth";
 import { inviteTokens, users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { withAuditContext } from "@/lib/db";
@@ -298,10 +299,14 @@ export async function impersonateUser(formData: FormData): Promise<void> {
 
   logger.warn({ adminId: ctx.staff.id, targetUserId }, "impersonation grant issued");
 
-  // Redirect through NextAuth's sign-in callback which will run the
-  // admin-impersonate Credentials provider's authorize(), read the
-  // cookie, and create the session.
-  redirect("/api/auth/signin/admin-impersonate?callbackUrl=/");
+  // Run the admin-impersonate Credentials provider directly via the
+  // NextAuth v5 server-side signIn helper. The previous approach
+  // redirected to /api/auth/signin/admin-impersonate, but in v5 that
+  // route renders the default sign-in *page* (no credential fields
+  // for this provider, so it dead-ended on a blank form). Calling
+  // signIn() here triggers authorize() which reads the grant cookie
+  // we just set, then redirects to callbackUrl on success.
+  await signIn("admin-impersonate", { redirectTo: "/" });
 }
 
 // =========================================================================

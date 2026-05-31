@@ -36,7 +36,7 @@ export function InlineReplyHost({ threadId }: Props) {
   );
   if (!inline) return null;
   return (
-    <div className="border-zinc-200/80 border-t bg-zinc-50/40 px-6 py-4 dark:border-zinc-800/60 dark:bg-zinc-900/30">
+    <div className="border-zinc-200/80 border-t bg-white dark:border-zinc-800/60 dark:bg-zinc-950">
       <ComposerWindow instance={inline} index={0} isMobile={false} />
     </div>
   );
