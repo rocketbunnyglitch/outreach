@@ -3,6 +3,7 @@
 import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import {
   type CityNeedSummary,
@@ -223,6 +224,7 @@ function SortableTh({
  */
 export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "top" }: Props) {
   const [query, setQuery] = useState("");
+  const tableToast = useToast();
   // Spreadsheet-style arrow-key navigation between editable cells. Cells that
   // opt in carry data-grid-cell="r:c" (currently the Notes column); the hook
   // moves focus on Arrow/Home/End and InlineCell handles Enter-moves-down.
@@ -444,11 +446,26 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   }
   function applyBulk(opts: { priority?: number; leadStaffId?: string | null }) {
     if (selectedVisible.length === 0) return;
+    const count = selectedVisible.length;
     startBulkTx(async () => {
       const res = await bulkUpdateCityCampaigns({ ids: selectedVisible, ...opts });
       if (res.ok) {
         setSelected(new Set());
+        // Build a precise success message: "Updated priority for 18 cities."
+        // / "Reassigned 18 cities." / "Unassigned 18 cities."
+        const verb =
+          opts.priority !== undefined
+            ? `priority for ${count} ${count === 1 ? "city" : "cities"}`
+            : opts.leadStaffId === "" || opts.leadStaffId === null
+              ? `${count} ${count === 1 ? "city" : "cities"} (unassigned)`
+              : `${count} ${count === 1 ? "city" : "cities"}`;
+        tableToast.show({ kind: "success", message: `Updated ${verb}.` });
         router.refresh();
+      } else {
+        tableToast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't apply bulk change.",
+        });
       }
     });
   }
@@ -853,14 +870,27 @@ function formatSales(cents: number): string {
 function PriorityCell({ row }: { row: TrackerRow }) {
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState(String(row.priority));
+  const toast = useToast();
 
   function handleChange(next: string) {
+    const previous = value;
     setValue(next);
     startTransition(async () => {
       const fd = new FormData();
       fd.set("cityCampaignId", row.cityCampaignId);
       fd.set("priority", next);
-      await updateCityCampaignPriority(null, fd);
+      const result = await updateCityCampaignPriority(null, fd);
+      // Optimistic UI with error-only toast: success is silent because
+      // operators flip priorities in rapid succession; failure
+      // SHOULD be loud because the row visibly stayed on its old
+      // value but the operator's screen now shows the wrong number.
+      if (result && !result.ok) {
+        setValue(previous);
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't update priority.",
+        });
+      }
     });
   }
 
@@ -1333,8 +1363,10 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState(row.leadStaffId ?? "");
   const [saved, setSaved] = useState(false);
+  const toast = useToast();
 
   function handleChange(newValue: string) {
+    const previous = value;
     setValue(newValue);
     setSaved(false);
     startTransition(async () => {
@@ -1345,6 +1377,15 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
       if (result.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 1200);
+      } else {
+        // Revert + surface error — the row visually flipped to the
+        // new value but the save failed, which would otherwise be
+        // silent.
+        setValue(previous);
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't reassign.",
+        });
       }
     });
   }
@@ -1389,6 +1430,7 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
 const NOTES_COL = 6;
 
 function NoteInput({ row, gridRow }: { row: TrackerRow; gridRow: number }) {
+  const toast = useToast();
   return (
     <InlineCell
       value={row.dashboardNote ?? ""}
@@ -1402,7 +1444,18 @@ function NoteInput({ row, gridRow }: { row: TrackerRow; gridRow: number }) {
         fd.set("cityCampaignId", row.cityCampaignId);
         fd.set("note", next);
         const result = await updateDashboardNote(null, fd);
-        return result.ok ? { ok: true } : { ok: false, error: result.error };
+        if (!result.ok) {
+          // InlineCell renders error inline AND we toast it
+          // globally — the inline view is great when the operator's
+          // looking at the cell; the toast catches the case where
+          // they've tabbed away or scrolled past.
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't save note.",
+          });
+          return { ok: false, error: result.error };
+        }
+        return { ok: true };
       }}
     />
   );
@@ -1417,6 +1470,7 @@ function NoteInput({ row, gridRow }: { row: TrackerRow; gridRow: number }) {
  * of the parent grid, so arrow-key navigation doesn't include them).
  */
 function CrawlNoteInput({ eventId, initial }: { eventId: string; initial: string }) {
+  const toast = useToast();
   return (
     <InlineCell
       value={initial}
@@ -1429,7 +1483,14 @@ function CrawlNoteInput({ eventId, initial }: { eventId: string; initial: string
         fd.set("eventId", eventId);
         fd.set("note", next);
         const result = await updateCrawlNote(null, fd);
-        return result.ok ? { ok: true } : { ok: false, error: result.error };
+        if (!result.ok) {
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't save crawl note.",
+          });
+          return { ok: false, error: result.error };
+        }
+        return { ok: true };
       }}
     />
   );
@@ -1512,6 +1573,7 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const MENU_WIDTH = 176;
+  const toast = useToast();
 
   const recomputePos = useCallback(() => {
     const el = buttonRef.current;
@@ -1571,9 +1633,27 @@ function CrawlStatusOverride({ crawl }: { crawl: CrawlNeed }) {
           setSaved(true);
           setOpen(false);
           setTimeout(() => setSaved(false), 1200);
+          // Quiet success: the checkmark animation IS the
+          // confirmation. Only surface a toast on the cancellation
+          // path because that's the destructive direction operators
+          // sometimes regret. (We don't toast Active because flipping
+          // back to active is the cheap-to-fix direction.)
+          if (value === "cancelled") {
+            toast.show({ kind: "success", message: "Crawl marked cancelled." });
+          }
+        } else {
+          // Loud failure — the dropdown closes optimistically but
+          // the DB write failed. Without a toast the operator would
+          // see the pill flip back to its old value with no
+          // explanation.
+          toast.show({
+            kind: "error",
+            message: result.error ?? "Couldn't update crawl status.",
+          });
         }
       } catch (err) {
         console.error("[crawl-status] updateEventStatus failed", err);
+        toast.show({ kind: "error", message: "Couldn't update crawl status — try again." });
       }
     });
   }

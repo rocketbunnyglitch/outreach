@@ -10,6 +10,7 @@
  * task has targetType='misc' (which the task UI handles fine).
  */
 
+import { useToast } from "@/components/ui/toast";
 import { Calendar, X } from "lucide-react";
 import { useTransition } from "react";
 import { createTask } from "../../tasks/_actions";
@@ -35,6 +36,7 @@ const PRESETS: Array<{ label: string; days: number | null }> = [
 
 export function FollowUpPrompt({ venueId, threadId, subject, to, onClose }: Props) {
   const [pending, startTx] = useTransition();
+  const toast = useToast();
 
   function schedule(days: number | null) {
     if (days === null) {
@@ -62,7 +64,23 @@ export function FollowUpPrompt({ venueId, threadId, subject, to, onClose }: Prop
         fd.set("targetType", "misc");
       }
       fd.set("dueAt", due.toISOString());
-      await createTask(null, fd);
+      const result = await createTask(null, fd);
+      if (result && !result.ok) {
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't schedule follow-up task.",
+        });
+      } else {
+        const dueLabel = due.toLocaleDateString(undefined, {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+        });
+        toast.show({
+          kind: "success",
+          message: `Follow-up task created for ${dueLabel}.`,
+        });
+      }
       onClose();
     });
   }
