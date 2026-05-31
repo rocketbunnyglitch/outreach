@@ -308,7 +308,7 @@ function ThreadRow({
           ))}
           {thread.gmailLabels.length > 3 && (
             <span
-              className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono font-medium text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+              className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 font-medium font-mono text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
               title={thread.gmailLabels
                 .slice(3)
                 .map((g) => g.name)

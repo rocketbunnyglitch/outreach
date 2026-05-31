@@ -81,7 +81,7 @@ export const SlashCommandsList = forwardRef<SlashCommandsListRef, Props>(
     }
 
     return (
-      <div className="w-64 max-h-72 overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="max-h-72 w-64 overflow-y-auto rounded-lg border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
         {items.map((item, i) => {
           const Icon = ICON_FOR_TITLE[item.title];
           const active = i === selectedIndex;

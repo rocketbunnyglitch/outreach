@@ -1438,7 +1438,7 @@ function QuotedThreadBlock({ html }: { html: string }) {
       </button>
       {expanded && (
         <div
-          className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 [&_blockquote]:my-1 [&_blockquote]:border-l [&_blockquote]:border-zinc-300 [&_blockquote]:pl-2 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic dark:[&_blockquote]:border-zinc-700"
+          className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic [&_blockquote]:my-1 [&_blockquote]:border-zinc-300 [&_blockquote]:border-l [&_blockquote]:pl-2 dark:[&_blockquote]:border-zinc-700"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-built quote markup, see comment above
           dangerouslySetInnerHTML={{ __html: html }}
         />

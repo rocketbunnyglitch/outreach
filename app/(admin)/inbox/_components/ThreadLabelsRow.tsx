@@ -279,7 +279,7 @@ export function ThreadLabelsRow({
                 <button
                   type="submit"
                   disabled={!newName.trim() || creating}
-                  className="rounded p-1 text-zinc-600 disabled:opacity-40 hover:bg-zinc-200 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  className="rounded p-1 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-700"
                   aria-label="Create label"
                 >
                   {creating ? (

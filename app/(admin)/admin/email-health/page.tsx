@@ -104,7 +104,7 @@ export default async function EmailHealthPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-zinc-200 border-b text-zinc-500 text-xs dark:border-zinc-800">
+              <tr className="border-zinc-200 border-b text-xs text-zinc-500 dark:border-zinc-800">
                 <th className="px-3 py-2 text-left font-medium">Account</th>
                 <th className="px-3 py-2 text-left font-medium">Status</th>
                 <th className="px-3 py-2 text-right font-medium">Cap today</th>
@@ -149,7 +149,7 @@ function TotalCard({
         : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950";
   return (
     <div className={cn("rounded-xl border px-3 py-2.5", toneClass)}>
-      <div className="flex items-center gap-1.5 text-zinc-500 text-xs">
+      <div className="flex items-center gap-1.5 text-xs text-zinc-500">
         {icon}
         <span className="font-mono text-[10px] uppercase tracking-widest">{label}</span>
       </div>
@@ -230,7 +230,7 @@ function AccountRow({ account: a }: { account: AccountHealthRow }) {
       <td className="px-3 py-2 text-right">
         <Link
           href={`/inbox?accounts=${a.id}`}
-          className="inline-flex items-center gap-0.5 rounded-md border border-zinc-200 px-1.5 py-1 text-zinc-600 text-xs hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+          className="inline-flex items-center gap-0.5 rounded-md border border-zinc-200 px-1.5 py-1 text-xs text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
         >
           Inbox
           <ArrowRight className="h-3 w-3" />

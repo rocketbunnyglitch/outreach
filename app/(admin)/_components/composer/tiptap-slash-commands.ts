@@ -123,7 +123,15 @@ export const SlashCommands = Extension.create<SlashCommandsOptions>({
         startOfLine: false,
         // Run our command when the operator picks an item — props is
         // the SlashCommandItem we returned from items().
-        command: ({ editor, range, props }) => {
+        command: ({
+          editor,
+          range,
+          props,
+        }: {
+          editor: unknown;
+          range: unknown;
+          props: { command: (args: { editor: unknown; range: unknown }) => void };
+        }) => {
           props.command({ editor, range });
         },
         items: ({ query }: { query: string }) => filterSlashCommands(query),

@@ -107,7 +107,7 @@ export function FolderList({
       <div className="px-2">
         <ComposeEmailButton
           ariaLabel="New email"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 font-medium text-white text-sm shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md dark:bg-indigo-500 dark:hover:bg-indigo-400"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 font-medium text-sm text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md dark:bg-indigo-500 dark:hover:bg-indigo-400"
         >
           <Pencil className="h-3.5 w-3.5" />
           <span>Compose</span>

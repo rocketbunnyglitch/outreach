@@ -296,7 +296,7 @@ function MoreMenu({
                 setOpen(false);
                 onAction("trash");
               }}
-              className="block w-full px-3 py-1.5 text-left text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
+              className="block w-full px-3 py-1.5 text-left text-rose-700 text-xs hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30"
             >
               Move to Trash
             </button>

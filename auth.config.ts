@@ -40,7 +40,20 @@ const config: NextAuthConfig = {
      * route-handler level.
      */
     authorized({ auth, request }) {
-      const isAuthenticated = !!auth?.user;
+      // Gate on staffId specifically, NOT just auth.user. Default
+      // NextAuth populates auth.user with email/name from the JWT,
+      // so a token whose staffId has been cleared (by the self-heal
+      // in auth.ts when the underlying users row is gone) STILL
+      // makes !!auth.user truthy here. That leaves the middleware
+      // believing the session is valid while requireStaff() on the
+      // Node side disagrees — every page redirects to /login, /login
+      // redirects back to /, ERR_TOO_MANY_REDIRECTS.
+      //
+      // Treating "no staffId" as unauthenticated makes /login serve
+      // its form instead of bouncing, and the affected browser
+      // recovers on a single fresh sign-in.
+      const isAuthenticated =
+        !!auth?.user && typeof (auth.user as { staffId?: unknown }).staffId === "string";
       const { pathname } = request.nextUrl;
 
       // Public surfaces — always allowed
