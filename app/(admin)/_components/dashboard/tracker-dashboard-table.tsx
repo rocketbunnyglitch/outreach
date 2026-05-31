@@ -635,12 +635,22 @@ function CityCard({
   // empty.
   const cityComplete =
     hasBreakdown &&
+    // City flagged cancelled at the city level -> abandoned, not
+    // done. Doesn't get the emerald tint.
+    row.status !== "cancelled" &&
+    // Every crawl has reached a terminal status (or is cancelled).
     row.need.crawlBreakdown.every(
       (c) =>
         c.status === "confirmed" ||
         c.status === "contract_signed" ||
         c.status === "completed" ||
         c.status === "cancelled",
+    ) &&
+    // And at least one crawl actually succeeded — an all-cancelled
+    // city is abandoned, not completed. Mirrors the dashboard KPI
+    // logic in lib/dashboard-queries.ts.
+    row.need.crawlBreakdown.some(
+      (c) => c.status === "confirmed" || c.status === "contract_signed" || c.status === "completed",
     );
   return (
     <li
@@ -771,12 +781,22 @@ function CityRow({
   // empty.
   const cityComplete =
     hasBreakdown &&
+    // City flagged cancelled at the city level -> abandoned, not
+    // done. Doesn't get the emerald tint.
+    row.status !== "cancelled" &&
+    // Every crawl has reached a terminal status (or is cancelled).
     row.need.crawlBreakdown.every(
       (c) =>
         c.status === "confirmed" ||
         c.status === "contract_signed" ||
         c.status === "completed" ||
         c.status === "cancelled",
+    ) &&
+    // And at least one crawl actually succeeded — an all-cancelled
+    // city is abandoned, not completed. Mirrors the dashboard KPI
+    // logic in lib/dashboard-queries.ts.
+    row.need.crawlBreakdown.some(
+      (c) => c.status === "confirmed" || c.status === "contract_signed" || c.status === "completed",
     );
 
   // Alternating tones — operators flagged the prior light-mode tones

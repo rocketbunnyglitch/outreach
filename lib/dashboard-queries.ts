@@ -547,6 +547,12 @@ export async function loadDashboardData(
     "completed",
     "cancelled",
   ]);
+  // "Success" subset of terminal statuses — these are the ones that
+  // mean a crawl actually happened (or is locked to happen). A city
+  // whose every event is in TERMINAL_EVENT_STATUSES but ALL of them
+  // are 'cancelled' is an abandoned city, not a completed one, and
+  // shouldn't tick the completion count.
+  const SUCCESS_EVENT_STATUSES = new Set(["confirmed", "contract_signed", "completed"]);
   const eventsByCityCampaign = new Map<string, Array<{ status: string | null }>>();
   for (const e of eventRows) {
     const list = eventsByCityCampaign.get(e.cityCampaignId) ?? [];
@@ -554,9 +560,19 @@ export async function loadDashboardData(
     eventsByCityCampaign.set(e.cityCampaignId, list);
   }
   const citiesCompleted = cityCampaignRows.filter((r) => {
+    // City itself flagged cancelled by the operator -> abandoned,
+    // not done. Doesn't count toward completion.
+    if (r.status === "cancelled") return false;
     const events = eventsByCityCampaign.get(r.cityCampaignId);
     if (!events || events.length === 0) return false;
-    return events.every((e) => e.status !== null && TERMINAL_EVENT_STATUSES.has(e.status));
+    // Every event has reached a terminal status (or is cancelled).
+    const allTerminal = events.every(
+      (e) => e.status !== null && TERMINAL_EVENT_STATUSES.has(e.status),
+    );
+    if (!allTerminal) return false;
+    // And at least one event actually succeeded — an all-cancelled
+    // city is abandoned, not completed.
+    return events.some((e) => e.status !== null && SUCCESS_EVENT_STATUSES.has(e.status));
   }).length;
   const seenCampaigns = new Map<string, number>();
   for (const r of cityCampaignRows) {
