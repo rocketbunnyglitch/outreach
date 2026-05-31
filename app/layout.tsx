@@ -1,3 +1,4 @@
+import { ChunkReloadGuard } from "@/components/chunk-reload-guard";
 import { VersionFooter } from "@/components/version-footer";
 import { cn } from "@/lib/cn";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-init";
@@ -50,6 +51,7 @@ export default function RootLayout({
         // for the body element itself, not its children.
         suppressHydrationWarning
       >
+        <ChunkReloadGuard />
         {children}
         <VersionFooter />
       </body>

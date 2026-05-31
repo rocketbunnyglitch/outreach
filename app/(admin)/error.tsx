@@ -19,6 +19,7 @@
  * action gives them a way out without learning the URL structure.
  */
 
+import { maybeReloadForChunkError } from "@/lib/chunk-reload";
 import { AlertTriangle, ClipboardCopy, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -33,6 +34,9 @@ export default function AdminError({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    // A stale code-split chunk after a deploy lands here; reload once
+    // to pull the current build instead of showing the error card.
+    if (maybeReloadForChunkError(error)) return;
     // Log the digest to the browser console for the operator to
     // share with support. The actual stack stays server-side in
     // Next's logs — we never leak it to the UI.

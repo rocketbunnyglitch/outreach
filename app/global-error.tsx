@@ -1,5 +1,6 @@
 "use client";
 
+import { maybeReloadForChunkError } from "@/lib/chunk-reload";
 import { THEME_INIT_SCRIPT } from "@/lib/theme-init";
 import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
@@ -23,6 +24,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
 }) {
   useEffect(() => {
+    if (maybeReloadForChunkError(error)) return;
     Sentry.captureException(error);
   }, [error]);
 
