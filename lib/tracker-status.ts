@@ -167,13 +167,22 @@ export async function computeCityNeeds(
   try {
     if (rows.length > 0) {
       const eventIds = Array.from(new Set(rows.map((r) => r.eventId)));
+      // Use IN (...) with sql.join + per-id ::uuid casts. Passing the
+      // JS array straight into = ANY(${eventIds}) made the pg driver
+      // serialize it as a comma-separated string, and Postgres threw
+      // 42809 "op ANY/ALL (array) requires array on right side" —
+      // which crashed the dashboard's tracker-status load every render
+      // and visibly froze the / page.
       const sendRows = (await db.execute<{ event_id: string }>(sql`
         SELECT DISTINCT e.id AS event_id
         FROM events e
         INNER JOIN venue_events ve ON ve.event_id = e.id
         INNER JOIN email_threads et ON et.venue_id = ve.venue_id
         INNER JOIN email_send_events ese ON ese.thread_id = et.id
-        WHERE e.id = ANY(${eventIds})
+        WHERE e.id IN (${sql.join(
+          eventIds.map((id) => sql`${id}::uuid`),
+          sql`, `,
+        )})
           AND ese.category = 'cold'
       `)) as unknown;
       const list: Array<{ event_id: string }> = Array.isArray(sendRows)
