@@ -94,12 +94,14 @@ export async function loadVenueCommunication(
   teamId: string,
 ): Promise<VenueCommunication> {
   // ----------------------------------------------------------------
-  // 1. Resolve the venue's matching surface (email + website host)
+  // 1. Resolve the venue's matching surface (email + alt emails +
+  //    website host)
   // ----------------------------------------------------------------
   const [venueRow] = await db
     .select({
       id: venues.id,
       email: venues.email,
+      alternateEmails: venues.alternateEmails,
       websiteUrl: venues.websiteUrl,
     })
     .from(venues)
@@ -120,7 +122,14 @@ export async function loadVenueCommunication(
       },
     };
   }
-  const venueEmail = venueRow.email?.toLowerCase() ?? null;
+  // Build the union of primary email + alt emails — the matching
+  // surface for "email_match". Lowercased + de-duped so the WHERE
+  // clause is tight.
+  const emailSurface = new Set<string>();
+  if (venueRow.email) emailSurface.add(venueRow.email.toLowerCase());
+  for (const e of venueRow.alternateEmails ?? []) {
+    if (e) emailSurface.add(e.toLowerCase());
+  }
   const venueDomain = venueRow.websiteUrl ? extractDomain(venueRow.websiteUrl) : null;
 
   // ----------------------------------------------------------------
@@ -135,12 +144,14 @@ export async function loadVenueCommunication(
   const directIdSet = new Set(directIds.map((r) => r.id));
 
   // ----------------------------------------------------------------
-  // 3. Email-match threads (sender/recipient = venue's stored email)
-  //    Limited to threads NOT already in directIdSet so we don't
-  //    double-count. Source: "email_match".
+  // 3. Email-match threads (sender/recipient = venue's stored email
+  //    or any alternate email on the venue row). Limited to threads
+  //    NOT already in directIdSet so we don't double-count.
+  //    Source: "email_match".
   // ----------------------------------------------------------------
   const emailMatchIds = new Set<string>();
-  if (venueEmail) {
+  if (emailSurface.size > 0) {
+    const emailList = Array.from(emailSurface);
     const matchedRows = await db
       .selectDistinct({ threadId: emailMessages.threadId })
       .from(emailMessages)
@@ -150,8 +161,8 @@ export async function loadVenueCommunication(
         and(
           eq(connectedAccounts.teamId, teamId),
           or(
-            sql`lower(${emailMessages.fromAddress}) = ${venueEmail}`,
-            sql`${venueEmail} = ANY(SELECT lower(unnest(${emailMessages.toAddresses})))`,
+            sql`lower(${emailMessages.fromAddress}) = ANY(${emailList})`,
+            sql`EXISTS (SELECT 1 FROM unnest(${emailMessages.toAddresses}) AS t WHERE lower(t) = ANY(${emailList}))`,
           ),
         ),
       );

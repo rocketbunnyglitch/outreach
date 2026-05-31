@@ -47,6 +47,7 @@ interface Props {
     accounts?: string;
     unassigned?: string;
     stale?: string;
+    unmatched?: string;
   }>;
 }
 
@@ -93,6 +94,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         accountIds,
         unassigned: search.unassigned === "1",
         staleOnly: search.stale === "1",
+        unmatchedOnly: search.unmatched === "1",
         search: search.q,
       }),
       fetchFolderCounts({
@@ -174,6 +176,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (search.accounts) preservedQuery.set("accounts", search.accounts);
   if (search.unassigned === "1") preservedQuery.set("unassigned", "1");
   if (search.stale === "1") preservedQuery.set("stale", "1");
+  if (search.unmatched === "1") preservedQuery.set("unmatched", "1");
   if (search.q) preservedQuery.set("q", search.q);
 
   return (

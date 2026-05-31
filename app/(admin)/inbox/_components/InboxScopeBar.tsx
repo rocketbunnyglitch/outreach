@@ -33,7 +33,7 @@
  */
 
 import { cn } from "@/lib/cn";
-import { AlertTriangle, Inbox, Mail, MailQuestion, User, Users } from "lucide-react";
+import { AlertTriangle, HelpCircle, Inbox, Mail, MailQuestion, User, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 interface Props {
@@ -41,7 +41,7 @@ interface Props {
   isAdmin: boolean;
 }
 
-type ScopeKey = "team" | "assigned" | "mine" | "unassigned" | "needs_reply" | "stale";
+type ScopeKey = "team" | "assigned" | "mine" | "unassigned" | "unmatched" | "needs_reply" | "stale";
 
 export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
   const router = useRouter();
@@ -51,6 +51,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
   // specific predicates win so e.g. "Unassigned" beats "Team Inbox"
   // even though both share the cleared assigned filter otherwise.
   const active: ScopeKey | null = (() => {
+    if (params.get("unmatched") === "1") return "unmatched";
     if (params.get("stale") === "1") return "stale";
     if (params.get("unassigned") === "1") return "unassigned";
     if (params.get("folder") === "needs_reply") return "needs_reply";
@@ -91,6 +92,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
             staff: null,
             mine: null,
             unassigned: null,
+            unmatched: null,
             stale: null,
             folder: null,
           })
@@ -105,6 +107,7 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
             staff: null,
             mine: null,
             unassigned: null,
+            unmatched: null,
             stale: null,
             folder: null,
             accounts: null, // explicit escape: clear visibility scope too
@@ -116,34 +119,57 @@ export function InboxScopeBar({ currentUserId, isAdmin }: Props) {
       <Divider />
       <ScopePill
         active={active === "assigned"}
-        onClick={() => go({ staff: "mine", mine: null, unassigned: null, stale: null })}
+        onClick={() =>
+          go({ staff: "mine", mine: null, unassigned: null, unmatched: null, stale: null })
+        }
         icon={<User className="h-3 w-3" />}
         label="Assigned to Me"
       />
       <ScopePill
         active={active === "mine"}
-        onClick={() => go({ mine: "1", staff: null, unassigned: null, stale: null })}
+        onClick={() =>
+          go({ mine: "1", staff: null, unassigned: null, unmatched: null, stale: null })
+        }
         icon={<Mail className="h-3 w-3" />}
         label="My Inboxes"
       />
       <ScopePill
         active={active === "unassigned"}
-        onClick={() => go({ unassigned: "1", staff: null, mine: null, stale: null })}
+        onClick={() =>
+          go({ unassigned: "1", staff: null, mine: null, unmatched: null, stale: null })
+        }
         icon={<MailQuestion className="h-3 w-3" />}
         label="Unassigned"
+      />
+      <ScopePill
+        active={active === "unmatched"}
+        onClick={() =>
+          go({ unmatched: "1", staff: null, mine: null, unassigned: null, stale: null })
+        }
+        icon={<HelpCircle className="h-3 w-3" />}
+        label="Unmatched"
       />
       <Divider />
       <ScopePill
         active={active === "needs_reply"}
         onClick={() =>
-          go({ folder: "needs_reply", staff: null, mine: null, unassigned: null, stale: null })
+          go({
+            folder: "needs_reply",
+            staff: null,
+            mine: null,
+            unassigned: null,
+            unmatched: null,
+            stale: null,
+          })
         }
         icon={<Mail className="h-3 w-3" />}
         label="Needs Reply"
       />
       <ScopePill
         active={active === "stale"}
-        onClick={() => go({ stale: "1", staff: null, mine: null, unassigned: null })}
+        onClick={() =>
+          go({ stale: "1", staff: null, mine: null, unassigned: null, unmatched: null })
+        }
         icon={<AlertTriangle className="h-3 w-3" />}
         label="Stale"
       />

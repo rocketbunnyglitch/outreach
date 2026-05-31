@@ -208,6 +208,14 @@ export interface ThreadListFilter {
    */
   staleOnly?: boolean;
   /**
+   * Scope filter: "Unmatched" preset — restricts to inbound threads
+   * that haven't been linked to a venue yet (venue_id IS NULL AND
+   * direction = 'inbound'). Outbound threads can't be unmatched by
+   * definition since the operator chose the recipient; we restrict
+   * to inbound to keep the queue actionable.
+   */
+  unmatchedOnly?: boolean;
+  /**
    * Free-text search applied to subject, snippet, venue name, and
    * last-sender name via case-insensitive substring match. Empty or
    * whitespace-only inputs are ignored.
@@ -472,6 +480,12 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         filter.unassigned ? isNull(emailThreads.assignedStaffId) : undefined,
         // Scope: Stale — threads flagged by the stale-tagger.
         filter.staleOnly ? eq(emailThreads.isStale, true) : undefined,
+        // Scope: Unmatched — inbound threads with no venue linked.
+        // Restrict to inbound since outbound is operator-chosen and
+        // can't meaningfully be "unmatched."
+        filter.unmatchedOnly
+          ? and(isNull(emailThreads.venueId), eq(emailThreads.direction, "inbound"))
+          : undefined,
         // Operator-aware search. parseSearchQuery splits the raw input
         // into structured operators (`from:`, `subject:`, `is:starred`,
         // etc) + a free-text residue. Each operator becomes its own

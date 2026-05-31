@@ -20,12 +20,12 @@
  *     email_threads.venue_id. revalidatePath so the page updates.
  */
 
-import { cities, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
+import { cities, emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { and, asc, eq, ilike, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,8 +108,52 @@ export async function attachVenueToThread(
       .update(emailThreads)
       .set({ venueId, updatedBy: staff.id })
       .where(eq(emailThreads.id, threadId));
+
+    // Auto-learning: record this thread's primary inbound sender on
+    // the venue's alternate_emails so future inbound mail from the
+    // same address auto-matches via the cross-domain matcher in
+    // lib/venue-communication. The poller's match-by-domain path
+    // doesn't catch personal-Gmail senders from a venue's manager,
+    // so manual linking is the canonical training signal.
+    //
+    // Best-effort: failure here doesn't roll back the thread link
+    // (the link is the operator's primary intent; the alias is a
+    // helpful side effect).
+    try {
+      const [latestInbound] = await db
+        .select({ fromAddress: emailMessages.fromAddress })
+        .from(emailMessages)
+        .where(and(eq(emailMessages.threadId, threadId), eq(emailMessages.direction, "inbound")))
+        .orderBy(desc(emailMessages.sentAt))
+        .limit(1);
+      const senderEmail = latestInbound?.fromAddress
+        ? extractEmail(latestInbound.fromAddress)
+        : null;
+      if (senderEmail) {
+        // Append only if not already in the array. The array_append +
+        // ARRAY(SELECT DISTINCT ...) pattern keeps it idempotent at
+        // the row level without a separate read-then-write race.
+        await db.execute(sql`
+          UPDATE venues
+          SET alternate_emails = (
+            SELECT ARRAY(SELECT DISTINCT e FROM unnest(
+              array_append(alternate_emails, ${senderEmail})
+            ) AS e WHERE e IS NOT NULL)
+          )
+          WHERE id = ${venueId}
+            AND NOT (lower(${senderEmail}) = lower(coalesce(email, '')))
+            AND NOT (lower(${senderEmail}) = ANY(
+              SELECT lower(unnest(alternate_emails))
+            ))
+        `);
+      }
+    } catch (learnErr) {
+      logger.warn({ learnErr, threadId, venueId }, "attachVenueToThread auto-learn failed");
+    }
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
+    revalidatePath(`/venues/${venueId}`);
     return { ok: true, data: { threadId, venueId } };
   } catch (err) {
     logger.error({ err, threadId, venueId }, "attachVenueToThread failed");
@@ -118,4 +162,14 @@ export async function attachVenueToThread(
       error: err instanceof Error ? err.message : "Could not attach venue.",
     };
   }
+}
+
+/**
+ * Extract a bare lowercase email from a header value like
+ *   "Mike Lavelle <mike@lavelle.com>"
+ * Returns null if no email can be extracted.
+ */
+function extractEmail(headerVal: string): string | null {
+  const m = headerVal.match(/<([^>]+)>/) ?? headerVal.match(/([\w.\-+]+@[\w.\-]+)/);
+  return m?.[1]?.toLowerCase() ?? null;
 }

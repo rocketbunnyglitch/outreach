@@ -56,6 +56,8 @@ interface Props {
     unassigned?: string;
     /** "1" -> Stale scope preset from InboxScopeBar. */
     stale?: string;
+    /** "1" -> Unmatched scope preset (no venue linked yet). */
+    unmatched?: string;
   }>;
 }
 
@@ -123,6 +125,7 @@ export default async function InboxPage({ searchParams }: Props) {
         accountIds,
         unassigned: params.unassigned === "1",
         staleOnly: params.stale === "1",
+        unmatchedOnly: params.unmatched === "1",
         search: params.q,
       }),
       fetchFolderCounts({
@@ -177,6 +180,7 @@ export default async function InboxPage({ searchParams }: Props) {
   if (params.accounts) preservedQuery.set("accounts", params.accounts);
   if (params.unassigned === "1") preservedQuery.set("unassigned", "1");
   if (params.stale === "1") preservedQuery.set("stale", "1");
+  if (params.unmatched === "1") preservedQuery.set("unmatched", "1");
   if (params.q) preservedQuery.set("q", params.q);
 
   return (
