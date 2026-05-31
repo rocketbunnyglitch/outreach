@@ -143,6 +143,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
+  const [wrongAccountBlocked, setWrongAccountBlocked] = useState(false);
   const [sending, startSendTx] = useTransition();
   const toast = useToast();
   /** undo-window timer: when non-null, we're in the queued-send window
@@ -366,11 +367,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       if (!sendRes.ok) {
         setSendError(sendRes.error);
         setCapBlocked(sendRes.capBlocked ?? false);
+        setWrongAccountBlocked(sendRes.wrongAccountBlocked ?? false);
         toast.show({
           kind: "error",
           message: sendRes.capBlocked
             ? "Daily cold send cap reached."
-            : `Send failed: ${sendRes.error}`,
+            : sendRes.wrongAccountBlocked
+              ? "Wrong inbox for this thread."
+              : `Send failed: ${sendRes.error}`,
         });
         return;
       }
@@ -392,6 +396,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   function handleSendNow() {
     setSendError(null);
     setCapBlocked(false);
+    setWrongAccountBlocked(false);
     const err = validate();
     if (err) {
       setSendError(err);
@@ -916,6 +921,24 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
             >
               Bypass cap
+            </button>
+          )}
+          {wrongAccountBlocked && instance.isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                // Admin path: re-fire with bypassCap=true. Same form
+                // field as the cap bypass — compose-send-impl uses it
+                // for both checks since the only legitimate reason to
+                // hit either is admin override. Server re-checks role.
+                setWrongAccountBlocked(false);
+                setSendError(null);
+                actuallySend({ bypassCap: true });
+              }}
+              className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
+              title="Send from the chosen From inbox anyway (admin only)"
+            >
+              Send anyway
             </button>
           )}
           {/* Aa — formatting toolbar toggle. Matches Gmail's

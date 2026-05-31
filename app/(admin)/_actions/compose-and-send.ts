@@ -290,6 +290,17 @@ export type ComposeResult =
        *  warnings the operator must acknowledge. UI shows a confirm
        *  step that re-submits with ackDuplicates=1. */
       duplicateWarnings?: DuplicateWarning[];
+      /** Set when a reply was attempted from a connected account
+       *  that doesn't match the thread's account. UI surfaces this
+       *  as a clear "wrong inbox" warning. Admins can bypass via
+       *  the bypassCap form field. */
+      wrongAccountBlocked?: boolean;
+      /** Email of the inbox that owns the thread (the "right" one
+       *  for replies). Set alongside wrongAccountBlocked. */
+      threadAccountEmail?: string;
+      /** Email of the inbox the operator picked in the From
+       *  dropdown. Set alongside wrongAccountBlocked. */
+      chosenAccountEmail?: string;
     };
 
 /**

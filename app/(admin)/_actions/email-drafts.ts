@@ -338,6 +338,9 @@ export async function sendDraft(
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
     duplicateWarnings?: unknown;
+    wrongAccountBlocked?: boolean;
+    threadAccountEmail?: string;
+    chosenAccountEmail?: string;
   }
 > {
   const { staff } = await requireStaff();
@@ -362,6 +365,9 @@ async function sendDraftAsUser(input: {
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
     duplicateWarnings?: unknown;
+    wrongAccountBlocked?: boolean;
+    threadAccountEmail?: string;
+    chosenAccountEmail?: string;
   }
 > {
   const [draft] = await db
@@ -440,6 +446,9 @@ async function sendDraftAsUser(input: {
       error: result.error,
       capBlocked: "capBlocked" in result ? result.capBlocked : undefined,
       duplicateWarnings: "duplicateWarnings" in result ? result.duplicateWarnings : undefined,
+      wrongAccountBlocked: "wrongAccountBlocked" in result ? result.wrongAccountBlocked : undefined,
+      threadAccountEmail: "threadAccountEmail" in result ? result.threadAccountEmail : undefined,
+      chosenAccountEmail: "chosenAccountEmail" in result ? result.chosenAccountEmail : undefined,
     };
   }
 

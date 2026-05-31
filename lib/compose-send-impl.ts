@@ -224,6 +224,68 @@ export async function composeAndSendImpl(
     if (!t) {
       return { ok: false, error: "Reply thread not found or not on your team." };
     }
+    // Wrong-account guard: replying from a DIFFERENT connected
+    // account than the one that received the thread will:
+    //   1. Start a brand-new Gmail thread on the venue's side
+    //      (since Gmail can't link a different sender's draft
+    //      onto the original thread)
+    //   2. Almost certainly send from the wrong brand/persona
+    //      (operator sent the original from jc@halloween.com,
+    //      now accidentally replying from jc@stpatrick.com)
+    //
+    // Hard block by default. Admin can override via bypassCap
+    // for edge cases where the brand change is intentional
+    // (e.g. transitioning the lead between campaigns). The
+    // override message uses the same form field for simplicity
+    // since the operator already knows how that pattern works
+    // from the cold-cap path.
+    const wrongAccount = t.staffOutreachEmailId !== fromAccountId;
+    const wrongAccountBypassed = wrongAccount && bypassCap && staff.role === "admin";
+    if (wrongAccount && !wrongAccountBypassed) {
+      // Look up the right account's email + the chosen account's
+      // email so the error message is concrete enough for the
+      // operator to fix it themselves.
+      const [right, chosen] = await Promise.all([
+        db
+          .select({ email: connectedAccounts.emailAddress })
+          .from(connectedAccounts)
+          .where(eq(connectedAccounts.id, t.staffOutreachEmailId))
+          .limit(1),
+        db
+          .select({ email: connectedAccounts.emailAddress })
+          .from(connectedAccounts)
+          .where(eq(connectedAccounts.id, fromAccountId))
+          .limit(1),
+      ]);
+      const rightEmail = right[0]?.email ?? "(unknown)";
+      const chosenEmail = chosen[0]?.email ?? "(unknown)";
+      logger.warn(
+        { threadId: t.id, threadAccountId: t.staffOutreachEmailId, fromAccountId },
+        "composeAndSend: wrong-account reply blocked",
+      );
+      return {
+        ok: false,
+        error: `This thread is on ${rightEmail}; you picked ${chosenEmail} to reply from. Replying from a different inbox would start a brand-new Gmail thread on the venue's side and likely send from the wrong brand. ${
+          staff.role === "admin"
+            ? "Switch From to the right inbox, or check 'Bypass safety' to send from the chosen account anyway."
+            : "Switch From to the right inbox, or ask an admin if you need to send from a different account."
+        }`,
+        wrongAccountBlocked: true,
+        threadAccountEmail: rightEmail,
+        chosenAccountEmail: chosenEmail,
+      };
+    }
+    if (wrongAccountBypassed) {
+      logger.warn(
+        {
+          threadId: t.id,
+          threadAccountId: t.staffOutreachEmailId,
+          fromAccountId,
+          userId: staff.id,
+        },
+        "composeAndSend: admin bypassed wrong-account guard",
+      );
+    }
     replyThreadGmailId = t.gmailThreadId;
     existingEngineThreadId = t.id;
     if (replyToMessageId) {
