@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/ui/empty-state";
 import type { WarmLeadRow } from "@/lib/warm-leads";
 import { CheckCircle2, Flame } from "lucide-react";
 import Link from "next/link";
@@ -39,15 +40,17 @@ interface Props {
 export function WarmLeadsPanel({ cityName, campaignName, leads, cityCampaignId, crawls }: Props) {
   if (leads.length === 0) {
     return (
-      <section className="card-surface overflow-hidden rounded-2xl p-6">
-        <header className="mb-3 flex items-baseline gap-2">
+      <section className="card-surface overflow-hidden rounded-2xl p-3">
+        <header className="mb-3 flex items-baseline gap-2 px-3 pt-3">
           <Flame className="h-4 w-4 text-zinc-500" />
           <h2 className="font-semibold text-lg tracking-tight">Warm leads</h2>
         </header>
-        <p className="text-xs text-zinc-500 italic">
-          No venues with past positive outcomes in {cityName} yet. As outreach happens, the engine
-          remembers who said yes and resurfaces them here for future campaigns.
-        </p>
+        <EmptyState
+          icon={Flame}
+          title={`No warm leads in ${cityName} yet`}
+          description="As outreach happens, the engine remembers venues that said yes and resurfaces them here for future campaigns."
+          size="compact"
+        />
       </section>
     );
   }

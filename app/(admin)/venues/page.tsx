@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cities, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
-import { Plus, Upload } from "lucide-react";
+import { Building2, Plus, Upload } from "lucide-react";
 import Link from "next/link";
 import { bulkUpdateVenues } from "./_actions";
 import { VenuesTable } from "./_components/venues-table";
@@ -91,12 +92,14 @@ export default async function VenuesListPage() {
       </header>
 
       {rows.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-semibold text-2xl tracking-tight ">No venues yet.</p>
-          <p className="mt-2 text-sm text-zinc-500">
-            Phase 5 will populate venues automatically from Google Maps; for now add them manually
-            or import from CSV via /import.
-          </p>
+        <Card className="border-dashed bg-transparent p-2">
+          <EmptyState
+            icon={Building2}
+            title="No venues yet"
+            description="Venues will populate automatically from Google Maps once Phase 5 ships. In the meantime, add them manually or import a CSV."
+            action={{ label: "Add a venue", href: "/venues/new" }}
+            secondaryAction={{ label: "Import CSV", href: "/import" }}
+          />
         </Card>
       ) : (
         <VenuesTable

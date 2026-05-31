@@ -1,11 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { campaigns, crawlBrands, outreachBrands } from "@/db/schema";
 import { db } from "@/lib/db";
 import { desc, isNull } from "drizzle-orm";
 import { eq } from "drizzle-orm";
-import { Plus } from "lucide-react";
+import { Megaphone, Plus } from "lucide-react";
 import Link from "next/link";
 import { EditCampaignButton } from "./_components/edit-campaign-button";
 
@@ -42,11 +43,13 @@ export default async function CampaignsListPage() {
       </header>
 
       {rows.length === 0 ? (
-        <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-semibold text-2xl tracking-tight ">No campaigns yet.</p>
-          <p className="mt-2 text-sm text-zinc-500">
-            Create one to start building city + venue plans against a brand pair.
-          </p>
+        <Card className="border-dashed bg-transparent p-2">
+          <EmptyState
+            icon={Megaphone}
+            title="No campaigns yet"
+            description="A campaign pairs an outreach brand with a crawl brand. Create one to start building city + venue plans against the pair."
+            action={{ label: "Create campaign", href: "/campaigns/new" }}
+          />
         </Card>
       ) : (
         <div className="grid gap-3">

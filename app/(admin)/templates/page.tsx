@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { emailTemplates, outreachBrands } from "@/db/schema";
 import { db } from "@/lib/db";
 import { STAGE_LABELS } from "@/lib/validation/email-templates";
@@ -64,11 +65,13 @@ export default async function TemplatesListPage() {
       </header>
 
       {byBrand.size === 0 ? (
-        <Card className="border-dashed bg-transparent p-10 text-center">
-          <p className="font-semibold text-2xl tracking-tight ">No templates yet.</p>
-          <p className="mt-2 text-sm text-zinc-500">
-            Create your first template to start authoring outreach copy.
-          </p>
+        <Card className="border-dashed bg-transparent p-2">
+          <EmptyState
+            icon={Mail}
+            title="No templates yet"
+            description="Templates power your outreach copy — create one per stage (intro, follow-up, confirmation) so the team sends consistent, on-brand emails."
+            action={{ label: "New template", href: "/templates/new" }}
+          />
         </Card>
       ) : (
         <div className="flex flex-col gap-10">
