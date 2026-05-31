@@ -9,6 +9,7 @@ import {
   Loader2,
   RefreshCw,
   Send,
+  Sparkles,
   Ticket,
   X,
 } from "lucide-react";
@@ -156,10 +157,11 @@ export function EventbriteCell({
     });
   }
 
-  function push() {
+  function push(polish = false) {
     setError(null);
     const fd = new FormData();
     fd.set("eventId", eventId);
+    if (polish) fd.set("polish", "true");
     startPush(async () => {
       const result = await pushEventbriteDescription(null, fd);
       if (!result.ok) {
@@ -171,7 +173,8 @@ export function EventbriteCell({
         setError("Eventbrite isn't configured.");
         return;
       }
-      setToast("Venue route pushed to Eventbrite");
+      const polished = data && "polished" in data && data.polished;
+      setToast(polished ? "Pushed with AI intro" : "Venue route pushed to Eventbrite");
     });
   }
 
@@ -218,13 +221,26 @@ export function EventbriteCell({
           </button>
           <button
             type="button"
-            onClick={push}
+            onClick={() => push(false)}
             disabled={busy}
             className="rounded p-1 text-zinc-400 transition-colors hover:bg-emerald-500/[0.08] hover:text-emerald-600"
             aria-label="Push venue route to Eventbrite description"
             title="Push venue route to EB description"
           >
             {pushing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+          </button>
+          {/* AI-polished push (Haiku ROI #7). Pushes the same venue
+              route block but prepends a 1-2 sentence AI intro.
+              ~$0.0007/click. */}
+          <button
+            type="button"
+            onClick={() => push(true)}
+            disabled={busy}
+            className="rounded p-1 text-violet-400 transition-colors hover:bg-violet-500/[0.08] hover:text-violet-600 dark:text-violet-500"
+            aria-label="Push venue route with AI-written intro"
+            title="Push with an AI-written 1-2 sentence intro above the venue list"
+          >
+            <Sparkles className="h-3 w-3" />
           </button>
           <button
             type="button"

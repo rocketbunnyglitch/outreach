@@ -15,7 +15,7 @@
  * the operator can confirm or correct before we save the linkage.
  */
 
-import { events, venueEvents, venues } from "@/db/schema";
+import { events, cities, cityCampaigns, venueEvents, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -242,18 +242,36 @@ export async function syncEventbriteSales(
  */
 const pushSchema = z.object({
   eventId: uuid,
+  /** When true, ask Haiku for a 1-2 sentence intro paragraph that
+   *  goes ABOVE the structured venue block. ~$0.0007/call.
+   *  Failures gracefully fall through to the un-polished block.
+   *  See lib/ai-eb-polish.ts. */
+  polish: z
+    .union([z.literal("true"), z.literal("1"), z.literal("false"), z.literal("0"), z.literal("")])
+    .optional()
+    .default("false"),
 });
 
 export async function pushEventbriteDescription(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ pushed: true } | { notConfigured: true }>> {
+): Promise<ActionResult<{ pushed: true; polished?: boolean } | { notConfigured: true }>> {
   const { staff } = await requireStaff();
-  const parsed = pushSchema.safeParse({ eventId: formData.get("eventId") });
+  const parsed = pushSchema.safeParse({
+    eventId: formData.get("eventId"),
+    polish: formData.get("polish") ?? "false",
+  });
   if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const polishRequested = parsed.data.polish === "true" || parsed.data.polish === "1";
 
   const ebRow = await db
-    .select({ ebId: events.eventbriteEventId, eventDate: events.eventDate })
+    .select({
+      ebId: events.eventbriteEventId,
+      eventDate: events.eventDate,
+      dayPart: events.dayPart,
+      crawlNumber: events.crawlNumber,
+      cityCampaignId: events.cityCampaignId,
+    })
     .from(events)
     .where(eq(events.id, parsed.data.eventId))
     .limit(1)
@@ -292,7 +310,47 @@ export async function pushEventbriteDescription(
       drinkSpecials: r.drinkSpecials,
     })),
   );
-  const ok = await updateEventbriteDescription(ebRow.ebId, block);
+
+  // AI polish (Haiku ROI #7) — prepend a 1-2 sentence intro
+  // above the structured block when requested. NEVER fails the
+  // push: a polish error just sends the un-polished block.
+  let finalBlock = block;
+  let polishedFlag = false;
+  if (polishRequested) {
+    const confirmedCount = rows.filter((r) =>
+      ["confirmed", "contract_signed"].includes(r.status as string),
+    ).length;
+    if (confirmedCount > 0 && ebRow.cityCampaignId) {
+      // Need the city name — one cheap join.
+      const cityRow = await db
+        .select({ cityName: cities.name })
+        .from(cityCampaigns)
+        .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+        .where(eq(cityCampaigns.id, ebRow.cityCampaignId))
+        .limit(1)
+        .then((r) => r[0]);
+      if (cityRow) {
+        const { polishEbDescription } = await import("@/lib/ai-eb-polish");
+        const polish = await polishEbDescription({
+          staffId: staff.id,
+          cityName: cityRow.cityName,
+          dayPartLabel: formatDayPartForPolish(ebRow.dayPart),
+          eventDate: ebRow.eventDate,
+          venueCount: confirmedCount,
+          crawlNumber: ebRow.crawlNumber ?? null,
+        });
+        if (polish.ok) {
+          // Wrap the AI sentence in <p>; HTML-escape just in case
+          // the model included angle brackets despite the prompt.
+          const intro = `<p>${escapeHtml(polish.text)}</p>`;
+          finalBlock = `${intro}\n${block}`;
+          polishedFlag = true;
+        }
+      }
+    }
+  }
+
+  const ok = await updateEventbriteDescription(ebRow.ebId, finalBlock);
   if (!ok) return { ok: false, error: "Couldn't push to Eventbrite." };
 
   publishRealtime({
@@ -301,7 +359,15 @@ export async function pushEventbriteDescription(
     byStaffId: staff.id,
     byStaffName: staff.displayName ?? null,
   });
-  return { ok: true, data: { pushed: true } };
+  return { ok: true, data: { pushed: true, polished: polishedFlag } };
+}
+
+function formatDayPartForPolish(dp: string | null): string {
+  if (!dp) return "Evening";
+  return dp
+    .split("_")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(" ");
 }
 
 function formatVenuesBlock(
