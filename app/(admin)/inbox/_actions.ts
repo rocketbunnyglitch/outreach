@@ -262,6 +262,10 @@ export async function sendThreadReply(
       recipientEmail: recipient,
       category: sendCategory,
       capBypassed,
+      // Inbox replies are freeform — no template. Team scoped from
+      // the calling staff (Phase C.1).
+      templateId: null,
+      teamId: staff.teamId,
     });
   } catch (err) {
     logger.error({ err, threadId }, "sendThreadReply: recordSendEvent failed");

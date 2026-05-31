@@ -5,6 +5,8 @@
 
 import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { emailThreads } from "./outreach";
+import { teams } from "./teams";
+import { emailTemplates } from "./templates";
 import { staffOutreachEmails, users } from "./users";
 
 export const emailSendEvents = pgTable(
@@ -24,12 +26,23 @@ export const emailSendEvents = pgTable(
     countedAgainstCap: boolean("counted_against_cap").notNull(),
     /** True when an admin pushed the send through despite the cap. */
     capBypassed: boolean("cap_bypassed").notNull().default(false),
+    /** Template used for this send (Phase C.1). NULL = freeform
+     *  compose with no template. */
+    templateId: uuid("template_id").references(() => emailTemplates.id, {
+      onDelete: "set null",
+    }),
+    /** Owning team — denormalized from the connected account so
+     *  analytics queries can scope directly without a join.
+     *  Migration 0071. */
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     accountIdx: index("email_send_events_account_sent_at_idx").on(t.connectedAccountId, t.sentAt),
     userIdx: index("email_send_events_user_sent_at_idx").on(t.sentByUserId, t.sentAt),
     threadIdx: index("email_send_events_thread_idx").on(t.threadId),
+    templateIdx: index("email_send_events_template_idx").on(t.templateId, t.sentAt),
+    teamIdx: index("email_send_events_team_idx").on(t.teamId, t.sentAt),
   }),
 );
 

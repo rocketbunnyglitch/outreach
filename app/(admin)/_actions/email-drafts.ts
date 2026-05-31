@@ -438,6 +438,10 @@ async function sendDraftAsUser(input: {
   // Admin-bypass marker — composeAndSend re-checks the operator's
   // role server-side; we just surface the form-field convention here.
   if (input.bypassCap) fd.set("bypassCap", "1");
+  // Template attribution (Phase C.1) — recorded on email_send_events
+  // so template-performance analytics can compute per-template
+  // reply/warm rates. Null when the operator composed freeform.
+  if (draft.templateId) fd.set("templateId", draft.templateId);
 
   const result = await composeAndSend(null, fd);
   if (!result.ok) {

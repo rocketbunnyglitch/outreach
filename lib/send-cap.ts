@@ -208,6 +208,10 @@ export async function preflightSend(opts: {
  * Record a send event AFTER sendGmailMessage succeeds. Idempotent
  * via the natural ordering of the caller: only call once per
  * successful send.
+ *
+ * Phase C.1 adds templateId + teamId. teamId is required for new
+ * sends; legacy backfill in migration 0071 handles existing rows.
+ * templateId is optional (null = freeform compose).
  */
 export async function recordSendEvent(opts: {
   connectedAccountId: string;
@@ -216,6 +220,11 @@ export async function recordSendEvent(opts: {
   recipientEmail: string;
   category: "cold" | "warm";
   capBypassed?: boolean;
+  /** Template used for this send, if any (Phase C.1). */
+  templateId?: string | null;
+  /** Owning team — denormalized for fast analytics queries
+   *  (Phase C.1). Required for new sends. */
+  teamId: string;
 }): Promise<void> {
   await db.insert(emailSendEvents).values({
     connectedAccountId: opts.connectedAccountId,
@@ -228,5 +237,7 @@ export async function recordSendEvent(opts: {
     // a true picture of inbox usage today.
     countedAgainstCap: opts.category === "cold",
     capBypassed: Boolean(opts.capBypassed),
+    templateId: opts.templateId ?? null,
+    teamId: opts.teamId,
   });
 }

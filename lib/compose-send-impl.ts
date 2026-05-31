@@ -51,6 +51,13 @@ export async function composeAndSendImpl(
   const body = String(formData.get("body") ?? "");
   const venueIdRaw = String(formData.get("venueId") ?? "").trim();
   const venueId = venueIdRaw && UUID_RE.test(venueIdRaw) ? venueIdRaw : null;
+  // Template attribution (Phase C.1) — recorded on the send-event
+  // for per-template analytics. Validated UUID-only; bad input
+  // silently drops to null since the wrong value would just point
+  // at a missing FK and the send-event insert would fail with a
+  // 23503. Better to under-attribute than break the send.
+  const templateIdRaw = String(formData.get("templateId") ?? "").trim();
+  const templateId = templateIdRaw && UUID_RE.test(templateIdRaw) ? templateIdRaw : null;
   // Optional comma-separated list of team_label ids to apply to the
   // new thread after send. Filtered to valid UUIDs; unknown ids are
   // dropped silently (label may have been deleted between modal open
@@ -462,6 +469,8 @@ export async function composeAndSendImpl(
       recipientEmail: to,
       category: sendCategory,
       capBypassed,
+      templateId,
+      teamId: staff.teamId,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
