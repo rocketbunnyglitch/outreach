@@ -98,22 +98,28 @@ export function TargetDateKpi({
         }}
       />
 
-      <div className="relative aspect-square min-h-[140px] w-full p-3 sm:min-h-[260px] sm:p-5">
+      <div className="relative aspect-square min-h-[180px] w-full p-3 sm:min-h-[320px] sm:p-5">
         <RingOfBars
           totalBars={TOTAL_BARS}
           litCount={daysLeft === null ? 0 : litBarsFor(daysLeft)}
           tone={tone}
         />
 
-        {/* TARGET DATE label */}
-        <div className="pointer-events-none absolute inset-x-0 top-[34%] flex justify-center">
-          <p className="font-mono text-[7px] text-zinc-600 uppercase tracking-[0.18em] sm:text-[10px] sm:tracking-[0.22em] dark:text-zinc-400">
+        {/* TARGET DATE label — sized to match the reference image's
+            "SUMMARY" treatment: wider letter-spacing, larger size
+            than a normal kpi caption, sits above the big number. */}
+        <div className="pointer-events-none absolute inset-x-0 top-[36%] flex justify-center">
+          <p className="font-mono text-[9px] text-zinc-400 uppercase tracking-[0.28em] sm:text-[12px] sm:tracking-[0.32em] dark:text-zinc-300">
             Target Date
           </p>
         </div>
 
-        {/* Big date — center */}
-        <div className="pointer-events-none absolute inset-x-0 top-[42%] flex justify-center">
+        {/* Big date — center. Sized to fill the ring's negative
+            space the way "20.830" does in the reference: huge,
+            bold, white, dominates the card. Uses clamp at the top
+            end so the longest month names (SEPTEMBER) still fit
+            inside the ring. */}
+        <div className="pointer-events-none absolute inset-x-0 top-[44%] flex justify-center px-4">
           {editing ? (
             <span className="pointer-events-auto inline-flex items-center gap-1">
               <input
@@ -159,7 +165,7 @@ export function TargetDateKpi({
             </span>
           ) : (
             <p
-              className="font-semibold text-xl text-zinc-900 leading-none sm:text-3xl lg:text-4xl dark:text-white"
+              className="whitespace-nowrap font-bold text-3xl text-zinc-900 leading-none tracking-tight sm:text-5xl lg:text-6xl dark:text-white"
               style={{ fontFeatureSettings: '"tnum"' }}
             >
               {target ? formatDate(target) : "—"}
@@ -167,11 +173,14 @@ export function TargetDateKpi({
           )}
         </div>
 
-        {/* Days left + edit */}
-        <div className="pointer-events-none absolute inset-x-0 top-[58%] flex justify-center">
+        {/* Days left + edit. Tone-colored, bigger and bolder than
+            the original — matches the "+23%" treatment in the
+            reference where the secondary number is a confident
+            colored accent, not a subtle caption. */}
+        <div className="pointer-events-none absolute inset-x-0 top-[60%] flex justify-center">
           <div className="pointer-events-auto flex flex-col items-center gap-1">
             <p
-              className={`whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.12em] sm:text-xs ${TONE_TEXT[tone]}`}
+              className={`whitespace-nowrap font-mono font-semibold text-xs uppercase tracking-[0.18em] sm:text-base sm:tracking-[0.22em] ${TONE_TEXT[tone]}`}
             >
               {daysLeft === null
                 ? "No date set"
@@ -248,12 +257,12 @@ const TONE_BAR: Record<Tone, string> = {
 };
 
 const TONE_WASH: Record<Tone, string> = {
-  green: "rgba(16,185,129,0.18)",
-  lime: "rgba(132,204,22,0.18)",
-  yellow: "rgba(234,179,8,0.20)",
-  amber: "rgba(245,158,11,0.22)",
-  orange: "rgba(249,115,22,0.24)",
-  red: "rgba(239,68,68,0.28)",
+  green: "rgba(16,185,129,0.28)",
+  lime: "rgba(132,204,22,0.30)",
+  yellow: "rgba(234,179,8,0.34)",
+  amber: "rgba(245,158,11,0.36)",
+  orange: "rgba(249,115,22,0.40)",
+  red: "rgba(239,68,68,0.44)",
 };
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -278,12 +287,18 @@ function RingOfBars({
   litCount: number;
   tone: Tone;
 }) {
-  const width = 360;
-  const height = 360;
+  // ViewBox slightly larger than the bar-reach so the outer glow
+  // has room to expand without getting clipped at the SVG edge.
+  const width = 440;
+  const height = 440;
   const cx = width / 2;
   const cy = height / 2;
-  const outerRadius = 150;
-  const innerRadius = 130; // 20px tall bars
+  // Long radial fingers — reference image has bars ~25% of the
+  // ring radius, with the outer tips landing close to the card
+  // edge. Inner void is wide enough to host the full text block
+  // (TARGET DATE / big date / DAYS LEFT) without crowding.
+  const outerRadius = 210;
+  const innerRadius = 156; // 54px tall bars
   const litColor = TONE_BAR[tone];
 
   // Bars laid out around the circle. Start angle at -90° (top) so
@@ -306,10 +321,21 @@ function RingOfBars({
       preserveAspectRatio="xMidYMid meet"
     >
       <defs>
-        <filter id="bar-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2" result="blur" />
+        {/* Multi-pass bloom to match the reference image's dramatic
+            outer halo. Three layers stacked:
+              1. wide ambient halo (stdDev 16) — throws colored
+                 wash 30-50px past the bars into negative space
+              2. mid bloom (stdDev 6) — softens the bar edges and
+                 adds the "lit from within" weight
+              3. SourceGraphic on top — keeps the bar itself crisp
+            Width/height set to 300% with inset -100% so the halo
+            isn't clipped at the bar's own bounding box. */}
+        <filter id="bar-glow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="halo" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="bloom" />
           <feMerge>
-            <feMergeNode in="blur" />
+            <feMergeNode in="halo" />
+            <feMergeNode in="bloom" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
@@ -327,7 +353,7 @@ function RingOfBars({
               x2={b.x2}
               y2={b.y2}
               stroke={litColor}
-              strokeWidth={6}
+              strokeWidth={9}
               strokeLinecap="round"
               filter="url(#bar-glow)"
             />
@@ -340,10 +366,10 @@ function RingOfBars({
             y1={b.y1}
             x2={b.x2}
             y2={b.y2}
-            stroke="#3f3f46"
-            strokeWidth={6}
+            stroke="#52525b"
+            strokeWidth={5}
             strokeLinecap="round"
-            opacity={0.4}
+            opacity={0.5}
           />
         );
       })}
