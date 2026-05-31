@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { asc, eq, isNull, sql } from "drizzle-orm";
 import {
   Archive,
@@ -46,45 +47,82 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireAdmin();
 
-  const [campaignRows, cityCount, ccCount, staffCount, unclassifiedCount, untaggedVenueCount] =
-    await Promise.all([
-      db
-        .select({
-          id: campaigns.id,
-          name: campaigns.name,
-          slug: campaigns.slug,
-          status: campaigns.status,
-          startDate: campaigns.startDate,
-          archivedAt: campaigns.archivedAt,
-          cityCount: sql<number>`(
+  // Promise.allSettled so one broken query can't crash the whole
+  // admin page. Each fulfilled value is unwrapped to a sensible
+  // default. Each rejection is logged + folded into a top-level
+  // "dataIssues" list the page surfaces in a red banner so the
+  // operator sees exactly what's broken (and the rest of the page
+  // still renders so they can use other admin tools).
+  const dataIssues: string[] = [];
+  const safeNumber = (
+    settled: PromiseSettledResult<number>,
+    label: string,
+    fallback = 0,
+  ): number => {
+    if (settled.status === "fulfilled") return settled.value;
+    const msg = (settled.reason as Error)?.message ?? String(settled.reason);
+    logger.error({ err: settled.reason, label }, "admin page query failed");
+    dataIssues.push(`${label}: ${msg}`);
+    return fallback;
+  };
+
+  const results = await Promise.allSettled([
+    db
+      .select({
+        id: campaigns.id,
+        name: campaigns.name,
+        slug: campaigns.slug,
+        status: campaigns.status,
+        startDate: campaigns.startDate,
+        archivedAt: campaigns.archivedAt,
+        cityCount: sql<number>`(
           SELECT count(*)::int FROM city_campaigns
           WHERE city_campaigns.campaign_id = ${campaigns.id}
         )`,
-        })
-        .from(campaigns)
-        .orderBy(asc(campaigns.archivedAt), asc(campaigns.name)),
-      db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(cities)
-        .where(isNull(cities.archivedAt))
-        .then((r) => Number(r[0]?.count ?? 0)),
-      db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(cityCampaigns)
-        .then((r) => Number(r[0]?.count ?? 0)),
-      db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(staffMembers)
-        .where(eq(staffMembers.status, "active"))
-        .then((r) => Number(r[0]?.count ?? 0)),
-      // Snapshot for the classifier backfill panel — refreshed via
-      // router.refresh() after each batch click.
-      getUnclassifiedCount(),
-      // Snapshot for the AI venue-tag backfill panel (Haiku ROI #8).
-      // Counts venues with empty venueType arrays so the operator
-      // knows the size of the backlog before clicking.
-      getUntaggedVenueCount(),
-    ]);
+      })
+      .from(campaigns)
+      .orderBy(asc(campaigns.archivedAt), asc(campaigns.name)),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(cities)
+      .where(isNull(cities.archivedAt))
+      .then((r) => Number(r[0]?.count ?? 0)),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(cityCampaigns)
+      .then((r) => Number(r[0]?.count ?? 0)),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(staffMembers)
+      .where(eq(staffMembers.status, "active"))
+      .then((r) => Number(r[0]?.count ?? 0)),
+    // Snapshot for the classifier backfill panel — refreshed via
+    // router.refresh() after each batch click.
+    getUnclassifiedCount(),
+    // Snapshot for the AI venue-tag backfill panel (Haiku ROI #8).
+    // Counts venues with empty venueType arrays so the operator
+    // knows the size of the backlog before clicking.
+    getUntaggedVenueCount(),
+  ]);
+
+  const campaignRows = results[0].status === "fulfilled" ? results[0].value : [];
+  if (results[0].status === "rejected") {
+    const msg = (results[0].reason as Error)?.message ?? String(results[0].reason);
+    logger.error({ err: results[0].reason }, "admin page: campaigns query failed");
+    dataIssues.push(`campaigns: ${msg}`);
+  }
+
+  const cityCount = safeNumber(results[1] as PromiseSettledResult<number>, "cities count");
+  const ccCount = safeNumber(results[2] as PromiseSettledResult<number>, "city_campaigns count");
+  const staffCount = safeNumber(results[3] as PromiseSettledResult<number>, "staff count");
+  const unclassifiedCount = safeNumber(
+    results[4] as PromiseSettledResult<number>,
+    "unclassified thread count",
+  );
+  const untaggedVenueCount = safeNumber(
+    results[5] as PromiseSettledResult<number>,
+    "untagged venue count",
+  );
 
   const activeCampaigns = campaignRows.filter((c) => !c.archivedAt);
   const archivedCampaigns = campaignRows.filter((c) => c.archivedAt);
@@ -102,6 +140,33 @@ export default async function AdminPage() {
           spin up a campaign's full city list and crawl roster from CSV in one paste.
         </p>
       </header>
+
+      {/* Data issues banner — surfaces any per-query failure from
+          the page's Promise.allSettled so the operator can see
+          exactly what's broken instead of getting a generic 500
+          on the whole page. Each issue lists the failing source
+          + the error message. */}
+      {dataIssues.length > 0 && (
+        <section className="rounded-md border border-rose-200 bg-rose-50/60 px-4 py-3 text-xs dark:border-rose-900/40 dark:bg-rose-950/30">
+          <p className="font-mono text-[10px] text-rose-700 uppercase tracking-[0.08em] dark:text-rose-300">
+            Data issues — {dataIssues.length}
+          </p>
+          <p className="mt-1 text-rose-900 dark:text-rose-100">
+            Some admin stats failed to load. The rest of the page rendered normally, but these
+            counters may be stale. Most common cause: a new migration hasn't been applied yet.
+          </p>
+          <ul className="mt-2 list-disc pl-5">
+            {dataIssues.map((issue) => (
+              <li
+                key={issue.slice(0, 40)}
+                className="font-mono text-[11px] text-rose-900 dark:text-rose-100"
+              >
+                {issue}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Stats strip */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
