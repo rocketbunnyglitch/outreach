@@ -15,8 +15,10 @@
 import { cn } from "@/lib/cn";
 import {
   AlertCircle,
+  CalendarCheck,
   Check,
   CircleHelp,
+  Flame,
   Loader2,
   Mail,
   MessageSquareX,
@@ -29,6 +31,8 @@ import { setThreadClassification } from "../_actions";
 
 type Classification =
   | "interested"
+  | "warm"
+  | "confirmed"
   | "question"
   | "callback_requested"
   | "decline"
@@ -53,6 +57,18 @@ const OPTIONS: Array<{
     label: "Interested",
     icon: Sparkles,
     tone: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    value: "warm",
+    label: "Warm (questions)",
+    icon: Flame,
+    tone: "text-orange-600 dark:text-orange-400",
+  },
+  {
+    value: "confirmed",
+    label: "Confirmed",
+    icon: CalendarCheck,
+    tone: "text-emerald-700 dark:text-emerald-300",
   },
   {
     value: "question",
@@ -122,10 +138,15 @@ export function ClassificationPicker({ threadId, current }: Props) {
 
   function choose(c: Classification) {
     setOpen(false);
-    if (c === optimistic) return;
-    setOptimistic(c);
+    // Click the same classification again to toggle BACK to
+    // "unclassified" — operators need a fast undo when they
+    // misclick. Matches the same pattern as the state buttons
+    // (Interested/Declined toggle off on second click).
+    const next = c === optimistic ? "unclassified" : c;
+    if (next === optimistic) return;
+    setOptimistic(next);
     startTx(async () => {
-      const result = await setThreadClassification(threadId, c);
+      const result = await setThreadClassification(threadId, next);
       if (!result.ok) {
         // Revert on failure
         setOptimistic(current);

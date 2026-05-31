@@ -270,9 +270,35 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   // -------------------------------------------------------------
   function handleClose() {
     const hasContent = instance.to.trim() || instance.subject.trim() || instance.bodyText.trim();
-    if (hasContent && instance.draftStatus !== "saved") {
-      if (!confirm("Discard unsaved changes?")) return;
+    // Empty draft: just delete + close. Gmail does the same — no
+    // point keeping a "Draft" row around for an unwritten message.
+    if (!hasContent) {
+      deleteDraft(instance.id).catch(() => {
+        /* row may not exist yet; close anyway */
+      });
+      close(instance.id);
+      return;
     }
+    // There's content. Ask the operator whether to keep it saved or
+    // delete from the Drafts folder. Binary native confirm — OK
+    // discards (matches Gmail's trash-icon behavior); Cancel keeps
+    // it saved.
+    //
+    // Phrased so OK = destructive action (delete) and Cancel =
+    // safe (keep). This matches every browser confirm() convention
+    // and avoids the trap where the operator mashes Enter and
+    // loses work.
+    const discard = confirm(
+      "Discard this draft?\n\nOK = delete from Drafts.\nCancel = keep saved in Drafts.",
+    );
+    if (discard) {
+      deleteDraft(instance.id).catch(() => {
+        // Non-fatal — the row might already be gone; close anyway.
+      });
+    }
+    // Either way the window closes. On Cancel, the draft stays
+    // saved server-side (the autosave loop has already flushed) so
+    // it'll be visible in the Drafts folder + can be reopened.
     close(instance.id);
   }
 

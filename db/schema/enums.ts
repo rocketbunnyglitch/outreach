@@ -272,6 +272,8 @@ export const threadDirection = pgEnum("thread_direction", ["inbound", "outbound"
  */
 export const replyClassification = pgEnum("reply_classification", [
   "interested",
+  "warm",
+  "confirmed",
   "question",
   "callback_requested",
   "decline",

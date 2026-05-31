@@ -1093,6 +1093,8 @@ export async function setThreadClassification(
   threadId: string,
   classification:
     | "interested"
+    | "warm"
+    | "confirmed"
     | "question"
     | "callback_requested"
     | "decline"

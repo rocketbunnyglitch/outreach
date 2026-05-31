@@ -56,11 +56,17 @@ export function ThreadActions({
   }, [threadId, unreadCount]);
 
   function changeState(state: "closed_won" | "closed_lost" | "archived") {
-    if (currentState === state) return;
+    // Click the same state again to toggle BACK to needs_reply.
+    // Operators reach for these buttons to mark a final outcome;
+    // when they realize they misclicked, the cleanest undo is
+    // "click the highlighted button to clear it." Matches the
+    // Gmail-parity "Important" toggle behavior — second click
+    // unsets, not no-ops.
+    const next = currentState === state ? "needs_reply" : state;
     startTx(async () => {
       const fd = new FormData();
       fd.set("threadId", threadId);
-      fd.set("state", state);
+      fd.set("state", next);
       await setThreadState(null, fd);
       router.refresh();
     });

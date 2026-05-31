@@ -83,6 +83,8 @@ export function ThreadList({
 
 const CLASSIFICATION_ICON: Record<string, React.ReactNode> = {
   interested: <CheckCircle2 className="h-3 w-3" />,
+  warm: <CheckCircle2 className="h-3 w-3" />,
+  confirmed: <CheckCircle2 className="h-3 w-3" />,
   question: <HelpCircle className="h-3 w-3" />,
   callback_requested: <PhoneCall className="h-3 w-3" />,
   decline: <XCircle className="h-3 w-3" />,
@@ -94,6 +96,8 @@ const CLASSIFICATION_ICON: Record<string, React.ReactNode> = {
 
 const CLASSIFICATION_TONE: Record<string, string> = {
   interested: "text-emerald-500",
+  warm: "text-orange-500",
+  confirmed: "text-emerald-700 dark:text-emerald-300",
   question: "text-blue-500",
   callback_requested: "text-violet-500",
   decline: "text-rose-500",
