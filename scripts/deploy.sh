@@ -178,6 +178,15 @@ if [ "$SKIP_BUILD" = "1" ]; then
 else
   log "building Next.js standalone bundle..."
   log "(this is the slow step — 4-7 min on 2GB RAM)"
+  # Preserve the previous build's hashed static chunks so tabs opened
+  # before this deploy can still fetch their immutable chunks instead of
+  # 404 -> ChunkLoadError. Archived before `next build` wipes .next, then
+  # merged back (no-clobber) after the fresh static is copied in.
+  PREV_STATIC_ARCHIVE=""
+  if [ -d .next/standalone/.next/static ]; then
+    PREV_STATIC_ARCHIVE="$(mktemp -d)"
+    cp -r .next/standalone/.next/static/. "$PREV_STATIC_ARCHIVE/" 2>/dev/null || true
+  fi
   NODE_OPTIONS="--max-old-space-size=$NODE_MAX_OLD_SPACE" \
   BUILD_VERSION=$(git rev-parse --short HEAD) \
   BUILD_COMMIT=$(git rev-parse HEAD) \
@@ -186,6 +195,11 @@ else
 
   # Copy static assets into standalone tree (next build doesn't do this)
   cp -r .next/static .next/standalone/.next/
+  # Merge prior build's chunks back without overwriting this build's files.
+  if [ -n "$PREV_STATIC_ARCHIVE" ] && [ -d "$PREV_STATIC_ARCHIVE" ]; then
+    cp -rn "$PREV_STATIC_ARCHIVE/." .next/standalone/.next/static/ 2>/dev/null || true
+    rm -rf "$PREV_STATIC_ARCHIVE"
+  fi
   [ -d public ] && cp -r public .next/standalone/ 2>/dev/null || true
 
   # Copy data/ — non-code import payloads (e.g. halloween_2025.json
