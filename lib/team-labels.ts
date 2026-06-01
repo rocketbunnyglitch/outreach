@@ -340,6 +340,64 @@ export async function reconcileGmailLabelsForThread(opts: {
 }
 
 /**
+ * Inverse of reconcileGmailLabelsForThread — called by the poll
+ * worker when Gmail's history.list reports that user labels were
+ * REMOVED from a message. Maps the Gmail labelIds back to
+ * team_labels via the existing teamLabelGmailLinks rows and
+ * removes the corresponding email_thread_labels rows.
+ *
+ * Policy: only remove labels that were applied via='gmail'.
+ * Manually-applied team labels stay even if the operator clicked
+ * them off in Gmail's UI — the engine-side action was intentional
+ * and shouldn't be silently reversed by an unrelated Gmail edit.
+ *
+ * Returns the count of rows actually removed (zero when no
+ * matching gmail-applied row exists, which is the common case for
+ * labels the operator never had in the engine in the first place).
+ */
+export async function unreconcileGmailLabelsForThread(opts: {
+  threadId: string;
+  /** Gmail-side label ids that were REMOVED on the thread. */
+  gmailLabelIds: string[];
+  /** Scope so a coincidental Gmail label id collision across
+   *  accounts can't cross-contaminate. */
+  connectedAccountId: string;
+}): Promise<{ removed: number }> {
+  if (opts.gmailLabelIds.length === 0) return { removed: 0 };
+
+  const links = await db
+    .select({
+      teamLabelId: teamLabelGmailLinks.teamLabelId,
+    })
+    .from(teamLabelGmailLinks)
+    .where(
+      and(
+        eq(teamLabelGmailLinks.connectedAccountId, opts.connectedAccountId),
+        inArray(teamLabelGmailLinks.gmailLabelId, opts.gmailLabelIds),
+      ),
+    );
+  if (links.length === 0) return { removed: 0 };
+
+  const teamLabelIds = links.map((l) => l.teamLabelId);
+
+  const removed = await db
+    .delete(emailThreadLabels)
+    .where(
+      and(
+        eq(emailThreadLabels.threadId, opts.threadId),
+        inArray(emailThreadLabels.teamLabelId, teamLabelIds),
+        // CRITICAL: only delete rows that originated from Gmail.
+        // Manually-applied labels in the engine survive a Gmail
+        // un-label so operators don't lose curated state to a
+        // teammate's Gmail-side cleanup.
+        eq(emailThreadLabels.appliedVia, "gmail"),
+      ),
+    )
+    .returning({ id: emailThreadLabels.threadId });
+  return { removed: removed.length };
+}
+
+/**
  * Internal: push a single label apply/remove to Gmail for a thread.
  * Looks up the thread's gmailThreadId + connected_account, ensures
  * the team_label has a Gmail link on that account (creating it

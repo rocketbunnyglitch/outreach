@@ -50,7 +50,7 @@ import { refreshAccessToken } from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
-import { reconcileGmailLabelsForThread } from "@/lib/team-labels";
+import { reconcileGmailLabelsForThread, unreconcileGmailLabelsForThread } from "@/lib/team-labels";
 import { classifyInboundEmail } from "@/lib/triage-classifier";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
@@ -192,13 +192,35 @@ export async function pollOneInbox(inbox: {
   const starredAddedThreadGmailIds = new Set<string>();
   const starredRemovedThreadGmailIds = new Set<string>();
 
+  // User-label changes on existing messages — operator labeled or
+  // unlabeled a thread directly in Gmail's web UI without sending a
+  // new message. Keyed by Gmail thread id; values are the sets of
+  // user-label ids added / removed in this delta window. We process
+  // these AFTER message ingest so any thread newly created in this
+  // poll cycle is in place before we try to apply labels to it.
+  //
+  // System labels (INBOX/UNREAD/SENT/SPAM/TRASH/CATEGORY_*) are
+  // filtered out here — they don't map to team_labels. STARRED is
+  // also filtered out because the dedicated STAR handling above
+  // already processed it.
+  const userLabelsAddedByThread = new Map<string, Set<string>>();
+  const userLabelsRemovedByThread = new Map<string, Set<string>>();
+  function addToMap(m: Map<string, Set<string>>, threadId: string, labelId: string) {
+    let s = m.get(threadId);
+    if (!s) {
+      s = new Set();
+      m.set(threadId, s);
+    }
+    s.add(labelId);
+  }
+
   if (inbox.last_history_id) {
     // Incremental: history.list since the last point we processed.
     // Request three history types in one call:
     //   messageAdded   — new mail (the original use case)
-    //   labelAdded     — labels added to existing messages (we filter
-    //                    for STARRED to sync stars from Gmail)
-    //   labelRemoved   — labels removed (same; catches unstars)
+    //   labelAdded     — labels added to existing messages
+    //   labelRemoved   — labels removed (same source for un-stars
+    //                    and operator-driven Gmail un-labels)
     // The Gmail API accepts a comma-separated list per the docs.
     const historyRes = await gmailFetch(
       `users/me/history?startHistoryId=${encodeURIComponent(inbox.last_history_id)}&historyTypes=messageAdded&historyTypes=labelAdded&historyTypes=labelRemoved&maxResults=500`,
@@ -226,13 +248,27 @@ export async function pollOneInbox(inbox: {
       // (not the post-state); we filter for STARRED specifically
       // so non-star label edits don't trigger the sync.
       for (const change of h.labelsAdded ?? []) {
-        if (change.labelIds?.includes("STARRED")) {
+        const ids = change.labelIds ?? [];
+        if (ids.includes("STARRED")) {
           starredAddedThreadGmailIds.add(change.message.threadId);
+        }
+        // User labels (anything not a system label) — collect for
+        // the post-loop reconcile.
+        for (const id of ids) {
+          if (!GMAIL_SYSTEM_LABEL_IDS.has(id) && !id.startsWith("CATEGORY_")) {
+            addToMap(userLabelsAddedByThread, change.message.threadId, id);
+          }
         }
       }
       for (const change of h.labelsRemoved ?? []) {
-        if (change.labelIds?.includes("STARRED")) {
+        const ids = change.labelIds ?? [];
+        if (ids.includes("STARRED")) {
           starredRemovedThreadGmailIds.add(change.message.threadId);
+        }
+        for (const id of ids) {
+          if (!GMAIL_SYSTEM_LABEL_IDS.has(id) && !id.startsWith("CATEGORY_")) {
+            addToMap(userLabelsRemovedByThread, change.message.threadId, id);
+          }
         }
       }
     }
@@ -330,6 +366,71 @@ export async function pollOneInbox(inbox: {
         )})
         AND is_starred = true
     `);
+  }
+
+  // Apply USER-LABEL deltas harvested from history.list. Operator
+  // labeled or unlabeled a thread directly in Gmail's UI; we mirror
+  // those changes onto email_thread_labels for any team_label
+  // mapped to the Gmail label via teamLabelGmailLinks.
+  //
+  // Resolve Gmail thread ids -> engine thread ids in one query
+  // scoped to THIS connected account so a coincidental gmail_thread_id
+  // collision across accounts can't cross-contaminate.
+  const allChangedGmailThreadIds = new Set<string>([
+    ...userLabelsAddedByThread.keys(),
+    ...userLabelsRemovedByThread.keys(),
+  ]);
+  if (allChangedGmailThreadIds.size > 0) {
+    const idArray = Array.from(allChangedGmailThreadIds);
+    const threadRows = await db.execute<{ id: string; gmail_thread_id: string }>(sql`
+      SELECT id, gmail_thread_id
+      FROM email_threads
+      WHERE staff_outreach_email_id = ${inbox.id}
+        AND gmail_thread_id IN (${sql.join(
+          idArray.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+    `);
+    // ResultRow shape from drizzle's execute<T> depends on the driver
+    // — postgres-js returns a rows-bearing object. Normalize.
+    const rows: Array<{ id: string; gmail_thread_id: string }> = Array.isArray(threadRows)
+      ? threadRows
+      : ((threadRows as { rows?: Array<{ id: string; gmail_thread_id: string }> }).rows ?? []);
+    const engineByGmail = new Map(rows.map((r) => [r.gmail_thread_id, r.id]));
+
+    for (const [gmailThreadId, addedSet] of userLabelsAddedByThread) {
+      const engineThreadId = engineByGmail.get(gmailThreadId);
+      if (!engineThreadId) continue; // thread we don't track
+      try {
+        await reconcileGmailLabelsForThread({
+          threadId: engineThreadId,
+          gmailLabelIds: Array.from(addedSet),
+          connectedAccountId: inbox.id,
+          appliedBy: inbox.staff_member_id ?? SYSTEM_STAFF_ID_FALLBACK,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, threadId: engineThreadId, addedLabels: Array.from(addedSet) },
+          "gmail user-label reconcile (history) failed",
+        );
+      }
+    }
+    for (const [gmailThreadId, removedSet] of userLabelsRemovedByThread) {
+      const engineThreadId = engineByGmail.get(gmailThreadId);
+      if (!engineThreadId) continue;
+      try {
+        await unreconcileGmailLabelsForThread({
+          threadId: engineThreadId,
+          gmailLabelIds: Array.from(removedSet),
+          connectedAccountId: inbox.id,
+        });
+      } catch (err) {
+        logger.warn(
+          { err, threadId: engineThreadId, removedLabels: Array.from(removedSet) },
+          "gmail user-label unreconcile (history) failed",
+        );
+      }
+    }
   }
 
   return { messagesIngested, threadsCreated };
