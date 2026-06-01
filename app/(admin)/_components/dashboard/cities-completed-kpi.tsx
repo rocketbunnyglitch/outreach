@@ -98,7 +98,11 @@ export function CitiesCompletedKpi({
             className="font-semibold text-3xl text-zinc-900 tabular-nums leading-none sm:text-5xl lg:text-7xl dark:text-white"
             style={{ fontFeatureSettings: '"tnum"' }}
           >
-            {completed.toLocaleString()}
+            {/* Pin the locale: a bare toLocaleString() uses the runtime
+                default, which differs between the server (Node) and the
+                browser (e.g. "1,000" vs "1.000"), tripping a #418
+                hydration text mismatch on 4-digit counts. */}
+            {completed.toLocaleString("en-US")}
           </p>
         </div>
 

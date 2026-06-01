@@ -27,7 +27,7 @@
 
 import { Check, Pencil, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { updateCampaignTargetDate } from "../../_actions-cities-goal";
 
 /** Total bars in the ring. 100 bars at 3.6° each — dense enough
@@ -53,19 +53,33 @@ export function TargetDateKpi({
 
   const canEdit = isAdmin && !!campaignId;
 
-  // Resolve "days left" client-side off the start-of-day to avoid
-  // a one-day flicker between server render and client hydration.
-  // Date input is timezone-naive (YYYY-MM-DD); we treat it as the
-  // operator's local date by appending T00:00:00 (no Z) so JS uses
-  // local tz on the comparison.
+  // The target date itself is timezone-naive (YYYY-MM-DD) and clock-
+  // independent, so it renders identically on the server and client —
+  // safe to compute during render. We treat it as the operator's local
+  // date by appending T00:00:00 (no Z) so JS uses local tz.
   const target = endDate ? new Date(`${endDate}T00:00:00`) : null;
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const daysLeft = target
-    ? Math.ceil((target.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
-    : null;
 
-  // Tone band — drives the bar gradient + accent text color.
+  // "Days left" depends on the WALL CLOCK, which differs between the
+  // server (UTC) and the viewer's browser (local tz). Computing it
+  // during render produced a server↔client TEXT mismatch — e.g. in the
+  // evening in a behind-UTC tz the server's date is already "tomorrow",
+  // so it rendered "23 days left" while the client rendered "24 days
+  // left" → React #418 (hydration text mismatch) that froze the whole
+  // dashboard intermittently. We resolve `now` only AFTER mount: SSR +
+  // first client render both see `now === null` (→ daysLeft null →
+  // identical neutral output), then the real value lands post-hydration.
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+  }, []);
+  const todayStart = now ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : null;
+  const daysLeft =
+    target && todayStart
+      ? Math.ceil((target.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
+      : null;
+
+  // Tone band — drives the bar gradient + accent text color. Stays on
+  // the neutral "green" band until `now` resolves post-mount.
   const tone = pickTone(daysLeft);
 
   function save() {
@@ -181,13 +195,19 @@ export function TargetDateKpi({
             <p
               className={`whitespace-nowrap font-mono font-semibold text-[10px] uppercase tracking-[0.16em] sm:text-xs sm:tracking-[0.18em] ${TONE_TEXT[tone]}`}
             >
-              {daysLeft === null
+              {target === null
                 ? "No date set"
-                : daysLeft < 0
-                  ? `${Math.abs(daysLeft)} days overdue`
-                  : daysLeft === 0
-                    ? "Today"
-                    : `${daysLeft} days left`}
+                : daysLeft === null
+                  ? /* pre-mount: `now` not resolved yet — render a
+                       non-breaking space so the line keeps its height
+                       without flashing a misleading "No date set" on a
+                       campaign that DOES have a target date. */
+                    " "
+                  : daysLeft < 0
+                    ? `${Math.abs(daysLeft)} days overdue`
+                    : daysLeft === 0
+                      ? "Today"
+                      : `${daysLeft} days left`}
             </p>
             {canEdit && !editing && (
               <button
@@ -375,7 +395,10 @@ function RingOfBars({
  *  operator can put the year in the campaign name if they need it
  *  visible. */
 function formatDate(d: Date): string {
-  const month = d.toLocaleDateString(undefined, { month: "long" }).toUpperCase();
+  // Pin the locale to "en-US" so the server (Node ICU default) and the
+  // client (browser locale) format the month identically — a bare
+  // `undefined` locale can diverge and trip the same #418 text mismatch.
+  const month = d.toLocaleDateString("en-US", { month: "long" }).toUpperCase();
   const day = d.getDate();
   const suffix = ordinal(day);
   return `${month} ${day}${suffix}`;
