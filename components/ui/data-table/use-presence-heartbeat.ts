@@ -63,14 +63,19 @@ export interface UsePresenceHeartbeatReturn {
 
 const DEFAULT_INTERVAL_MS = 10_000;
 
+// TEMP kill-switch: presence heartbeat disabled while debugging the
+// React #418 hydration freeze. Flip to false to re-enable.
+const PRESENCE_DISABLED: boolean = true;
+
 export function usePresenceHeartbeat({
   route,
   currentStaffId,
   focusedRowId,
   focusedCellId,
-  enabled = true,
+  enabled: enabledProp = true,
   intervalMs = DEFAULT_INTERVAL_MS,
 }: UsePresenceHeartbeatOptions): UsePresenceHeartbeatReturn {
+  const enabled = enabledProp && !PRESENCE_DISABLED;
   const [viewers, setViewers] = useState<PresenceViewer[]>([]);
   // Latest payload — used by the unmount cleanup to call /drop with the
   // right route.

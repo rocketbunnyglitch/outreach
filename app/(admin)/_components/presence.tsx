@@ -15,6 +15,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+// TEMP kill-switch: presence WS/cursors disabled while debugging the
+// React #418 hydration freeze. Flip to false to re-enable.
+const PRESENCE_DISABLED: boolean = true;
+
 export interface Peer {
   connId: string;
   staffId: string;
@@ -54,6 +58,7 @@ export function usePresence(room: string, name: string): PresenceState {
   }, []);
 
   useEffect(() => {
+    if (PRESENCE_DISABLED) return;
     closedRef.current = false;
     let attempt = 0;
 
