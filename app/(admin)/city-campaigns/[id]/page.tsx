@@ -309,6 +309,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         rows={cityVenues.rows}
         totalInCity={cityVenues.totalInCity}
         capped={cityVenues.capped}
+        currentStaffIsAdmin={currentStaff.role === "admin"}
       />
 
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}

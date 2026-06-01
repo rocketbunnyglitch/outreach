@@ -1,7 +1,7 @@
 "use server";
 
 import { cities, outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
-import { requireStaff, requireSuperUser } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
 import { logger } from "@/lib/logger";
@@ -184,7 +184,58 @@ export async function archiveVenue(id: string): Promise<void> {
     tx.update(venues).set({ archivedAt: new Date(), updatedBy: staff.id }).where(eq(venues.id, id)),
   );
   revalidatePath("/venues");
+  revalidatePath("/admin/archived-venues");
   redirect("/venues");
+}
+
+/**
+ * Same as archiveVenue but returns a result instead of redirecting.
+ * Used by callers (e.g. CityVenuesTable row) that don't want to be
+ * yanked off the page after archiving.
+ *
+ * Behavior identical otherwise — sets archived_at + revalidates the
+ * venues + archived-venues admin paths.
+ */
+export async function archiveVenueNoRedirect(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(venues)
+        .set({ archivedAt: new Date(), updatedBy: staff.id })
+        .where(eq(venues.id, id)),
+    );
+    revalidatePath("/venues");
+    revalidatePath("/admin/archived-venues");
+    return { ok: true };
+  } catch (err) {
+    console.error("[archiveVenueNoRedirect] failed", { err, venueId: id, by: staff.id });
+    return { ok: false, error: "Couldn't archive venue." };
+  }
+}
+
+/**
+ * Restore a previously-archived venue (clear archived_at). Used by
+ * the Archived Venues admin tab's Restore button. Admin-only because
+ * undoing operator decisions affects every campaign that touched
+ * this venue.
+ */
+export async function unarchiveVenue(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Admin role required to restore archived venues." };
+  }
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx.update(venues).set({ archivedAt: null, updatedBy: staff.id }).where(eq(venues.id, id)),
+    );
+    revalidatePath("/venues");
+    revalidatePath("/admin/archived-venues");
+    return { ok: true };
+  } catch (err) {
+    console.error("[unarchiveVenue] failed", { err, venueId: id, by: staff.id });
+    return { ok: false, error: "Couldn't restore venue." };
+  }
 }
 
 /**
@@ -193,16 +244,25 @@ export async function archiveVenue(id: string): Promise<void> {
  * call_logs, etc. — anything FK'd to venues with ON DELETE CASCADE will go;
  * anything ON DELETE RESTRICT will throw and abort the transaction).
  *
- * Superuser only. Most operators should use archiveVenue instead — this is
- * for clearing duplicate / mis-imported records that should never have
- * existed. Audited via withAuditContext so the deletion is logged before
- * the row disappears.
+ * Admin-tier per operator: "I should be able to delete a venue
+ * premanrenrely (an admin) other users should be able to archive it
+ * so it doesn't show up". The previous gate (superuser email list)
+ * was too restrictive — the operator works as an admin and needs
+ * this verb for legitimate cleanup. Non-admin staff still have the
+ * archive route only.
+ *
+ * Audited via withAuditContext so the deletion is logged before the
+ * row disappears.
  */
 export async function hardDeleteVenue(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { staff } = await requireSuperUser();
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Admin role required to permanently delete venues." };
+  }
   try {
     await withAuditContext(staff.id, async (tx) => tx.delete(venues).where(eq(venues.id, id)));
     revalidatePath("/venues");
+    revalidatePath("/admin/archived-venues");
     return { ok: true };
   } catch (err) {
     console.error("[hardDeleteVenue] failed", { err, venueId: id, by: staff.id });

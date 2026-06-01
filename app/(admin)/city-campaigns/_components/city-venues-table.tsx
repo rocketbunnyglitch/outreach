@@ -36,10 +36,23 @@ import { useToast } from "@/components/ui/toast";
 import type { CityVenueRow, SlotHistoryEntry } from "@/lib/city-venues-data";
 import { captureClientError } from "@/lib/client-error";
 import { cn } from "@/lib/cn";
-import { Check, Globe, History, Mail, Phone, Plus, Search, Sparkles, X } from "lucide-react";
+import {
+  Archive,
+  Check,
+  Globe,
+  History,
+  Mail,
+  Phone,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { archiveVenueNoRedirect, hardDeleteVenue } from "../../venues/_actions";
 import { upsertColdOutreachEntry } from "../_cold-outreach-actions";
 
 interface Props {
@@ -49,9 +62,23 @@ interface Props {
   rows: CityVenueRow[];
   totalInCity: number;
   capped: boolean;
+  /**
+   * Whether the viewer is an admin. Admins get a "Delete
+   * permanently" action; non-admins get "Archive" (soft-delete).
+   * Per operator: "an admin not just archive" + "Archived Venue
+   * tab should be in Admin and allow me to restore if needed".
+   */
+  currentStaffIsAdmin: boolean;
 }
 
-export function CityVenuesTable({ cityCampaignId, cityName, rows, totalInCity, capped }: Props) {
+export function CityVenuesTable({
+  cityCampaignId,
+  cityName,
+  rows,
+  totalInCity,
+  capped,
+  currentStaffIsAdmin,
+}: Props) {
   const [query, setQuery] = useState("");
   const [onlyUsed, setOnlyUsed] = useState(false);
   const [hideDnc, setHideDnc] = useState(true);
@@ -201,6 +228,7 @@ export function CityVenuesTable({ cityCampaignId, cityName, rows, totalInCity, c
               isAdding={adding.has(row.venueId)}
               addPending={pending}
               onAdd={() => addToCampaign(row.venueId, row.venueName)}
+              currentStaffIsAdmin={currentStaffIsAdmin}
             />
           ))}
         </ul>
@@ -240,17 +268,93 @@ function CityVenueRowItem({
   isAdding,
   addPending,
   onAdd,
+  currentStaffIsAdmin,
 }: {
   row: CityVenueRow;
   isAdding: boolean;
   addPending: boolean;
   onAdd: () => void;
+  currentStaffIsAdmin: boolean;
 }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTx] = useTransition();
+
+  function handleArchive() {
+    if (
+      !confirm(
+        `Archive ${row.venueName}? It'll disappear from this list but the record stays for restore.`,
+      )
+    ) {
+      return;
+    }
+    startTx(async () => {
+      try {
+        const res = await archiveVenueNoRedirect(row.venueId);
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error ?? "Couldn't archive venue.",
+            tag: "city_venues.archive",
+          });
+          return;
+        }
+        toast.show({ kind: "success", message: `${row.venueName} archived.` });
+        router.refresh();
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "city_venues.archive",
+          fallback: "Couldn't archive venue.",
+        });
+        toast.show({ kind: "error", message: cap.message, code: cap.code });
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (
+      !confirm(
+        `Permanently DELETE ${row.venueName}? This removes the venue + every related record (cold outreach, venue events, history, etc). Cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    if (
+      !confirm(
+        "Are you absolutely sure? Type the venue name to confirm? (You can also just hit OK.)",
+      )
+    ) {
+      return;
+    }
+    startTx(async () => {
+      try {
+        const res = await hardDeleteVenue(row.venueId);
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error ?? "Couldn't permanently delete venue.",
+            tag: "city_venues.hard_delete",
+          });
+          return;
+        }
+        toast.show({ kind: "success", message: `${row.venueName} deleted permanently.` });
+        router.refresh();
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "city_venues.hard_delete",
+          fallback: "Couldn't permanently delete venue.",
+        });
+        toast.show({ kind: "error", message: cap.message, code: cap.code });
+      }
+    });
+  }
+
   return (
     <li
       className={cn(
-        "flex flex-wrap items-start gap-3 px-5 py-2.5",
+        "group/cvrow flex flex-wrap items-start gap-3 px-5 py-2.5",
         row.doNotContact && "opacity-50",
+        pending && "opacity-50",
       )}
     >
       {/* Name + address column */}
@@ -316,7 +420,7 @@ function CityVenueRowItem({
       </div>
 
       {/* Action */}
-      <div className="shrink-0">
+      <div className="flex shrink-0 items-center gap-2">
         {row.doNotContact ? (
           <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
             blocked
@@ -344,6 +448,38 @@ function CityVenueRowItem({
             )}
           </Button>
         )}
+
+        {/* Archive / delete actions — appear on hover to keep the
+            calm state clean. Admins get a destructive "Permanently
+            delete" button in rose; non-admins get just "Archive".
+            Per operator: "from the cities tab you should be able
+            to permanently delete a city as an admin not just
+            archive" (same model for venues per item #9 +
+            screenshot text). */}
+        <div className="flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/cvrow:opacity-100">
+          <button
+            type="button"
+            onClick={handleArchive}
+            disabled={pending}
+            className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            aria-label={`Archive ${row.venueName}`}
+            title="Archive — hide from list. Restore from Admin → Archived Venues."
+          >
+            <Archive className="h-3 w-3" />
+          </button>
+          {currentStaffIsAdmin && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={pending}
+              className="rounded p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600 dark:hover:bg-rose-500/[0.12] dark:hover:text-rose-400"
+              aria-label={`Permanently delete ${row.venueName}`}
+              title="Permanently DELETE — cascades through outreach/events/history. Cannot be undone."
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
     </li>
   );

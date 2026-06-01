@@ -335,6 +335,33 @@ async function renderAdminPage() {
         </header>
       </section>
 
+      {/* Archived venues — soft-deleted records. Admin can restore
+          (clear archived_at) or permanently delete (cascading DELETE
+          through outreach + events + history). Per operator:
+          "an Archived Venue tab should be in Admin and allow me to
+          restore if needed". The archive verb itself lives on the
+          per-row affordance in the city-venues list (under cold
+          outreach on each city sheet) or on the venue detail page. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-center justify-between gap-4 px-6 py-4">
+          <div className="flex items-start gap-3">
+            <Archive className="mt-0.5 h-5 w-5 text-zinc-500" />
+            <div>
+              <h2 className="font-semibold text-lg tracking-tight">Archived venues</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Soft-deleted venues. Restore to bring them back, or permanently delete (cascades
+                through outreach + events + history; cannot be undone).
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/archived-venues">
+              Open <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        </header>
+      </section>
+
       {/* Classifier backfill — admin-only tool to apply the rule-based
           triage classifier to historical unclassified threads. The
           classifier runs live on new mail (gmail-poll-worker.ts), but
