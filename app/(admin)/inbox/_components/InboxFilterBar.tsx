@@ -20,7 +20,7 @@
 import { cn } from "@/lib/cn";
 import type { SavedSearch } from "@/lib/inbox-saved-searches";
 import { parseSearchQuery } from "@/lib/inbox-search";
-import { Inbox, Search, User, X } from "lucide-react";
+import { Inbox, Search, User, UserX, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { InboxDensityToggle } from "./InboxDensityToggle";
@@ -39,6 +39,8 @@ interface Props {
   mineAssigned: boolean;
   /** "Owned by me" inbox filter (?mine=1). */
   mineInbox: boolean;
+  /** "Unassigned only" filter (?unassigned=1). */
+  unassignedOnly: boolean;
   activeAliasId?: string;
   initialSearch?: string;
   /** Saved searches for the current operator (Phase B.2). */
@@ -50,6 +52,7 @@ export function InboxFilterBar({
   currentStaffId,
   mineAssigned,
   mineInbox,
+  unassignedOnly,
   activeAliasId,
   initialSearch,
   savedSearches = [],
@@ -79,6 +82,18 @@ export function InboxFilterBar({
 
   function setMineInbox(next: boolean) {
     router.push(buildNextUrl({ mine: next ? "1" : null }));
+  }
+
+  function setUnassignedOnly(next: boolean) {
+    // Toggling unassigned-only and assigned-to-me at the same time is
+    // a contradiction (a thread is one or the other), so flipping on
+    // unassigned-only clears assigned-to-me, and vice versa upstream.
+    router.push(
+      buildNextUrl({
+        unassigned: next ? "1" : null,
+        staff: next ? null : params.get("staff"),
+      }),
+    );
   }
 
   function setAlias(next: string) {
@@ -175,6 +190,28 @@ export function InboxFilterBar({
         >
           <User className="h-3 w-3" />
           Assigned to me
+        </button>
+
+        {/* Unassigned-only filter. Mutually exclusive with "Assigned
+            to me" (a thread is one or the other); enabling this
+            clears that filter via setUnassignedOnly. Zinc-tinted to
+            mirror the per-row Unassigned pill so the connection is
+            visual: this toggle scopes the list to JUST the rows
+            with that pill. */}
+        <button
+          type="button"
+          onClick={() => setUnassignedOnly(!unassignedOnly)}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
+            unassignedOnly
+              ? "border-zinc-400 bg-zinc-200 text-zinc-900 dark:border-zinc-500 dark:bg-zinc-700 dark:text-zinc-100"
+              : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
+          )}
+          aria-pressed={unassignedOnly}
+          title="Threads with no operator assigned"
+        >
+          <UserX className="h-3 w-3" />
+          Unassigned
         </button>
 
         {aliases.length > 1 && (

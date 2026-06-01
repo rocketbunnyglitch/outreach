@@ -319,6 +319,7 @@ export default async function InboxPage({ searchParams }: Props) {
               currentStaffId={currentStaff.id}
               mineAssigned={mineAssigned}
               mineInbox={mine}
+              unassignedOnly={params.unassigned === "1"}
               activeAliasId={params.alias}
               initialSearch={params.q}
               savedSearches={savedSearches}
