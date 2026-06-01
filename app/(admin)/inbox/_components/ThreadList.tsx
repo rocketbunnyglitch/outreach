@@ -11,6 +11,7 @@ import {
   PhoneCall,
   ShieldOff,
   Sparkles,
+  UserX,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -282,6 +283,24 @@ function ThreadRow({
             >
               <AlertTriangle className="h-2.5 w-2.5" />
               Stale
+            </span>
+          )}
+
+          {/* Unassigned badge -- needs_reply threads with no operator
+              assignment. Surfaces nobody-owns-this BEFORE the stale
+              tagger picks it up (Rule 5 fires at 1h; this badge
+              shows immediately on ingest). Distinct color (zinc,
+              not amber/rose) because unassigned alone is a
+              workflow signal, not an alert -- amber/rose stay
+              reserved for "something is wrong." Once any operator
+              clicks Assign on the thread, the badge disappears. */}
+          {thread.state === "needs_reply" && thread.assignedStaffId === null && (
+            <span
+              className="inline-flex items-center gap-1 rounded-sm bg-zinc-100 px-1.5 py-0.5 font-mono text-[9px] text-zinc-700 uppercase tracking-widest dark:bg-zinc-800 dark:text-zinc-300"
+              title="No operator assigned. Click Assign on the thread to claim it."
+            >
+              <UserX className="h-2.5 w-2.5" />
+              Unassigned
             </span>
           )}
 
