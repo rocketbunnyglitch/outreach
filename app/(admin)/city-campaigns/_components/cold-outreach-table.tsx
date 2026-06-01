@@ -610,6 +610,118 @@ export function ColdOutreachTable({
   }
 
   // Page-scoped keyboard shortcuts. Press '?' to see them all.
+  //
+  // Best-in-class table navigation: J/K moves an "active row" cursor
+  // up/down, Space toggles selection on that row, E opens the most
+  // common edit (status menu — operator's hottest action), A
+  // archives, X clears selection. Operator builds muscle memory in
+  // a week and stops needing the mouse for the cold-outreach hot
+  // path.
+  //
+  // activeRowIndex stays in sync with the `displayed` array. -1
+  // means "no active row" (initial state). J on -1 jumps to row 0;
+  // K on -1 jumps to the last row. Both wrap at the ends.
+  const [activeRowIndex, setActiveRowIndex] = useState(-1);
+  const activeEntryId =
+    activeRowIndex >= 0 && activeRowIndex < displayed.length
+      ? displayed[activeRowIndex]?.entryId
+      : null;
+
+  // When `displayed` changes shape (filter / sort / search), keep
+  // the cursor pointing at the same entry if it's still visible;
+  // otherwise reset to 0. Avoids the cursor disappearing into the
+  // void when the operator types a search.
+  useEffect(() => {
+    if (displayed.length === 0) {
+      if (activeRowIndex !== -1) setActiveRowIndex(-1);
+      return;
+    }
+    if (activeRowIndex === -1) return;
+    // Same entry still in view at a possibly-different index?
+    if (activeEntryId) {
+      const newIndex = displayed.findIndex((e) => e.entryId === activeEntryId);
+      if (newIndex !== -1 && newIndex !== activeRowIndex) {
+        setActiveRowIndex(newIndex);
+        return;
+      }
+      if (newIndex === -1) {
+        setActiveRowIndex(0);
+        return;
+      }
+    }
+    // Out of bounds (display shrank)?
+    if (activeRowIndex >= displayed.length) {
+      setActiveRowIndex(Math.max(0, displayed.length - 1));
+    }
+  }, [displayed, activeRowIndex, activeEntryId]);
+
+  // Scroll the active row into view when J/K moves the cursor. Uses
+  // data-entry-id on each <tr> as the selector — the row component
+  // tags itself.
+  useEffect(() => {
+    if (!activeEntryId) return;
+    const el = document.querySelector<HTMLElement>(`tr[data-entry-id="${activeEntryId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeEntryId]);
+
+  useShortcut({
+    keys: "j",
+    label: "Next row",
+    group: "Cold outreach",
+    handler: () => {
+      if (displayed.length === 0) return;
+      setActiveRowIndex((i) => (i + 1) % displayed.length);
+    },
+  });
+  useShortcut({
+    keys: "k",
+    label: "Previous row",
+    group: "Cold outreach",
+    handler: () => {
+      if (displayed.length === 0) return;
+      setActiveRowIndex((i) => (i <= 0 ? displayed.length - 1 : i - 1));
+    },
+  });
+  useShortcut({
+    keys: "space",
+    label: "Toggle selection on active row",
+    group: "Cold outreach",
+    handler: () => {
+      if (!activeEntryId) return;
+      toggleOne(activeEntryId);
+    },
+    enabled: !!activeEntryId,
+  });
+  useShortcut({
+    keys: "a",
+    label: "Archive active row",
+    group: "Cold outreach",
+    handler: () => {
+      if (!activeEntryId) return;
+      // Use the existing archive verb on the entry's row instance —
+      // dispatched via a custom event so the per-row component can
+      // run its own toast + optimistic update without us needing
+      // to lift archive state up to the table.
+      window.dispatchEvent(
+        new CustomEvent("cold-outreach:archive", { detail: { entryId: activeEntryId } }),
+      );
+    },
+    enabled: !!activeEntryId,
+  });
+  useShortcut({
+    keys: "e",
+    label: "Edit status on active row",
+    group: "Cold outreach",
+    handler: () => {
+      if (!activeEntryId) return;
+      window.dispatchEvent(
+        new CustomEvent("cold-outreach:edit-status", { detail: { entryId: activeEntryId } }),
+      );
+    },
+    enabled: !!activeEntryId,
+  });
+
   useShortcut({
     keys: "n",
     label: "Add new venue",
@@ -897,6 +1009,7 @@ export function ColdOutreachTable({
                 layout="table"
                 escalationTargets={escalationTargets}
                 crawlsForPromote={crawlsForPromote}
+                isActive={i === activeRowIndex}
               />
             ))}
           </tbody>
@@ -1004,6 +1117,7 @@ function ColdRow({
   layout,
   escalationTargets,
   crawlsForPromote,
+  isActive = false,
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
@@ -1049,6 +1163,13 @@ function ColdRow({
       venueName: string | null;
     }>;
   }>;
+  /**
+   * True when this row is the J/K-active cursor target. Drives a
+   * subtle left border + slight bg tint so the operator can see
+   * which row their next E / A / Space shortcut will affect.
+   * Distinct from `selected` (multi-select checkbox state).
+   */
+  isActive?: boolean;
 }) {
   const [pending, startTx] = useTransition();
   const [escalationOpen, setEscalationOpen] = useState(false);
@@ -1065,6 +1186,54 @@ function ColdRow({
   const toast = useToast();
   const router = useRouter();
   const tone = zebra ? "bg-zinc-50/60 dark:bg-zinc-900/30" : "bg-white dark:bg-zinc-900/10";
+
+  // Listen for the table-level keyboard shortcuts (A = archive, E =
+  // edit status) targeting THIS row's entryId. The parent table
+  // dispatches custom events keyed by entryId so per-row state
+  // (status menu open, archive transition) stays local to the row
+  // — no need to lift it.
+  useEffect(() => {
+    function handleArchive(e: Event) {
+      if (!isActive) return;
+      const detail = (e as CustomEvent<{ entryId: string }>).detail;
+      if (detail?.entryId !== entry.entryId) return;
+      archive();
+    }
+    function handleEdit(e: Event) {
+      if (!isActive) return;
+      const detail = (e as CustomEvent<{ entryId: string }>).detail;
+      if (detail?.entryId !== entry.entryId) return;
+      // Native <select> can't be opened via .click() in any browser.
+      // Modern Chromium / Safari Tech Preview support showPicker();
+      // everywhere else we fall back to focus(), which lights up the
+      // select so the operator can arrow-key or type-to-filter to
+      // change status. Falls back gracefully when the cell isn't
+      // mounted (mobile card layout, scrolled out of view).
+      const el = document.querySelector<HTMLSelectElement>(
+        `[data-status-trigger="${entry.entryId}"]`,
+      );
+      if (!el) return;
+      el.focus();
+      const withPicker = el as HTMLSelectElement & { showPicker?: () => void };
+      if (typeof withPicker.showPicker === "function") {
+        try {
+          withPicker.showPicker();
+        } catch {
+          // showPicker can throw if not user-activated — focus is
+          // the consolation prize and is enough for the operator
+          // to arrow-key through options.
+        }
+      }
+    }
+    window.addEventListener("cold-outreach:archive", handleArchive as EventListener);
+    window.addEventListener("cold-outreach:edit-status", handleEdit as EventListener);
+    return () => {
+      window.removeEventListener("cold-outreach:archive", handleArchive as EventListener);
+      window.removeEventListener("cold-outreach:edit-status", handleEdit as EventListener);
+    };
+    // archive is stable enough — only re-bind when active or entry changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, entry.entryId]);
 
   function commitField(field: "status" | "assignedStaffId" | "remarks", value: string) {
     // Capture prior value so the undo handler can restore it
@@ -1259,6 +1428,7 @@ function ColdRow({
                   current={entry.status}
                   pending={pending}
                   onChange={(v) => commitField("status", v)}
+                  entryId={entry.entryId}
                 />
                 {/* AI lead score chip (Haiku ROI #5). Shows score
                     0-100 + tooltip reason; tone scales with score. */}
@@ -1435,7 +1605,14 @@ function ColdRow({
         "group border-zinc-200/40 border-b transition-colors duration-150 dark:border-zinc-800/30",
         pending && "opacity-60",
         selected && "bg-blue-500/[0.05] dark:bg-blue-400/[0.06]",
+        // Active-row cursor (J/K shortcut target). Quiet inset-left
+        // accent line + slight tint so it's findable without
+        // shouting. Operator builds muscle memory + then sees the
+        // cursor only when they're actually using shortcuts.
+        isActive &&
+          "bg-violet-500/[0.04] shadow-[inset_2px_0_0_theme(colors.violet.500)] dark:bg-violet-400/[0.05] dark:shadow-[inset_2px_0_0_theme(colors.violet.400)]",
       )}
+      data-entry-id={entry.entryId}
     >
       {/* Checkbox + per-row actions (history, escalate, archive) —
           stacked vertically so the right side of the row reclaims
@@ -1621,6 +1798,7 @@ function ColdRow({
           current={entry.status}
           pending={pending}
           onChange={(v) => commitField("status", v)}
+          entryId={entry.entryId}
         />
       </td>
 
@@ -1789,10 +1967,14 @@ function StatusSelect({
   current,
   pending,
   onChange,
+  entryId,
 }: {
   current: string;
   pending: boolean;
   onChange: (v: string) => void;
+  /** Used as data-status-trigger so the table's E shortcut can find
+   *  this select and `.focus() + .click()` to drop the dropdown. */
+  entryId?: string;
 }) {
   const opt = STATUS_OPTIONS.find((o) => o.value === current);
   return (
@@ -1801,6 +1983,7 @@ function StatusSelect({
         value={current}
         onChange={(e) => onChange(e.target.value)}
         disabled={pending}
+        data-status-trigger={entryId}
         className={cn(
           "w-full appearance-none rounded-md border border-transparent bg-transparent py-1 pr-5 pl-2 font-medium font-mono text-[10px] uppercase tracking-[0.08em] transition-colors",
           "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
