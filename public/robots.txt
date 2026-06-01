@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /login
+Allow: /about
+Allow: /privacy
+Allow: /terms
+Allow: /set-password
+Disallow: /
+Sitemap: https://outreach.barcrawlconnect.com/sitemap.xml

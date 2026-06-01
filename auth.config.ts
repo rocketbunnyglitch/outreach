@@ -85,6 +85,9 @@ const config: NextAuthConfig = {
         // Client-state reset page — reachable without a session so
         // a user with a broken auth cookie can still recover.
         pathname === "/reset" ||
+        // SEO/crawler files — reachable for domain categorization.
+        pathname === "/robots.txt" ||
+        pathname === "/sitemap.xml" ||
         pathname.startsWith("/_next") ||
         pathname === "/favicon.ico"
       ) {

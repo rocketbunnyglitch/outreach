@@ -117,6 +117,10 @@ export default auth((req) => {
     // point. Clearing your own browser storage is a self-service
     // recovery action and not a security risk.
     pathname === "/reset" ||
+    // SEO/crawler files — must be reachable by content-filter + search
+    // crawlers (not redirected to /login) so the domain can be categorized.
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
 
