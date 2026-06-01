@@ -174,16 +174,33 @@ interface InboxPollResult {
   threadsCreated: number;
 }
 
-export async function pollOneInbox(inbox: {
-  id: string;
-  refresh_token: string;
-  last_history_id: string | null;
-  email: string;
-  staff_member_id: string;
-}): Promise<InboxPollResult> {
+export async function pollOneInbox(
+  inbox: {
+    id: string;
+    refresh_token: string;
+    last_history_id: string | null;
+    email: string;
+    staff_member_id: string;
+  },
+  opts?: {
+    /**
+     * Override for the first-poll lookback window. Defaults to
+     * FIRST_POLL_NEWER_THAN_DAYS. Only consulted when last_history_id
+     * is null (i.e. the first-poll branch fires); ignored otherwise
+     * since incremental polls use history.list, not a date filter.
+     *
+     * Set this via the operator-facing deep-resync action when an
+     * admin wants to backfill more than the default 7 days. Range
+     * is enforced by the caller (the action validates 1..365 to
+     * keep the Gmail q parameter sane).
+     */
+    firstPollDaysBack?: number;
+  },
+): Promise<InboxPollResult> {
   const accessToken = await refreshAccessToken(inbox.refresh_token);
   let messageIds: string[];
   let nextHistoryId: string | null = inbox.last_history_id;
+  const firstPollDays = opts?.firstPollDaysBack ?? FIRST_POLL_NEWER_THAN_DAYS;
 
   // Threads whose STARRED label changed in Gmail since our last
   // poll. We sync these to email_threads.is_starred so unstarring
@@ -295,9 +312,11 @@ export async function pollOneInbox(inbox: {
     if (historyRes.historyId) nextHistoryId = historyRes.historyId as string;
   } else {
     // First poll: pull recent inbox messages with newer_than filter so
-    // we don't sweep up a years-old archive.
+    // we don't sweep up a years-old archive. The lookback window is
+    // FIRST_POLL_NEWER_THAN_DAYS for normal first-polls; the operator
+    // deep-resync action can override via opts.firstPollDaysBack.
     const listRes = await gmailFetch(
-      `users/me/messages?q=${encodeURIComponent(`in:inbox newer_than:${FIRST_POLL_NEWER_THAN_DAYS}d`)}&maxResults=${PER_INBOX_MSG_LIMIT}`,
+      `users/me/messages?q=${encodeURIComponent(`in:inbox newer_than:${firstPollDays}d`)}&maxResults=${PER_INBOX_MSG_LIMIT}`,
       accessToken,
     );
     type MessageRef = { id: string; threadId: string };

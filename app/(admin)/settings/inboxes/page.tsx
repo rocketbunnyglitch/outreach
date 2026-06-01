@@ -25,6 +25,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { AlertCircle, CheckCircle2, Info, Mail, RefreshCw, Tag, Unplug } from "lucide-react";
 import { disconnectInbox, resyncInbox, syncGmailLabelsNowAction } from "./_actions";
 import { CapEditor } from "./_components/cap-editor";
+import { DeepResyncButton } from "./_components/deep-resync-button";
 import { InboxAnalyticsStrip } from "./_components/inbox-analytics-strip";
 import { SignatureEditor } from "./_components/signature-editor";
 
@@ -263,6 +264,9 @@ export default async function InboxesPage({ searchParams }: Props) {
                             Resync
                           </button>
                         </form>
+                      )}
+                      {inbox.status === "connected" && (
+                        <DeepResyncButton inboxId={inbox.id} inboxEmail={inbox.emailAddress} />
                       )}
                       {inbox.status === "connected" && (
                         <form

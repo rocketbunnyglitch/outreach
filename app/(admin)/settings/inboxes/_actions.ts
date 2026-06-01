@@ -239,3 +239,124 @@ export async function setInboxCap(
     return { ok: false, error: "Couldn't update cap. See server logs." };
   }
 }
+/**
+ * Deep-resync an inbox by clearing its last_history_id and replaying
+ * the first-poll branch with a custom lookback window. The default
+ * resyncInbox uses the existing incremental cursor; this one is for
+ * when the operator wants to backfill more history than the engine
+ * has seen.
+ *
+ * Use cases:
+ *   - New connection: ingested only the last 7 days; operator wants
+ *     the last 30 to populate the venue timelines.
+ *   - Troubleshooting: a chunk of history is missing (maybe an
+ *     ingest error in the past), operator wants to rerun.
+ *   - Onboarding a venue that had been on the team for months
+ *     before the inbox was connected -- backfill so the venue
+ *     timeline isn't empty.
+ *
+ * Owner-only. daysBack is clamped to [1, 365] to keep the Gmail
+ * `newer_than:Nd` query sane (Gmail accepts very large N but the
+ * ingest cost is non-trivial; 365 is enough for any practical
+ * onboarding).
+ *
+ * Behavior:
+ *   1. last_history_id is set to NULL (engine forgets its cursor).
+ *   2. pollOneInbox runs with the custom firstPollDaysBack. The
+ *      first-poll branch fires (because last_history_id is null)
+ *      and uses the operator's days-back instead of the constant.
+ *   3. At the end of pollOneInbox, last_history_id is set to the
+ *      profile's current historyId, so the NEXT poll (cron or
+ *      regular resync) returns to incremental mode immediately.
+ *      The deep-resync window is one-shot per click.
+ *
+ * Idempotency: re-running on the same inbox is safe -- the ingest
+ * dedupes on (gmail_message_id, connected_account_id) so repeat
+ * processing of the same Gmail messages is a no-op other than the
+ * Gmail API quota cost.
+ */
+export async function deepResyncInbox(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ messagesIngested: number; threadsCreated: number; daysBack: number }>> {
+  const { staff } = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  const daysBackRaw = String(formData.get("daysBack") ?? "30");
+  if (!id) return { ok: false, error: "Missing inbox id" };
+
+  const daysBack = Number.parseInt(daysBackRaw, 10);
+  if (!Number.isFinite(daysBack) || daysBack < 1 || daysBack > 365) {
+    return { ok: false, error: "Days back must be between 1 and 365." };
+  }
+
+  // Same shape as resyncInbox: ownership check + connected check.
+  const rows = await db
+    .select({
+      id: connectedAccounts.id,
+      ownerUserId: connectedAccounts.ownerUserId,
+      emailAddress: connectedAccounts.emailAddress,
+      refreshToken: connectedAccounts.gmailOauthRefreshToken,
+      status: connectedAccounts.status,
+    })
+    .from(connectedAccounts)
+    .where(eq(connectedAccounts.id, id))
+    .limit(1);
+  const inbox = rows[0];
+  if (!inbox) return { ok: false, error: "Inbox not found." };
+  if (inbox.ownerUserId !== staff.id) {
+    return { ok: false, error: "You can only deep-resync inboxes you own." };
+  }
+  if (!inbox.refreshToken || inbox.status !== "connected") {
+    return {
+      ok: false,
+      error: "Inbox is disconnected -- click Reconnect to re-authorize Gmail first.",
+    };
+  }
+
+  try {
+    // Step 1: forget the incremental cursor so pollOneInbox enters
+    // the first-poll branch. This is the destructive part -- on
+    // failure, the next normal poll would also enter first-poll
+    // (with the default 7-day lookback); ingest dedupe makes that
+    // safe but wasteful. We restore the cursor at the end of
+    // pollOneInbox anyway, so the window is brief in practice.
+    await db.execute(sql`
+      UPDATE connected_accounts
+      SET gmail_last_history_id = NULL
+      WHERE id = ${inbox.id}
+    `);
+
+    // Step 2: run the poll with the custom days-back. pollOneInbox
+    // sets last_history_id back to the current value at the end,
+    // so subsequent polls go back to incremental mode.
+    const result = await pollOneInbox(
+      {
+        id: inbox.id,
+        refresh_token: inbox.refreshToken,
+        last_history_id: null,
+        email: inbox.emailAddress,
+        staff_member_id: staff.id,
+      },
+      { firstPollDaysBack: daysBack },
+    );
+
+    // Bookkeeping (same as the normal resyncInbox path).
+    await db.execute(sql`
+      UPDATE connected_accounts SET gmail_last_polled_at = NOW() WHERE id = ${inbox.id}
+    `);
+    await db
+      .update(connectedAccounts)
+      .set({ lastSyncedAt: new Date() })
+      .where(eq(connectedAccounts.id, inbox.id));
+
+    logger.info({ inboxId: id, daysBack, ...result }, "deepResyncInbox complete");
+
+    revalidatePath("/settings/inboxes");
+    revalidatePath("/inbox");
+    return { ok: true, data: { ...result, daysBack } };
+  } catch (err) {
+    logger.error({ err, inboxId: id, daysBack }, "deepResyncInbox failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Deep resync failed: ${msg}` };
+  }
+}
