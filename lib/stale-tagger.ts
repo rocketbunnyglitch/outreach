@@ -63,9 +63,24 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
   // stale state in one pass. The query touches every open thread
   // exactly once.
   //
-  // Reason strings are crafted to match the spec examples
-  // ("Stale because venue replied 26 hours ago..."). The UI shows
-  // these as tooltips on the stale chip.
+  // Reasons are crafted to match the spec's commitment that "Stale
+  // reasons must explain themselves" — example from the spec:
+  //
+  //   "Stale because Mike from Lavelle replied 26 hours ago and
+  //    no staff response has been sent."
+  //
+  // To get there, we LEFT JOIN venues so the reason can include
+  // the venue name when the thread is matched ("from Lavelle").
+  // last_sender_name is denormalized on email_threads (the poll
+  // worker stamps it on each inbound) so we can build "Mike from
+  // Lavelle" without a join to email_messages. Falls back
+  // gracefully: when venue_id is null the reason omits the
+  // "from X" clause; when last_sender_name is null it omits the
+  // sender name part.
+  //
+  // The duration math uses EXTRACT(EPOCH...) / 3600 for hours and
+  // / 86400 for days. The "1 day"/"2 days" pluralization is done
+  // in SQL via a CASE to keep the reason readable.
 
   const updated = await db.execute<{
     id: string;
@@ -74,46 +89,79 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
   }>(sql`
     WITH classified AS (
       SELECT
-        id,
-        is_stale AS was_stale,
+        t.id,
+        t.is_stale AS was_stale,
         CASE
           -- Rule 1: needs_reply over the 4-hour SLA
-          WHEN state = 'needs_reply'
-               AND last_inbound_at IS NOT NULL
-               AND last_inbound_at < ${needsReplyCutoff}
+          WHEN t.state = 'needs_reply'
+               AND t.last_inbound_at IS NOT NULL
+               AND t.last_inbound_at < ${needsReplyCutoff}
             THEN true
 
           -- Rule 2: waiting_on_them with no reply for 7 days
-          WHEN state = 'waiting_on_them'
-               AND last_outbound_at IS NOT NULL
-               AND last_outbound_at < ${waitingCutoff}
+          WHEN t.state = 'waiting_on_them'
+               AND t.last_outbound_at IS NOT NULL
+               AND t.last_outbound_at < ${waitingCutoff}
             THEN true
 
           -- Rule 3: follow_up_due past the 4-day cold-no-reply mark
-          WHEN state = 'follow_up_due'
-               AND last_outbound_at IS NOT NULL
-               AND last_outbound_at < ${followUpCutoff}
+          WHEN t.state = 'follow_up_due'
+               AND t.last_outbound_at IS NOT NULL
+               AND t.last_outbound_at < ${followUpCutoff}
             THEN true
 
           ELSE false
         END AS now_stale,
         CASE
-          WHEN state = 'needs_reply'
-               AND last_inbound_at IS NOT NULL
-               AND last_inbound_at < ${needsReplyCutoff}
-            THEN 'Venue replied over ' || EXTRACT(EPOCH FROM (NOW() - last_inbound_at))::int / 3600 || ' hours ago; no staff response.'
-          WHEN state = 'waiting_on_them'
-               AND last_outbound_at IS NOT NULL
-               AND last_outbound_at < ${waitingCutoff}
-            THEN 'Awaiting reply ' || EXTRACT(EPOCH FROM (NOW() - last_outbound_at))::int / 86400 || ' days since last send.'
-          WHEN state = 'follow_up_due'
-               AND last_outbound_at IS NOT NULL
-               AND last_outbound_at < ${followUpCutoff}
-            THEN 'Follow-up overdue ' || EXTRACT(EPOCH FROM (NOW() - last_outbound_at))::int / 86400 || ' days after first send.'
+          -- Rule 1 reason: "Mike from Lavelle replied 26 hours ago;
+          -- no staff response." Both name pieces are optional.
+          WHEN t.state = 'needs_reply'
+               AND t.last_inbound_at IS NOT NULL
+               AND t.last_inbound_at < ${needsReplyCutoff}
+            THEN
+              CASE WHEN t.last_sender_name IS NOT NULL THEN t.last_sender_name || ' ' ELSE '' END
+              ||
+              CASE WHEN v.name IS NOT NULL THEN 'from ' || v.name || ' ' ELSE '' END
+              || 'replied '
+              || EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 3600
+              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 3600 = 1
+                     THEN ' hour ago; no staff response.'
+                     ELSE ' hours ago; no staff response.'
+                  END
+
+          -- Rule 2 reason: "Lavelle hasn't replied for 9 days since
+          -- last send." Venue name optional.
+          WHEN t.state = 'waiting_on_them'
+               AND t.last_outbound_at IS NOT NULL
+               AND t.last_outbound_at < ${waitingCutoff}
+            THEN
+              CASE WHEN v.name IS NOT NULL THEN v.name || ' hasn''t replied for '
+                   ELSE 'Awaiting reply ' END
+              || EXTRACT(EPOCH FROM (NOW() - t.last_outbound_at))::int / 86400
+              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_outbound_at))::int / 86400 = 1
+                     THEN ' day since last send.'
+                     ELSE ' days since last send.'
+                  END
+
+          -- Rule 3 reason: "Follow-up overdue: 5 days after first
+          -- send to Lavelle." Venue name optional.
+          WHEN t.state = 'follow_up_due'
+               AND t.last_outbound_at IS NOT NULL
+               AND t.last_outbound_at < ${followUpCutoff}
+            THEN
+              'Follow-up overdue: '
+              || EXTRACT(EPOCH FROM (NOW() - t.last_outbound_at))::int / 86400
+              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_outbound_at))::int / 86400 = 1
+                     THEN ' day after first send'
+                     ELSE ' days after first send'
+                  END
+              || CASE WHEN v.name IS NOT NULL THEN ' to ' || v.name || '.' ELSE '.' END
+
           ELSE NULL
         END AS new_reason
-      FROM email_threads
-      WHERE state IN ('needs_reply', 'waiting_on_them', 'follow_up_due')
+      FROM email_threads t
+      LEFT JOIN venues v ON v.id = t.venue_id
+      WHERE t.state IN ('needs_reply', 'waiting_on_them', 'follow_up_due')
     )
     UPDATE email_threads et
     SET
