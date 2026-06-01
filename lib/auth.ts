@@ -71,7 +71,14 @@ export async function getCurrentStaff(): Promise<AuthContext | null> {
  */
 export async function requireStaff(): Promise<AuthContext> {
   const ctx = await getCurrentStaff();
-  if (!ctx) redirect("/login");
+  // requireStaff only runs AFTER the edge middleware allowed the request, i.e.
+  // the JWT already authenticated at the edge. So a null ctx here means the
+  // token is valid-but-stale (its user no longer exists / is inactive) — the
+  // classic edge-authenticated / DB-rejected mismatch that loops /login -> /.
+  // We can't clear the (HttpOnly, chunked) session cookie from a Server
+  // Component, so we redirect to a route handler that CAN, breaking the loop
+  // and auto-healing the browser. /login is reachable from there once cleared.
+  if (!ctx) redirect("/api/session/clear");
   return ctx;
 }
 

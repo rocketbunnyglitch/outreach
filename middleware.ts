@@ -31,11 +31,18 @@ const CAMPAIGN_COOKIE = "crawl_engine_current_campaign";
 // __Secure- prefix is used over HTTPS.
 const REDIR_GUARD = "perse_redir_guard";
 const REDIR_GUARD_LIMIT = 3;
-const STALE_SESSION_COOKIES = [
-  "__Secure-authjs.session-token",
-  "authjs.session-token",
-  CAMPAIGN_COOKIE,
-];
+// NextAuth chunks the session cookie when the JWT is large
+// (authjs.session-token.0/.1/...). Clearing only the base name leaves the
+// chunks, so the edge re-assembles a "valid" token and the loop persists —
+// we must expire every chunk variant too.
+const STALE_SESSION_COOKIES = (() => {
+  const names: string[] = [CAMPAIGN_COOKIE];
+  for (const base of ["__Secure-authjs.session-token", "authjs.session-token"]) {
+    names.push(base);
+    for (let i = 0; i < 10; i++) names.push(`${base}.${i}`);
+  }
+  return names;
+})();
 
 // Paths that require a campaign to be scoped. These are the "Current
 // Crawl" + "Operate" groups in the side nav. Without a campaign, the
@@ -88,6 +95,9 @@ export default auth((req) => {
     // Temporary public diagnostic beacon (lib/client-diag.ts) — must be
     // reachable pre-auth since the load failure can happen before login.
     pathname === "/api/client-diag" ||
+    // Stale-session self-heal route — clears the (HttpOnly, chunked) session
+    // cookie server-side and redirects to /login. Must be reachable always.
+    pathname === "/api/session/clear" ||
     pathname === "/login" ||
     // Static client-state reset page. Must be reachable even when the
     // user is signed out or the main app is broken — that's the whole

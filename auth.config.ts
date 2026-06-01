@@ -60,6 +60,10 @@ const config: NextAuthConfig = {
       if (
         pathname.startsWith("/api/auth") ||
         pathname === "/api/health" ||
+        // Stale-session self-heal route — must be reachable so a broken
+        // (valid-at-edge, dead-in-DB) session can clear itself instead of
+        // looping. The handler only expires session cookies + → /login.
+        pathname === "/api/session/clear" ||
         pathname === "/login" ||
         // Invite + password-reset landing page. Carries a one-shot
         // signed token in the URL, so it's safe to expose without a
