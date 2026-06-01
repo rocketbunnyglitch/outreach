@@ -40,6 +40,23 @@ import { and, eq, or, sql } from "drizzle-orm";
 const NEEDS_REPLY_HOURS = 4;
 const WAITING_DAYS = 7;
 const FOLLOW_UP_DAYS = 4;
+/**
+ * Tighter threshold for "high intent" waiting_on_them threads. When
+ * the venue's last classification was interested / confirmed /
+ * callback_requested and we sent the next step, we expect a faster
+ * back-and-forth. Going silent for 24h on a hot lead is an
+ * escalation signal — surfacing it sooner than the generic 7-day
+ * waiting threshold gives operators a fighting chance to re-engage
+ * before momentum dies.
+ *
+ * The classification enum has these "intent-positive" kinds:
+ *   - interested
+ *   - confirmed
+ *   - callback_requested
+ * Other kinds (warm, question, etc.) stay on the default
+ * WAITING_DAYS schedule — they're less time-sensitive.
+ */
+const HIGH_INTENT_WAITING_HOURS = 24;
 
 export interface StaleTaggerResult {
   /** Threads newly flagged as stale (was false → true). */
@@ -58,6 +75,9 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
   const needsReplyCutoff = new Date(now.getTime() - NEEDS_REPLY_HOURS * 60 * 60 * 1000);
   const waitingCutoff = new Date(now.getTime() - WAITING_DAYS * 24 * 60 * 60 * 1000);
   const followUpCutoff = new Date(now.getTime() - FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
+  const highIntentWaitingCutoff = new Date(
+    now.getTime() - HIGH_INTENT_WAITING_HOURS * 60 * 60 * 1000,
+  );
 
   // Build a single CASE expression that decides each thread's new
   // stale state in one pass. The query touches every open thread
@@ -98,6 +118,19 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
                AND t.last_inbound_at < ${needsReplyCutoff}
             THEN true
 
+          -- Rule 4: HIGH-INTENT waiting_on_them — when the venue's
+          -- last reply was classified interested / confirmed /
+          -- callback_requested AND we sent the next step, going
+          -- silent for 24h is an escalation signal. This rule
+          -- fires BEFORE Rule 2 (looser 7-day waiting) for
+          -- intent-positive threads. Checked before Rule 2 in the
+          -- CASE so the tighter threshold wins.
+          WHEN t.state = 'waiting_on_them'
+               AND t.classification IN ('interested', 'confirmed', 'callback_requested')
+               AND t.last_outbound_at IS NOT NULL
+               AND t.last_outbound_at < ${highIntentWaitingCutoff}
+            THEN true
+
           -- Rule 2: waiting_on_them with no reply for 7 days
           WHEN t.state = 'waiting_on_them'
                AND t.last_outbound_at IS NOT NULL
@@ -127,6 +160,29 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
               || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 3600 = 1
                      THEN ' hour ago; no staff response.'
                      ELSE ' hours ago; no staff response.'
+                  END
+
+          -- Rule 4 reason: "Interested lead Lavelle silent 28
+          -- hours; consider a nudge." Surfaces the intent
+          -- classification so operators understand WHY this is
+          -- stale faster than a default waiting thread.
+          WHEN t.state = 'waiting_on_them'
+               AND t.classification IN ('interested', 'confirmed', 'callback_requested')
+               AND t.last_outbound_at IS NOT NULL
+               AND t.last_outbound_at < ${highIntentWaitingCutoff}
+            THEN
+              CASE t.classification::text
+                WHEN 'interested' THEN 'Interested lead '
+                WHEN 'confirmed' THEN 'Confirmed lead '
+                WHEN 'callback_requested' THEN 'Callback-requested lead '
+                ELSE 'High-intent lead '
+              END
+              || COALESCE(v.name, 'venue')
+              || ' silent '
+              || EXTRACT(EPOCH FROM (NOW() - t.last_outbound_at))::int / 3600
+              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_outbound_at))::int / 3600 = 1
+                     THEN ' hour; consider a nudge.'
+                     ELSE ' hours; consider a nudge.'
                   END
 
           -- Rule 2 reason: "Lavelle hasn't replied for 9 days since
