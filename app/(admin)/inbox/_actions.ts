@@ -1437,6 +1437,7 @@ export async function openReplyDraft(input: {
           id: emailMessages.id,
           direction: emailMessages.direction,
           fromAddress: emailMessages.fromAddress,
+          fromEmailNormalized: emailMessages.fromEmailNormalized,
           fromName: emailMessages.fromName,
           toAddresses: emailMessages.toAddresses,
           ccAddresses: emailMessages.ccAddresses,
@@ -1455,6 +1456,7 @@ export async function openReplyDraft(input: {
           id: emailMessages.id,
           direction: emailMessages.direction,
           fromAddress: emailMessages.fromAddress,
+          fromEmailNormalized: emailMessages.fromEmailNormalized,
           fromName: emailMessages.fromName,
           toAddresses: emailMessages.toAddresses,
           ccAddresses: emailMessages.ccAddresses,
@@ -1487,6 +1489,7 @@ export async function openReplyDraft(input: {
           id: emailMessages.id,
           direction: emailMessages.direction,
           fromAddress: emailMessages.fromAddress,
+          fromEmailNormalized: emailMessages.fromEmailNormalized,
           fromName: emailMessages.fromName,
           toAddresses: emailMessages.toAddresses,
           ccAddresses: emailMessages.ccAddresses,
@@ -1502,7 +1505,28 @@ export async function openReplyDraft(input: {
         .limit(1);
       if (inbound) target = inbound;
     }
-    const senderEmail = extractEmail(target.fromAddress) ?? target.fromAddress;
+    // Resolve the clean reply-to address. Prefer the normalized
+    // column shipped in 0083 over parsing the raw header at call
+    // time -- the normalized column was filled at ingest by the
+    // same parser, and the on-disk value already survived the
+    // edge cases (UTF-8 in display names, comments, etc.) once.
+    // Fall back to the local extractor for the rare cases the
+    // backfill couldn't parse the header.
+    //
+    // Don't fall back to the RAW header as a last resort -- it
+    // would send 'Mike Smith <mike@venue.com>' as the literal To
+    // field. The Gmail send layer might accept it but the
+    // composer's recipient chip parser would mis-render it. We
+    // surface an explicit error instead so the operator can pick
+    // the correct address manually via the composer.
+    const senderEmail =
+      target.fromEmailNormalized?.trim() || extractEmail(target.fromAddress) || null;
+    if (!senderEmail) {
+      return {
+        ok: false,
+        error: "Couldn't parse the sender address from the inbound message; reply manually.",
+      };
+    }
     toList = [senderEmail];
     if (input.mode === "reply_all") {
       const merged = [...(target.toAddresses ?? []), ...(target.ccAddresses ?? [])];
