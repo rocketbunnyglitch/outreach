@@ -152,7 +152,8 @@ export async function loadEmailHealthDashboard(teamId: string): Promise<EmailHea
           SELECT COALESCE(SUM(unread_count), 0)::int AS n
           FROM ${emailThreads}
           WHERE staff_outreach_email_id = ${a.id}
-            AND state NOT IN ('archived', 'trash')
+            AND state <> 'archived'
+            AND deleted_at IS NULL
         `),
         db.execute<{ t: Date | null }>(sql`
           SELECT MAX(last_inbound_at) AS t
