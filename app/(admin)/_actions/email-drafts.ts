@@ -333,11 +333,15 @@ export async function bulkDeleteDrafts(ids: string[]): Promise<ActionResult<{ de
  */
 export async function sendDraft(
   draftId: string,
-  opts: { bypassCap?: boolean } = {},
+  opts: { bypassCap?: boolean; ackDuplicates?: boolean } = {},
 ): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
     duplicateWarnings?: unknown;
+    /** Full warnings array — supersedes duplicateWarnings for new
+     *  UI code. Carries every detected SafetyWarning kind
+     *  (duplicate, recent_decline, cross_staff_owner, ...). */
+    safetyWarnings?: unknown;
     wrongAccountBlocked?: boolean;
     threadAccountEmail?: string;
     chosenAccountEmail?: string;
@@ -347,7 +351,12 @@ export async function sendDraft(
   if (!UUID_RE.test(draftId)) {
     return { ok: false, error: "Invalid draft id." };
   }
-  return sendDraftAsUser({ draftId, ownerUserId: staff.id, bypassCap: opts.bypassCap });
+  return sendDraftAsUser({
+    draftId,
+    ownerUserId: staff.id,
+    bypassCap: opts.bypassCap,
+    ackDuplicates: opts.ackDuplicates,
+  });
 }
 
 /**
@@ -361,10 +370,12 @@ async function sendDraftAsUser(input: {
   draftId: string;
   ownerUserId: string;
   bypassCap?: boolean;
+  ackDuplicates?: boolean;
 }): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
     duplicateWarnings?: unknown;
+    safetyWarnings?: unknown;
     wrongAccountBlocked?: boolean;
     threadAccountEmail?: string;
     chosenAccountEmail?: string;
@@ -442,6 +453,15 @@ async function sendDraftAsUser(input: {
   // Admin-bypass marker — composeAndSend re-checks the operator's
   // role server-side; we just surface the form-field convention here.
   if (input.bypassCap) fd.set("bypassCap", "1");
+  // Pre-send safety warnings are surfaced to the client (decline,
+  // cross-staff, duplicate). When the operator chooses "Send
+  // anyway" in the confirm dialog, the client re-calls sendDraft
+  // with ackDuplicates:true; we forward that as the same
+  // ackDuplicates form field that composeAndSendImpl already
+  // recognizes. The form-field name predates the broader
+  // SafetyWarning union — kept stable to avoid churning every
+  // server-side check site.
+  if (input.ackDuplicates) fd.set("ackDuplicates", "1");
   // Template attribution (Phase C.1) — recorded on email_send_events
   // so template-performance analytics can compute per-template
   // reply/warm rates. Null when the operator composed freeform.
@@ -454,6 +474,7 @@ async function sendDraftAsUser(input: {
       error: result.error,
       capBlocked: "capBlocked" in result ? result.capBlocked : undefined,
       duplicateWarnings: "duplicateWarnings" in result ? result.duplicateWarnings : undefined,
+      safetyWarnings: "safetyWarnings" in result ? result.safetyWarnings : undefined,
       wrongAccountBlocked: "wrongAccountBlocked" in result ? result.wrongAccountBlocked : undefined,
       threadAccountEmail: "threadAccountEmail" in result ? result.threadAccountEmail : undefined,
       chosenAccountEmail: "chosenAccountEmail" in result ? result.chosenAccountEmail : undefined,

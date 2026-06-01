@@ -56,6 +56,7 @@ import {
   listComposeContext,
 } from "../../_actions/compose-and-send";
 import { deleteDraft, sendDraft, upsertDraft } from "../../_actions/email-drafts";
+import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
 import { FollowUpPrompt } from "./follow-up-prompt";
@@ -145,6 +146,20 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
   const [wrongAccountBlocked, setWrongAccountBlocked] = useState(false);
+  /**
+   * Set when the server returned safety warnings (recent decline,
+   * cross-staff ownership, duplicate outreach). Triggers the
+   * pre-send confirm dialog instead of the generic error toast.
+   * Cleared on dismiss/proceed/successful retry.
+   *
+   * The shape mirrors lib/send-safety SafetyWarning; we type as
+   * unknown here so we don't pull a server-only module into the
+   * client bundle. The runtime shape check + render-by-kind
+   * narrows the type at the rendering site.
+   */
+  const [pendingSafetyWarnings, setPendingSafetyWarnings] = useState<
+    Array<Record<string, unknown>>
+  >([]);
   const [sending, startSendTx] = useTransition();
   const toast = useToast();
   /** undo-window timer: when non-null, we're in the queued-send window
@@ -329,7 +344,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   }
 
   /** Actually fire the send (called once the undo window elapses). */
-  function actuallySend(opts: { testOnly?: boolean; bypassCap?: boolean } = {}) {
+  function actuallySend(
+    opts: { testOnly?: boolean; bypassCap?: boolean; ackDuplicates?: boolean } = {},
+  ) {
     startSendTx(async () => {
       // Persist final state of the draft so sendDraft has fresh data.
       const saveRes = await upsertDraft({
@@ -363,9 +380,27 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setUndoActive(false);
         return;
       }
-      const sendRes = await sendDraft(instance.id, { bypassCap: opts.bypassCap });
+      const sendRes = await sendDraft(instance.id, {
+        bypassCap: opts.bypassCap,
+        ackDuplicates: opts.ackDuplicates,
+      });
       setUndoActive(false);
       if (!sendRes.ok) {
+        // Safety warnings (decline, cross-staff, duplicate) get a
+        // dedicated confirm dialog rather than a generic error
+        // toast. Operators must explicitly acknowledge before the
+        // engine will proceed with the send. Skip this branch on
+        // test sends — those never trigger safety checks.
+        const warnings = (sendRes.safetyWarnings ?? sendRes.duplicateWarnings ?? null) as Array<
+          Record<string, unknown>
+        > | null;
+        if (!opts.testOnly && warnings && warnings.length > 0) {
+          setPendingSafetyWarnings(warnings);
+          // Don't show the error toast OR set sendError — the dialog
+          // is the surface. sendError is reserved for hard blocks
+          // (suppression, DNC, cap) that have no acknowledge path.
+          return;
+        }
         setSendError(sendRes.error);
         setCapBlocked(sendRes.capBlocked ?? false);
         setWrongAccountBlocked(sendRes.wrongAccountBlocked ?? false);
@@ -379,6 +414,8 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         });
         return;
       }
+      // Clear any prior safety dialog state on success.
+      setPendingSafetyWarnings([]);
       setSentThreadId(sendRes.data.threadId);
       toast.show({
         kind: "success",
@@ -1112,6 +1149,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             inboxes?.find((x) => x.id === instance.fromAccountId)?.emailAddress ?? null
           }
           onClose={() => setShowPreview(false)}
+        />
+      )}
+
+      {/* Pre-send safety warning confirm dialog. Shown when the
+          server returned warnings the operator needs to acknowledge
+          before the send goes through. Calling actuallySend with
+          ackDuplicates:true re-fires the same draft + skips the
+          warning check. The form-field name `ackDuplicates` is
+          historical — it covers every SafetyWarning kind today
+          (decline, cross-staff, duplicate). */}
+      {pendingSafetyWarnings.length > 0 && (
+        <SafetyWarningDialog
+          warnings={pendingSafetyWarnings}
+          sending={sending}
+          onCancel={() => setPendingSafetyWarnings([])}
+          onConfirm={() => {
+            setPendingSafetyWarnings([]);
+            actuallySend({ ackDuplicates: true });
+          }}
         />
       )}
     </div>
