@@ -221,6 +221,14 @@ export function renderDigestBody(row: DigestRow): string {
   }
 
   lines.push("Open the inbox: https://outreach.barcrawlconnect.com/inbox");
+  lines.push("");
+  // Self-service opt-out link. Operators receiving this in their
+  // inbox have no other path to disable the digest -- they'd have
+  // to log in and find /me/preferences. Surfacing the URL here is
+  // standard practice (and the right thing to do; a daily email
+  // with no unsubscribe path is the kind of thing operators
+  // remember when they're filing a complaint).
+  lines.push("Stop these emails: https://outreach.barcrawlconnect.com/me/preferences");
   return lines.join("\n");
 }
 
