@@ -17,7 +17,7 @@ import { emailSuppression, users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
-import { ShieldOff } from "lucide-react";
+import { Download, ShieldOff } from "lucide-react";
 import { countMalformedSuppression } from "./_actions";
 import { AddSuppressionForm } from "./_components/add-suppression-form";
 import { CleanupMalformedButton } from "./_components/cleanup-malformed-button";
@@ -104,6 +104,15 @@ export default async function SuppressionPage({ searchParams }: Props) {
   // strip is invisible for clean teams.
   const malformed = await countMalformedSuppression();
 
+  // Build a CSV-export URL that mirrors the current filter state, so
+  // an admin who searched "lavelle" + reason=manual gets that exact
+  // subset when they click Download. No filters = full team export.
+  const exportParams = new URLSearchParams();
+  if (query.length > 0) exportParams.set("q", query);
+  if (reasons.length > 0) exportParams.set("reason", reasons.join(","));
+  const exportSuffix = exportParams.toString();
+  const exportHref = `/api/admin/suppression/export.csv${exportSuffix ? `?${exportSuffix}` : ""}`;
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -116,6 +125,14 @@ export default async function SuppressionPage({ searchParams }: Props) {
             do-not-contact addresses that aren't tied to a specific venue.
           </p>
         </div>
+        <a
+          href={exportHref}
+          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          download
+        >
+          <Download className="h-3.5 w-3.5" />
+          Download CSV
+        </a>
       </header>
 
       <AddSuppressionForm />
