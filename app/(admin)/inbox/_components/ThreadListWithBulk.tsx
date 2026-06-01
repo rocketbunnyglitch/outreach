@@ -35,6 +35,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { bulkUpdateThreads } from "../_actions";
+import { BulkAttachVenueButton } from "./BulkAttachVenueButton";
 import { ThreadList } from "./ThreadList";
 
 interface Props {
@@ -62,6 +63,13 @@ export function ThreadListWithBulk({
 
   const allChecked = threads.length > 0 && selected.size === threads.length;
   const someChecked = selected.size > 0 && selected.size < threads.length;
+
+  // Bulk-attach-venue only makes sense when every selected thread is still
+  // unmatched (venue_id IS NULL). If any selected thread already has a venue,
+  // hide the action rather than risk silently re-pointing it.
+  const selectedThreads = threads.filter((t) => selected.has(t.id));
+  const selectedAllUnmatched =
+    selectedThreads.length > 0 && selectedThreads.every((t) => t.venueId === null);
 
   function toggleAll() {
     if (selected.size === threads.length) {
@@ -192,6 +200,19 @@ export function ThreadListWithBulk({
               disabled={pending}
               isTrashView={!!isTrashView}
             />
+            {selectedAllUnmatched && (
+              <>
+                <span className="mx-1.5 h-4 w-px bg-zinc-200 dark:bg-zinc-800" />
+                <BulkAttachVenueButton
+                  threadIds={Array.from(selected)}
+                  disabled={pending}
+                  onDone={() => {
+                    setSelected(new Set());
+                    router.refresh();
+                  }}
+                />
+              </>
+            )}
           </>
         )}
 
