@@ -302,25 +302,41 @@ export async function clearSlot(
 const demoteSchema = z.object({
   venueEventId: uuid,
   cityCampaignId: uuid,
-  destination: z.enum(["warm", "cold"]),
+  destination: z.enum(["warm", "cold", "delete"]),
 });
 
 /**
- * Remove a venue from a crawl slot ("demote it"). Two destinations:
- *   - "warm": just deletes the venue_event row. The venue's prior interest +
- *     outreach history remain, so it still surfaces in warm leads.
- *   - "cold": deletes the venue_event AND inserts (or restores) a
- *     cold_outreach_entries row with status="interested" — the venue moves
- *     back into the cold-outreach table for active follow-up.
+ * Remove a venue from a crawl slot. Three destinations:
  *
- * Both run in one transaction so a failed re-list doesn't leave the slot
- * in a half-removed state.
+ *   - "warm":   deletes the venue_event row. The venue's prior
+ *               cold_outreach_entries row (if any) is untouched,
+ *               so a row with status='interested' (or after the
+ *               is_warm flag lands, is_warm=true) still appears
+ *               in the warm leads tab.
+ *
+ *   - "cold":   deletes the venue_event AND inserts (or restores)
+ *               a cold_outreach_entries row with status="interested"
+ *               so the venue surfaces in the cold-outreach table
+ *               for active follow-up.
+ *
+ *   - "delete": deletes the venue_event row ONLY. Does NOT touch
+ *               any queue. Used when the operator wants to remove
+ *               this specific slot assignment without re-routing
+ *               the venue anywhere. Typical scenario: a venue
+ *               accepted for Friday Crawl 1 but declined for
+ *               Saturday Crawl 2 — operator deletes the Saturday
+ *               row, the Friday row stays, no queue changes
+ *               needed because the operator already knows the
+ *               disposition.
+ *
+ * All run in one transaction so a failed re-list (cold branch)
+ * doesn't leave the slot in a half-removed state.
  */
 export async function demoteVenueFromCrawl(input: {
   venueEventId: string;
   cityCampaignId: string;
-  destination: "warm" | "cold";
-}): Promise<ActionResult<{ destination: "warm" | "cold" }>> {
+  destination: "warm" | "cold" | "delete";
+}): Promise<ActionResult<{ destination: "warm" | "cold" | "delete" }>> {
   const { staff } = await requireStaff();
   const parsed = demoteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid demote." };
@@ -328,8 +344,8 @@ export async function demoteVenueFromCrawl(input: {
 
   try {
     await withAuditContext(staff.id, async (tx) => {
-      // Grab the venueId before we delete the row (we need it for the cold
-      // restore branch; harmless to fetch on the warm branch too).
+      // Grab the venueId before we delete the row (we need it for
+      // the cold restore branch; harmless to fetch otherwise).
       const row = await tx
         .select({ venueId: venueEvents.venueId })
         .from(venueEvents)
@@ -353,6 +369,11 @@ export async function demoteVenueFromCrawl(input: {
             set: { status: "interested", updatedBy: staff.id },
           });
       }
+      // destination === "warm" or "delete": no queue write needed.
+      // The two diverge only in their UI label intent — "warm"
+      // assumes a pre-existing cold_outreach_entries row will
+      // continue to surface the venue as warm; "delete" makes
+      // no such promise. DB-wise they're identical.
     });
 
     revalidatePath(`/city-campaigns/${cityCampaignId}`);

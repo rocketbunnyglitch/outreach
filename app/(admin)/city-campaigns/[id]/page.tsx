@@ -139,6 +139,50 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     await removeCityCampaign(id);
   }
 
+  // Shared by both warm + cold ColdOutreachTable mounts: the set of
+  // crawls eligible for the promote-to-slot picker. All viable
+  // day/night parts (previously night-only — operator flagged that
+  // "Saturday Day Crawl" never appeared in the picker).
+  //
+  // Defined once so the cold-mode table can use the same filter for
+  // the "instant assign from cold queue" affordance per operator
+  // feedback: "From cold outreach you should be able to also
+  // instantly assign to a crawl not just move to warm leads".
+  const crawlsForPromote =
+    sheetData?.crawls
+      .filter(
+        (
+          c,
+        ): c is typeof c & {
+          dayPart:
+            | "thursday_night"
+            | "friday_night"
+            | "saturday_day"
+            | "saturday_night"
+            | "sunday_day"
+            | "sunday_night";
+        } =>
+          c.dayPart === "thursday_night" ||
+          c.dayPart === "friday_night" ||
+          c.dayPart === "saturday_day" ||
+          c.dayPart === "saturday_night" ||
+          c.dayPart === "sunday_day" ||
+          c.dayPart === "sunday_night",
+      )
+      .map((c) => ({
+        eventId: c.eventId,
+        dayPart: c.dayPart,
+        crawlNumber: c.crawlNumber,
+        middleVenueGroupId: c.middleVenueGroupId,
+        filledSlots: c.slots
+          .filter((s) => s.venueEventId != null)
+          .map((s) => ({
+            role: s.role,
+            slotPosition: s.slotPosition,
+            venueName: s.venueName,
+          })),
+      })) ?? [];
+
   return (
     <div className="mx-auto flex max-w-6xl animate-[fade-in_300ms_ease-out] flex-col gap-8">
       {/* Back link — returns to THIS campaign's operations dashboard
@@ -222,13 +266,6 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         </section>
       )}
 
-      {/* Warm leads — same component as the cold-outreach table below,
-          just rendered in "warm" mode (filters to status='interested',
-          flips the bulk Move button to send venues back to cold,
-          surfaces a per-row Promote button that opens the existing
-          two-step crawl + slot picker). Per operator: "when you
-          promote to warm leads it should have all the same columns
-          and features as the cold outreach table." */}
       <ColdOutreachTable
         cityCampaignId={id}
         cityId={cc.city.id}
@@ -242,46 +279,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
         }
         mode="warm"
-        crawlsForPromote={
-          sheetData?.crawls
-            .filter(
-              (
-                c,
-              ): c is typeof c & {
-                dayPart:
-                  | "thursday_night"
-                  | "friday_night"
-                  | "saturday_day"
-                  | "saturday_night"
-                  | "sunday_day"
-                  | "sunday_night";
-              } =>
-                // All viable day/night parts. Previously this only
-                // accepted thursday/friday/saturday NIGHT — operator
-                // pointed out day crawls (e.g. "Saturday Day Crawl")
-                // never showed up in the promote picker. Sunday
-                // night included for symmetry.
-                c.dayPart === "thursday_night" ||
-                c.dayPart === "friday_night" ||
-                c.dayPart === "saturday_day" ||
-                c.dayPart === "saturday_night" ||
-                c.dayPart === "sunday_day" ||
-                c.dayPart === "sunday_night",
-            )
-            .map((c) => ({
-              eventId: c.eventId,
-              dayPart: c.dayPart,
-              crawlNumber: c.crawlNumber,
-              middleVenueGroupId: c.middleVenueGroupId,
-              filledSlots: c.slots
-                .filter((s) => s.venueEventId != null)
-                .map((s) => ({
-                  role: s.role,
-                  slotPosition: s.slotPosition,
-                  venueName: s.venueName,
-                })),
-            })) ?? []
-        }
+        crawlsForPromote={crawlsForPromote}
       />
 
       <ColdOutreachTable
@@ -296,6 +294,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         googleMapsApiKey={
           process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
         }
+        crawlsForPromote={crawlsForPromote}
       />
 
       {/* Every venue in the city DB + slot history. Mounts right

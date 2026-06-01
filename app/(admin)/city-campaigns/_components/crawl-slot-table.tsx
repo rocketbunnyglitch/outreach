@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import {
   type CrawlCard,
   SLOT_ROLE_ORDER,
@@ -819,21 +820,50 @@ function SlotTableRow({
     });
   }
 
-  // Demote = remove from this slot AND choose where the venue lands next:
-  //   "warm" (default; just clear; venue stays warm via history)
-  //   "cold" (restore as cold_outreach_entries with status="interested" so
-  //          it surfaces for active follow-up again).
+  // Demote = remove from this slot. Three destinations:
+  //   "warm"   — just clear; cold_outreach row (if any) is untouched
+  //   "cold"   — restore as cold_outreach_entries with status="interested"
+  //   "delete" — remove venue_event row only, no queue changes
   const [demoteOpen, setDemoteOpen] = useState(false);
+  const toast = useToast();
 
-  function demote(destination: "warm" | "cold") {
+  function demote(destination: "warm" | "cold" | "delete") {
     if (!slot.venueEventId) return;
     setDemoteOpen(false);
+    // Capture before the closure so the post-render slot update
+    // doesn't trip undefined.
+    const veId = slot.venueEventId;
+    const venueName = slot.venueName ?? "venue";
     startTx(async () => {
-      await demoteVenueFromCrawl({
-        venueEventId: slot.venueEventId!,
-        cityCampaignId,
-        destination,
-      });
+      try {
+        const res = await demoteVenueFromCrawl({
+          venueEventId: veId,
+          cityCampaignId,
+          destination,
+        });
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error || "Couldn't remove from crawl.",
+            code: (res as { code?: string }).code,
+            tag: "crawl.demote",
+          });
+          return;
+        }
+        const msg =
+          destination === "delete"
+            ? `${venueName} removed from crawl.`
+            : destination === "cold"
+              ? `${venueName} sent back to cold queue.`
+              : `${venueName} demoted to warm leads.`;
+        toast.show({ kind: "success", message: msg });
+      } catch (err) {
+        toast.show({
+          kind: "error",
+          message: (err as Error)?.message ?? "Couldn't remove from crawl.",
+          tag: "crawl.demote",
+        });
+      }
     });
   }
 
@@ -1484,7 +1514,7 @@ function DemoteMenu({
   onPick,
   onClose,
 }: {
-  onPick: (destination: "warm" | "cold") => void;
+  onPick: (destination: "warm" | "cold" | "delete") => void;
   onClose: () => void;
 }) {
   // Click-outside to dismiss without selecting.
@@ -1505,19 +1535,19 @@ function DemoteMenu({
   return (
     <div
       ref={ref}
-      className="absolute top-full right-0 z-20 mt-1 w-52 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+      className="absolute top-full right-0 z-20 mt-1 w-60 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
     >
       <p className="border-zinc-200/60 border-b px-3 py-1.5 font-mono text-[9px] text-zinc-500 uppercase tracking-[0.14em] dark:border-zinc-800/60">
-        Demote to
+        Remove venue from this slot
       </p>
       <button
         type="button"
         onClick={() => onPick("warm")}
         className="block w-full px-3 py-2 text-left text-xs hover:bg-zinc-50 dark:hover:bg-zinc-900"
-        title="Just clear this slot. The venue's interest + history are preserved, so it still appears in warm leads."
+        title="Just clear this slot. The venue's prior cold_outreach_entries row (if any) keeps its status — if it was already warm, it still appears in warm leads."
       >
-        <span className="font-medium">Warm leads</span>
-        <span className="block text-[10px] text-zinc-500">Clear, keep prior interest</span>
+        <span className="font-medium">Demote to warm leads</span>
+        <span className="block text-[10px] text-zinc-500">Clear slot, keep prior interest</span>
       </button>
       <button
         type="button"
@@ -1525,8 +1555,19 @@ function DemoteMenu({
         className="block w-full border-zinc-200/60 border-t px-3 py-2 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-900"
         title="Clear and re-list in cold outreach with status='interested' for active follow-up."
       >
-        <span className="font-medium">Cold outreach</span>
+        <span className="font-medium">Re-add to cold queue</span>
         <span className="block text-[10px] text-zinc-500">Re-list for follow-up</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onPick("delete")}
+        className="block w-full border-zinc-200/60 border-t px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50 dark:border-zinc-800/60 dark:text-rose-300 dark:hover:bg-rose-950/40"
+        title="Delete this venue_event row entirely. No queue changes. Use when the venue declined this specific crawl but you don't want to re-route it anywhere (e.g. it's still on another day's crawl)."
+      >
+        <span className="font-medium">Delete from this crawl only</span>
+        <span className="block text-[10px] text-rose-600/80 dark:text-rose-400/80">
+          Remove row. No queue changes.
+        </span>
       </button>
     </div>
   );

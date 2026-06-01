@@ -876,7 +876,6 @@ export function ColdOutreachTable({
                 rowIndex={i}
                 layout="table"
                 escalationTargets={escalationTargets}
-                mode={mode}
                 crawlsForPromote={crawlsForPromote}
               />
             ))}
@@ -920,7 +919,6 @@ export function ColdOutreachTable({
                 zebra={false}
                 layout="card"
                 escalationTargets={escalationTargets}
-                mode={mode}
                 crawlsForPromote={crawlsForPromote}
               />
             </li>
@@ -985,7 +983,6 @@ function ColdRow({
   rowIndex,
   layout,
   escalationTargets,
-  mode,
   crawlsForPromote,
 }: {
   entry: ColdEntry;
@@ -1011,9 +1008,10 @@ function ColdRow({
     role: string;
     primaryEmail: string;
   }>;
-  /** Cold vs warm mode — drives the Promote-to-crawl affordance. */
-  mode: "cold" | "warm";
-  /** Crawls in this city_campaign for the per-row Promote picker. */
+  /** Crawls in this city_campaign for the per-row Promote picker.
+   *  Available in both cold + warm modes (per operator: "From cold
+   *  outreach you should be able to also instantly assign to a
+   *  crawl"). */
   crawlsForPromote?: Array<{
     eventId: string;
     dayPart:
@@ -1356,7 +1354,10 @@ function ColdRow({
             />
           </div>
 
-          {/* History + Archive (+ Promote in warm mode) */}
+          {/* History + Archive + Promote (both cold + warm modes —
+              per operator: "From cold outreach you should be able to
+              also instantly assign to a crawl not just move to warm
+              leads") */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ActivityHistoryButton
@@ -1366,7 +1367,7 @@ function ColdRow({
                 alsoRecordId={entry.venueId}
                 compact
               />
-              {mode === "warm" && crawlsForPromote && (
+              {crawlsForPromote && crawlsForPromote.length > 0 && (
                 <WarmLeadPromoteButton
                   venueId={entry.venueId}
                   venueName={entry.venueName}
@@ -1430,14 +1431,15 @@ function ColdRow({
             aria-label={`Select ${entry.venueName}`}
           />
           <div className="flex flex-col items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-            {/* In warm mode, the FIRST row action is Promote-to-crawl —
-                the operator's primary verb for an interested venue.
-                Reuses the existing WarmLeadPromoteButton popover
-                (which already implements the two-step crawl + slot
-                picker with conflict detection via assignSlotVenue).
-                Visible on hover like the other action icons; collapses
-                to "..." style if the operator hasn't loaded crawls. */}
-            {mode === "warm" && crawlsForPromote && (
+            {/* Promote-to-crawl available in BOTH cold and warm
+                modes. In warm it's the primary verb (operator
+                committing an interested venue to a slot). In cold
+                it's instant assign — per operator "From cold
+                outreach you should be able to also instantly
+                assign to a crawl not just move to warm leads".
+                Reuses the same WarmLeadPromoteButton popover with
+                the two-step crawl + slot picker. */}
+            {crawlsForPromote && crawlsForPromote.length > 0 && (
               <WarmLeadPromoteButton
                 venueId={entry.venueId}
                 venueName={entry.venueName}
