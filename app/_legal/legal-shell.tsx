@@ -1,18 +1,16 @@
 /**
  * Legal-page primitives — shared chrome for /privacy + /terms.
  *
- * Distinct from the in-app layout because Google's OAuth verifiers
- * (and any unauthenticated visitor) need to land on these pages
- * without a session. We deliberately keep the visual surface plain:
- *   - High contrast type
- *   - Generous max-width for readability
- *   - No marketing fluff, no animations, no JS-only widgets
- *   - The PERSE brand mark + a single home link
+ * Wraps PublicShell so legal pages share the same nav + footer as the
+ * marketing pages. Google OAuth verifiers (and any unauthenticated
+ * visitor) can navigate between sections without bouncing through
+ * /login.
  *
  * Server-rendered, no client interactivity needed.
  */
 
 import Link from "next/link";
+import { PublicShell } from "../_public/public-shell";
 
 export function LegalShell({
   title,
@@ -25,39 +23,36 @@ export function LegalShell({
   children: React.ReactNode;
 }) {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12 md:py-16">
-      <header className="border-zinc-200 border-b pb-6 dark:border-zinc-800">
-        <Link
-          href="/"
-          className="font-mono text-[11px] text-zinc-500 uppercase tracking-[0.2em] hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          PERSE
-        </Link>
-        <h1 className="mt-4 font-semibold text-3xl tracking-tight md:text-4xl">{title}</h1>
-        <p className="mt-2 font-mono text-[11px] text-zinc-500 uppercase tracking-[0.1em]">
-          Effective {effectiveDate}
-        </p>
-      </header>
-      <div className="prose prose-zinc dark:prose-invert mt-8 max-w-none text-[15px] leading-relaxed">
-        {children}
-      </div>
-      <footer className="mt-16 border-zinc-200 border-t pt-6 font-mono text-[11px] text-zinc-500 uppercase tracking-[0.12em] dark:border-zinc-800">
-        <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-zinc-100">
-          Privacy
-        </Link>
-        <span className="mx-2 opacity-40">·</span>
-        <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-zinc-100">
-          Terms
-        </Link>
-        <span className="mx-2 opacity-40">·</span>
-        <a
-          href="mailto:privacy@barcrawlconnect.com"
-          className="hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          privacy@barcrawlconnect.com
-        </a>
-      </footer>
-    </main>
+    <PublicShell>
+      <main className="mx-auto max-w-3xl px-6 py-12 md:py-16">
+        <header className="border-zinc-200 border-b pb-6 dark:border-zinc-800">
+          <p className="font-mono text-[11px] text-zinc-500 uppercase tracking-[0.2em]">Legal</p>
+          <h1 className="mt-4 font-semibold text-3xl tracking-tight md:text-4xl">{title}</h1>
+          <p className="mt-2 font-mono text-[11px] text-zinc-500 uppercase tracking-[0.1em]">
+            Effective {effectiveDate}
+          </p>
+        </header>
+        <div className="prose prose-zinc dark:prose-invert mt-8 max-w-none text-[15px] leading-relaxed">
+          {children}
+        </div>
+        <div className="mt-12 border-zinc-200 border-t pt-6 font-mono text-[11px] text-zinc-500 uppercase tracking-[0.12em] dark:border-zinc-800">
+          <Link href="/privacy" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Privacy
+          </Link>
+          <span className="mx-2 opacity-40">·</span>
+          <Link href="/terms" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Terms
+          </Link>
+          <span className="mx-2 opacity-40">·</span>
+          <a
+            href="mailto:privacy@barcrawlconnect.com"
+            className="hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            privacy@barcrawlconnect.com
+          </a>
+        </div>
+      </main>
+    </PublicShell>
   );
 }
 

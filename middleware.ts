@@ -101,10 +101,17 @@ export default auth((req) => {
     pathname === "/login" ||
     // Public legal + marketing pages. Required for Google OAuth
     // verification (consent screen links to these) and reachable
-    // to anyone visiting the app's homepage URL pre-auth.
+    // to anyone visiting the app's homepage URL pre-auth. Also
+    // gives work content filters enough cross-linked substance
+    // to recognize this as a real product site, not a thin shell.
     pathname === "/about" ||
     pathname === "/privacy" ||
     pathname === "/terms" ||
+    pathname === "/features" ||
+    pathname === "/security" ||
+    pathname === "/faq" ||
+    pathname === "/contact" ||
+    pathname === "/changelog" ||
     // Static client-state reset page. Must be reachable even when the
     // user is signed out or the main app is broken — that's the whole
     // point. Clearing your own browser storage is a self-service

@@ -20,6 +20,11 @@ publicly accessible.
 
 All three URLs return 200 publicly, no auth required.
 
+The site has additional public pages (Features, Security, FAQ, Contact, Updates)
+all cross-linked from the public nav + footer. Verifiers landing on any page
+can navigate the full set, which helps demonstrate the app is a real product
+with substantive content.
+
 ---
 
 ## App name and support details

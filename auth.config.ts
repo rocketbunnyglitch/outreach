@@ -70,10 +70,18 @@ const config: NextAuthConfig = {
         // session — the token IS the authentication.
         pathname.startsWith("/set-password/") ||
         // Public legal + marketing pages — required for Google OAuth
-        // verification (the consent screen links to these).
+        // verification (the consent screen links to these). The
+        // extended set (features/security/faq/contact/changelog)
+        // gives work content filters enough substance to recognize
+        // this as a real product site.
         pathname === "/about" ||
         pathname === "/privacy" ||
         pathname === "/terms" ||
+        pathname === "/features" ||
+        pathname === "/security" ||
+        pathname === "/faq" ||
+        pathname === "/contact" ||
+        pathname === "/changelog" ||
         // Client-state reset page — reachable without a session so
         // a user with a broken auth cookie can still recover.
         pathname === "/reset" ||
