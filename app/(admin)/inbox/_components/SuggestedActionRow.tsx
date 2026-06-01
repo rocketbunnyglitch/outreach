@@ -12,7 +12,7 @@
  * Architecture:
  *   - reply / ask_for_manager → dispatch the existing 'inbox-reply'
  *     custom event (the same one the 'r' keyboard shortcut fires).
- *     ReplyComposer listens for it.
+ *     ThreadReplyButtons listens for it and opens the popout composer.
  *   - archive / mark_interested / mark_declined → call setThreadState
  *     directly with the matching enum value.
  *   - create_callback_task → call createTask with targetType=email_thread,
@@ -80,8 +80,8 @@ export function SuggestedActionRow({
       switch (suggestion.kind) {
         case "reply":
         case "ask_for_manager": {
-          // Same custom event ReplyComposer listens for on the
-          // keyboard 'r' shortcut. Composer expands + focuses.
+          // Same custom event ThreadReplyButtons listens for on the
+          // keyboard 'r' shortcut. Opens the popout composer.
           document.dispatchEvent(new CustomEvent("inbox-reply", { detail: { threadId } }));
           break;
         }

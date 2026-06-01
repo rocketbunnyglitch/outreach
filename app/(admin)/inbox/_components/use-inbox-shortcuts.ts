@@ -14,7 +14,7 @@
  *
  * Modifier shortcuts:
  *   cmd+k / ctrl+k  - command palette (already wired elsewhere)
- *   cmd+Enter       - send reply (handled by ReplyComposer)
+ *   cmd+Enter       - send reply (handled by the popout composer)
  *
  * Rules:
  *   - Single-letter shortcuts fire ONLY when no input/textarea/
@@ -61,7 +61,7 @@ export function useInboxShortcuts(map: ShortcutMap) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       // Modifier-driven shortcuts handled by individual components
-      // (cmd+enter in ReplyComposer, cmd+k by the palette mount).
+      // (cmd+enter in the popout composer, cmd+k by the palette mount).
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (isTyping(e.target)) return;

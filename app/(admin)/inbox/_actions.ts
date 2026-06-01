@@ -1550,7 +1550,7 @@ export async function createAndApplyGmailLabelAction(
 
 /**
  * AI-assisted reply drafter — wraps lib/ai-reply.draftReply in a
- * server-action contract the ReplyComposer can call from the client.
+ * server-action contract the popout composer can call from the client.
  *
  * Always requires staff auth (via the underlying loader). Returns
  * either { ok: true, body } or { ok: false, message }. The UI

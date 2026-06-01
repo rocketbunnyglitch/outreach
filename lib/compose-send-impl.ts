@@ -176,13 +176,33 @@ export async function composeAndSendImpl(
     };
   }
 
-  // Preflight: classify + check the cold-send cap. composeAndSend
-  // always creates a NEW thread (no prior inbound history), so it's
-  // always cold. Admin can override via bypassCap form field.
+  // Preflight: classify + check the cold-send cap.
+  //
+  // `replyToThreadId` is the engine thread UUID the operator is
+  // replying to (passed by sendDraft from email_drafts.reply_to_thread_id).
+  // preflightSend looks at that thread's inbound history to decide
+  // cold vs warm: a thread with ≥1 inbound message classifies as
+  // warm and does NOT count against the cold-send cap.
+  //
+  // We pass `replyToThreadId` here even though the existence/team
+  // guard runs a few lines below. The thread lookup inside
+  // classifySend is read-only and team-agnostic — at worst, a
+  // bogus thread id classifies as cold (no inbound found), which
+  // is the safe default and is what the bail-on-not-found below
+  // would have produced anyway.
+  //
+  // PRIOR BUG (pre-this-commit): this line passed `threadId: null`
+  // unconditionally, so every reply through the popout composer
+  // (which routes through this function via sendDraft) classified
+  // as a cold send and counted against the per-account 30/day cap.
+  // sendThreadReply (the older inline-reply path in inbox/_actions)
+  // was always correct; only composeAndSendImpl was broken. Symptom:
+  // an account at 30/30 cold sends could not reply to an inbound
+  // warm thread without admin bypass.
   const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
   const preflight = await preflightSend({
     connectedAccountId: fromAccountId,
-    threadId: null,
+    threadId: replyToThreadId,
   });
   if (!preflight.ok) {
     if (!bypassCap || staff.role !== "admin") {
@@ -202,7 +222,7 @@ export async function composeAndSendImpl(
       "composeAndSend: admin bypassed cold-send cap",
     );
   }
-  const sendCategory = preflight.ok ? preflight.category : preflight.category; // 'cold' either way for composeAndSend
+  const sendCategory = preflight.ok ? preflight.category : preflight.category;
   const capBypassed = !preflight.ok && bypassCap;
 
   // Build light HTML.

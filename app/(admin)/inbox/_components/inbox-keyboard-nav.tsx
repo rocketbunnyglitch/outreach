@@ -6,7 +6,7 @@
  * both the list view (/inbox) and the detail view (/inbox/[id]).
  *
  * Reply / archive / assign bindings live in components that have
- * direct refs (e.g. ReplyComposer for `r`); this component
+ * direct refs (e.g. ThreadReplyButtons for `r`); this component
  * handles list-level navigation + help only.
  */
 
