@@ -343,9 +343,49 @@ async function ingestMessage(opts: {
       ? "outbound"
       : "inbound";
 
-  // Plain-text body extraction (light pass — full HTML rendering is
-  // deferred until we sanitize on the way out)
-  const bodyText = extractPlainText(msg.payload as GmailPayload | undefined);
+  // Body extraction — capture BOTH halves of multipart/alternative
+  // when present. Sanitization happens on the way out (lib/inbox-data
+  // calls sanitizeEmailHtml when building bodySafeHtml for the
+  // MessageCard render path), so we store the raw HTML here.
+  //
+  // Fallback logic when only one half is present:
+  //   - HTML-only senders (some marketing tools, some clients):
+  //     synthesize a plain-text version by stripping tags so search,
+  //     classification, and the bodyText-only fallback render path
+  //     all keep working.
+  //   - Plain-text-only senders: leave bodyHtml null so the
+  //     render path uses the <pre> plain-text branch.
+  const rawHtml = extractHtml(msg.payload as GmailPayload | undefined);
+  // Defensive cap on stored HTML size. Most legitimate emails are
+  // under 100 KB of HTML — even with rich signatures + embedded
+  // tables it's rare to exceed 500 KB. We cap at 2 MB to defeat
+  // pathological payloads (embedded data: URIs, malformed
+  // generated HTML from old WordPerfect exports, etc) without
+  // truncating real-world content. The DOMPurify sanitizer at
+  // read time would also reject most truly hostile payloads, but
+  // bounding storage cost upstream is cheap insurance.
+  const HTML_MAX_BYTES = 2 * 1024 * 1024;
+  const cappedHtml =
+    rawHtml && Buffer.byteLength(rawHtml, "utf8") > HTML_MAX_BYTES
+      ? rawHtml.slice(0, HTML_MAX_BYTES) // crude char-truncate; fine since the sanitizer will drop unterminated tags
+      : rawHtml;
+  const rawText = extractPlainText(msg.payload as GmailPayload | undefined);
+  const bodyText =
+    rawText.length > 0
+      ? rawText
+      : cappedHtml
+        ? // Cheap text extraction — strip tags + collapse whitespace.
+          // Good enough for search + classification. The HTML render
+          // path uses the raw HTML, so visual fidelity isn't affected
+          // by the simplicity of this fallback.
+          cappedHtml
+            .replace(/<\/(p|div|br|li|h[1-6])>/gi, "\n")
+            .replace(/<[^>]*>/g, "")
+            .replace(/[ \t]+/g, " ")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim()
+        : "";
+  const bodyHtml = cappedHtml; // null when sender sent text-only
 
   // Rule-based triage classification — only for inbound messages.
   // Outbound replies don't get classified (the operator wrote them, no
@@ -494,7 +534,13 @@ async function ingestMessage(opts: {
       bccEmailsNormalized,
       subject,
       bodyText,
-      bodyHtml: null,
+      // bodyHtml: raw HTML from the message payload when present.
+      // The render path (MessageCard) prefers bodySafeHtml, which
+      // lib/inbox-data computes by passing this column through
+      // sanitizeEmailHtml on read. Storing the raw form lets us
+      // re-sanitize if our sanitizer policy ever needs to be
+      // tightened without re-fetching from Gmail.
+      bodyHtml,
       snippet,
       gmailLabels: labels,
       rawPayload: msg as Record<string, unknown>,
@@ -655,6 +701,68 @@ function extractPlainText(payload: GmailPayload | undefined): string {
   }
 
   return walk(payload) ?? "";
+}
+
+/**
+ * Walk the MIME tree looking for the first text/html part. Returns
+ * the raw HTML string (UTF-8) or null when the message is plain-text
+ * only.
+ *
+ * Why this exists
+ * ---------------
+ *
+ * Inbound HTML used to be silently dropped (the ingest path stored
+ * bodyHtml: null on every inbound row). Operators viewing inbound
+ * threads in the engine saw plain-text rendering even when the
+ * sender's email had formatting, links, signatures, embedded
+ * images. The UI render path (MessageCard) already prefers
+ * bodySafeHtml when present and sanitizes via DOMPurify (see
+ * lib/email-sanitize.ts) — the missing piece was the ingest side
+ * actually capturing the HTML.
+ *
+ * MIME structure notes
+ * --------------------
+ *
+ * Gmail's API returns the message payload as a tree of MIME parts.
+ * Common shapes:
+ *
+ *   multipart/alternative
+ *     text/plain      ← extractPlainText finds this
+ *     text/html       ← extractHtml finds this
+ *
+ *   multipart/related (for emails with inline images)
+ *     multipart/alternative
+ *       text/plain
+ *       text/html
+ *     image/png        ← inline image, cid:... referenced from HTML
+ *
+ *   multipart/mixed (for emails with attachments)
+ *     multipart/alternative
+ *       text/plain
+ *       text/html
+ *     application/pdf  ← attachment
+ *
+ * We do a depth-first search for the first text/html node in any
+ * of these shapes. Inline images live on their own parts and are
+ * separately addressable via their attachmentId — capturing them
+ * is out of scope for this commit (would need email_attachments
+ * ingest first).
+ */
+function extractHtml(payload: GmailPayload | undefined): string | null {
+  if (!payload) return null;
+
+  function walk(part: GmailPayload): string | null {
+    if (part.mimeType === "text/html" && part.body?.data) {
+      return base64UrlDecode(part.body.data);
+    }
+    for (const child of part.parts ?? []) {
+      const found = walk(child);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  return walk(payload);
 }
 
 function base64UrlDecode(s: string): string {
