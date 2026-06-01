@@ -8,6 +8,7 @@
  */
 
 import {
+  boolean,
   index,
   pgEnum,
   pgTable,
@@ -53,6 +54,28 @@ export const coldOutreachEntries = pgTable(
       .references(() => venues.id, { onDelete: "restrict" }),
 
     status: coldOutreachStatus("status").notNull().default("not_contacted"),
+
+    /**
+     * Warm-leads flag (migration 0082). Independent from `status`:
+     *   - cold table view: all rows regardless (mass outreach queue)
+     *   - warm table view: WHERE is_warm = true
+     *
+     * Operator workflow:
+     *   - "Promote to warm" sets is_warm=true; the row stays visible
+     *     in cold (continues mass outreach) AND appears in warm.
+     *   - "Remove from warm" sets is_warm=false; the row stays in
+     *     cold with whatever status it had.
+     *   - Status transitions to terminal states (declined /
+     *     do_not_contact / bad_email / wrong_number) auto-clear
+     *     is_warm — they're not warm anymore by definition.
+     *
+     * Pre-0082 history: warm-ness was encoded as status='interested',
+     * which DROPPED the row from cold view (since cold view filters
+     * status != 'interested'). The 0082 backfill set is_warm=true on
+     * every existing status='interested' row so the migration is
+     * lossless.
+     */
+    isWarm: boolean("is_warm").notNull().default(false),
 
     assignedStaffId: uuid("assigned_staff_id").references(() => staffMembers.id, {
       onDelete: "set null",
@@ -120,6 +143,9 @@ export const coldOutreachEntries = pgTable(
       table.cityCampaignId,
       table.aiLeadScore,
     ),
+    /** Partial index over is_warm=true rows — used by the warm-leads
+     *  panel filter. Sparse (most rows are cold). See migration 0082. */
+    warmIdx: index("cold_outreach_entries_warm_idx").on(table.cityCampaignId, table.isWarm),
   }),
 );
 

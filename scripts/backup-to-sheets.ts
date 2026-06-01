@@ -141,6 +141,8 @@ interface CrawlSlotRow {
 
 interface ColdRow {
   status: string;
+  /** Warm-leads flag (migration 0082). Independent of status. */
+  is_warm: boolean;
   venue_name: string;
   venue_email: string | null;
   venue_phone: string | null;
@@ -245,6 +247,7 @@ async function fetchCrawlSlots(cityCampaignId: string): Promise<CrawlSlotRow[]> 
 async function fetchColdEntries(cityCampaignId: string): Promise<ColdRow[]> {
   const rows = await db.execute<ColdRow>(sql`
     SELECT coe.status::text          AS status,
+           coe.is_warm               AS is_warm,
            v.name                    AS venue_name,
            v.email                   AS venue_email,
            v.phone_e164              AS venue_phone,
@@ -298,11 +301,20 @@ function cityValues(crawls: CrawlSlotRow[], cold: ColdRow[]): (string | number)[
     ]);
   }
 
-  // Warm leads = cold_outreach entries currently at status='interested'.
-  // Pull them out first so the operator sees positive signal at the top
-  // of the prospect section, matching the dashboard "warm leads" panel.
-  const warm = cold.filter((e) => e.status === "interested");
-  const coldOnly = cold.filter((e) => e.status !== "interested");
+  // Warm leads = cold_outreach entries with is_warm=true (migration
+  // 0082). Pre-0082 this filtered by status='interested' which was
+  // the legacy way to mark warm — the migration backfilled is_warm
+  // for those rows, so this still produces the same set, but now
+  // continues to work after the operator's "promote keeps cold row
+  // present" rule landed.
+  //
+  // NOTE: Unlike the UI cold panel (which shows ALL non-archived
+  // rows), this backup script keeps the historical separation —
+  // backup is a snapshot for human review, so seeing warm/cold
+  // partitioned (no overlap) is more useful than the operational
+  // view.
+  const warm = cold.filter((e) => e.is_warm);
+  const coldOnly = cold.filter((e) => !e.is_warm);
 
   if (warm.length > 0) rows.push([]);
   for (const e of warm) {

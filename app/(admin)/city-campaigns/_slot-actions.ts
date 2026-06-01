@@ -362,11 +362,15 @@ export async function demoteVenueFromCrawl(input: {
             cityCampaignId,
             venueId,
             status: "interested",
+            // Demote-to-cold means the venue HAD a slot — operator
+            // wants it back in active outreach AND visible in warm
+            // leads. is_warm=true so the row appears in both panels.
+            isWarm: true,
             assignedStaffId: staff.id,
           })
           .onConflictDoUpdate({
             target: [coldOutreachEntries.cityCampaignId, coldOutreachEntries.venueId],
-            set: { status: "interested", updatedBy: staff.id },
+            set: { status: "interested", isWarm: true, updatedBy: staff.id },
           });
       }
       // destination === "warm" or "delete": no queue write needed.

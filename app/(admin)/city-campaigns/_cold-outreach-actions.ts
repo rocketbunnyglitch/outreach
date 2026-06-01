@@ -171,6 +171,25 @@ export async function updateColdOutreachField(
         const statusParsed = statusSchema.safeParse(value);
         if (!statusParsed.success) throw new Error("Invalid status value");
         patch.status = statusParsed.data;
+
+        // Auto-toggle is_warm based on terminal vs interested status.
+        // Terminal statuses mean the venue isn't warm anymore by
+        // definition; setting it to interested marks them warm.
+        // Operator can manually un-warm afterward if they disagree.
+        const s = statusParsed.data;
+        if (
+          s === "declined" ||
+          s === "do_not_contact" ||
+          s === "bad_email" ||
+          s === "wrong_number"
+        ) {
+          patch.isWarm = false;
+        } else if (s === "interested") {
+          patch.isWarm = true;
+        }
+        // All other statuses (not_contacted, email_sent, called, etc.)
+        // leave is_warm alone — operator may have promoted a venue to
+        // warm AND then continued cold outreach to confirm.
       } else if (field === "assignedStaffId") {
         patch.assignedStaffId = value || null;
       } else {
@@ -360,9 +379,90 @@ export async function bulkUpdateColdOutreachStatus(
 
   try {
     const updated = await withAuditContext(staff.id, async (tx) => {
+      // Auto-toggle is_warm in the same UPDATE so a bulk transition
+      // to declined/do_not_contact also clears the warm flag (per the
+      // updateColdOutreachField rules — keep behavior consistent).
+      const s = parsed.data.status;
+      const warmExpr =
+        s === "declined" || s === "do_not_contact" || s === "bad_email" || s === "wrong_number"
+          ? sql`, is_warm = false`
+          : s === "interested"
+            ? sql`, is_warm = true`
+            : sql``;
       const result = await tx.execute<{ id: string }>(sql`
         UPDATE cold_outreach_entries
         SET status = ${parsed.data.status}::cold_outreach_status,
+            last_touch_at = NOW(),
+            updated_by = ${staff.id},
+            updated_at = NOW()${warmExpr}
+        WHERE id IN ${parsed.data.entryIds}
+          AND archived_at IS NULL
+        RETURNING id
+      `);
+      const rows: Array<{ id: string }> = Array.isArray(result)
+        ? (result as unknown as Array<{ id: string }>)
+        : ((result as unknown as { rows: Array<{ id: string }> }).rows ?? []);
+      return rows.length;
+    });
+    if (parsed.data.cityCampaignId) {
+      revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
+      publishRealtime({
+        table: `cold-outreach-${parsed.data.cityCampaignId}`,
+        type: "update",
+        byStaffId: staff.id,
+        byStaffName: staff.displayName ?? null,
+      });
+    }
+    return { ok: true, data: { updated } };
+  } catch (err) {
+    logger.error({ err }, "bulkUpdateColdOutreachStatus failed");
+    return { ok: false, error: "Bulk status update failed." };
+  }
+}
+
+const bulkWarmSchema = z.object({
+  entryIds: bulkUuids,
+  isWarm: z.boolean(),
+  cityCampaignId: uuid.optional(),
+});
+
+/**
+ * Flip the is_warm flag on a batch of cold_outreach_entries
+ * WITHOUT touching status. This is the operator's "Move to warm
+ * leads" / "Move back to cold queue" verb.
+ *
+ *   - is_warm=true:  venue appears in BOTH the cold table (mass
+ *                    outreach) AND the warm table (interested).
+ *                    Status stays whatever it was — e.g. a venue
+ *                    can be both warm AND status='email_sent'
+ *                    because the operator is still nudging them.
+ *   - is_warm=false: venue only appears in cold table. Doesn't
+ *                    touch status — operator may still want
+ *                    status='interested' as a record that the
+ *                    venue WAS warm at one point.
+ *
+ * Distinct from bulkUpdateColdOutreachStatus which changes the
+ * outreach funnel state (and auto-toggles is_warm for terminal
+ * statuses).
+ */
+export async function bulkSetWarmFlag(input: {
+  entryIds: string;
+  isWarm: boolean;
+  cityCampaignId?: string | null;
+}): Promise<ActionResult<{ updated: number }>> {
+  const { staff } = await requireStaff();
+  const parsed = bulkWarmSchema.safeParse({
+    entryIds: input.entryIds,
+    isWarm: input.isWarm,
+    cityCampaignId: input.cityCampaignId ?? undefined,
+  });
+  if (!parsed.success) return { ok: false, error: "Invalid warm-flag payload." };
+
+  try {
+    const updated = await withAuditContext(staff.id, async (tx) => {
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE cold_outreach_entries
+        SET is_warm = ${parsed.data.isWarm},
             last_touch_at = NOW(),
             updated_by = ${staff.id},
             updated_at = NOW()
@@ -386,8 +486,8 @@ export async function bulkUpdateColdOutreachStatus(
     }
     return { ok: true, data: { updated } };
   } catch (err) {
-    logger.error({ err }, "bulkUpdateColdOutreachStatus failed");
-    return { ok: false, error: "Bulk status update failed." };
+    logger.error({ err, isWarm: parsed.data.isWarm }, "bulkSetWarmFlag failed");
+    return { ok: false, error: "Couldn't update warm flag." };
   }
 }
 
@@ -952,6 +1052,8 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueUpdatedAt: string;
     zeroBounceStatus: string | null;
     status: string;
+    /** Warm-leads flag (migration 0082). Independent of status. */
+    isWarm: boolean;
     assignedStaffId: string | null;
     assignedStaffName: string | null;
     remarks: string | null;
@@ -1004,6 +1106,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueTimezone: cities.timezone,
       venueUpdatedAt: venues.updatedAt,
       status: coldOutreachEntries.status,
+      isWarm: coldOutreachEntries.isWarm,
       assignedStaffId: coldOutreachEntries.assignedStaffId,
       assignedStaffName: staffMembers.displayName,
       remarks: coldOutreachEntries.remarks,
@@ -1087,6 +1190,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueUpdatedAt: r.venueUpdatedAt.toISOString(),
     zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
     status: r.status as string,
+    isWarm: r.isWarm,
     assignedStaffId: r.assignedStaffId,
     assignedStaffName: r.assignedStaffName,
     remarks: r.remarks,

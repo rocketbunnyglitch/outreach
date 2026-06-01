@@ -44,6 +44,7 @@ import {
   archiveColdOutreachEntry,
   bulkArchiveColdOutreach,
   bulkAssignColdOutreach,
+  bulkSetWarmFlag,
   bulkUnarchiveColdOutreach,
   bulkUpdateColdOutreachStatus,
   commitVenueField,
@@ -91,6 +92,12 @@ interface ColdEntry {
   venueUpdatedAt: string;
   zeroBounceStatus: string | null;
   status: string;
+  /**
+   * Warm-leads flag (migration 0082). Independent of `status`. The
+   * warm-mode filter switches on this — see line below. Cold mode
+   * shows ALL non-archived rows (mass outreach queue) regardless.
+   */
+  isWarm: boolean;
   assignedStaffId: string | null;
   assignedStaffName: string | null;
   remarks: string | null;
@@ -328,8 +335,21 @@ export function ColdOutreachTable({
   // already-narrowed list. That makes the two surfaces feel like
   // independent tables even though they share a component.
   const entries = useMemo(() => {
-    if (mode === "warm") return rawEntries.filter((e) => e.status === "interested");
-    return rawEntries.filter((e) => e.status !== "interested");
+    // Warm panel: rows with is_warm=true.
+    // Cold panel: ALL non-archived rows (mass outreach queue).
+    //
+    // Per operator: "cold should be preserved and then yes warm
+    // moves up — a row that shows up in each table. So in warm
+    // it's like oh they are interested but haven't said yes, and
+    // someone might delete them from warm table but they are
+    // still in the cold table as that cold table is used for
+    // mass outreach." Pre-0082 the cold panel filtered out
+    // status='interested', which meant promoting to warm REMOVED
+    // the row from cold — exactly the bug the operator was
+    // describing. is_warm is independent of status so promotions
+    // preserve the cold-table presence.
+    if (mode === "warm") return rawEntries.filter((e) => e.isWarm);
+    return rawEntries;
   }, [rawEntries, mode]);
 
   const [adding, setAdding] = useState(false);
@@ -2361,6 +2381,34 @@ function BulkActionBar({
     });
   }
 
+  // Promote-to-warm / remove-from-warm — flips is_warm without
+  // touching status. Per operator: a venue can be both warm AND
+  // status='email_sent' (warm signal, still mid-funnel). Distinct
+  // from setStatus which DOES change status.
+  function setWarmFlag(isWarm: boolean) {
+    startStatus(async () => {
+      const result = await bulkSetWarmFlag({
+        entryIds: selectedIds.join(","),
+        isWarm,
+        cityCampaignId,
+      });
+      if (!result.ok) {
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't update warm flag.",
+          code: result.code,
+        });
+        return;
+      }
+      const verb = isWarm ? "marked warm" : "moved back to cold-only";
+      toast.show({
+        kind: "success",
+        message: `${result.data?.updated ?? 0} venue${result.data?.updated === 1 ? "" : "s"} ${verb}`,
+      });
+      onComplete();
+    });
+  }
+
   function assign(staffMemberId: string) {
     const fd = new FormData();
     fd.set("entryIds", selectedIds.join(","));
@@ -2507,16 +2555,20 @@ function BulkActionBar({
         </Button>
 
         {/* Move between cold ↔ warm queues — same button, flipped
-            destination based on mode. In cold mode this promotes
-            selected venues to status='interested' (the warm queue).
-            In warm mode it sends them back to 'not_contacted' (the
-            cold queue). Both go through bulkUpdateColdOutreachStatus
-            via the shared setStatus helper. */}
+            destination based on mode.
+              - cold mode → "Move to warm leads": flips is_warm=true
+                so the row appears in BOTH cold (mass outreach) and
+                warm (interested) panels. Status is untouched.
+              - warm mode → "Remove from warm leads": flips
+                is_warm=false. Cold row stays in cold panel.
+            Pre-0082 this changed status to/from 'interested' which
+            yanked the row out of the cold view — operator wanted
+            the cold row preserved. See bulkSetWarmFlag. */}
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          onClick={() => setStatus(mode === "warm" ? "not_contacted" : "interested")}
+          onClick={() => setWarmFlag(mode !== "warm")}
           disabled={busy}
           className={cn(
             mode === "warm"
@@ -2525,7 +2577,7 @@ function BulkActionBar({
           )}
         >
           <Flame className="h-3 w-3" />
-          {mode === "warm" ? "Move back to cold" : "Move to warm leads"}
+          {mode === "warm" ? "Remove from warm" : "Move to warm leads"}
         </Button>
 
         {/* Bulk archive */}
