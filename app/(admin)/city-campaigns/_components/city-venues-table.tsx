@@ -52,7 +52,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { archiveVenueNoRedirect, hardDeleteVenue } from "../../venues/_actions";
+import { archiveVenueNoRedirect, hardDeleteVenue, unarchiveVenue } from "../../venues/_actions";
 import { upsertColdOutreachEntry } from "../_cold-outreach-actions";
 
 interface Props {
@@ -281,13 +281,10 @@ function CityVenueRowItem({
   const [pending, startTx] = useTransition();
 
   function handleArchive() {
-    if (
-      !confirm(
-        `Archive ${row.venueName}? It'll disappear from this list but the record stays for restore.`,
-      )
-    ) {
-      return;
-    }
+    // No confirm dialog — operator gets a 6-second undo window
+    // via the toast instead. Per "best in class" UX rule: undo
+    // beats confirm. Confirm interrupts every action; undo only
+    // interrupts when the operator actually made a mistake.
     startTx(async () => {
       try {
         const res = await archiveVenueNoRedirect(row.venueId);
@@ -299,7 +296,15 @@ function CityVenueRowItem({
           });
           return;
         }
-        toast.show({ kind: "success", message: `${row.venueName} archived.` });
+        toast.show({
+          kind: "success",
+          message: `${row.venueName} archived.`,
+          undo: async () => {
+            const r = await unarchiveVenue(row.venueId);
+            if (!r.ok) throw new Error(r.error ?? "Restore failed.");
+            router.refresh();
+          },
+        });
         router.refresh();
       } catch (err) {
         const cap = captureClientError(err, {

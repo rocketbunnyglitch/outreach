@@ -7,7 +7,7 @@ import { Archive, Globe, MapPin, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { archiveCityNoRedirect, hardDeleteCity } from "../_actions";
+import { archiveCityNoRedirect, hardDeleteCity, unarchiveCity } from "../_actions";
 
 interface CityItem {
   id: string;
@@ -163,13 +163,9 @@ function CityRow({
   const hasCoords = city.lat !== null && city.lng !== null;
 
   function handleArchive() {
-    if (
-      !confirm(
-        `Archive ${city.name}? It'll disappear from this list but the record stays for restore.`,
-      )
-    ) {
-      return;
-    }
+    // No confirm — operator gets 6-second undo window via toast.
+    // Undo beats confirm: confirm interrupts every action, undo
+    // interrupts only when the operator actually erred.
     startTx(async () => {
       try {
         const res = await archiveCityNoRedirect(city.id);
@@ -181,7 +177,15 @@ function CityRow({
           });
           return;
         }
-        toast.show({ kind: "success", message: `${city.name} archived.` });
+        toast.show({
+          kind: "success",
+          message: `${city.name} archived.`,
+          undo: async () => {
+            const r = await unarchiveCity(city.id);
+            if (!r.ok) throw new Error(r.error ?? "Restore failed.");
+            router.refresh();
+          },
+        });
         router.refresh();
       } catch (err) {
         const cap = captureClientError(err, {

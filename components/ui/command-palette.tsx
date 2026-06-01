@@ -166,13 +166,38 @@ export function CommandPalette({
   // Compose the static action items
   const staticItems: PaletteItem[] = useMemo(
     () => [
+      // ----- Navigation: daily-use surfaces ---------------------------------
       {
         id: "nav:dashboard",
         label: "Go to Dashboard",
         group: "Navigation",
         icon: ArrowRight,
         action: () => router.push("/"),
-        keywords: ["home", "today"],
+        keywords: ["home", "today", "tracker"],
+      },
+      {
+        id: "nav:tracker",
+        label: "Open Tracker",
+        group: "Navigation",
+        icon: Calendar,
+        action: () => router.push("/tracker"),
+        keywords: ["progress", "cities", "tracker"],
+      },
+      {
+        id: "nav:inbox",
+        label: "Open Inbox",
+        group: "Navigation",
+        icon: Mail,
+        action: () => router.push("/inbox"),
+        keywords: ["email", "messages", "threads"],
+      },
+      {
+        id: "nav:tasks",
+        label: "Open Tasks",
+        group: "Navigation",
+        icon: CheckSquare,
+        action: () => router.push("/tasks"),
+        keywords: ["todo", "follow-up", "tasks"],
       },
       {
         id: "nav:campaigns",
@@ -198,11 +223,27 @@ export function CommandPalette({
         action: () => router.push("/venues"),
       },
       {
+        id: "nav:cities",
+        label: "Go to Cities",
+        group: "Navigation",
+        icon: MapPin,
+        action: () => router.push("/cities"),
+        keywords: ["directory", "cities"],
+      },
+      {
         id: "nav:brands",
         label: "Go to Brands",
         group: "Navigation",
         icon: ArrowRight,
         action: () => router.push("/brands"),
+      },
+      {
+        id: "nav:campaign-list",
+        label: "Go to Campaigns list",
+        group: "Navigation",
+        icon: PartyPopper,
+        action: () => router.push("/campaigns"),
+        keywords: ["holidays", "campaign management"],
       },
       {
         id: "nav:analytics",
@@ -211,6 +252,74 @@ export function CommandPalette({
         icon: Users,
         action: () => router.push("/admin/analytics"),
         keywords: ["stats", "performance"],
+      },
+
+      // ----- Create new ----------------------------------------------------
+      {
+        id: "new:venue",
+        label: "New venue",
+        group: "Create",
+        icon: Sparkles,
+        action: () => router.push("/venues/new"),
+        keywords: ["add", "create", "venue"],
+      },
+      {
+        id: "new:city",
+        label: "New city",
+        group: "Create",
+        icon: Sparkles,
+        action: () => router.push("/cities/new"),
+        keywords: ["add", "create", "city"],
+      },
+      {
+        id: "new:campaign",
+        label: "New campaign",
+        group: "Create",
+        icon: Sparkles,
+        action: () => router.push("/campaigns/new"),
+        keywords: ["add", "create", "campaign", "holiday"],
+      },
+
+      // ----- Admin / Archive surfaces -------------------------------------
+      {
+        id: "admin:home",
+        label: "Admin home",
+        group: "Admin",
+        icon: ArrowRight,
+        action: () => router.push("/admin"),
+        keywords: ["admin", "settings"],
+      },
+      {
+        id: "admin:archived-venues",
+        label: "Archived venues",
+        group: "Admin",
+        icon: Building2,
+        action: () => router.push("/admin/archived-venues"),
+        keywords: ["archive", "restore", "deleted venues"],
+      },
+      {
+        id: "admin:archived-cities",
+        label: "Archived cities",
+        group: "Admin",
+        icon: MapPin,
+        action: () => router.push("/admin/archived-cities"),
+        keywords: ["archive", "restore", "deleted cities"],
+      },
+      {
+        id: "admin:archived-campaigns",
+        label: "Archived campaigns",
+        group: "Admin",
+        icon: PartyPopper,
+        action: () => router.push("/admin/archived-campaigns"),
+        keywords: ["archive", "restore", "deleted campaigns"],
+      },
+      {
+        id: "admin:users",
+        label: "Staff & users",
+        group: "Admin",
+        icon: Users,
+        action: () => router.push("/admin/users"),
+        keywords: ["staff", "team", "users"],
       },
     ],
     [router],

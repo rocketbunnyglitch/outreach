@@ -867,7 +867,11 @@ function SlotTableRow({
     // Capture before the closure so the post-render slot update
     // doesn't trip undefined.
     const veId = slot.venueEventId;
+    const venueId = slot.venueId;
     const venueName = slot.venueName ?? "venue";
+    const role = slot.role;
+    const slotPosition = slot.slotPosition;
+    const eventId = crawl.eventId;
     startTx(async () => {
       try {
         const res = await demoteVenueFromCrawl({
@@ -890,7 +894,32 @@ function SlotTableRow({
             : destination === "cold"
               ? `${venueName} sent back to cold queue.`
               : `${venueName} demoted to warm leads.`;
-        toast.show({ kind: "success", message: msg });
+        // Undo restores the venue to its original slot via the same
+        // assignSlotVenue path the operator uses to fill slots
+        // manually. Works for all three destinations — the
+        // assignSlotVenue call re-creates the venue_event row;
+        // any cold_outreach_entries side-effects from the
+        // destination="cold" branch (insert/onConflictDoUpdate)
+        // stay put, which is the right behavior: the operator
+        // restoring the slot doesn't want their cold queue churn
+        // also rolled back.
+        toast.show({
+          kind: "success",
+          message: msg,
+          undo:
+            venueId && role && slotPosition !== null
+              ? async () => {
+                  const fd = new FormData();
+                  fd.set("eventId", eventId);
+                  fd.set("role", role);
+                  fd.set("slotPosition", String(slotPosition));
+                  fd.set("venueId", venueId);
+                  fd.set("cityCampaignId", cityCampaignId);
+                  const r = await assignSlotVenue(null, fd);
+                  if (!r.ok) throw new Error(r.error ?? "Restore failed.");
+                }
+              : undefined,
+        });
       } catch (err) {
         toast.show({
           kind: "error",
