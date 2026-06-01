@@ -192,6 +192,18 @@ export async function pollOneInbox(inbox: {
   const starredAddedThreadGmailIds = new Set<string>();
   const starredRemovedThreadGmailIds = new Set<string>();
 
+  // UNREAD label changes — operator opened (or re-marked unread) a
+  // thread directly in Gmail's web UI. Same delta-window collection
+  // pattern as STARRED. UNREAD removed -> engine.unread_count = 0
+  // (operator already saw it in Gmail). UNREAD added -> bump engine
+  // unread_count back to inbound message count (operator wants the
+  // engine badge back).
+  //
+  // Same ambiguity handling as STARRED: thread appearing in both
+  // sets in one delta is skipped, next poll resolves.
+  const unreadAddedThreadGmailIds = new Set<string>();
+  const unreadRemovedThreadGmailIds = new Set<string>();
+
   // User-label changes on existing messages — operator labeled or
   // unlabeled a thread directly in Gmail's web UI without sending a
   // new message. Keyed by Gmail thread id; values are the sets of
@@ -252,6 +264,9 @@ export async function pollOneInbox(inbox: {
         if (ids.includes("STARRED")) {
           starredAddedThreadGmailIds.add(change.message.threadId);
         }
+        if (ids.includes("UNREAD")) {
+          unreadAddedThreadGmailIds.add(change.message.threadId);
+        }
         // User labels (anything not a system label) — collect for
         // the post-loop reconcile.
         for (const id of ids) {
@@ -264,6 +279,9 @@ export async function pollOneInbox(inbox: {
         const ids = change.labelIds ?? [];
         if (ids.includes("STARRED")) {
           starredRemovedThreadGmailIds.add(change.message.threadId);
+        }
+        if (ids.includes("UNREAD")) {
+          unreadRemovedThreadGmailIds.add(change.message.threadId);
         }
         for (const id of ids) {
           if (!GMAIL_SYSTEM_LABEL_IDS.has(id) && !id.startsWith("CATEGORY_")) {
@@ -365,6 +383,104 @@ export async function pollOneInbox(inbox: {
           sql`, `,
         )})
         AND is_starred = true
+    `);
+  }
+
+  // Apply UNREAD label changes harvested from history.list. Same
+  // shape as the STARRED block above.
+  //
+  // UNREAD added in Gmail (operator marked thread back to unread):
+  //   Bump engine.unread_count to the count of inbound messages on
+  //   the thread, so the engine's badge reflects "all inbound is
+  //   unread" — mirrors Gmail's per-message UNREAD semantics by
+  //   reading the inbound count from email_messages.
+  //
+  // UNREAD removed in Gmail (operator opened/marked read):
+  //   Engine.unread_count = 0. Operator already saw it.
+  //
+  // Ambiguous (in both sets in the same delta): skipped.
+  //
+  // Idempotency guards on each UPDATE ensure no-op when the engine
+  // state already matches — handles the round-trip case where the
+  // engine mark-read mirrored to Gmail, which echoes back as a
+  // UNREAD removal in the next poll.
+  const unreadAmbiguous = new Set<string>();
+  for (const id of unreadAddedThreadGmailIds) {
+    if (unreadRemovedThreadGmailIds.has(id)) unreadAmbiguous.add(id);
+  }
+  const unreadAddList = Array.from(unreadAddedThreadGmailIds).filter(
+    (id) => !unreadAmbiguous.has(id),
+  );
+  const unreadRemoveList = Array.from(unreadRemovedThreadGmailIds).filter(
+    (id) => !unreadAmbiguous.has(id),
+  );
+
+  if (unreadRemoveList.length > 0) {
+    // Mark engine.unread_count = 0 for threads the operator opened
+    // in Gmail. Guard with `unread_count > 0` so an already-read
+    // thread (engine just mirrored its own action) is a no-op.
+    await db.execute(sql`
+      UPDATE email_threads
+      SET unread_count = 0, updated_at = NOW()
+      WHERE staff_outreach_email_id = ${inbox.id}
+        AND gmail_thread_id IN (${sql.join(
+          unreadRemoveList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND unread_count > 0
+    `);
+    // Also stamp read_at on the inbound messages so per-message
+    // surfaces (venue communication timeline, etc.) match.
+    await db.execute(sql`
+      UPDATE email_messages em
+      SET read_at = NOW()
+      FROM email_threads et
+      WHERE em.thread_id = et.id
+        AND et.staff_outreach_email_id = ${inbox.id}
+        AND et.gmail_thread_id IN (${sql.join(
+          unreadRemoveList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND em.direction = 'inbound'
+        AND em.read_at IS NULL
+    `);
+  }
+
+  if (unreadAddList.length > 0) {
+    // Set engine.unread_count back to the inbound message count
+    // for the thread — "all inbound is unread again." We compute
+    // this in-SQL rather than per-thread Node loops; one UPDATE
+    // with a correlated subquery is fine for the typical delta
+    // size. Guard: only touch threads where unread_count != target
+    // so a no-op pass is cheap.
+    await db.execute(sql`
+      UPDATE email_threads et
+      SET
+        unread_count = (
+          SELECT COUNT(*)::int FROM email_messages em
+          WHERE em.thread_id = et.id AND em.direction = 'inbound'
+        ),
+        updated_at = NOW()
+      WHERE et.staff_outreach_email_id = ${inbox.id}
+        AND et.gmail_thread_id IN (${sql.join(
+          unreadAddList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+    `);
+    // Clear read_at on inbound messages so per-message surfaces
+    // also flip back to unread.
+    await db.execute(sql`
+      UPDATE email_messages em
+      SET read_at = NULL
+      FROM email_threads et
+      WHERE em.thread_id = et.id
+        AND et.staff_outreach_email_id = ${inbox.id}
+        AND et.gmail_thread_id IN (${sql.join(
+          unreadAddList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND em.direction = 'inbound'
+        AND em.read_at IS NOT NULL
     `);
   }
 

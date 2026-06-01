@@ -367,6 +367,43 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
         AND direction = 'inbound'
         AND read_at IS NULL
     `);
+
+    // Mirror to Gmail by removing the UNREAD system label. Without
+    // this, the operator's Gmail account stays bold/unread even
+    // after they viewed the thread in the engine — the engine and
+    // Gmail get out of sync, and operators get notification
+    // duplicates (engine cleared the badge, Gmail still buzzes
+    // their phone). Best-effort: Gmail API failure logs but doesn't
+    // fail the engine-side mark-read.
+    //
+    // Asymmetric to setThreadStar: read-state is per-MESSAGE in
+    // Gmail, not per-thread. We call threads.modify to remove
+    // UNREAD which acts on every message in the thread —
+    // matches operator intent ("I've seen all of this").
+    try {
+      const [acct] = await db
+        .select({
+          gmailThreadId: emailThreads.gmailThreadId,
+          token: connectedAccounts.gmailOauthRefreshToken,
+        })
+        .from(emailThreads)
+        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+        .where(eq(emailThreads.id, threadId))
+        .limit(1);
+      if (acct?.token) {
+        await modifyGmailThreadLabels({
+          encryptedRefreshToken: acct.token,
+          gmailThreadId: acct.gmailThreadId,
+          removeLabelIds: ["UNREAD"],
+        });
+      }
+    } catch (err) {
+      logger.warn(
+        { err, threadId },
+        "markThreadRead: Gmail UNREAD removal failed (engine state already updated)",
+      );
+    }
+
     publishRealtime({
       table: "email_threads",
       id: threadId,
@@ -963,6 +1000,49 @@ export async function bulkUpdateThreads(
 
   try {
     await db.update(emailThreads).set(patch).where(inArray(emailThreads.id, okIds));
+
+    // Gmail mirror for read/unread bulk actions. Without this the
+    // engine clears the unread badge but Gmail keeps the thread
+    // bold, leading to duplicate notifications + a confused
+    // operator. Best-effort per thread: a Gmail-API failure
+    // (single bad token, transient 5xx) logs but doesn't fail the
+    // whole bulk op. The engine state is canonical; eventual
+    // consistency with Gmail is the goal.
+    //
+    // We only mirror mark_read / mark_unread here. Star bulk
+    // actions already flow through setThreadStar's per-thread
+    // mirror in a future surface; the bulk path doesn't yet
+    // call into that helper (a separate gap to address later).
+    if (act === "mark_read" || act === "mark_unread") {
+      const removeLabel = act === "mark_read" ? "UNREAD" : null;
+      const addLabel = act === "mark_unread" ? "UNREAD" : null;
+      const rows = await db
+        .select({
+          threadId: emailThreads.id,
+          gmailThreadId: emailThreads.gmailThreadId,
+          token: connectedAccounts.gmailOauthRefreshToken,
+        })
+        .from(emailThreads)
+        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+        .where(inArray(emailThreads.id, okIds));
+      for (const row of rows) {
+        if (!row.token) continue;
+        try {
+          await modifyGmailThreadLabels({
+            encryptedRefreshToken: row.token,
+            gmailThreadId: row.gmailThreadId,
+            addLabelIds: addLabel ? [addLabel] : [],
+            removeLabelIds: removeLabel ? [removeLabel] : [],
+          });
+        } catch (err) {
+          logger.warn(
+            { err, threadId: row.threadId, act },
+            "bulkUpdateThreads: Gmail label mirror failed (engine state already updated)",
+          );
+        }
+      }
+    }
+
     revalidatePath("/inbox");
     for (const id of okIds) revalidatePath(`/inbox/${id}`);
     return { ok: true, data: { updated: okIds.length } };
