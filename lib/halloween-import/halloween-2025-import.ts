@@ -608,6 +608,8 @@ async function processConfirmedVenues(args: {
             agreedHoursText: v.proposed_hours ?? null,
             drinkSpecials: v.specials ?? null,
             dryRun: args.dryRun,
+            warnings: args.report.warnings,
+            warningContext: `${args.sheetName} :: "${v.venue_name}"`,
           });
         } else if (args.dryRun) {
           // dry-run path: would-create the event AND would-add a venue_event
@@ -784,29 +786,39 @@ async function maybeInsertVenueEvent(opts: {
   /** Specials the venue is offering for this event. */
   drinkSpecials?: string | null;
   dryRun: boolean;
+  /** Optional warning-collector. When a slot conflict is detected
+   *  (i.e. (event, role, position) is already occupied by a
+   *  DIFFERENT venue), append a human-readable message here
+   *  instead of throwing. The orchestrator's per-row try/catch
+   *  already handles other failures; this collector exists so
+   *  slot conflicts surface as informational warnings rather
+   *  than red error rows. */
+  warnings?: string[];
+  /** Sheet name for the warning message context. */
+  warningContext?: string;
 }): Promise<boolean> {
-  // Dedupe rule: don't insert two venue_events for the same
-  // (event, venue, role) tuple. The unique index in the schema
-  // (event, role, slot_position) doesn't include venue, so the
-  // app-level dedupe is "same venue can't take two roles in the
-  // same event" — pragmatic for an import.
+  // ----------------------------------------------------------------
+  // Pre-check 1 — (event, venue) collision
+  //
+  // The DB unique index `venue_events_venue_event_unique` is on
+  // (venue_id, event_id) WITHOUT role. So a venue trying to fill
+  // TWO roles in the same event would pass a (event, venue, role)
+  // check but fail the DB. We widen the pre-check to (event, venue)
+  // and treat any match as "already represented — backfill onto it
+  // regardless of role."
+  // ----------------------------------------------------------------
   const existing = await db
     .select({
       id: venueEvents.id,
+      role: venueEvents.role,
+      slotPosition: venueEvents.slotPosition,
       nightOfContactName: venueEvents.nightOfContactName,
       nightOfContactPhoneE164: venueEvents.nightOfContactPhoneE164,
       agreedHoursText: venueEvents.agreedHoursText,
       drinkSpecials: venueEvents.drinkSpecials,
     })
     .from(venueEvents)
-    .where(
-      and(
-        eq(venueEvents.eventId, opts.eventId),
-        eq(venueEvents.venueId, opts.venueId),
-        // biome-ignore lint/suspicious/noExplicitAny: enum value
-        eq(venueEvents.role, opts.role as any),
-      ),
-    )
+    .where(and(eq(venueEvents.eventId, opts.eventId), eq(venueEvents.venueId, opts.venueId)))
     .limit(1)
     .then((r) => r[0]);
 
@@ -845,6 +857,57 @@ async function maybeInsertVenueEvent(opts: {
       await db.update(venueEvents).set(updates).where(eq(venueEvents.id, existing.id));
     }
     return false;
+  }
+
+  // ----------------------------------------------------------------
+  // Pre-check 2 — (event, role, slot_position) collision
+  //
+  // The DB has a partial unique index `venue_events_event_role_position_unique`
+  // ON (event_id, role, slot_position) WHERE slot_position IS NOT NULL.
+  // This blocks two DIFFERENT venues from filling the same role+position
+  // slot in the same event.
+  //
+  // Causes during import:
+  //   - Multiple xlsx rows in the same cluster with the same role+position
+  //     (operator typo in the source sheet)
+  //   - Override map redirects two source rows to different venues, but
+  //     they originally pointed at the same role+position slot
+  //   - The same venue legitimately appears twice in the xlsx (e.g. listed
+  //     as wristband AND middle 1 by accident — caught by Pre-check 1)
+  //
+  // Resolution: skip the insert + record an informational warning. The
+  // operator can resolve the source-data conflict + re-run. The first
+  // claimant of the slot keeps it.
+  // ----------------------------------------------------------------
+  if (opts.slotPosition != null) {
+    const slotTaken = await db
+      .select({
+        id: venueEvents.id,
+        venueId: venueEvents.venueId,
+      })
+      .from(venueEvents)
+      .where(
+        and(
+          eq(venueEvents.eventId, opts.eventId),
+          // biome-ignore lint/suspicious/noExplicitAny: enum value
+          eq(venueEvents.role, opts.role as any),
+          eq(venueEvents.slotPosition, opts.slotPosition),
+        ),
+      )
+      .limit(1)
+      .then((r) => r[0]);
+
+    if (slotTaken) {
+      // Don't crash — record a warning + skip. Different venue is
+      // already in that slot; the operator can decide what to do.
+      if (opts.warnings && opts.warningContext) {
+        opts.warnings.push(
+          `[${opts.warningContext}] slot already filled: role=${opts.role} position=${opts.slotPosition} ` +
+            `is held by venueId=${slotTaken.venueId}; skipped trying to add venueId=${opts.venueId}`,
+        );
+      }
+      return false;
+    }
   }
 
   if (opts.dryRun) return true;
