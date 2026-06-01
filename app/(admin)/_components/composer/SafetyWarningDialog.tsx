@@ -27,7 +27,7 @@
  *     Zinc keeps it from drowning out the others.
  */
 
-import { AlertTriangle, Mail, UserCircle } from "lucide-react";
+import { AlertTriangle, Building2, Mail, UserCircle } from "lucide-react";
 
 export type SafetyWarningInput = Record<string, unknown>;
 
@@ -181,7 +181,62 @@ function WarningCard({ w }: { w: SafetyWarningInput }) {
     );
   }
 
-  // Unknown kind — render as a generic info card. Should not
+  if (kind === "domain_alias_suggestion") {
+    // Render up to 3 candidate venues. The dialog stays informational --
+    // the operator's options are: cancel + attach in the composer, or
+    // send anyway. We surface the venue names but don't add inline
+    // "attach this" buttons because the safety dialog's job is to
+    // surface, not to mutate (and the composer already owns the venue
+    // attach UI).
+    const domain = w.domain ? String(w.domain) : "(unknown)";
+    const rawCandidates = Array.isArray(w.candidates) ? w.candidates : [];
+    const names = rawCandidates
+      .map((c) =>
+        c && typeof c === "object" && "venueName" in c
+          ? String((c as { venueName?: unknown }).venueName ?? "")
+          : "",
+      )
+      .filter((n) => n.length > 0);
+    return (
+      <div className="rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-950/30">
+        <div className="flex items-start gap-2">
+          <Building2
+            className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400"
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-blue-900 text-xs dark:text-blue-100">
+              Recipient domain is aliased
+            </p>
+            <p className="mt-0.5 text-blue-800 text-xs dark:text-blue-300">
+              <span className="font-mono">{domain}</span> is set up as a domain alias for{" "}
+              {names.length === 1 ? (
+                <span className="font-medium">{names[0]}</span>
+              ) : names.length > 1 ? (
+                <>
+                  <span className="font-medium">{names[0]}</span>
+                  {names.length === 2 ? " and " : ", "}
+                  {names.length > 2 ? (
+                    <>
+                      <span className="font-medium">{names[1]}</span>, and {names.length - 2} other
+                      {names.length - 2 === 1 ? "" : "s"}
+                    </>
+                  ) : (
+                    <span className="font-medium">{names[1]}</span>
+                  )}
+                </>
+              ) : (
+                "a venue"
+              )}
+              . Cancel and attach the venue if this email belongs there.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Unknown kind -- render as a generic info card. Should not
   // happen in normal operation; defensive coverage so a future
   // kind doesn't blank-render before the UI catches up.
   return (

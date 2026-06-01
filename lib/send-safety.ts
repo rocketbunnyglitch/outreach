@@ -33,11 +33,12 @@ import {
   emailThreads,
   staffOutreachEmails,
   users,
+  venueDomainAliases,
   venueEvents,
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, desc, eq, gte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne, or, sql } from "drizzle-orm";
 
 /** Normalise an email address for comparison: lowercase + trim. */
 export function normaliseEmail(raw: string): string {
@@ -129,7 +130,39 @@ export interface CrossStaffOwnershipWarning {
   eventLabel: string | null;
 }
 
-export type SafetyWarning = DuplicateWarning | RecentDeclineWarning | CrossStaffOwnershipWarning;
+/**
+ * The recipient's domain matches a venue_domain_aliases entry but
+ * the operator didn't attach the venue at compose time. Likely a
+ * miss -- e.g. they're emailing mike@taohospitalitygroup.com which
+ * the team has aliased to Lavelle, but no venueId was set in the
+ * compose form.
+ *
+ * NOT a block. Just surfaces the linkage so the operator can:
+ *   a) Cancel + attach Lavelle in the composer, or
+ *   b) Send anyway (correct when the email is to the parent group
+ *      about a different venue, or when the alias is wrong)
+ *
+ * If multiple venues share an alias (rare; operators sometimes
+ * map a parent domain to several venues), we surface up to 3
+ * candidates so the operator can pick.
+ */
+export interface DomainAliasSuggestionWarning {
+  kind: "domain_alias_suggestion";
+  /** The host portion of the recipient that matched (e.g.
+   *  "taohospitalitygroup.com"). Surfaces in the dialog so the
+   *  operator understands which signal fired. */
+  domain: string;
+  /** Up to 3 candidate venues aliased to that domain. Ordered by
+   *  alias creation time (oldest first -- the original
+   *  alias-setter's choice ranks above later overrides). */
+  candidates: Array<{ venueId: string; venueName: string }>;
+}
+
+export type SafetyWarning =
+  | DuplicateWarning
+  | RecentDeclineWarning
+  | CrossStaffOwnershipWarning
+  | DomainAliasSuggestionWarning;
 
 export type SafetyResult =
   | { ok: true; warnings: SafetyWarning[] }
@@ -243,6 +276,19 @@ export async function runSendSafety(opts: {
       currentStaffId: opts.staffId,
     });
     warnings.push(...ownership);
+  }
+
+  // Domain-alias suggestion: when the operator didn't attach a
+  // venueId, check whether the recipient's domain matches a
+  // venue_domain_aliases entry. If yes, surface the candidate
+  // venue(s) so the operator can attach before sending. Skipped
+  // when venueId IS set -- the operator already made their choice.
+  if (!opts.venueId) {
+    const candidates = await findDomainAliasCandidates({
+      teamId: opts.teamId,
+      recipient: to,
+    });
+    if (candidates) warnings.push(candidates);
   }
 
   return { ok: true, warnings };
@@ -627,4 +673,53 @@ async function findCrossStaffOwnership(opts: {
       eventLabel,
     },
   ];
+}
+
+/**
+ * Look up venue_domain_aliases for the recipient's host and return
+ * a single suggestion warning (with up to 3 candidates) when any
+ * matches exist. Returns null when:
+ *   - The recipient has no parseable host
+ *   - No alias matches
+ *
+ * Team-scoped via venues table: aliases reference venues, which
+ * are a shared namespace, but the safety check itself runs in the
+ * operator's team context. We don't filter aliases by team since
+ * venues are shared. If a future schema makes venues team-scoped,
+ * add the filter here.
+ *
+ * Candidates ordered by alias created_at ASC so the original
+ * alias-setter's mapping appears first. The dialog renders them
+ * as a small list with attach-from-here links.
+ */
+async function findDomainAliasCandidates(opts: {
+  teamId: string;
+  recipient: string;
+}): Promise<DomainAliasSuggestionWarning | null> {
+  // Extract the host portion. opts.recipient is already
+  // normalised + lowercased; just split on '@'.
+  const atIdx = opts.recipient.lastIndexOf("@");
+  if (atIdx < 0) return null;
+  const domain = opts.recipient.slice(atIdx + 1).trim();
+  if (!domain) return null;
+
+  const rows = await db
+    .select({
+      venueId: venueDomainAliases.venueId,
+      venueName: venues.name,
+      createdAt: venueDomainAliases.createdAt,
+    })
+    .from(venueDomainAliases)
+    .innerJoin(venues, eq(venues.id, venueDomainAliases.venueId))
+    .where(and(eq(venueDomainAliases.domain, domain), isNull(venues.archivedAt)))
+    .orderBy(asc(venueDomainAliases.createdAt))
+    .limit(3);
+
+  if (rows.length === 0) return null;
+
+  return {
+    kind: "domain_alias_suggestion",
+    domain,
+    candidates: rows.map((r) => ({ venueId: r.venueId, venueName: r.venueName })),
+  };
 }
