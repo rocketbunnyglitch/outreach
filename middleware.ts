@@ -99,6 +99,12 @@ export default auth((req) => {
     // cookie server-side and redirects to /login. Must be reachable always.
     pathname === "/api/session/clear" ||
     pathname === "/login" ||
+    // Public legal + marketing pages. Required for Google OAuth
+    // verification (consent screen links to these) and reachable
+    // to anyone visiting the app's homepage URL pre-auth.
+    pathname === "/about" ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
     // Static client-state reset page. Must be reachable even when the
     // user is signed out or the main app is broken — that's the whole
     // point. Clearing your own browser storage is a self-service

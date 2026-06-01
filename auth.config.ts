@@ -69,6 +69,11 @@ const config: NextAuthConfig = {
         // signed token in the URL, so it's safe to expose without a
         // session — the token IS the authentication.
         pathname.startsWith("/set-password/") ||
+        // Public legal + marketing pages — required for Google OAuth
+        // verification (the consent screen links to these).
+        pathname === "/about" ||
+        pathname === "/privacy" ||
+        pathname === "/terms" ||
         // Client-state reset page — reachable without a session so
         // a user with a broken auth cookie can still recover.
         pathname === "/reset" ||

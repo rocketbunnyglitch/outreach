@@ -81,8 +81,17 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <PasswordLoginForm from={from} />
         </div>
 
-        <footer className="mt-6 text-center font-mono text-[10px] text-zinc-400 uppercase tracking-[0.14em]">
-          PERSE -- outreach engine
+        <footer className="mt-6 flex flex-col items-center gap-2 font-mono text-[10px] text-zinc-400 uppercase tracking-[0.14em]">
+          <span>PERSE -- outreach engine</span>
+          <div className="flex items-center gap-2 text-[10px]">
+            <a href="/privacy" className="hover:text-zinc-600 dark:hover:text-zinc-300">
+              Privacy
+            </a>
+            <span className="opacity-40">·</span>
+            <a href="/terms" className="hover:text-zinc-600 dark:hover:text-zinc-300">
+              Terms
+            </a>
+          </div>
         </footer>
       </div>
     </main>
