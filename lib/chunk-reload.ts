@@ -24,13 +24,18 @@ const CHUNK_ERROR_RE =
   /ChunkLoadError|Loading chunk\s+[\w-]+\s+failed|Loading CSS chunk|(?:error|Failed) loading dynamically imported module|Failed to fetch dynamically imported module|Importing a module script failed/i;
 
 // Hydration-family minified React errors + their dev-mode phrasings.
+// Includes the streaming-reveal crash: React's inline $RC/$RS/$RB/$RT
+// boundary-completion runtime throwing "reading 'parentNode'" on a null
+// placeholder (a fatal stream/DOM desync). The $R* frame appears in the
+// stack, so matches() also tests Error.stack below.
 const HYDRATION_ERROR_RE =
-  /Minified React error #(?:418|419|421|422|423|424|425)\b|Hydration failed|error while hydrating|hydration mismatch|Text content does ?n['’]?t match/i;
+  /Minified React error #(?:418|419|421|422|423|424|425)\b|Hydration failed|error while hydrating|hydration mismatch|Text content does ?n['’]?t match|\bat \$R[BCST]\b|\$R[BCST]\s*\(|reading 'parentNode'/i;
 
 function matches(value: unknown, re: RegExp): boolean {
   if (!value) return false;
   if (typeof value === "string") return re.test(value);
-  if (value instanceof Error) return re.test(value.name) || re.test(value.message);
+  if (value instanceof Error)
+    return re.test(value.name) || re.test(value.message) || re.test(value.stack ?? "");
   return false;
 }
 

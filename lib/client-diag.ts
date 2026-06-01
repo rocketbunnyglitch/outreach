@@ -29,8 +29,15 @@ export const CLIENT_DIAG_SCRIPT = `
     var COOLDOWN = 15000;
     var CHUNK_RE = /ChunkLoadError|Loading chunk|Loading CSS chunk|dynamically imported module|Importing a module script failed/i;
     var HYDR_RE = /Minified React error #(?:418|419|421|422|423|424|425)\b|Hydration failed|error while hydrating|hydration mismatch/i;
+    // Streaming-completion crash: when React's inline Suspense-reveal runtime
+    // ($RC/$RS/$RB/$RT) can't find a boundary's placeholder node it throws
+    // "Cannot read properties of null (reading 'parentNode')" — a fatal
+    // stream/DOM desync (seen after messy deploys / stale chunks) that froze
+    // the page. The message alone is generic, so we key on the $R* frame in
+    // the STACK (React-internal, unambiguous) plus the parentNode-null symptom.
+    var STREAM_RE = /\bat \$R[BCST]\b|\$R[BCST]\s*\(|reading 'parentNode'/;
     var sent = 0;
-    function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_RE.test(s); }
+    function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_RE.test(s) || STREAM_RE.test(s); }
     function maybeReload(s) {
       try {
         if (!recoverable(s)) return;
@@ -74,6 +81,7 @@ export const CLIENT_DIAG_SCRIPT = `
       } catch (e) {}
     }
     window.addEventListener('error', function (e) {
+      var stack = e.error && e.error.stack ? String(e.error.stack) : '';
       var msg = (e.message || '') + ' ' + (e.error && e.error.message ? e.error.message : '');
       if (sent++ <= 6) {
         send(snap('window-error', {
@@ -82,18 +90,21 @@ export const CLIENT_DIAG_SCRIPT = `
           line: e.lineno,
           col: e.colno,
           errName: e.error && e.error.name,
-          errStack: e.error && e.error.stack ? String(e.error.stack).slice(0, 1800) : null
+          errStack: stack ? stack.slice(0, 1800) : null
         }));
       }
-      maybeReload(msg);
+      // Include the stack — the $R* streaming-runtime frame lives there, not
+      // in the message.
+      maybeReload(msg + ' ' + stack);
     });
     window.addEventListener('unhandledrejection', function (e) {
       var r = e.reason;
+      var stack = r && r.stack ? String(r.stack) : '';
       var msg = r && (r.message || r.name) ? (r.name + ': ' + r.message) : String(r);
       if (sent++ <= 6) {
-        send(snap('unhandledrejection', { reason: msg, stack: r && r.stack ? String(r.stack).slice(0, 1800) : null }));
+        send(snap('unhandledrejection', { reason: msg, stack: stack ? stack.slice(0, 1800) : null }));
       }
-      maybeReload(msg);
+      maybeReload(msg + ' ' + stack);
     });
     setTimeout(function () {
       if (!window.__perseHydrated) {
