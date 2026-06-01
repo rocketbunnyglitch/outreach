@@ -1,6 +1,17 @@
 import "server-only";
 
 /**
+ * @deprecated Folded into lib/stale-tagger.ts as Rule 5
+ * (UNASSIGNED_INBOUND_HOURS). The cron route no longer calls
+ * runAuxStaleRules() -- the canonical tagger now evaluates the
+ * unassigned-inbound rule in the same CASE expression as all the
+ * others, which fixes the timestamp-churn limitation documented
+ * below. This file is kept (rather than deleted) for one cycle
+ * so any out-of-tree references can be updated; it should be
+ * removed in a future cleanup.
+ *
+ * Original module header retained below for historical context:
+ *
  * Auxiliary stale rules -- a SECOND, complementary stale-flagging pass
  * that runs right after the canonical runStaleTagger() in the same
  * cron tick.

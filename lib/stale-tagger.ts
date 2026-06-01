@@ -58,6 +58,27 @@ const FOLLOW_UP_DAYS = 4;
  */
 const HIGH_INTENT_WAITING_HOURS = 24;
 
+/**
+ * Even tighter threshold for UNASSIGNED inbound. A thread with no
+ * operator assigned (assigned_staff_id IS NULL) means nobody is
+ * watching it -- the team's shared inbox just received mail and
+ * nobody owns the response yet. One hour is the line: if a reply
+ * lands in the team inbox and isn't picked up within an hour,
+ * surface it as stale so a team lead can assign it before the
+ * generic 4-hour Rule 1 catches it later.
+ *
+ * Folded into the canonical CASE here (after originally living in
+ * lib/stale-rules-aux.ts) so stale_since stays stable across cron
+ * ticks. The aux-pass approach in that module had a known
+ * timestamp-churn bug: the main tagger would clear is_stale on
+ * each tick (the thread doesn't yet meet Rule 1 at 1h-4h), then
+ * the aux pass would re-flag it with stale_since = NOW(), so the
+ * "stale for X minutes" counter in the UI reset every cron tick.
+ * Now that this rule lives in the same CASE as the others, the
+ * preserved-stale_since branch in the UPDATE works correctly.
+ */
+const UNASSIGNED_INBOUND_HOURS = 1;
+
 export interface StaleTaggerResult {
   /** Threads newly flagged as stale (was false → true). */
   newlyStale: number;
@@ -77,6 +98,9 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
   const followUpCutoff = new Date(now.getTime() - FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
   const highIntentWaitingCutoff = new Date(
     now.getTime() - HIGH_INTENT_WAITING_HOURS * 60 * 60 * 1000,
+  );
+  const unassignedInboundCutoff = new Date(
+    now.getTime() - UNASSIGNED_INBOUND_HOURS * 60 * 60 * 1000,
   );
 
   // Build a single CASE expression that decides each thread's new
@@ -112,6 +136,18 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
         t.id,
         t.is_stale AS was_stale,
         CASE
+          -- Rule 5: UNASSIGNED needs_reply over the 1-hour tight SLA.
+          -- A thread with no assignee + inbound mail sitting > 1h
+          -- means nobody on the team owns the response yet. Tighter
+          -- threshold than Rule 1; checked first so the
+          -- "unassigned" reason wins for any thread that matches
+          -- both rules (assigned 4h vs unassigned 1h).
+          WHEN t.state = 'needs_reply'
+               AND t.assigned_staff_id IS NULL
+               AND t.last_inbound_at IS NOT NULL
+               AND t.last_inbound_at < ${unassignedInboundCutoff}
+            THEN true
+
           -- Rule 1: needs_reply over the 4-hour SLA
           WHEN t.state = 'needs_reply'
                AND t.last_inbound_at IS NOT NULL
@@ -146,6 +182,27 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
           ELSE false
         END AS now_stale,
         CASE
+          -- Rule 5 reason: "Unassigned inbound from Lavelle sitting
+          -- 42 minutes; assign an owner." Matches the order of the
+          -- now_stale CASE -- the unassigned-specific reason wins
+          -- whenever both Rule 5 and Rule 1 match the same thread.
+          -- Minutes (not hours) because the threshold is 1h; the
+          -- reason text needs to communicate "this is fresh and
+          -- nobody owns it."
+          WHEN t.state = 'needs_reply'
+               AND t.assigned_staff_id IS NULL
+               AND t.last_inbound_at IS NOT NULL
+               AND t.last_inbound_at < ${unassignedInboundCutoff}
+            THEN
+              'Unassigned inbound '
+              || CASE WHEN v.name IS NOT NULL THEN 'from ' || v.name || ' ' ELSE '' END
+              || 'sitting '
+              || EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 60
+              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 60 = 1
+                     THEN ' minute; assign an owner.'
+                     ELSE ' minutes; assign an owner.'
+                  END
+
           -- Rule 1 reason: "Mike from Lavelle replied 26 hours ago;
           -- no staff response." Both name pieces are optional.
           WHEN t.state = 'needs_reply'

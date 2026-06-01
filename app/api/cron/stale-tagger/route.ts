@@ -14,7 +14,6 @@
  */
 
 import { logger } from "@/lib/logger";
-import { runAuxStaleRules } from "@/lib/stale-rules-aux";
 import { runStaleTagger } from "@/lib/stale-tagger";
 import { NextResponse } from "next/server";
 
@@ -32,13 +31,15 @@ export async function POST(req: Request) {
   }
 
   try {
+    // The canonical runStaleTagger now covers Rule 5 (unassigned
+    // needs_reply > 1h) -- it used to live in
+    // lib/stale-rules-aux.ts as a separate pass invoked here, but
+    // the aux-pass approach had a known timestamp-churn bug
+    // (stale_since reset on every tick). Folding it into the
+    // canonical CASE fixes that. See lib/stale-tagger.ts for the
+    // full rule list.
     const result = await runStaleTagger();
-    // Run the auxiliary pass right after the canonical tagger so the
-    // unassigned-inbound rule is evaluated against the state the main
-    // tagger just settled. Its `flagged` count is merged into the
-    // response alongside the tagger's newlyStale / cleared.
-    const aux = await runAuxStaleRules();
-    return NextResponse.json({ ok: true, ...result, ...aux });
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     logger.error({ err }, "stale-tagger cron route failed");
     return NextResponse.json({ error: "stale-tagger failed" }, { status: 500 });
