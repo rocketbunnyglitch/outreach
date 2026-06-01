@@ -26,7 +26,7 @@ import { db } from "@/lib/db";
 import { extractEmailAddress } from "@/lib/email-address";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { and, asc, desc, eq, ilike, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,7 +79,17 @@ export async function searchVenuesForThread(query: string): Promise<VenueSearchR
 export async function attachVenueToThread(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ threadId: string; venueId: string }>> {
+): Promise<
+  ActionResult<{
+    threadId: string;
+    venueId: string;
+    /** How many OTHER unmatched threads on the same team were
+     *  attached to this venue retroactively. UI shows a toast
+     *  like "Attached to Lavelle (+3 more threads with the same
+     *  sender)" so operators see the satisfying batch effect. */
+    retroactivelyAttached: number;
+  }>
+> {
   const { staff } = await requireStaff();
   const threadId = String(formData.get("threadId") ?? "");
   const venueId = String(formData.get("venueId") ?? "");
@@ -110,6 +120,13 @@ export async function attachVenueToThread(
       .set({ venueId, updatedBy: staff.id })
       .where(eq(emailThreads.id, threadId));
 
+    // Count of OTHER unmatched threads we retroactively attached.
+    // Declared at the outer-try scope so the success branch can
+    // include it in the action result regardless of whether the
+    // best-effort learn block succeeded. Defaults to 0 when learn
+    // either didn't run (no inbound rows) or failed mid-flight.
+    let retroactivelyAttached = 0;
+
     // Auto-learning: record this thread's primary inbound sender on
     // the venue's alternate_emails so future inbound mail from the
     // same address auto-matches via the cross-domain matcher in
@@ -120,33 +137,82 @@ export async function attachVenueToThread(
     // Best-effort: failure here doesn't roll back the thread link
     // (the link is the operator's primary intent; the alias is a
     // helpful side effect).
+    //
+    // Retroactive linking: when the operator attaches the venue
+    // via THIS thread, walk through OTHER currently-unmatched
+    // threads with the same primary inbound sender (or any of the
+    // sender's alternate addresses, if multiple inbounds exist)
+    // and attach the venue to those too. The operator's intent
+    // ("this email is Lavelle") logically applies to every other
+    // email from the same person. Without this, the operator has
+    // to attach the same venue dozens of times for one back-and-
+    // forth correspondence that landed on multiple unmatched
+    // threads.
     try {
-      const [latestInbound] = await db
+      // Pull every inbound sender on this thread, not just the
+      // latest. A venue's primary contact might use both
+      // mike@lavelle.com AND mike@personal.com depending on the
+      // device — attach should learn both.
+      const inboundRows = await db
         .select({ fromAddress: emailMessages.fromAddress })
         .from(emailMessages)
-        .where(and(eq(emailMessages.threadId, threadId), eq(emailMessages.direction, "inbound")))
-        .orderBy(desc(emailMessages.sentAt))
-        .limit(1);
-      const senderEmail = latestInbound?.fromAddress
-        ? extractEmail(latestInbound.fromAddress)
-        : null;
-      if (senderEmail) {
-        // Append only if not already in the array. The array_append +
-        // ARRAY(SELECT DISTINCT ...) pattern keeps it idempotent at
-        // the row level without a separate read-then-write race.
-        await db.execute(sql`
-          UPDATE venues
-          SET alternate_emails = (
-            SELECT ARRAY(SELECT DISTINCT e FROM unnest(
-              array_append(alternate_emails, ${senderEmail})
-            ) AS e WHERE e IS NOT NULL)
-          )
-          WHERE id = ${venueId}
-            AND NOT (lower(${senderEmail}) = lower(coalesce(email, '')))
-            AND NOT (lower(${senderEmail}) = ANY(
-              SELECT lower(unnest(alternate_emails))
-            ))
+        .where(and(eq(emailMessages.threadId, threadId), eq(emailMessages.direction, "inbound")));
+
+      const inboundEmails = new Set<string>();
+      for (const r of inboundRows) {
+        if (r.fromAddress) {
+          const e = extractEmail(r.fromAddress);
+          if (e) inboundEmails.add(e);
+        }
+      }
+
+      if (inboundEmails.size > 0) {
+        const emailList = Array.from(inboundEmails);
+
+        // Add each new sender address to venues.alternate_emails
+        // (deduped, idempotent — see comment below).
+        for (const senderEmail of emailList) {
+          await db.execute(sql`
+            UPDATE venues
+            SET alternate_emails = (
+              SELECT ARRAY(SELECT DISTINCT e FROM unnest(
+                array_append(alternate_emails, ${senderEmail})
+              ) AS e WHERE e IS NOT NULL)
+            )
+            WHERE id = ${venueId}
+              AND NOT (lower(${senderEmail}) = lower(coalesce(email, '')))
+              AND NOT (lower(${senderEmail}) = ANY(
+                SELECT lower(unnest(alternate_emails))
+              ))
+          `);
+        }
+
+        // Retroactive attach: find OTHER unmatched threads on the
+        // same team whose normalized from-email matches any of
+        // these senders. Scope to the team that owns the current
+        // thread so a coincidental Gmail-side collision can't
+        // cross-contaminate. Skip the current thread (already
+        // attached above).
+        const teamId = threadRow[0].teamId;
+        const retroResult = await db.execute<{ id: string }>(sql`
+          UPDATE email_threads et
+          SET venue_id = ${venueId}, updated_by = ${staff.id}
+          FROM staff_outreach_emails soe, email_messages em
+          WHERE et.staff_outreach_email_id = soe.id
+            AND soe.team_id = ${teamId}
+            AND et.venue_id IS NULL
+            AND et.id <> ${threadId}
+            AND em.thread_id = et.id
+            AND em.direction = 'inbound'
+            AND em.from_email_normalized = ANY(${emailList})
+          RETURNING et.id
         `);
+        // drizzle.execute<T> returns a result whose shape varies by
+        // driver. Normalize to count.
+        const retroRows: Array<{ id: string }> = Array.isArray(retroResult)
+          ? retroResult
+          : ((retroResult as { rows?: Array<{ id: string }> }).rows ?? []);
+        retroactivelyAttached = new Set(retroRows.map((r) => r.id)).size;
       }
     } catch (learnErr) {
       logger.warn({ learnErr, threadId, venueId }, "attachVenueToThread auto-learn failed");
@@ -155,7 +221,10 @@ export async function attachVenueToThread(
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     revalidatePath(`/venues/${venueId}`);
-    return { ok: true, data: { threadId, venueId } };
+    return {
+      ok: true,
+      data: { threadId, venueId, retroactivelyAttached },
+    };
   } catch (err) {
     logger.error({ err, threadId, venueId }, "attachVenueToThread failed");
     return {

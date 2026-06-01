@@ -29,6 +29,10 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
   const [results, setResults] = useState<VenueSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Brief success banner shown on attach. Carries the count of
+   *  OTHER threads that got retroactively linked so operators see
+   *  the satisfying batch effect ("+3 more threads linked"). */
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTx] = useTransition();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -85,7 +89,18 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
       const result = await attachVenueToThread(null, fd);
       setPendingId(null);
       if (result.ok) {
-        setOpen(false);
+        const extra = result.data.retroactivelyAttached;
+        if (extra > 0) {
+          // Show a brief banner before closing so the operator sees
+          // the bonus effect. Close after a beat. Without this they'd
+          // never realize the engine just saved them N more clicks.
+          setSuccessMessage(
+            `Attached. ${extra} more thread${extra === 1 ? "" : "s"} with the same sender linked too.`,
+          );
+          setTimeout(() => setOpen(false), 1800);
+        } else {
+          setOpen(false);
+        }
         // ThreadPane will re-render via revalidatePath; the
         // "Unassigned" pill disappears and a Link to the venue
         // replaces it.
@@ -99,7 +114,15 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
     <span className="relative inline-block" ref={rootRef}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() =>
+          setOpen((o) => {
+            // Clear stale success state on re-open so an old
+            // batch-attach toast doesn't linger from a previous
+            // session of the dropdown.
+            if (!o) setSuccessMessage(null);
+            return !o;
+          })
+        }
         className="inline-flex items-center gap-1 rounded-full border border-amber-300 border-dashed bg-amber-50 px-2 py-0.5 font-medium text-[11px] text-amber-800 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
       >
         + Attach venue
@@ -160,6 +183,17 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
           {error && (
             <div className="border-rose-200 border-t bg-rose-50 px-3 py-2 text-rose-700 text-xs dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300">
               {error}
+            </div>
+          )}
+
+          {/* Success banner — appears only when the retroactive
+              attach picked up extra threads. Closing of the dropdown
+              is delayed 1.8s by the handler so this is actually
+              visible. Emerald per the color-reservation palette
+              (emerald = done/healthy). */}
+          {successMessage && (
+            <div className="border-emerald-200 border-t bg-emerald-50 px-3 py-2 text-emerald-700 text-xs dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {successMessage}
             </div>
           )}
         </div>
