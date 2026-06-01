@@ -222,10 +222,40 @@ export interface GmailAttachment {
   data: Buffer;
 }
 
+/**
+ * Send a Gmail message.
+ *
+ * Recipients (`to`/`cc`/`bcc`):
+ *   - `to` accepts either a single string or an array; an array
+ *     becomes a comma-separated To: header per RFC 5322 §3.4.
+ *   - `cc` + `bcc` are optional arrays. Empty arrays render no
+ *     header (Gmail treats absent === none).
+ *   - Bcc recipients receive the message but are NOT included in
+ *     the rendered headers the To/Cc recipients see — Gmail
+ *     handles the actual fanout server-side from the API field.
+ *     We DO include a `Bcc:` header so the sender's Gmail Sent
+ *     copy preserves the bcc list (matches Gmail UI behavior).
+ *
+ * Body:
+ *   - `htmlBody` is the canonical rendering. `textBody` is the
+ *     plain-text fallback; when omitted we derive it from
+ *     stripping the HTML. Both are sent as the two halves of a
+ *     multipart/alternative — clients pick the best one to
+ *     render.
+ *
+ * Threading:
+ *   - `threadId` makes Gmail nest the message under an existing
+ *     thread on the recipient side.
+ *   - `replyToMessageId` populates In-Reply-To + References
+ *     headers so the message threads correctly even in clients
+ *     that don't use Gmail's threadId hint.
+ */
 export async function sendGmailMessage(opts: {
   encryptedRefreshToken: string;
   from: string;
-  to: string;
+  to: string | string[];
+  cc?: string[];
+  bcc?: string[];
   subject: string;
   htmlBody: string;
   textBody?: string;
@@ -235,20 +265,33 @@ export async function sendGmailMessage(opts: {
 }): Promise<{ id: string; threadId: string }> {
   const accessToken = await refreshAccessToken(opts.encryptedRefreshToken);
 
+  // Normalize recipient inputs to non-empty trimmed arrays. The
+  // gmail API allows a comma-joined list per header, so we
+  // canonicalize here and join below.
+  const toList = (Array.isArray(opts.to) ? opts.to : [opts.to])
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ccList = (opts.cc ?? []).map((s) => s.trim()).filter(Boolean);
+  const bccList = (opts.bcc ?? []).map((s) => s.trim()).filter(Boolean);
+  if (toList.length === 0) {
+    throw new Error("sendGmailMessage: at least one To address is required");
+  }
+
   // Construct RFC 5322 message
   const altBoundary = `==ALT_${Date.now()}==`;
   const mixedBoundary = `==MIX_${Date.now()}==`;
   const hasAttachments = (opts.attachments?.length ?? 0) > 0;
 
-  const headers = [
-    `From: ${opts.from}`,
-    `To: ${opts.to}`,
+  const headers = [`From: ${opts.from}`, `To: ${toList.join(", ")}`];
+  if (ccList.length > 0) headers.push(`Cc: ${ccList.join(", ")}`);
+  if (bccList.length > 0) headers.push(`Bcc: ${bccList.join(", ")}`);
+  headers.push(
     `Subject: ${opts.subject}`,
     "MIME-Version: 1.0",
     hasAttachments
       ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`
       : `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
-  ];
+  );
   if (opts.replyToMessageId) {
     headers.push(`In-Reply-To: ${opts.replyToMessageId}`);
     headers.push(`References: ${opts.replyToMessageId}`);

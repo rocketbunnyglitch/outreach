@@ -384,14 +384,18 @@ async function sendDraftAsUser(input: {
   if (!draft.connectedAccountId) {
     return { ok: false, error: "Pick a From inbox before sending." };
   }
-  const to = (draft.toAddresses ?? [])[0];
-  if (!to) {
+  const toAddresses = (draft.toAddresses ?? []).filter((s) => s && s.trim().length > 0);
+  if (toAddresses.length === 0) {
     return { ok: false, error: "Add at least one recipient." };
   }
 
   const fd = new FormData();
   fd.set("fromAccountId", draft.connectedAccountId);
-  fd.set("to", to);
+  // Pass all To recipients as a comma-separated list — composeAndSendImpl
+  // parses CSV. Previously only the first recipient was forwarded; any
+  // additional To addresses the operator added in the composer were
+  // silently dropped before reaching Gmail.
+  fd.set("to", toAddresses.join(","));
   if (draft.ccAddresses && draft.ccAddresses.length > 0) {
     fd.set("cc", draft.ccAddresses.join(","));
   }

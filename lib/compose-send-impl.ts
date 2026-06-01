@@ -23,6 +23,7 @@ import "server-only";
 import { connectedAccounts, emailMessages, emailThreads } from "@/db/schema";
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
 import { db } from "@/lib/db";
+import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
@@ -46,9 +47,45 @@ export async function composeAndSendImpl(
   formData: FormData,
 ): Promise<ComposeResult> {
   const fromAccountId = String(formData.get("fromAccountId") ?? "");
-  const to = String(formData.get("to") ?? "").trim();
+  // Recipients — `to`/`cc`/`bcc` arrive as comma-separated strings
+  // built by sendDraft from the draft's array columns. Split, trim,
+  // dedupe, validate. `to` requires at least one address; cc/bcc are
+  // optional empty-by-default arrays.
+  //
+  // Validation matches the previous single-recipient regex applied
+  // per address. Any malformed entry rejects the entire send with a
+  // pointed error so the operator can fix the bad address.
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  function parseRecipientList(raw: string): string[] {
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  const toList = parseRecipientList(String(formData.get("to") ?? ""));
+  const ccList = parseRecipientList(String(formData.get("cc") ?? ""));
+  const bccList = parseRecipientList(String(formData.get("bcc") ?? ""));
+  // Keep the legacy `to` (first address) for downstream code that
+  // still uses a single primary recipient — duplicate prevention,
+  // venue-link lookup, recordSendEvent's recipient column. The full
+  // list goes to sendGmailMessage as the actual To header.
+  const to = toList[0] ?? "";
   const subject = String(formData.get("subject") ?? "").trim();
+  // Plain-text body the operator typed. May be empty if the composer
+  // was used in pure-HTML mode (rare today — the rich editor mirrors
+  // both — but defensive). Used as the multipart/alternative text part.
   const body = String(formData.get("body") ?? "");
+  // Rich HTML body the operator composed in the editor. When present,
+  // this is the canonical message body — sendGmailMessage sends it as
+  // the text/html part of multipart/alternative.
+  //
+  // PRIOR BUG (pre-this-commit): the function ignored `bodyHtml` from
+  // the form and synthesized HTML by escape+wrap on `body` (the
+  // plain-text version). Rich formatting in the composer (bold,
+  // italic, links, lists, colors, signature HTML) was destroyed at
+  // send time. Recipients received text-rendered-as-HTML with literal
+  // <p> tags around escaped content.
+  const bodyHtmlFromForm = String(formData.get("bodyHtml") ?? "");
   const venueIdRaw = String(formData.get("venueId") ?? "").trim();
   const venueId = venueIdRaw && UUID_RE.test(venueIdRaw) ? venueIdRaw : null;
   // Template attribution (Phase C.1) — recorded on the send-event
@@ -121,11 +158,31 @@ export async function composeAndSendImpl(
   }
 
   if (!UUID_RE.test(fromAccountId)) return { ok: false, error: "Pick a From inbox." };
-  if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
-    return { ok: false, error: "Enter a valid To address." };
+  if (toList.length === 0) {
+    return { ok: false, error: "Add at least one recipient." };
+  }
+  // Validate every To/Cc/Bcc address. Returns the first bad one
+  // for a pointed error message; "addr1, addr2@bad" is more
+  // actionable than "Enter a valid address."
+  const allRecipients: Array<{ addr: string; field: "To" | "Cc" | "Bcc" }> = [
+    ...toList.map((addr) => ({ addr, field: "To" as const })),
+    ...ccList.map((addr) => ({ addr, field: "Cc" as const })),
+    ...bccList.map((addr) => ({ addr, field: "Bcc" as const })),
+  ];
+  for (const { addr, field } of allRecipients) {
+    if (!EMAIL_RE.test(addr)) {
+      return { ok: false, error: `${field} address looks invalid: ${addr}` };
+    }
   }
   if (!subject) return { ok: false, error: "Subject is required." };
-  if (!body.trim()) return { ok: false, error: "Message body is empty." };
+  // Body is "empty" only when BOTH the plain text and the HTML
+  // (after stripping tags) are blank. The composer fills both
+  // halves but pure-HTML payloads (e.g. an AI draft inserted as
+  // HTML) shouldn't be rejected just because the text mirror is
+  // momentarily empty.
+  if (!body.trim() && !bodyHtmlFromForm.replace(/<[^>]*>/g, "").trim()) {
+    return { ok: false, error: "Message body is empty." };
+  }
 
   // Verify the From account is on the team + sendable.
   const sender = await db
@@ -225,11 +282,39 @@ export async function composeAndSendImpl(
   const sendCategory = preflight.ok ? preflight.category : preflight.category;
   const capBypassed = !preflight.ok && bypassCap;
 
-  // Build light HTML.
-  const htmlBody = body
+  // Build the outbound HTML body.
+  //
+  // Source priority:
+  //   1. `bodyHtml` from the composer — the canonical rich payload
+  //      (bold/italic/links/lists/colors/signature). Used as-is
+  //      after sanitization.
+  //   2. Fallback: synthesize light HTML from the plain-text body
+  //      by escape+wrap (paragraph splits on blank lines, <br> for
+  //      single newlines). Used when the form lacks a bodyHtml field
+  //      (legacy cron paths, internal callers that only know
+  //      plain text).
+  //
+  // Either source goes through sanitizeEmailHtml so XSS / unsafe
+  // script tags / on*=  handlers / javascript: hrefs never reach the
+  // wire OR the email_messages.body_html column. The sanitizer
+  // returns null on empty/blank input — we fall back to the
+  // synthesized version in that case.
+  const synthesizedHtml = body
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
+  const rawHtml = bodyHtmlFromForm.trim().length > 0 ? bodyHtmlFromForm : synthesizedHtml;
+  const htmlBody = sanitizeEmailHtml(rawHtml) ?? synthesizedHtml;
+
+  // 140-char snippet for thread + message list rows. Prefers the
+  // plain-text body when present; falls back to a tag-stripped
+  // version of the HTML so HTML-only payloads (rare, but possible
+  // when the composer sends pure markup) still get a sensible
+  // preview instead of an empty string.
+  const derivedSnippet = (body.trim().length > 0 ? body : htmlBody.replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
 
   // Resolve the reply context (if any) BEFORE the Gmail send so we
   // can pass through threadId + replyToMessageId. The thread + message
@@ -350,10 +435,15 @@ export async function composeAndSendImpl(
     sent = await sendGmailMessage({
       encryptedRefreshToken: inbox.token,
       from: inbox.email,
-      to,
+      to: toList,
+      cc: ccList.length > 0 ? ccList : undefined,
+      bcc: bccList.length > 0 ? bccList : undefined,
       subject,
       htmlBody,
-      textBody: body,
+      // textBody falls back to a strip of the HTML when `body` is
+      // blank but bodyHtml was provided (HTML-only payloads). Keeps
+      // the multipart text part meaningful for plain-text clients.
+      textBody: body.trim().length > 0 ? body : htmlBody.replace(/<[^>]*>/g, "").trim(),
       threadId: replyThreadGmailId ?? undefined,
       replyToMessageId: replyMessageRfc822Id ?? undefined,
       attachments: gmailAttachments.length > 0 ? gmailAttachments : undefined,
@@ -394,7 +484,7 @@ export async function composeAndSendImpl(
           lastOutboundAt: now,
           lastSenderName: inbox.email,
           lastMessageAt: now,
-          snippet: body.slice(0, 140),
+          snippet: derivedSnippet,
           // Replying clears any stale flag + follow-up cadence —
           // operator just engaged.
           isStale: false,
@@ -416,7 +506,7 @@ export async function composeAndSendImpl(
           state: "waiting_on_them",
           direction: "outbound",
           classification: "unclassified",
-          snippet: body.slice(0, 140),
+          snippet: derivedSnippet,
           messageCount: 1,
           unreadCount: 0,
           lastOutboundAt: now,
@@ -437,13 +527,18 @@ export async function composeAndSendImpl(
       kind: "email",
       direction: "outbound",
       fromAddress: inbox.email,
-      toAddresses: [to],
-      ccAddresses: [],
-      bccAddresses: [],
+      // Store the full multi-recipient lists. PRIOR BUG: this row
+      // only persisted [to] (the first recipient), so secondary To
+      // addresses and any Cc/Bcc the operator added were invisible
+      // in the engine even though Gmail actually delivered to them.
+      // The schema columns are arrays — we just weren't using them.
+      toAddresses: toList,
+      ccAddresses: ccList,
+      bccAddresses: bccList,
       subject,
       bodyText: body,
       bodyHtml: htmlBody,
-      snippet: body.slice(0, 140),
+      snippet: derivedSnippet,
       gmailLabels: ["SENT"],
       sentAt: now,
       sentByStaffId: staff.id,

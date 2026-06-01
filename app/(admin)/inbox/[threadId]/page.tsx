@@ -4,6 +4,7 @@ import { generateQuickRepliesAsync, isEligibleForQuickReplies } from "@/lib/ai-q
 import { summarizeThreadAsync } from "@/lib/ai-summarize";
 import { requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
+import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadAppliedGmailLabelsForThread } from "@/lib/gmail-thread-labels";
 import {
   FOLDER_LABELS,
@@ -30,6 +31,7 @@ import { loadVenueCommunication } from "@/lib/venue-communication";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { notFound } from "next/navigation";
 import { AccountSwitcher } from "../_components/AccountSwitcher";
+import { CampaignScopeBanner } from "../_components/CampaignScopeBanner";
 import { FolderList } from "../_components/FolderList";
 import { InboxFilterBar } from "../_components/InboxFilterBar";
 import { InboxLiveRefresh } from "../_components/InboxLiveRefresh";
@@ -60,6 +62,8 @@ interface Props {
     stale?: string;
     unmatched?: string;
     mentioned?: string;
+    /** "1" -> override the global campaign switcher (see /inbox page). */
+    allCampaigns?: string;
   }>;
 }
 
@@ -90,6 +94,17 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   // Account-switcher scope from the ?accounts=<id>,<id> URL param.
   const accountIds = parseAccountIds(search.accounts);
 
+  // Global campaign scope — mirrors /inbox page.tsx behavior so
+  // operators don't lose scope when clicking into a thread. See
+  // app/(admin)/inbox/page.tsx for the full rules; in short:
+  //   1. ?campaign=<city_campaign_id> wins
+  //   2. ?allCampaigns=1 wins (explicit broad)
+  //   3. otherwise, fall back to getCurrentCampaign()
+  const allCampaignsExplicit = search.allCampaigns === "1";
+  const currentCampaignContext =
+    !search.campaign && !allCampaignsExplicit ? await getCurrentCampaign() : null;
+  const scopeCampaignId: string | undefined = currentCampaignContext?.campaign.id;
+
   const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts, userPrefs] =
     await Promise.all([
       fetchThreadDetail(threadId),
@@ -100,6 +115,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         mine,
         assignedStaffId,
         cityCampaignId: search.campaign,
+        campaignId: scopeCampaignId,
         outreachBrandId: search.brand,
         labelId: search.label,
         aliasId: search.alias,
@@ -115,6 +131,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         currentUserId: currentStaff.id,
         mine,
         accountIds,
+        campaignId: scopeCampaignId,
       }),
       fetchInboxAliases({
         currentTeamId: currentStaff.teamId,
@@ -266,6 +283,11 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
   if (search.unassigned === "1") preservedQuery.set("unassigned", "1");
   if (search.stale === "1") preservedQuery.set("stale", "1");
   if (search.unmatched === "1") preservedQuery.set("unmatched", "1");
+  // Preserve the explicit "show all campaigns" override across
+  // intra-inbox navigation. Without this, clicking from a thread
+  // back to a list view would silently revert to the
+  // global-switcher default scope, surprising the operator.
+  if (search.allCampaigns === "1") preservedQuery.set("allCampaigns", "1");
   if (search.q) preservedQuery.set("q", search.q);
 
   return (
@@ -331,6 +353,16 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
               initialSearch={search.q}
               savedSearches={savedSearches}
             />
+            {currentCampaignContext && (
+              <CampaignScopeBanner
+                campaignName={currentCampaignContext.campaign.name}
+                showAllHref={(() => {
+                  const p = new URLSearchParams(preservedQuery.toString());
+                  p.set("allCampaigns", "1");
+                  return `/inbox?${p.toString()}`;
+                })()}
+              />
+            )}
             <div className="flex-1 overflow-y-auto">
               <ThreadListWithBulk
                 threads={threads}

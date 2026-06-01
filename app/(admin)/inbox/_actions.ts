@@ -24,6 +24,7 @@ import {
 import { draftReply } from "@/lib/ai-reply";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
+import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { clearCadenceOnAction } from "@/lib/follow-up-cadence";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { modifyGmailThreadLabels, sendGmailMessage } from "@/lib/gmail";
@@ -152,11 +153,26 @@ export async function sendThreadReply(
   const baseSubject = row.thread.subject ?? lastInbound[0]?.subject ?? "(no subject)";
   const subject = baseSubject.toLowerCase().startsWith("re:") ? baseSubject : `Re: ${baseSubject}`;
 
-  // Light text→HTML — paragraphs from blank lines, newlines to <br>
-  const htmlBody = body
+  // Rich HTML body if the composer supplied one (the popout
+  // composer routes through composeAndSendImpl, not here — but a
+  // future inline rich editor could send bodyHtml through this
+  // path too). Fall back to a light text→HTML when the form only
+  // has plain text. Either path is sanitized so XSS can't reach
+  // the wire or email_messages.body_html.
+  const bodyHtmlFromForm = String(formData.get("bodyHtml") ?? "");
+  const synthesizedHtml = body
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
+  const htmlBody =
+    sanitizeEmailHtml(bodyHtmlFromForm.trim().length > 0 ? bodyHtmlFromForm : synthesizedHtml) ??
+    synthesizedHtml;
+
+  // 140-char snippet that survives HTML-only payloads.
+  const derivedSnippet = (body.trim().length > 0 ? body : htmlBody.replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
 
   // Preflight cold-send cap. Replies almost always classify warm
   // (the thread has inbound history), but a reply on a thread that
@@ -197,7 +213,7 @@ export async function sendThreadReply(
       to: recipient,
       subject,
       htmlBody,
-      textBody: body,
+      textBody: body.trim().length > 0 ? body : htmlBody.replace(/<[^>]*>/g, "").trim(),
       threadId: row.thread.gmailThreadId,
       replyToMessageId: row.lastInboundMessageId ?? undefined,
     });
@@ -229,7 +245,7 @@ export async function sendThreadReply(
       subject,
       bodyText: body,
       bodyHtml: htmlBody,
-      snippet: body.slice(0, 140),
+      snippet: derivedSnippet,
       gmailLabels: ["SENT"],
       sentAt: now,
       sentByStaffId: staff.id,
@@ -243,7 +259,7 @@ export async function sendThreadReply(
         direction: "mixed",
         lastOutboundAt: now,
         messageCount: sql`${emailThreads.messageCount} + 1`,
-        snippet: body.slice(0, 140),
+        snippet: derivedSnippet,
         updatedBy: staff.id,
       })
       .where(eq(emailThreads.id, threadId));

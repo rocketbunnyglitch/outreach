@@ -1,5 +1,6 @@
 import { parseAccountIds } from "@/lib/account-filter";
 import { requireStaff } from "@/lib/auth";
+import { getCurrentCampaign } from "@/lib/current-campaign";
 import {
   FOLDER_LABELS,
   type InboxFolder,
@@ -17,6 +18,7 @@ import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
 import { Inbox as InboxIcon } from "lucide-react";
 import { AccountSwitcher } from "./_components/AccountSwitcher";
+import { CampaignScopeBanner } from "./_components/CampaignScopeBanner";
 import { DraftList } from "./_components/DraftList";
 import { FolderList } from "./_components/FolderList";
 import { InboxFilterBar } from "./_components/InboxFilterBar";
@@ -64,6 +66,16 @@ interface Props {
     /** "1" -> Mentioned scope preset (Phase D) — threads where
      *  the current user has unacknowledged @-mentions. */
     mentioned?: string;
+    /**
+     * "1" -> override the global campaign switcher and show
+     * threads from EVERY campaign on the team. The default
+     * behavior — when this is absent + no `?campaign=` is set —
+     * scopes the inbox to whichever campaign the operator has
+     * selected in the top-nav switcher, matching the rest of
+     * the app. Operators who want the legacy "show everything"
+     * behavior set `?allCampaigns=1`.
+     */
+    allCampaigns?: string;
   }>;
 }
 
@@ -116,6 +128,47 @@ export default async function InboxPage({ searchParams }: Props) {
   // (default = every account the operator can see).
   const accountIds = parseAccountIds(params.accounts);
 
+  // -------- Global campaign scope --------
+  //
+  // The top-nav campaign switcher sets a cookie that
+  // getCurrentCampaign() reads. Every other major surface
+  // (/dashboard, /all-crawls, /campaign-info, /support-hours)
+  // honors it by default — the inbox used to be the lone
+  // exception, which made it feel like a different app.
+  //
+  // Rules (matching the spec's "Inbox defaults to selected
+  // campaign; All Campaigns must be explicit"):
+  //
+  //   1. URL ?campaign=<city_campaign_id> wins.
+  //      That URL param exists for the campaign chip click in the
+  //      left-rail filter chips, which sets a narrow city_campaign
+  //      filter (not a broader campaign-wide filter). When set, we
+  //      use it directly and skip the global-switcher default —
+  //      the operator explicitly narrowed; respect that.
+  //
+  //   2. URL ?allCampaigns=1 wins (explicit "show me everything").
+  //      Reserved escape hatch so an operator can opt out of the
+  //      switcher's default scope without clearing the cookie.
+  //
+  //   3. Otherwise, fall back to getCurrentCampaign(). If the
+  //      operator has a campaign selected globally, scope by it.
+  //      If no campaign is selected (fresh login, new operator),
+  //      the inbox shows everything — same as before this change.
+  //
+  // The narrow `?campaign=` (cityCampaignId) and the broad
+  // `campaignId` (from the switcher) are both threaded through
+  // fetchInboxThreads + fetchFolderCounts. The data layer skips
+  // the broad filter when the narrow one is also set (see
+  // lib/inbox-data.ts).
+  const allCampaignsExplicit = params.allCampaigns === "1";
+  // Hoist the full campaign context so we can use it for BOTH the
+  // scope filter AND the visible banner below. When the operator
+  // narrowed via ?campaign= or opted out via ?allCampaigns=1, we
+  // don't call getCurrentCampaign() at all — neither feature applies.
+  const currentCampaignContext =
+    !params.campaign && !allCampaignsExplicit ? await getCurrentCampaign() : null;
+  const scopeCampaignId: string | undefined = currentCampaignContext?.campaign.id;
+
   const [
     threads,
     counts,
@@ -135,6 +188,7 @@ export default async function InboxPage({ searchParams }: Props) {
       mine,
       assignedStaffId,
       cityCampaignId: params.campaign,
+      campaignId: scopeCampaignId,
       outreachBrandId: params.brand,
       labelId: params.label,
       aliasId: params.alias,
@@ -150,6 +204,7 @@ export default async function InboxPage({ searchParams }: Props) {
       currentUserId: currentStaff.id,
       mine,
       accountIds,
+      campaignId: scopeCampaignId,
     }),
     fetchInboxAliases({
       currentTeamId: currentStaff.teamId,
@@ -200,6 +255,7 @@ export default async function InboxPage({ searchParams }: Props) {
   if (params.unassigned === "1") preservedQuery.set("unassigned", "1");
   if (params.stale === "1") preservedQuery.set("stale", "1");
   if (params.unmatched === "1") preservedQuery.set("unmatched", "1");
+  if (params.allCampaigns === "1") preservedQuery.set("allCampaigns", "1");
   if (params.q) preservedQuery.set("q", params.q);
 
   return (
@@ -267,6 +323,20 @@ export default async function InboxPage({ searchParams }: Props) {
               initialSearch={params.q}
               savedSearches={savedSearches}
             />
+            {/* Surface the active campaign scope above the list. Only
+                renders when the inbox is implicitly scoped by the
+                global switcher — explicit URL filters and the
+                allCampaigns override skip the banner. */}
+            {currentCampaignContext && (
+              <CampaignScopeBanner
+                campaignName={currentCampaignContext.campaign.name}
+                showAllHref={(() => {
+                  const p = new URLSearchParams(preservedQuery.toString());
+                  p.set("allCampaigns", "1");
+                  return `/inbox?${p.toString()}`;
+                })()}
+              />
+            )}
             <div className="flex-1 overflow-y-auto">
               {isDraftFolder ? (
                 <DraftList

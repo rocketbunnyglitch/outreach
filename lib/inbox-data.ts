@@ -173,7 +173,28 @@ export interface ThreadListFilter {
    */
   mine?: boolean;
   assignedStaffId?: string;
+  /**
+   * Narrow to threads on this specific city_campaign (campaign × city
+   * pair). Granular: an operator clicking a specific city in the
+   * campaign-info page passes this. URL param: `?campaign=<id>` where
+   * the id is a city_campaign UUID.
+   *
+   * Mutually compatible with `campaignId` below — when both are set,
+   * we apply the narrower cityCampaignId filter and effectively
+   * ignore campaignId (the narrower constraint already implies the
+   * broader one).
+   */
   cityCampaignId?: string;
+  /**
+   * Default scope inherited from the global campaign switcher. Filters
+   * threads to any city_campaign whose campaign_id matches. Set by the
+   * inbox page when `?campaign=` is absent + `getCurrentCampaign()`
+   * returns a campaign. Operators see only Halloween threads when
+   * Halloween is the active campaign in the switcher, without having
+   * to set up filters manually. Pass `null` (explicit) to scope to
+   * "All campaigns" in the URL.
+   */
+  campaignId?: string;
   outreachBrandId?: string;
   /** Active team-label filter (URL param `label`). When set, narrows
    *  the thread list to those tagged with this label. */
@@ -459,6 +480,18 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
           ? eq(emailThreads.assignedStaffId, filter.assignedStaffId)
           : undefined,
         filter.cityCampaignId ? eq(emailThreads.cityCampaignId, filter.cityCampaignId) : undefined,
+        // campaignId default-scope filter from getCurrentCampaign().
+        // Applied as a subquery against city_campaigns rather than a
+        // join because we want this to be a constraint, not a
+        // multiplier on the result set. When the operator sets a
+        // specific cityCampaignId filter (URL ?campaign=<id>), that
+        // narrower constraint takes precedence — we skip this filter
+        // in that case to avoid redundant SQL.
+        filter.campaignId && !filter.cityCampaignId
+          ? sql`${emailThreads.cityCampaignId} IN (
+              SELECT id FROM city_campaigns WHERE campaign_id = ${filter.campaignId}
+            )`
+          : undefined,
         filter.outreachBrandId
           ? eq(emailThreads.outreachBrandId, filter.outreachBrandId)
           : undefined,
@@ -689,6 +722,11 @@ export async function fetchFolderCounts(opts: {
    *  reflect what the operator will see when they click into a
    *  folder. */
   accountIds?: string[];
+  /** Optional campaign-level scope from the global switcher. When
+   *  set, restricts the count CTE to threads on city_campaigns
+   *  belonging to this campaign — so left-rail counts match what
+   *  the thread list will actually show with the same default scope. */
+  campaignId?: string;
 }): Promise<Record<InboxFolder, number>> {
   // Pull one count per logical predicate. Rather than one big GROUP BY
   // (which doesn't compose with the new direction / starred / snooze
@@ -707,6 +745,12 @@ export async function fetchFolderCounts(opts: {
           sql`, `,
         )})`
       : sql``;
+  // Campaign filter — IN-subquery against city_campaigns. Skipped
+  // when no campaignId is set so the default counts span every
+  // campaign on the team.
+  const campaignFilter = opts.campaignId
+    ? sql`AND et.city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId})`
+    : sql``;
   const result = await db.execute<{
     inbox: number;
     sent: number;
@@ -729,6 +773,7 @@ export async function fetchFolderCounts(opts: {
       WHERE ca.team_id = ${opts.currentTeamId}
         ${opts.mine ? sql`AND ca.owner_user_id = ${opts.currentUserId}` : sql``}
         ${accountFilter}
+        ${campaignFilter}
     ),
     draft_counts AS (
       SELECT
@@ -737,6 +782,11 @@ export async function fetchFolderCounts(opts: {
       FROM email_drafts
       WHERE owner_user_id = ${opts.currentUserId}
         AND team_id = ${opts.currentTeamId}
+        ${
+          opts.campaignId
+            ? sql`AND city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId})`
+            : sql``
+        }
     )
     SELECT
       COUNT(*) FILTER (
