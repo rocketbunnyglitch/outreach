@@ -1,7 +1,7 @@
 "use server";
 
 import { cities } from "@/db/schema";
-import { requireStaff, requireSuperUser } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -140,21 +140,79 @@ export async function archiveCity(id: string): Promise<void> {
     tx.update(cities).set({ archivedAt: new Date(), updatedBy: staff.id }).where(eq(cities.id, id)),
   );
   revalidatePath("/cities");
+  revalidatePath("/admin/archived-cities");
   redirect("/cities");
 }
 
 /**
+ * Same as archiveCity but returns a result instead of redirecting.
+ * Used by callers (e.g. the per-row action on /cities) that don't
+ * want to be pulled to /cities (they're already there).
+ */
+export async function archiveCityNoRedirect(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(cities)
+        .set({ archivedAt: new Date(), updatedBy: staff.id })
+        .where(eq(cities.id, id)),
+    );
+    revalidatePath("/cities");
+    revalidatePath("/admin/archived-cities");
+    return { ok: true };
+  } catch (err) {
+    console.error("[archiveCityNoRedirect] failed", { err, cityId: id, by: staff.id });
+    return { ok: false, error: "Couldn't archive city." };
+  }
+}
+
+/**
+ * Restore a previously-archived city. Clears archived_at.
+ * Admin-only — undoing operator decisions affects every campaign
+ * + venue that touched this city.
+ */
+export async function unarchiveCity(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Admin role required to restore archived cities." };
+  }
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx.update(cities).set({ archivedAt: null, updatedBy: staff.id }).where(eq(cities.id, id)),
+    );
+    revalidatePath("/cities");
+    revalidatePath("/admin/archived-cities");
+    return { ok: true };
+  } catch (err) {
+    console.error("[unarchiveCity] failed", { err, cityId: id, by: staff.id });
+    return { ok: false, error: "Couldn't restore city." };
+  }
+}
+
+/**
  * Permanent, irreversible delete of a city and every downstream record
- * referencing it. Superuser only. Most operators should archive instead;
- * this is for clearing duplicate / mistaken entries. If any FK has
- * ON DELETE RESTRICT (e.g. a venue still points here), the transaction
- * aborts and we return a friendly error.
+ * referencing it.
+ *
+ * Admin-tier per operator: "from the cities tab you should be able
+ * to permanently delete a city as an admin not just archive". The
+ * prior superuser-only gate was too restrictive — operator is admin
+ * and needs the verb for legitimate cleanup. Non-admin staff retain
+ * the archive route only.
+ *
+ * If any FK has ON DELETE RESTRICT (e.g. a venue still points here),
+ * the transaction aborts and we return a friendly error so the UI
+ * can suggest archive instead.
  */
 export async function hardDeleteCity(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { staff } = await requireSuperUser();
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Admin role required to permanently delete cities." };
+  }
   try {
     await withAuditContext(staff.id, async (tx) => tx.delete(cities).where(eq(cities.id, id)));
     revalidatePath("/cities");
+    revalidatePath("/admin/archived-cities");
     return { ok: true };
   } catch (err) {
     console.error("[hardDeleteCity] failed", { err, cityId: id, by: staff.id });

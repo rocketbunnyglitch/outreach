@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cities, countries } from "@/db/schema";
+import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { Plus } from "lucide-react";
@@ -20,6 +21,8 @@ export const dynamic = "force-dynamic";
  * grouping interactively.
  */
 export default async function CitiesListPage() {
+  const { staff } = await requireStaff();
+
   const rows = await db
     .select({
       city: cities,
@@ -28,7 +31,7 @@ export default async function CitiesListPage() {
     .from(cities)
     .innerJoin(countries, eq(countries.code, cities.countryCode))
     .where(isNull(cities.archivedAt))
-    .orderBy(asc(countries.name), asc(cities.region), asc(cities.name));
+    .orderBy(asc(countries.name), asc(cities.name), asc(cities.region));
 
   // Flatten to simple shape for the client
   const items = rows.map(({ city, country }) => ({
@@ -62,7 +65,7 @@ export default async function CitiesListPage() {
         </Button>
       </header>
 
-      <CitiesListClient items={items} />
+      <CitiesListClient items={items} currentStaffIsAdmin={staff.role === "admin"} />
     </div>
   );
 }

@@ -1,10 +1,13 @@
 "use client";
-
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
+import { captureClientError } from "@/lib/client-error";
 import { cn } from "@/lib/cn";
-import { Globe, MapPin, Search } from "lucide-react";
+import { Archive, Globe, MapPin, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState, useTransition } from "react";
+import { archiveCityNoRedirect, hardDeleteCity } from "../_actions";
 
 interface CityItem {
   id: string;
@@ -26,9 +29,25 @@ interface CityItem {
  *
  * Each group has a sticky-feeling country header band with the count
  * inline. Rows are dense but breathe — single-line, mono-tabular
- * coordinates trailing, hover slides the chevron in.
+ * coordinates trailing.
+ *
+ * Per-row action buttons (admin):
+ *   - Archive (everyone)        — soft-delete; restorable
+ *   - Delete permanently (admin) — cascading hard delete
+ *
+ * Sort within a country group: case-insensitive by city name. The
+ * server already orders by region then name, but case-insensitive
+ * sort here ensures "London" doesn't float to the top when the
+ * server collation treats uppercase as < lowercase. Operator
+ * flagged this in the screenshot.
  */
-export function CitiesListClient({ items }: { items: CityItem[] }) {
+export function CitiesListClient({
+  items,
+  currentStaffIsAdmin,
+}: {
+  items: CityItem[];
+  currentStaffIsAdmin: boolean;
+}) {
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
@@ -50,6 +69,19 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
       const entry = map.get(k) ?? { country: c.countryName, items: [] };
       entry.items.push(c);
       map.set(k, entry);
+    }
+    // Sort cities within each country case-insensitively by name.
+    // Server ORDER BY region NULLS-FIRST + name can put a row with
+    // a NULL region above any region — operator screenshot shows
+    // a London floating to the top of its country's list. Sorting
+    // here ensures pure alphabetical (region tie-breaks via locale
+    // string compare so "ON" < "QC" etc.).
+    for (const [, group] of map) {
+      group.items.sort((a, b) => {
+        const nameCmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        if (nameCmp !== 0) return nameCmp;
+        return (a.region ?? "").localeCompare(b.region ?? "", undefined, { sensitivity: "base" });
+      });
     }
     return Array.from(map.entries()).sort((a, b) => a[1].country.localeCompare(b[1].country));
   }, [filtered]);
@@ -109,7 +141,7 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
           </header>
           <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/40">
             {group.items.map((c) => (
-              <CityRow key={c.id} city={c} />
+              <CityRow key={c.id} city={c} currentStaffIsAdmin={currentStaffIsAdmin} />
             ))}
           </ul>
         </section>
@@ -118,13 +150,86 @@ export function CitiesListClient({ items }: { items: CityItem[] }) {
   );
 }
 
-function CityRow({ city }: { city: CityItem }) {
+function CityRow({
+  city,
+  currentStaffIsAdmin,
+}: {
+  city: CityItem;
+  currentStaffIsAdmin: boolean;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTx] = useTransition();
   const hasCoords = city.lat !== null && city.lng !== null;
+
+  function handleArchive() {
+    if (
+      !confirm(
+        `Archive ${city.name}? It'll disappear from this list but the record stays for restore.`,
+      )
+    ) {
+      return;
+    }
+    startTx(async () => {
+      try {
+        const res = await archiveCityNoRedirect(city.id);
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error ?? "Couldn't archive city.",
+            tag: "cities.archive",
+          });
+          return;
+        }
+        toast.show({ kind: "success", message: `${city.name} archived.` });
+        router.refresh();
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "cities.archive",
+          fallback: "Couldn't archive city.",
+        });
+        toast.show({ kind: "error", message: cap.message, code: cap.code });
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (
+      !confirm(
+        `Permanently DELETE ${city.name}? Cascades through venues + campaigns + history. Cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    if (!confirm("Are you absolutely sure?")) return;
+    startTx(async () => {
+      try {
+        const res = await hardDeleteCity(city.id);
+        if (!res.ok) {
+          toast.show({
+            kind: "error",
+            message: res.error ?? "Couldn't permanently delete city.",
+            tag: "cities.hard_delete",
+          });
+          return;
+        }
+        toast.show({ kind: "success", message: `${city.name} deleted permanently.` });
+        router.refresh();
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "cities.hard_delete",
+          fallback: "Couldn't permanently delete city.",
+        });
+        toast.show({ kind: "error", message: cap.message, code: cap.code });
+      }
+    });
+  }
+
   return (
-    <li>
+    <li className={cn("group flex items-center gap-3 px-5 py-3", pending && "opacity-50")}>
       <Link
         href={`/cities/${city.id}`}
-        className="group flex items-center gap-4 px-5 py-3 transition-colors hover:bg-blue-500/[0.04] dark:hover:bg-blue-400/[0.04]"
+        className="-mx-5 -my-3 flex flex-1 items-center gap-4 px-5 py-3 transition-colors hover:bg-blue-500/[0.04] dark:hover:bg-blue-400/[0.04]"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2.5">
@@ -154,15 +259,34 @@ function CityRow({ city }: { city: CityItem }) {
             )}
           </div>
         </div>
-        <span
-          className={cn(
-            "font-mono text-[10px] text-zinc-400 tracking-widest",
-            "translate-x-1 opacity-0 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100",
-          )}
-        >
-          edit →
-        </span>
       </Link>
+
+      {/* Archive / delete — hover-revealed to keep the list calm.
+          Admin gets both buttons; non-admin gets only Archive. */}
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={handleArchive}
+          disabled={pending}
+          className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+          aria-label={`Archive ${city.name}`}
+          title="Archive — hide from list. Restore from Admin → Archived Cities."
+        >
+          <Archive className="h-3 w-3" />
+        </button>
+        {currentStaffIsAdmin && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={pending}
+            className="rounded p-1 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600 dark:hover:bg-rose-500/[0.12] dark:hover:text-rose-400"
+            aria-label={`Permanently delete ${city.name}`}
+            title="Permanently DELETE — cascades through venues + campaigns. Cannot be undone."
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
     </li>
   );
 }

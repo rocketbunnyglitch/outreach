@@ -362,6 +362,29 @@ async function renderAdminPage() {
         </header>
       </section>
 
+      {/* Archived cities — parallel surface to archived-venues. Per
+          operator: "from the cities tab you should be able to
+          permanently delete a city as an admin not just archive". */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-center justify-between gap-4 px-6 py-4">
+          <div className="flex items-start gap-3">
+            <Archive className="mt-0.5 h-5 w-5 text-zinc-500" />
+            <div>
+              <h2 className="font-semibold text-lg tracking-tight">Archived cities</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Soft-deleted cities. Restore to bring them back to the master directory, or
+                permanently delete (cascades through venues + campaigns; cannot be undone).
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/archived-cities">
+              Open <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        </header>
+      </section>
+
       {/* Classifier backfill — admin-only tool to apply the rule-based
           triage classifier to historical unclassified threads. The
           classifier runs live on new mail (gmail-poll-worker.ts), but
