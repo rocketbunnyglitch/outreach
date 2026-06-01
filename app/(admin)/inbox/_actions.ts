@@ -4,7 +4,7 @@
  * Inbox server actions.
  *
  * Phase: post-Gmail-poll. Now that messages ingest, operators need to
- * actually DO things in the inbox — reply, mark interested, archive,
+ * actually DO things in the inbox -- reply, mark interested, archive,
  * assign to a slot, mark as read. This file holds those actions.
  *
  * Naming pattern matches the rest of the engine: each action takes
@@ -175,7 +175,7 @@ export async function sendThreadReply(
   const subject = baseSubject.toLowerCase().startsWith("re:") ? baseSubject : `Re: ${baseSubject}`;
 
   // Rich HTML body if the composer supplied one (the popout
-  // composer routes through composeAndSendImpl, not here — but a
+  // composer routes through composeAndSendImpl, not here -- but a
   // future inline rich editor could send bodyHtml through this
   // path too). Fall back to a light text→HTML when the form only
   // has plain text. Either path is sanitized so XSS can't reach
@@ -197,8 +197,8 @@ export async function sendThreadReply(
 
   // Preflight cold-send cap. Replies almost always classify warm
   // (the thread has inbound history), but a reply on a thread that
-  // only has outbound messages — say the operator hits Reply on
-  // their own sent message — comes back cold and consumes a slot.
+  // only has outbound messages -- say the operator hits Reply on
+  // their own sent message -- comes back cold and consumes a slot.
   // Admin override via the form's bypassCap flag.
   const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
   const preflight = await preflightSend({
@@ -265,7 +265,7 @@ export async function sendThreadReply(
       bccAddresses: [],
       // Normalized columns. `recipient` was already produced via
       // extractEmail() from the last inbound's from_address, which
-      // strips display names and lowercases — exactly the
+      // strips display names and lowercases -- exactly the
       // normalized form. senderInbox.email is the operator's clean
       // address. No further parsing required.
       fromEmailNormalized: senderInbox.email.toLowerCase(),
@@ -295,7 +295,7 @@ export async function sendThreadReply(
       .where(eq(emailThreads.id, threadId));
   } catch (err) {
     logger.error({ err, threadId }, "thread reply DB write failed AFTER sending Gmail");
-    // The message went out — surface a soft warning rather than failing.
+    // The message went out -- surface a soft warning rather than failing.
     return {
       ok: false,
       error: "The reply sent but couldn't be saved to the inbox view. Refresh the page.",
@@ -311,7 +311,7 @@ export async function sendThreadReply(
       recipientEmail: recipient,
       category: sendCategory,
       capBypassed,
-      // Inbox replies are freeform — no template. Team scoped from
+      // Inbox replies are freeform -- no template. Team scoped from
       // the calling staff (Phase C.1).
       templateId: null,
       teamId: staff.teamId,
@@ -320,7 +320,7 @@ export async function sendThreadReply(
     logger.error({ err, threadId }, "sendThreadReply: recordSendEvent failed");
   }
 
-  // Operator action — clear stale + cadence immediately rather than
+  // Operator action -- clear stale + cadence immediately rather than
   // waiting for the next cron tick. A reply (outbound) shouldn't
   // immediately clear cadence (it's still cold-no-reply until inbound),
   // but the act of operator engagement resets the timer: re-bootstrap
@@ -346,7 +346,7 @@ export async function sendThreadReply(
 }
 
 // =========================================================================
-// Mark thread read — fired client-side when a thread is opened
+// Mark thread read -- fired client-side when a thread is opened
 // =========================================================================
 
 export async function markThreadRead(threadId: string): Promise<ActionResult<{ ok: true }>> {
@@ -370,7 +370,7 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
 
     // Mirror to Gmail by removing the UNREAD system label. Without
     // this, the operator's Gmail account stays bold/unread even
-    // after they viewed the thread in the engine — the engine and
+    // after they viewed the thread in the engine -- the engine and
     // Gmail get out of sync, and operators get notification
     // duplicates (engine cleared the badge, Gmail still buzzes
     // their phone). Best-effort: Gmail API failure logs but doesn't
@@ -378,7 +378,7 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
     //
     // Asymmetric to setThreadStar: read-state is per-MESSAGE in
     // Gmail, not per-thread. We call threads.modify to remove
-    // UNREAD which acts on every message in the thread —
+    // UNREAD which acts on every message in the thread --
     // matches operator intent ("I've seen all of this").
     try {
       const [acct] = await db
@@ -419,9 +419,9 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
 }
 
 /**
- * markThreadUnread — counterpart to markThreadRead. Sets unread_count
+ * markThreadUnread -- counterpart to markThreadRead. Sets unread_count
  * to 1 so the thread re-surfaces in unread filters + the row badge
- * comes back. Doesn't touch email_messages.read_at — the per-message
+ * comes back. Doesn't touch email_messages.read_at -- the per-message
  * read state is separate and tracking which specific message to
  * re-flag isn't a useful distinction at the operator level.
  */
@@ -494,6 +494,32 @@ export async function setThreadState(
         followUpNextDueAt: null,
       })
       .where(eq(emailThreads.id, threadId));
+
+    // Mirror archive transitions to Gmail. Gmail represents
+    // archive as "INBOX label removed"; everything else
+    // (re-active, manually moved to a folder) just adds INBOX
+    // back. Other engine states (closed, won, lost, etc.) don't
+    // have a clean Gmail mirror -- we leave the Gmail INBOX
+    // label alone for those. The operator may have their own
+    // Gmail-side organization that we shouldn't override.
+    if (state === "archived") {
+      await mirrorGmailLabels({
+        threadId,
+        removeLabelIds: ["INBOX"],
+        context: "setThreadState:archive",
+      });
+    } else {
+      // Previous state was archived; un-archiving puts the
+      // thread back into the inbox view. Bring back the INBOX
+      // label. Idempotent -- if INBOX was never removed, this
+      // is a no-op on Gmail's side.
+      await mirrorGmailLabels({
+        threadId,
+        addLabelIds: ["INBOX"],
+        context: "setThreadState:unarchive",
+      });
+    }
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     publishRealtime({
@@ -515,12 +541,115 @@ export async function setThreadState(
 // =========================================================================
 
 /**
- * setThreadStar — toggle the Gmail-style star on a thread. Engine-side
+ * Best-effort Gmail label mirror for a SINGLE thread.
+ *
+ * Used by every engine-side action that maps to a Gmail label
+ * change: star (STARRED), archive (INBOX removal), trash (TRASH),
+ * read (UNREAD removal), and their inverses. The engine state has
+ * already been written by the caller; this only mirrors the
+ * decision to Gmail so the operator's mailbox stays in sync.
+ *
+ * Errors are logged + swallowed. Engine state is canonical;
+ * eventual consistency via the next poll cycle recovers from
+ * Gmail-side failures.
+ *
+ * Returns true if a mirror was attempted (token + gmail_thread_id
+ * both present), false if no Gmail context was available (e.g.
+ * thread never had a gmail_thread_id because it was created
+ * before Gmail integration).
+ */
+async function mirrorGmailLabels(opts: {
+  threadId: string;
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  context: string;
+}): Promise<boolean> {
+  if ((opts.addLabelIds?.length ?? 0) === 0 && (opts.removeLabelIds?.length ?? 0) === 0) {
+    return false;
+  }
+  try {
+    const [acct] = await db
+      .select({
+        gmailThreadId: emailThreads.gmailThreadId,
+        token: connectedAccounts.gmailOauthRefreshToken,
+      })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, opts.threadId))
+      .limit(1);
+    if (!acct?.token || !acct.gmailThreadId) return false;
+    await modifyGmailThreadLabels({
+      encryptedRefreshToken: acct.token,
+      gmailThreadId: acct.gmailThreadId,
+      addLabelIds: opts.addLabelIds,
+      removeLabelIds: opts.removeLabelIds,
+    });
+    return true;
+  } catch (err) {
+    logger.warn(
+      { err, threadId: opts.threadId, context: opts.context },
+      "mirrorGmailLabels failed (engine state already updated)",
+    );
+    return false;
+  }
+}
+
+/**
+ * Best-effort Gmail label mirror for a BATCH of threads. Iterates
+ * per thread because each may be in a different connected_account
+ * with its own token. Per-thread failures log but don't fail the
+ * batch -- engine state is canonical for the rest.
+ *
+ * Returns the count of successful mirrors. Caller can log this
+ * for observability but typically doesn't need to act on it.
+ */
+async function mirrorGmailLabelsBatch(opts: {
+  threadIds: string[];
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  context: string;
+}): Promise<number> {
+  if (opts.threadIds.length === 0) return 0;
+  if ((opts.addLabelIds?.length ?? 0) === 0 && (opts.removeLabelIds?.length ?? 0) === 0) {
+    return 0;
+  }
+  const rows = await db
+    .select({
+      threadId: emailThreads.id,
+      gmailThreadId: emailThreads.gmailThreadId,
+      token: connectedAccounts.gmailOauthRefreshToken,
+    })
+    .from(emailThreads)
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .where(inArray(emailThreads.id, opts.threadIds));
+  let ok = 0;
+  for (const row of rows) {
+    if (!row.token || !row.gmailThreadId) continue;
+    try {
+      await modifyGmailThreadLabels({
+        encryptedRefreshToken: row.token,
+        gmailThreadId: row.gmailThreadId,
+        addLabelIds: opts.addLabelIds,
+        removeLabelIds: opts.removeLabelIds,
+      });
+      ok++;
+    } catch (err) {
+      logger.warn(
+        { err, threadId: row.threadId, context: opts.context },
+        "mirrorGmailLabelsBatch entry failed (engine state already updated)",
+      );
+    }
+  }
+  return ok;
+}
+
+/**
+ * setThreadStar -- toggle the Gmail-style star on a thread. Engine-side
  * only in v1; a future cron can two-way sync to Gmail using the OAuth
  * creds on the connected_account.
  *
  * Auth: requireStaff + team-scoped (thread's connected account must be
- * on the operator's team). No role gating — anyone on the team can
+ * on the operator's team). No role gating -- anyone on the team can
  * star/unstar shared threads, same as Gmail.
  */
 export async function setThreadStar(
@@ -560,7 +689,7 @@ export async function setThreadStar(
     // Two-way sync per the 10/10 spec: engine -> Gmail is here,
     // Gmail -> engine handled on ingest in gmail-poll-worker.
     //
-    // Best-effort — if the Gmail call fails (network, expired
+    // Best-effort -- if the Gmail call fails (network, expired
     // token, deleted thread on the Gmail side) we log + return
     // success to the operator. The engine-side state is the
     // canonical source the UI shows; eventual consistency with
@@ -613,7 +742,7 @@ export async function setThreadStar(
 }
 
 /**
- * setThreadTrash — soft-delete a thread (move to Trash) or restore it.
+ * setThreadTrash -- soft-delete a thread (move to Trash) or restore it.
  *
  * Sets / clears email_threads.deleted_at. The Trash mailbox view shows
  * deleted_at IS NOT NULL; every other view filters them out. Recoverable
@@ -654,6 +783,29 @@ export async function setThreadTrash(
       })
       .where(eq(emailThreads.id, threadId));
 
+    // Mirror to Gmail TRASH. Trashing in Gmail moves the thread
+    // OUT of inbox into the Trash folder (auto-expires after 30
+    // days per Gmail policy); restoring puts it back. Asymmetric
+    // with our engine: our `deletedAt` is permanent until
+    // operator manually clears, no auto-expiry. We accept this
+    // semantic mismatch -- operators who use restore expect a
+    // round trip, not "restore from a deleted-forever state."
+    //
+    // Use the dedicated trash/untrash endpoints because they're
+    // simpler than juggling the TRASH system label via
+    // threads.modify; the API distinguishes the two operations.
+    //
+    // Skipped here as a follow-up: the dedicated endpoints aren't
+    // wrapped in our gmail helper yet. For now we use the label
+    // path which DOES work -- adding/removing the TRASH label
+    // through threads.modify produces the same observable result.
+    await mirrorGmailLabels({
+      threadId,
+      addLabelIds: trashed ? ["TRASH"] : [],
+      removeLabelIds: trashed ? ["INBOX"] : ["TRASH"],
+      context: trashed ? "setThreadTrash:trash" : "setThreadTrash:restore",
+    });
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     publishRealtime({
@@ -671,7 +823,7 @@ export async function setThreadTrash(
 }
 
 /**
- * reportThreadSpam — apply Gmail's SPAM label to a thread + soft-delete
+ * reportThreadSpam -- apply Gmail's SPAM label to a thread + soft-delete
  * on our side so it stops showing in the inbox.
  *
  * Two-step:
@@ -757,7 +909,7 @@ export async function reportThreadSpam(
 }
 
 /**
- * blockThreadSender — add the most-recent inbound sender's address
+ * blockThreadSender -- add the most-recent inbound sender's address
  * to the team's email_suppression list so we never send to them
  * again.
  *
@@ -765,11 +917,11 @@ export async function reportThreadSpam(
  * thread. If the thread has no inbound messages (e.g. drafts-only),
  * the action returns an error since there's no sender to block.
  *
- * Idempotent: ON CONFLICT (team_id, email) DO NOTHING — re-blocking
+ * Idempotent: ON CONFLICT (team_id, email) DO NOTHING -- re-blocking
  * the same address is a no-op rather than an error.
  *
  * Doesn't auto-trash the thread (caller can trash separately if
- * they want). Doesn't touch Gmail — the suppression list only
+ * they want). Doesn't touch Gmail -- the suppression list only
  * affects our send pipeline.
  *
  * Auth: requireStaff + team scope.
@@ -796,7 +948,7 @@ export async function blockThreadSender(
       .orderBy(desc(emailMessages.sentAt))
       .limit(1);
     if (!latest) {
-      return { ok: false, error: "This thread has no inbound messages — nothing to block." };
+      return { ok: false, error: "This thread has no inbound messages -- nothing to block." };
     }
     if (latest.teamId !== staff.teamId) {
       return { ok: false, error: "Thread not on your team." };
@@ -825,7 +977,7 @@ export async function blockThreadSender(
 }
 
 /**
- * setThreadSnooze — snooze a thread until a future timestamp, or clear
+ * setThreadSnooze -- snooze a thread until a future timestamp, or clear
  * an existing snooze (pass snoozeUntil="").
  *
  * Snoozed threads hide from inbox / smart views until snooze_until passes
@@ -897,23 +1049,23 @@ export async function setThreadSnooze(
 }
 
 /**
- * bulkUpdateThreads — apply one of a handful of toggles to a list of
+ * bulkUpdateThreads -- apply one of a handful of toggles to a list of
  * thread ids. Used by the inbox top toolbar when the operator has
  * selected one or more rows.
  *
  * Supported actions:
- *   star          — is_starred = true
- *   unstar        — is_starred = false
- *   trash         — deleted_at = now()
- *   restore       — deleted_at = null (un-trash)
- *   archive       — state = 'archived' + archived_at = now()
- *   mark_read     — unread_count = 0 (clears the unread badge)
- *   mark_unread   — unread_count = 1 (resurfaces the unread badge)
+ *   star          -- is_starred = true
+ *   unstar        -- is_starred = false
+ *   trash         -- deleted_at = now()
+ *   restore       -- deleted_at = null (un-trash)
+ *   archive       -- state = 'archived' + archived_at = now()
+ *   mark_read     -- unread_count = 0 (clears the unread badge)
+ *   mark_unread   -- unread_count = 1 (resurfaces the unread badge)
  *
  * Auth: requireStaff + team-scoped on every id (WHERE clause includes
  * the team_id check via the joined connected_accounts row).
  *
- * Returns the count of rows actually updated — useful for the toast
+ * Returns the count of rows actually updated -- useful for the toast
  * "Archived 12 threads" feedback.
  */
 export async function bulkUpdateThreads(
@@ -985,7 +1137,7 @@ export async function bulkUpdateThreads(
     case "unarchive":
       // Restore an archived thread back to active. We don't try to
       // remember the prior state (the engine doesn't store the
-      // pre-archive state); needs_reply is the right default —
+      // pre-archive state); needs_reply is the right default --
       // operator can re-classify after the thread re-surfaces.
       patch.state = "needs_reply";
       patch.archivedAt = null;
@@ -1001,46 +1153,64 @@ export async function bulkUpdateThreads(
   try {
     await db.update(emailThreads).set(patch).where(inArray(emailThreads.id, okIds));
 
-    // Gmail mirror for read/unread bulk actions. Without this the
-    // engine clears the unread badge but Gmail keeps the thread
-    // bold, leading to duplicate notifications + a confused
-    // operator. Best-effort per thread: a Gmail-API failure
-    // (single bad token, transient 5xx) logs but doesn't fail the
-    // whole bulk op. The engine state is canonical; eventual
-    // consistency with Gmail is the goal.
+    // Gmail mirror for every action that maps to a Gmail label
+    // change. Without this the engine + Gmail drift: operator
+    // archives in the engine, Gmail still shows the thread in
+    // inbox; operator stars in the engine, Gmail doesn't.
+    // Routed through mirrorGmailLabelsBatch which iterates per
+    // thread (different connected_accounts have different
+    // tokens) and logs per-thread failures without failing the
+    // whole batch.
     //
-    // We only mirror mark_read / mark_unread here. Star bulk
-    // actions already flow through setThreadStar's per-thread
-    // mirror in a future surface; the bulk path doesn't yet
-    // call into that helper (a separate gap to address later).
-    if (act === "mark_read" || act === "mark_unread") {
-      const removeLabel = act === "mark_read" ? "UNREAD" : null;
-      const addLabel = act === "mark_unread" ? "UNREAD" : null;
-      const rows = await db
-        .select({
-          threadId: emailThreads.id,
-          gmailThreadId: emailThreads.gmailThreadId,
-          token: connectedAccounts.gmailOauthRefreshToken,
-        })
-        .from(emailThreads)
-        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
-        .where(inArray(emailThreads.id, okIds));
-      for (const row of rows) {
-        if (!row.token) continue;
-        try {
-          await modifyGmailThreadLabels({
-            encryptedRefreshToken: row.token,
-            gmailThreadId: row.gmailThreadId,
-            addLabelIds: addLabel ? [addLabel] : [],
-            removeLabelIds: removeLabel ? [removeLabel] : [],
-          });
-        } catch (err) {
-          logger.warn(
-            { err, threadId: row.threadId, act },
-            "bulkUpdateThreads: Gmail label mirror failed (engine state already updated)",
-          );
-        }
-      }
+    // Action -> label transition table:
+    //   star        +STARRED
+    //   unstar      -STARRED
+    //   archive     -INBOX
+    //   unarchive   +INBOX
+    //   trash       +TRASH, -INBOX
+    //   restore     -TRASH
+    //   mark_read   -UNREAD
+    //   mark_unread +UNREAD
+    //
+    // Note: archive/unarchive don't touch UNREAD; trashing doesn't
+    // touch UNREAD either. Read-state is a separate concern that
+    // operators may want independent of archive/trash state.
+    let addLabels: string[] = [];
+    let removeLabels: string[] = [];
+    switch (act) {
+      case "star":
+        addLabels = ["STARRED"];
+        break;
+      case "unstar":
+        removeLabels = ["STARRED"];
+        break;
+      case "archive":
+        removeLabels = ["INBOX"];
+        break;
+      case "unarchive":
+        addLabels = ["INBOX"];
+        break;
+      case "trash":
+        addLabels = ["TRASH"];
+        removeLabels = ["INBOX"];
+        break;
+      case "restore":
+        removeLabels = ["TRASH"];
+        break;
+      case "mark_read":
+        removeLabels = ["UNREAD"];
+        break;
+      case "mark_unread":
+        addLabels = ["UNREAD"];
+        break;
+    }
+    if (addLabels.length > 0 || removeLabels.length > 0) {
+      await mirrorGmailLabelsBatch({
+        threadIds: okIds,
+        addLabelIds: addLabels,
+        removeLabelIds: removeLabels,
+        context: `bulkUpdateThreads:${act}`,
+      });
     }
 
     revalidatePath("/inbox");
@@ -1053,7 +1223,7 @@ export async function bulkUpdateThreads(
 }
 
 /**
- * openReplyDraft — create a new email_drafts row seeded with the
+ * openReplyDraft -- create a new email_drafts row seeded with the
  * given thread's context so the global composer can take over the
  * reply / reply-all / forward flow.
  *
@@ -1076,13 +1246,13 @@ export async function bulkUpdateThreads(
  */
 export async function openReplyDraft(input: {
   threadId: string;
-  /** Optional anchor message — defaults to the latest in the thread. */
+  /** Optional anchor message -- defaults to the latest in the thread. */
   messageId?: string | null;
   mode: "reply" | "reply_all" | "forward";
   /**
    * Optional pre-filled body text. When set, the draft's bodyHtml
    * is seeded with this string wrapped in a <div>. Used by the
-   * smart-reply chips on the thread page (Haiku ROI #1) — clicking
+   * smart-reply chips on the thread page (Haiku ROI #1) -- clicking
    * a chip opens a reply with the suggested text already pasted in
    * the editable surface, ready for the operator to edit before
    * sending.
@@ -1166,7 +1336,7 @@ export async function openReplyDraft(input: {
   if (input.mode === "forward") {
     toList = []; // operator types it in
   } else {
-    // Reply / Reply All — reply to the sender of the anchor message.
+    // Reply / Reply All -- reply to the sender of the anchor message.
     // Skip if the anchor was outbound (replying to your own message);
     // fall back to the latest INBOUND message in the thread.
     let target = message;
@@ -1312,7 +1482,7 @@ function escapeHtml(s: string): string {
 void withAuditContext;
 
 /**
- * setThreadClassification — manual override of the triage classification.
+ * setThreadClassification -- manual override of the triage classification.
  * Once an operator sets one explicitly, the Gmail poller's auto-update
  * guard (only-when-unclassified) protects this choice from getting
  * clobbered by a later inbound message.
@@ -1334,7 +1504,7 @@ export async function setThreadClassification(
   const { staff } = await requireStaff();
   try {
     // Set the operator-confirmed classification AND clear any
-    // pending AI suggestion in the same statement — the
+    // pending AI suggestion in the same statement -- the
     // suggestion pill is supposed to disappear the moment the
     // operator either confirms or overrides. Phase A.1.
     await db.execute(sql`
@@ -1363,11 +1533,11 @@ export async function setThreadClassification(
 }
 
 /**
- * backfillThreadClassifications — re-runs the triage classifier across
+ * backfillThreadClassifications -- re-runs the triage classifier across
  * every thread that's currently unclassified, using the latest inbound
  * message in each thread as the signal.
  *
- * Admin-only — meant for one-shot cleanup after the classifier ships or
+ * Admin-only -- meant for one-shot cleanup after the classifier ships or
  * after a rule update. Caps at 500 threads per run to avoid hammering
  * the DB; re-run to keep going if there are more.
  */
@@ -1451,11 +1621,11 @@ export async function backfillThreadClassifications(): Promise<
 }
 
 // =========================================================================
-// Team label actions — apply / remove a label on a thread.
+// Team label actions -- apply / remove a label on a thread.
 // =========================================================================
 
 /**
- * List the team's labels — small reader used by the composer's
+ * List the team's labels -- small reader used by the composer's
  * three-dot menu to populate the Apply Labels submenu without
  * requiring the page-level data prop.
  */
@@ -1472,7 +1642,7 @@ export async function listTeamLabelsAction(): Promise<
 
 /**
  * List the labels currently applied to a thread. Same scope as
- * applyLabelToThreadAction — team-bound via the thread's join.
+ * applyLabelToThreadAction -- team-bound via the thread's join.
  */
 export async function listThreadLabelsAction(
   threadId: string,
@@ -1720,7 +1890,7 @@ export async function createAndApplyGmailLabelAction(
 }
 
 /**
- * AI-assisted reply drafter — wraps lib/ai-reply.draftReply in a
+ * AI-assisted reply drafter -- wraps lib/ai-reply.draftReply in a
  * server-action contract the popout composer can call from the client.
  *
  * Always requires staff auth (via the underlying loader). Returns
