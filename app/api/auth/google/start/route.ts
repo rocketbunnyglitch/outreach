@@ -51,7 +51,16 @@ export async function GET(_req: NextRequest) {
 
   const authUrl = buildGmailAuthUrl({
     state: Buffer.from(state).toString("base64"),
-    loginHint: staff.primaryEmail,
+    // Force Google's account chooser even when the user has a single
+    // active session. Without this, Google silently picks the
+    // currently-signed-in account, which broke the "connect a
+    // secondary inbox" flow — operators couldn't switch to a different
+    // gmail than the one they're signed into.
+    //
+    // Intentionally NO loginHint here — the secondary inbox is by
+    // definition different from staff.primaryEmail, so hinting our
+    // own email actively works against the operator.
+    forceAccountChooser: true,
   });
 
   return NextResponse.redirect(authUrl);

@@ -80,12 +80,32 @@ export function isGmailOAuthConfigured(): boolean {
  * `prompt=consent` forces the consent screen every time so we always get a
  * refresh token. Without this, Google sometimes skips the prompt and only
  * returns an access token, breaking long-term sending.
+ *
+ * `forceAccountChooser` adds `select_account` to the prompt list so Google
+ * shows the account chooser EVERY time, even when the user has only one
+ * active session. Essential for the "connect a secondary inbox" flow —
+ * without it, Google silently auto-selects the active browser session's
+ * account, defeating the purpose of connecting a different inbox.
+ * Operator: "when they try to press the gear and connect an email it
+ * automatically forces them to connect the current gmail they are logged
+ * into and not select from all their accounts".
+ *
+ * Do NOT combine `loginHint` with `forceAccountChooser=true` — login_hint
+ * is interpreted by Google as "pre-select this account" and overrides
+ * the chooser.
  */
 export function buildGmailAuthUrl(opts: {
   state: string;
   loginHint?: string;
+  forceAccountChooser?: boolean;
 }): string {
   const cfg = getGmailOAuthConfig();
+  // `prompt` accepts a space-separated list. `consent` keeps the
+  // refresh-token guarantee; `select_account` (when requested) forces
+  // the chooser to render even with a single active session.
+  const promptParts = ["consent"];
+  if (opts.forceAccountChooser) promptParts.unshift("select_account");
+
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
@@ -93,10 +113,14 @@ export function buildGmailAuthUrl(opts: {
     scope: GMAIL_OAUTH_SCOPES.join(" "),
     access_type: "offline",
     include_granted_scopes: "true",
-    prompt: "consent",
+    prompt: promptParts.join(" "),
     state: opts.state,
   });
-  if (opts.loginHint) params.set("login_hint", opts.loginHint);
+  // login_hint is incompatible with the account chooser — only set when
+  // the caller explicitly wants to pre-select an account.
+  if (opts.loginHint && !opts.forceAccountChooser) {
+    params.set("login_hint", opts.loginHint);
+  }
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
