@@ -84,7 +84,19 @@ export interface CrawlCard {
     | "other"
     | null;
   crawlNumber: number;
-  /** Free-text crawl name, e.g. "Downtown loop". Null when unnamed. */
+  /**
+   * Operator-set crawl name. Set via the bulk-rename tool on
+   * /tracker or per-event on /crawl-management. When non-null,
+   * REPLACES the auto-generated "Saturday crawl N" header in
+   * the slot-table title (e.g. operator renames Saturday Crawl 4
+   * to "Day Party" → header reads "Day Party" instead).
+   *
+   * Distinct from routeLabel which is a free-text description
+   * (e.g. "Downtown loop") rendered AFTER the title as a quiet
+   * subtitle.
+   */
+  crawlName: string | null;
+  /** Free-text crawl description, e.g. "Downtown loop". Null when unset. */
   routeLabel: string | null;
   eventDate: string;
   ticketsSold: number;

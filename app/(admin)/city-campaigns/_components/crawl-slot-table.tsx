@@ -182,15 +182,22 @@ function CrawlHeader({
     <div className="flex flex-col gap-1.5">
       <div className="group/crawlhdr flex items-baseline gap-3">
         <h3 className="font-semibold text-base tracking-tight">
-          {formatDayPart(crawl.dayPart)} crawl {crawl.crawlNumber}
+          {/* When the operator has bulk-renamed the crawl (events.crawl_name
+              set), the custom name REPLACES the auto label "Saturday
+              crawl N". Otherwise the auto label renders so freshly-
+              created crawls have a sensible default. Per operator: "I
+              changed all Crawl 4 to a day party and name as Day Party
+              but it doesn't show up on the crawl name on the individual
+              cities" — the bug was that loadCitySheet wasn't SELECTing
+              the crawl_name column at all, so the render never saw the
+              operator's override. */}
+          {crawl.crawlName ?? `${formatDayPart(crawl.dayPart)} crawl ${crawl.crawlNumber}`}
           {/* Sun icon when this crawl is classified as a day party.
               Matches the same affordance on the tracker (Round 1
               commit 2244135 added it to the CrawlSlotNeedGrid +
-              CrawlGlowGrid day labels). Operator: "there needs to be
-              a sun icon next to the Saturday Crawl 4 at the top when
-              the crawl is classified as a day crawl." Amber-500 to
-              read as warm-daylight without competing with the
-              wristband orange. */}
+              CrawlGlowGrid day labels). Amber-500 to read as
+              warm-daylight without competing with the wristband
+              orange. */}
           {crawl.crawlFormat === "day_party" && (
             <span
               className="ml-1 align-middle text-amber-500 dark:text-amber-400"

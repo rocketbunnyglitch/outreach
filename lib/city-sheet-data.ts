@@ -75,6 +75,14 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       dayPart: events.dayPart,
       crawlNumber: events.crawlNumber,
       routeLabel: events.routeLabel,
+      // Operator-set custom name (events.crawl_name). Set via the
+      // bulk-rename tool on /tracker (or per-event on
+      // /crawl-management). When present, supersedes the auto label
+      // "Saturday crawl N" in the slot-table header — operator
+      // flagged that "Day Party" rename wasn't appearing on city
+      // sheets despite being applied; the SELECT just wasn't
+      // pulling the column.
+      crawlName: events.crawlName,
       eventDate: events.eventDate,
       ticketsSold: events.ticketSalesCount,
       middleVenueGroupId: events.middleVenueGroupId,
@@ -381,6 +389,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       dayPart: ev.dayPart,
       crawlNumber: ev.crawlNumber ?? 1,
       routeLabel: ev.routeLabel ?? null,
+      crawlName: ev.crawlName ?? null,
       eventDate: String(ev.eventDate ?? ""),
       ticketsSold: ev.ticketsSold ?? 0,
       wristbandShip: wbByEvent.get(ev.id)?.ship ?? "none",
