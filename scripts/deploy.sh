@@ -36,7 +36,10 @@ APP_DIR="/var/www/outreach"
 LOG_FILE="/var/log/outreach-deploy.log"
 PM2_NAME="outreach"
 HEALTH_URL="http://127.0.0.1:3001/api/health"
-NODE_MAX_OLD_SPACE="1536"
+# Build heap. The box has 6 GB RAM + a 4 GB swapfile (added to stop the
+# OOM-killer corrupting builds), so we can give the build real headroom
+# instead of the old 1536 MB cap that risked heap-exhaustion mid-build.
+NODE_MAX_OLD_SPACE="3072"
 
 # === Parse flags ===
 SKIP_BUILD=0
@@ -58,6 +61,42 @@ log() {
 }
 
 trap 'log "FAIL: deploy exited at line $LINENO"' ERR
+
+# === Build integrity gate ===
+# An OOM-killed or otherwise incomplete `next build` can exit 0 yet omit
+# chunks the build manifests reference. Those chunks then 404 at runtime →
+# ChunkLoadError → the page never hydrates (frozen), and a reload just
+# re-requests the same missing chunk, so it stays frozen until the NEXT
+# deploy rebuilds. That is the root cause of the intermittent "frozen until
+# redeploy" dashboard. This gate verifies every chunk referenced by the
+# standalone build manifests actually exists on disk; if any are missing we
+# abort BEFORE reloading, so the previous (good) build keeps serving.
+verify_build() {
+  local sa=".next/standalone/.next"
+  local missing=0 checked=0 rel
+  for manifest in "$sa/app-build-manifest.json" "$sa/build-manifest.json"; do
+    if [ ! -f "$manifest" ]; then
+      log "  integrity: manifest missing: $manifest"
+      missing=$((missing + 1))
+      continue
+    fi
+    for rel in $(grep -oE '"static/[^"]+\.(js|css)"' "$manifest" | tr -d '"' | sort -u); do
+      checked=$((checked + 1))
+      if [ ! -f "$sa/$rel" ]; then
+        log "  integrity: MISSING chunk $rel"
+        missing=$((missing + 1))
+      fi
+    done
+  done
+  log "  integrity: checked $checked referenced chunks, $missing missing"
+  if [ "$missing" -gt 0 ]; then
+    log "✗ BUILD INTEGRITY FAILED — $missing referenced chunk(s) absent from the"
+    log "  standalone bundle (likely an OOM-truncated build). Aborting BEFORE"
+    log "  reload so the current build keeps serving. Re-run the deploy."
+    exit 5
+  fi
+  log "  ✓ build integrity OK"
+}
 
 # === Pre-flight checks ===
 log "=== Outreach deploy starting ==="
@@ -212,6 +251,9 @@ else
     mkdir -p .next/standalone/data
     cp -r data/. .next/standalone/data/ 2>/dev/null || true
   fi
+
+  # Gate: refuse to ship an incomplete (e.g. OOM-truncated) bundle.
+  verify_build
 fi
 
 # === Step 5: Reload PM2 (staggered across web instances) ===
