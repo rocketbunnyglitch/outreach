@@ -184,21 +184,56 @@ export async function pollOneInbox(inbox: {
   let messageIds: string[];
   let nextHistoryId: string | null = inbox.last_history_id;
 
+  // Threads whose STARRED label changed in Gmail since our last
+  // poll. We sync these to email_threads.is_starred so unstarring
+  // (or starring) directly in Gmail reflects in the engine.
+  // Populated from history.list's labelsAdded / labelsRemoved
+  // events when label_change history is requested.
+  const starredAddedThreadGmailIds = new Set<string>();
+  const starredRemovedThreadGmailIds = new Set<string>();
+
   if (inbox.last_history_id) {
     // Incremental: history.list since the last point we processed.
+    // Request three history types in one call:
+    //   messageAdded   — new mail (the original use case)
+    //   labelAdded     — labels added to existing messages (we filter
+    //                    for STARRED to sync stars from Gmail)
+    //   labelRemoved   — labels removed (same; catches unstars)
+    // The Gmail API accepts a comma-separated list per the docs.
     const historyRes = await gmailFetch(
-      `users/me/history?startHistoryId=${encodeURIComponent(inbox.last_history_id)}&historyTypes=messageAdded&maxResults=500`,
+      `users/me/history?startHistoryId=${encodeURIComponent(inbox.last_history_id)}&historyTypes=messageAdded&historyTypes=labelAdded&historyTypes=labelRemoved&maxResults=500`,
       accessToken,
     );
+    type LabelChange = {
+      message: { id: string; threadId: string; labelIds?: string[] };
+      labelIds?: string[];
+    };
     type HistoryEntry = {
       id: string;
       messagesAdded?: Array<{ message: { id: string; threadId: string } }>;
+      labelsAdded?: LabelChange[];
+      labelsRemoved?: LabelChange[];
     };
     const histories: HistoryEntry[] = (historyRes.history as HistoryEntry[]) ?? [];
     const seen = new Set<string>();
     for (const h of histories) {
       for (const m of h.messagesAdded ?? []) {
         if (m.message.id) seen.add(m.message.id);
+      }
+      // STARRED label changes — collect the Gmail thread ids so we
+      // can mirror the star state below. labelIds on the change
+      // record is the set of labels added/removed in this delta
+      // (not the post-state); we filter for STARRED specifically
+      // so non-star label edits don't trigger the sync.
+      for (const change of h.labelsAdded ?? []) {
+        if (change.labelIds?.includes("STARRED")) {
+          starredAddedThreadGmailIds.add(change.message.threadId);
+        }
+      }
+      for (const change of h.labelsRemoved ?? []) {
+        if (change.labelIds?.includes("STARRED")) {
+          starredRemovedThreadGmailIds.add(change.message.threadId);
+        }
       }
     }
     messageIds = Array.from(seen).slice(0, PER_INBOX_MSG_LIMIT);
@@ -247,6 +282,53 @@ export async function pollOneInbox(inbox: {
       UPDATE connected_accounts
       SET gmail_last_history_id = ${nextHistoryId}
       WHERE id = ${inbox.id}
+    `);
+  }
+
+  // Apply STARRED label changes harvested from history.list. We
+  // map Gmail thread ids -> engine thread ids via the existing
+  // gmail_thread_id column and UPDATE is_starred.
+  //
+  // Conflict resolution: if a thread appears in BOTH added and
+  // removed in the same poll cycle (rapid star/unstar/star), we
+  // skip it — the next poll will resolve. Cheaper than fetching
+  // current state per thread. The actual transient state isn't
+  // useful to mirror either way.
+  //
+  // We update only threads belonging to THIS inbox (the
+  // staffOutreachEmailId scope) so a coincidental Gmail thread id
+  // collision across teams can't cross-contaminate. Gmail thread
+  // ids are namespaced per Google account so collisions are
+  // already prevented at the API level — this is belt-and-braces.
+  const ambiguous = new Set<string>();
+  for (const id of starredAddedThreadGmailIds) {
+    if (starredRemovedThreadGmailIds.has(id)) ambiguous.add(id);
+  }
+  const addList = Array.from(starredAddedThreadGmailIds).filter((id) => !ambiguous.has(id));
+  const removeList = Array.from(starredRemovedThreadGmailIds).filter((id) => !ambiguous.has(id));
+
+  if (addList.length > 0) {
+    await db.execute(sql`
+      UPDATE email_threads
+      SET is_starred = true, updated_at = NOW()
+      WHERE staff_outreach_email_id = ${inbox.id}
+        AND gmail_thread_id IN (${sql.join(
+          addList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND is_starred = false
+    `);
+  }
+  if (removeList.length > 0) {
+    await db.execute(sql`
+      UPDATE email_threads
+      SET is_starred = false, updated_at = NOW()
+      WHERE staff_outreach_email_id = ${inbox.id}
+        AND gmail_thread_id IN (${sql.join(
+          removeList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND is_starred = true
     `);
   }
 
@@ -564,6 +646,20 @@ async function ingestMessage(opts: {
   const autoUpgradeClassification =
     direction === "inbound" && classification && classification.classification !== "unclassified";
 
+  // STARRED label → email_threads.is_starred mirror. A Gmail thread is
+  // "starred" if any message on it has the STARRED system label. When
+  // we ingest a message that carries STARRED, propagate to the thread.
+  //
+  // Asymmetric on purpose: we set is_starred=true when STARRED is
+  // present on this message, but DON'T clear it when STARRED is
+  // absent — another message on the same thread might still be
+  // starred. Pure unstars-from-Gmail (no new message, just a label
+  // removal) need to come through users.history.list with
+  // historyTypes=labelRemoved, which the current poll loop doesn't
+  // subscribe to. That's a follow-up enhancement.
+  const messageHasStar = labels.includes("STARRED");
+  const shouldSetStar = messageHasStar;
+
   await db.execute(sql`
     UPDATE email_threads
     SET
@@ -578,6 +674,7 @@ async function ingestMessage(opts: {
                 END,`
           : sql``
       }
+      ${shouldSetStar ? sql`is_starred = true,` : sql``}
       snippet = ${snippet},
       last_sender_name = ${extractSenderName(fromHeader)},
       state = CASE

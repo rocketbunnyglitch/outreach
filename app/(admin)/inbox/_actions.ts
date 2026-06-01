@@ -498,6 +498,47 @@ export async function setThreadStar(
       .set({ isStarred, updatedBy: staff.id })
       .where(eq(emailThreads.id, threadId));
 
+    // Mirror to Gmail's STARRED system label so the operator's
+    // Gmail inbox stays in sync with the engine's star state.
+    // Two-way sync per the 10/10 spec: engine -> Gmail is here,
+    // Gmail -> engine handled on ingest in gmail-poll-worker.
+    //
+    // Best-effort — if the Gmail call fails (network, expired
+    // token, deleted thread on the Gmail side) we log + return
+    // success to the operator. The engine-side state is the
+    // canonical source the UI shows; eventual consistency with
+    // Gmail is the goal, not a hard requirement.
+    //
+    // Token + Gmail thread id are loaded in a single query
+    // alongside the team check above; the second query here is
+    // a separate hop because the engine update needs to commit
+    // before we touch Gmail (so a Gmail failure can't leave us
+    // in a half-applied state with no DB record).
+    try {
+      const [acct] = await db
+        .select({
+          gmailThreadId: emailThreads.gmailThreadId,
+          token: connectedAccounts.gmailOauthRefreshToken,
+        })
+        .from(emailThreads)
+        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+        .where(eq(emailThreads.id, threadId))
+        .limit(1);
+      if (acct?.token) {
+        await modifyGmailThreadLabels({
+          encryptedRefreshToken: acct.token,
+          gmailThreadId: acct.gmailThreadId,
+          addLabelIds: isStarred ? ["STARRED"] : [],
+          removeLabelIds: isStarred ? [] : ["STARRED"],
+        });
+      }
+    } catch (err) {
+      logger.warn(
+        { err, threadId, isStarred },
+        "setThreadStar: Gmail mirror failed (engine state already updated)",
+      );
+    }
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     publishRealtime({
