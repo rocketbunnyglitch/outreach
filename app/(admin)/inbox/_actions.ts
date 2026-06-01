@@ -1031,11 +1031,27 @@ export async function blockThreadSender(
   if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
 
   try {
-    // Most recent inbound sender on the thread.
+    // Most recent inbound sender on the thread. Pull the normalized
+    // email column (clean address, no display name, lowercase)
+    // shipped in migration 0083 -- the raw fromAddress can be
+    // something like '"Mike Smith" <mike@venue.com>' which, when
+    // trimmed and lowercased, gets stored in email_suppression as
+    // a malformed entry. Future sends compare suppression rows
+    // against the clean recipient address; a malformed
+    // suppression row never matches, so the block silently
+    // fails to fire on the next send.
+    //
+    // Fall back to extracting from the raw fromAddress in the
+    // unlikely case fromEmailNormalized is NULL (would only
+    // happen on rows ingested before the 0083 backfill OR rows
+    // the backfill couldn't parse). The extraction here is
+    // best-effort -- if we can't get a clean address, reject
+    // the block with an explicit error so the operator notices.
     const [latest] = await db
       .select({
         teamId: connectedAccounts.teamId,
         fromAddress: emailMessages.fromAddress,
+        fromEmailNormalized: emailMessages.fromEmailNormalized,
       })
       .from(emailMessages)
       .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
@@ -1049,8 +1065,22 @@ export async function blockThreadSender(
     if (latest.teamId !== staff.teamId) {
       return { ok: false, error: "Thread not on your team." };
     }
-    const email = latest.fromAddress?.trim().toLowerCase();
-    if (!email) return { ok: false, error: "No sender address on the latest inbound message." };
+
+    // Prefer the normalized column. If it's NULL, fall back to
+    // extracting the angle-bracketed address from the raw header.
+    let email = latest.fromEmailNormalized?.trim().toLowerCase() ?? "";
+    if (!email && latest.fromAddress) {
+      // Look for <addr@host> first; if not present, treat the whole
+      // value as the address (matches RFC 5322 bare-address form).
+      const match = latest.fromAddress.match(/<([^>]+)>/);
+      const candidate = (match?.[1] ?? latest.fromAddress).trim().toLowerCase();
+      // Sanity: must contain exactly one '@' and have at least one
+      // char on each side. Avoids inserting display-name junk.
+      if (/^[^@\s]+@[^@\s]+$/.test(candidate)) email = candidate;
+    }
+    if (!email) {
+      return { ok: false, error: "Couldn't parse a clean sender address from the latest inbound." };
+    }
 
     await db
       .insert(emailSuppression)
