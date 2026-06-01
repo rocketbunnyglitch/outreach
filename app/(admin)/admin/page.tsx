@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { CAMPAIGN_REGISTRY } from "@/lib/import/campaigns";
 import { logger } from "@/lib/logger";
 import { asc, eq, isNull, sql } from "drizzle-orm";
 import {
@@ -19,9 +20,9 @@ import {
 import Link from "next/link";
 import { getUnclassifiedCount } from "./_actions-classifier";
 import { getUntaggedVenueCount } from "./_actions-venue-tag";
+import { CampaignImportPanel } from "./_components/campaign-import-panel";
 import { ClassifierBackfillPanel } from "./_components/classifier-backfill-panel";
 import { CsvImportWidget } from "./_components/csv-import-widget";
-import { HalloweenImportPanel } from "./_components/halloween-import-panel";
 import { VenueTagBackfillPanel } from "./_components/venue-tag-backfill-panel";
 
 export const metadata = { title: "Admin" };
@@ -375,25 +376,43 @@ async function renderAdminPage() {
       </section>
 
       {/* Halloween 2025 import (Phase 3). Reads data/halloween_2025.json
-          parsed from the operator's xlsx and writes the Halloween 2025
-          campaign + city_campaigns + events + venue_events + cold_outreach.
-          No external API calls — exact + trigram match against existing
-          venues, stub-create for the rest. The review queue is the
-          handoff to Claude in Chrome for Maps verification of stubs. */}
-      <section className="card-surface overflow-hidden">
-        <header className="flex items-start gap-3 px-6 pt-4 pb-2">
-          <Sparkles className="mt-0.5 h-5 w-5 text-violet-500" />
-          <div>
-            <h2 className="font-semibold text-lg tracking-tight">Halloween 2025 import</h2>
-            <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-              One-time import from the parsed Halloween 2025 xlsx. Run dry-run first to review
-              decisions, then apply for real. After applying, download the review queue markdown and
-              hand it to Claude Code to verify stubs against Google Maps via Claude in Chrome.
-            </p>
-          </div>
-        </header>
-        <HalloweenImportPanel />
-      </section>
+      {/* ----------------------------------------------------------------
+          Campaign imports — one section per campaign in the registry,
+          recency-ordered (newest first). Each section runs the same
+          generic CampaignImportPanel with its own config: slug, name,
+          mode (active/history), and JSON / overrides paths.
+
+          The first time you ship a new campaign:
+            1. Parse the xlsx → data/<slug>.json via scripts/parse-campaign-xlsx.py
+            2. Add the campaign config to lib/import/campaigns.ts
+            3. Add a section here that mounts CampaignImportPanel
+            4. Run dry-run to verify the city + label mappings
+            5. Apply for real once the numbers look right
+            6. After the verify pass, drop the resolver-overrides JSON
+               into data/<slug>_resolver_overrides.json and re-run
+                                                                ---------------- */}
+      {CAMPAIGN_REGISTRY.map((cfg) => (
+        <section key={cfg.slug} className="card-surface overflow-hidden">
+          <header className="flex items-start gap-3 px-6 pt-4 pb-2">
+            <Sparkles className="mt-0.5 h-5 w-5 text-violet-500" />
+            <div>
+              <h2 className="font-semibold text-lg tracking-tight">{cfg.name} import</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                {cfg.mode === "history"
+                  ? `Historical import from the parsed ${cfg.name} xlsx. Writes venues + venue_events for confirmed slots so the city-venues table shows "previously used in ${cfg.name}" history. Skips the cold-outreach queue (past campaign).`
+                  : `One-time import from the parsed ${cfg.name} xlsx. Run dry-run first to review decisions, then apply for real. After applying, download the review queue markdown and hand it to Claude Code to verify stubs against Google Maps via Claude in Chrome.`}
+              </p>
+            </div>
+          </header>
+          <CampaignImportPanel
+            slug={cfg.slug}
+            name={cfg.name}
+            mode={cfg.mode ?? "active"}
+            jsonPath={cfg.jsonPath}
+            overridesPath={cfg.overridesPath}
+          />
+        </section>
+      ))}
     </div>
   );
 }

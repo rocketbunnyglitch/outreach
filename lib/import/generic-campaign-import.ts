@@ -102,11 +102,18 @@ export interface CampaignImportConfig {
    *  The default is "active" for backward compatibility with
    *  Halloween 2025. */
   mode?: "active" | "history";
-  /** Cluster_num (from the parsed xlsx JSON) → event-row mapping.
-   *  See CampaignClusterConfig docs above. Every cluster_num
-   *  referenced by source rows must have an entry here, or the
-   *  orchestrator will skip those rows (with a warning). */
-  clusters: Record<number, CampaignClusterConfig>;
+  /** Date-label → event-row mapping. The key is the source xlsx's
+   *  `date_label` value, normalized via .trim().toLowerCase() at
+   *  lookup time. Each entry tells the orchestrator how to materialize
+   *  that label as an `events` row.
+   *
+   *  Labels NOT present in this map are skipped (no event created
+   *  for that row) — useful for filtering out one-off variants
+   *  like "FRIDAY CRAWL 2 - NORTHERN PART" that the operator wants
+   *  to exclude from the final import.
+   *
+   *  See CampaignClusterConfig docs above. */
+  clustersByLabel: Record<string, CampaignClusterConfig>;
 }
 
 /**
@@ -124,10 +131,10 @@ export const HALLOWEEN_2025_CONFIG: CampaignImportConfig = {
   overridesPath: "data/halloween_2025_resolver_overrides.json",
   jsonPathEnvVar: "HALLOWEEN_JSON_PATH",
   mode: "active",
-  clusters: {
-    1: { date: "2025-10-31", dayPart: "friday_night" },
-    2: { date: "2025-11-01", dayPart: "saturday_night" },
-    3: { date: "2025-11-02", dayPart: "sunday_night" },
+  clustersByLabel: {
+    "friday, october 31st": { date: "2025-10-31", dayPart: "friday_night", slotNumber: 1 },
+    "saturday, november 1st": { date: "2025-11-01", dayPart: "saturday_night", slotNumber: 1 },
+    "sunday, november 2nd": { date: "2025-11-02", dayPart: "sunday_night", slotNumber: 1 },
   },
 };
 
@@ -612,12 +619,26 @@ async function ensureCityCampaign(opts: {
 
 async function ensureEvent(opts: {
   cityCampaignId: string;
+  /** The xlsx `date_label` for this row (e.g. "FRIDAY CRAWL 1",
+   *  "Saturday, November 1st", "CLUSTER 2"). Normalized to
+   *  lowercase + trimmed at lookup. */
+  dateLabel: string;
+  /** Fallback ordering used for events.crawl_number when the
+   *  config entry doesn't supply one. From the parser's
+   *  per-sheet running counter. */
   clusterNum: number;
   config: CampaignImportConfig;
   dryRun: boolean;
 }): Promise<string | null> {
-  const meta = opts.config.clusters[opts.clusterNum];
-  if (!meta) return null;
+  const labelKey = opts.dateLabel.trim().toLowerCase();
+  const meta = opts.config.clustersByLabel[labelKey];
+  if (!meta) {
+    // No config entry for this label = caller wanted to skip it
+    // (e.g. "FRIDAY CRAWL 2 - NORTHERN PART" for SPD 2026).
+    // Return null — venue resolution still happened, just no
+    // events/venue_events for this row.
+    return null;
+  }
 
   const slotNumber = meta.slotNumber ?? 1;
   const crawlNumber = meta.crawlNumber ?? opts.clusterNum;
@@ -725,6 +746,7 @@ async function processConfirmedVenues(args: {
       if (args.cityCampaignId && resolved.venueId) {
         const eventId = await ensureEvent({
           cityCampaignId: args.cityCampaignId,
+          dateLabel: v.date_label,
           clusterNum: v.cluster_num,
           config: args.config,
           dryRun: args.dryRun,

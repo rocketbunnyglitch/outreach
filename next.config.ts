@@ -49,14 +49,20 @@ const config: NextConfig = {
 
   // Non-code data files Next.js needs to copy into the standalone
   // output. Without this, files under data/ are stripped at build
-  // time and server actions that read them (e.g. the Halloween
-  // 2025 import) crash with ENOENT against
+  // time and server actions that read them (e.g. the campaign
+  // imports) crash with ENOENT against
   // /var/www/.../.next/standalone/data/<file>.json. The trace key
   // is the route path that reads the file; the value lists the
   // patterns to include from the repo root.
+  //
+  // ./data/**/*.json covers all 6 campaign JSONs + their per-campaign
+  // resolver-overrides files. Belt-and-suspenders with deploy.sh's
+  // `cp -r data/.` step — that copies at deploy time, this includes
+  // at build time. Either alone is sufficient; both ensures the
+  // file is present regardless of which build path the bundle takes.
   outputFileTracingIncludes: {
-    "/admin": ["./data/halloween_2025.json"],
-    "/admin/**/*": ["./data/halloween_2025.json"],
+    "/admin": ["./data/**/*.json"],
+    "/admin/**/*": ["./data/**/*.json"],
   },
 
   // Compress responses (Caddy also compresses, but keeping at app level

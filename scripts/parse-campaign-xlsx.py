@@ -290,17 +290,32 @@ def find_section_starts(ws, max_row: int = 200) -> list:
                 sections.append(("cold", a, header_row, header_row + 1))
         r += 1
 
-    # FALLBACK for sheets with NO explicit cluster header (e.g. some
-    # legacy sheets jump straight to "Wristband Venue" in row 3).
-    # If we found no cluster sections but the sheet has a header row
-    # with "Venue Name" + slot-type labels in col A below, treat the
-    # whole block as a single cluster.
+    # FALLBACK 1: sheets with NO explicit cluster header at all (e.g.
+    # some legacy sheets jump straight to "Wristband Venue" in row 3).
+    # Treat the whole block as a single cluster labeled "Day 1".
     if not any(s[0] == "cluster" for s in sections):
         # Scan row 2-6 for a header with venue name in column B
         for hr in range(2, 8):
             if _looks_like_header(ws, hr):
                 sections.insert(0, ("cluster", "Day 1", hr, hr + 1))
                 break
+
+    # FALLBACK 2: sheets where the FIRST section has no day header
+    # but a LATER section does (e.g. SPD 2025 sheets that start with
+    # an un-labeled Friday block followed by a "Saturday March 15th"
+    # header for the second day). Without this, the Friday block is
+    # lost — only Saturday gets captured. Detection: there's an
+    # early header row (in the first 8 rows) that precedes the
+    # FIRST cluster section start.
+    cluster_sections = [s for s in sections if s[0] == "cluster"]
+    if cluster_sections:
+        first_cluster_row = cluster_sections[0][2]  # header_row of first cluster
+        if first_cluster_row > 8:
+            # Look for a header row in rows 2-7
+            for hr in range(2, 8):
+                if _looks_like_header(ws, hr) and hr < first_cluster_row:
+                    sections.insert(0, ("cluster", "Day 1", hr, hr + 1))
+                    break
 
     return sections
 
