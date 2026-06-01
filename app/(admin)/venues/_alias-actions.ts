@@ -17,7 +17,7 @@ import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { normalizeDomain } from "@/lib/venue-domain-match";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,7 +30,7 @@ const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])
 export async function addDomainAlias(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ domain: string }>> {
+): Promise<ActionResult<{ domain: string; retroactivelyAttached: number }>> {
   const { staff } = await requireStaff();
   const venueId = String(formData.get("venueId") ?? "");
   const domain = normalizeDomain(String(formData.get("domain") ?? ""));
@@ -65,8 +65,56 @@ export async function addDomainAlias(
       return { ok: false, error: "That domain is already aliased to this venue." };
     }
 
+    // Retroactive sweep: when an operator adds a new alias, claim every
+    // historical unmatched thread whose latest inbound came from that
+    // domain. Without this, only NEW inbound (post-add) gets routed --
+    // operators would still have to manually attach the historical
+    // ones, which is exactly the friction the alias was supposed to
+    // remove.
+    //
+    // Scope by the operator's team via staff_outreach_emails -- venues
+    // are a shared namespace but threads live on team-owned inboxes,
+    // so we never retroactively sweep threads on a different team's
+    // inbox even when they happen to be from the same domain.
+    //
+    // Best-effort: if the sweep fails (DB hiccup, etc.) we still
+    // succeed the add since the alias DOES route future mail. Log
+    // and continue.
+    let retroactivelyAttached = 0;
+    try {
+      const retroResult = await db.execute<{ id: string }>(sql`
+        UPDATE email_threads et
+        SET venue_id = ${venueId}, updated_by = ${staff.id}
+        FROM staff_outreach_emails soe, email_messages em
+        WHERE et.staff_outreach_email_id = soe.id
+          AND soe.team_id = ${staff.teamId}
+          AND et.venue_id IS NULL
+          AND em.thread_id = et.id
+          AND em.direction = 'inbound'
+          AND em.from_email_normalized IS NOT NULL
+          AND LOWER(SPLIT_PART(em.from_email_normalized, '@', 2)) = ${domain}
+        RETURNING et.id
+      `);
+      const retroRows: Array<{ id: string }> = Array.isArray(retroResult)
+        ? (retroResult as unknown as Array<{ id: string }>)
+        : ((retroResult as unknown as { rows?: Array<{ id: string }> }).rows ?? []);
+      // de-dup ids in case the same thread had multiple inbound rows
+      // from the domain (rare; would only happen if the same thread
+      // had two messages from different addresses at the same host).
+      retroactivelyAttached = new Set(retroRows.map((r) => r.id)).size;
+    } catch (sweepErr) {
+      logger.warn(
+        { sweepErr, venueId, domain },
+        "addDomainAlias: retroactive sweep failed (alias itself was added OK)",
+      );
+    }
+
     revalidatePath(`/venues/${venueId}`);
-    return { ok: true, data: { domain } };
+    if (retroactivelyAttached > 0) {
+      // Refresh the inbox views too -- threads moved into the venue.
+      revalidatePath("/inbox");
+    }
+    return { ok: true, data: { domain, retroactivelyAttached } };
   } catch (err) {
     logger.error({ err, venueId, domain }, "addDomainAlias failed");
     return { ok: false, error: "Unexpected database error. See server logs." };

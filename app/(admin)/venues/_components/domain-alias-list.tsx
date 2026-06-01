@@ -19,7 +19,11 @@ export interface DomainAliasRow {
 type AddAction = (
   prev: unknown,
   formData: FormData,
-) => Promise<{ ok: boolean; error?: string; data?: { domain: string } }>;
+) => Promise<{
+  ok: boolean;
+  error?: string;
+  data?: { domain: string; retroactivelyAttached: number };
+}>;
 
 type RemoveAction = (
   prev: unknown,
@@ -99,6 +103,13 @@ export function DomainAliasList({
         </Button>
       </form>
       {addState && !addState.ok && addState.error && <Alert tone="error">{addState.error}</Alert>}
+      {addState?.ok && addState.data && (
+        <Alert tone="success">
+          {addState.data.retroactivelyAttached > 0
+            ? `Added ${addState.data.domain}. ${addState.data.retroactivelyAttached} historical thread${addState.data.retroactivelyAttached === 1 ? "" : "s"} retroactively attached to this venue.`
+            : `Added ${addState.data.domain}. No historical threads from this domain were unmatched.`}
+        </Alert>
+      )}
 
       {aliases.length === 0 ? (
         <div className="rounded-lg border border-zinc-200 border-dashed bg-zinc-50/50 py-8 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
