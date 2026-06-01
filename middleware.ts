@@ -19,6 +19,24 @@ const { auth } = NextAuth(authConfig);
 
 const CAMPAIGN_COOKIE = "crawl_engine_current_campaign";
 
+// Redirect-loop breaker. The edge middleware authorizes on JWT validity only
+// (no DB), but a page's requireStaff() does a DB check and redirects to /login
+// when the JWT's staffId no longer resolves to an active staff row (e.g. a
+// stale session from before a schema change). The middleware then bounces
+// /login → / because the JWT still "authenticates" at the edge — an infinite
+// loop ("Safari can't open the page because too many redirects"). We count the
+// /login → / bounces in a short-lived cookie; after a few, we clear the stale
+// session so /login can finally render. Auto-heals the user's browser without
+// them having to reset it. Session cookie names are NextAuth v5 (authjs.*);
+// __Secure- prefix is used over HTTPS.
+const REDIR_GUARD = "perse_redir_guard";
+const REDIR_GUARD_LIMIT = 3;
+const STALE_SESSION_COOKIES = [
+  "__Secure-authjs.session-token",
+  "authjs.session-token",
+  CAMPAIGN_COOKIE,
+];
+
 // Paths that require a campaign to be scoped. These are the "Current
 // Crawl" + "Operate" groups in the side nav. Without a campaign, the
 // nav hides them and the middleware redirects direct URL access to
@@ -48,6 +66,19 @@ function requiresCampaign(pathname: string): boolean {
 export default auth((req) => {
   const isAuthenticated = !!req.auth;
   const { pathname, search } = req.nextUrl;
+  const redirGuard = Number(req.cookies.get(REDIR_GUARD)?.value ?? "0") || 0;
+
+  // Loop breaker: we've bounced /login → / too many times (the JWT looks
+  // authenticated at the edge but the page keeps redirecting back to /login).
+  // Clear the stale session + guard so /login renders, breaking the loop.
+  if (redirGuard >= REDIR_GUARD_LIMIT) {
+    const res = NextResponse.redirect(new URL("/login?recovered=1", req.nextUrl));
+    for (const name of STALE_SESSION_COOKIES) {
+      res.cookies.set(name, "", { path: "/", maxAge: 0, secure: name.startsWith("__Secure-") });
+    }
+    res.cookies.set(REDIR_GUARD, "", { path: "/", maxAge: 0 });
+    return res;
+  }
 
   // Public surfaces (mirror what auth.config.ts authorized() considers public)
   const isPublic =
@@ -66,13 +97,20 @@ export default auth((req) => {
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico";
 
-  // If signed in and on /login, bounce to home.
+  // If signed in and on /login, bounce to home. Count the bounce — if the
+  // page keeps sending us back here (stale session), the guard above breaks
+  // the loop after REDIR_GUARD_LIMIT hops.
   if (isAuthenticated && pathname === "/login") {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
+    const res = NextResponse.redirect(new URL("/", req.nextUrl));
+    res.cookies.set(REDIR_GUARD, String(redirGuard + 1), { path: "/", maxAge: 10 });
+    return res;
   }
 
   if (isPublic) {
-    return NextResponse.next();
+    const res = NextResponse.next();
+    // Reached a public page (e.g. /login rendered) — no loop in progress.
+    if (redirGuard) res.cookies.set(REDIR_GUARD, "", { path: "/", maxAge: 0 });
+    return res;
   }
 
   if (!isAuthenticated) {
