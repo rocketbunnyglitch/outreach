@@ -3,7 +3,8 @@
 import { Button } from "@/components/ui/button";
 import type { StaffMember } from "@/db/schema";
 import { cn } from "@/lib/cn";
-import { LogOut, RotateCcw } from "lucide-react";
+import { BarChart3, LogOut, RotateCcw } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { signOutAction } from "../_actions";
 
@@ -202,6 +203,25 @@ export function UserMenu({ staff, provider }: UserMenuProps) {
               {provider === "dev-staff-impersonate" && " · dev"}
             </p>
           </div>
+
+          {/* Operator-facing analytics. Distinct from the admin
+              /admin/analytics surface which can target any staffer;
+              this routes to /me/activity which is auto-scoped to
+              the caller's own id. Available to every signed-in
+              user, not just admins -- "how am I doing this week"
+              shouldn't require a manager. */}
+          <Link
+            href="/me/activity"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40"
+          >
+            <BarChart3 className="h-3.5 w-3.5 text-zinc-500" />
+            <span className="flex flex-col leading-tight">
+              <span className="text-zinc-900 dark:text-zinc-100">My activity</span>
+              <span className="text-[10px] text-zinc-500">Your stats: calls, sends, replies</span>
+            </span>
+          </Link>
 
           <button
             type="button"
