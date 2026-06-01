@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,9 +14,13 @@ export const dynamic = "force-dynamic";
  * it expires every variant + chunk, then sends the browser to a fresh /login.
  * Breaks the "edge says authenticated / page says not" redirect loop
  * (ERR_TOO_MANY_REDIRECTS) without the user resetting their browser.
+ *
+ * Use req.nextUrl (NOT req.url) for the redirect target: behind the nginx
+ * proxy req.url is the internal http://localhost:3001 origin, whereas nextUrl
+ * resolves to the public host from the forwarded Host header.
  */
-export async function GET(req: Request) {
-  const res = NextResponse.redirect(new URL("/login?recovered=1", req.url));
+export async function GET(req: NextRequest) {
+  const res = NextResponse.redirect(new URL("/login?recovered=1", req.nextUrl));
   const bases = ["authjs.session-token", "__Secure-authjs.session-token"];
   const names: string[] = [];
   for (const b of bases) {
