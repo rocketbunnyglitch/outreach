@@ -49,9 +49,28 @@ export interface ClassificationResult {
 // Helpers
 // =========================================================================
 
-/** Lowercase + collapse whitespace + strip quoted-reply chevrons. */
+/** Lowercase + collapse whitespace + strip quoted-reply chevrons
+ *  + strip forwarded-message blocks.
+ *
+ *  Forwarded blocks are a real source of false positives in
+ *  classification — a venue forwarding "we're not interested"
+ *  from their boss would otherwise get tagged as decline even
+ *  though the VENUE'S own reply might be "what do you think?".
+ *  We drop everything after a forwarded-message header so the
+ *  classifier only sees the venue's own typing.
+ */
 function normalize(text: string): string {
-  return text
+  // Detect the forwarded-message divider and truncate. Gmail's web
+  // UI emits "---------- Forwarded message ---------" with at least
+  // 8 dashes; Outlook emits "From: ..." line headers. We match the
+  // dashed version which is the common case for forwarded venue
+  // replies. The Outlook shape is harder to detect cheaply (the
+  // header lines look like normal text) so we accept some false
+  // negatives there in exchange for not over-truncating.
+  const fwdMatch = text.match(/-{8,}\s*forwarded message\s*-{8,}/i);
+  const truncated = fwdMatch ? text.slice(0, fwdMatch.index) : text;
+
+  return truncated
     .toLowerCase()
     .replace(/^>+\s*.*$/gm, "") // drop quoted reply lines
     .replace(/\s+/g, " ")
@@ -124,7 +143,18 @@ const CALLBACK_PATTERNS = [
   /\bcan you call me\b/i,
   /\blet'?s (hop on|schedule|set up) a call\b/i,
   /\bbetter (over|by|on) (the )?phone\b/i,
-  /\b\+?\d{1,3}[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/, // phone number in body
+  // Phone-number pattern — tightened to require either:
+  //   - A leading + (international format), OR
+  //   - Parenthesized area code: (555) 555-5555, OR
+  //   - A separator (hyphen / dot / space) BETWEEN groups (not
+  //     just bare 10 digits in a row, which matches order IDs,
+  //     confirmation codes, account numbers, etc.)
+  // The previous bare-10-digits match fired on too many
+  // non-phone strings. Real phone numbers in casual email
+  // bodies almost always include either parentheses or hyphens.
+  /\+\d{1,3}[-.\s]\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/, // +1 555-555-5555
+  /\(\d{3}\)\s*\d{3}[-.\s]?\d{4}\b/, // (555) 555-5555
+  /\b\d{3}[-.]\d{3}[-.]\d{4}\b/, // 555-555-5555 or 555.555.5555
 ];
 
 const INTERESTED_PATTERNS = [
@@ -160,10 +190,46 @@ export function classifyInboundEmail(opts: {
   subject: string | null;
   bodyText: string | null;
   fromAddress: string;
+  /**
+   * Gmail's own label set on this message. We use it to short-
+   * circuit promotional / category-tagged mail without running
+   * our regex passes. Gmail's category classifier is much more
+   * accurate than our spam heuristics. Pass when available.
+   */
+  gmailLabels?: string[];
 }): ClassificationResult {
   const subject = opts.subject ?? "";
   const body = opts.bodyText ?? "";
   const from = opts.fromAddress.toLowerCase();
+  const labels = opts.gmailLabels ?? [];
+
+  // ---- 0. Gmail's own category signal ----
+  // CATEGORY_PROMOTIONS is Gmail's bucket for marketing mail —
+  // SaaS newsletters, vendor pitches, ecommerce blasts. Treat as
+  // spam so it gets de-prioritized just like our regex spam
+  // matches. CATEGORY_SOCIAL (Twitter/LinkedIn notifications)
+  // ditto. CATEGORY_UPDATES (banking, shipping, calendar) we
+  // DON'T classify as spam — those are sometimes operationally
+  // relevant ("your venue's booking changed").
+  //
+  // Higher confidence than regex spam (0.95 vs 0.7) — Gmail has
+  // far more training data than our patterns. Lower than bounce
+  // detection (0.95 vs the bounce 0.95) — bounces are
+  // deterministic; categories are heuristic.
+  if (labels.includes("CATEGORY_PROMOTIONS")) {
+    return {
+      classification: "spam",
+      confidence: 0.9,
+      reason: "Gmail tagged as promotional",
+    };
+  }
+  if (labels.includes("CATEGORY_SOCIAL")) {
+    return {
+      classification: "spam",
+      confidence: 0.9,
+      reason: "Gmail tagged as social",
+    };
+  }
 
   // ---- 1. Bounces / system mail ----
   // Tagged as spam because the inbox UI doesn't have a 'bounce' category

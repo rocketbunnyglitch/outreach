@@ -695,6 +695,11 @@ async function ingestMessage(opts: {
           subject,
           bodyText,
           fromAddress: fromHeader,
+          // Pass Gmail's own labels so the classifier can short-
+          // circuit CATEGORY_PROMOTIONS / CATEGORY_SOCIAL before
+          // running regex passes. See lib/triage-classifier.ts
+          // step 0.
+          gmailLabels: labels,
         })
       : null;
 
