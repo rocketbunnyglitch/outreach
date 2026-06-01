@@ -18,6 +18,18 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+  // Server Action request-body limit. Default is 1 MB. The Halloween
+  // 2025 review-queue action receives the full dry-run ImportReport
+  // (derived from the ~2 MB data/halloween_2025.json) as its argument,
+  // which Next rejects with 413 "Body exceeded 1 MB limit" BEFORE the
+  // action runs — surfacing to the operator as a generic 500. 4 MB gives
+  // headroom over the current report size.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "4mb",
+    },
+  },
+
   // Standalone output keeps deploy bundles small for ZIP-based deploys.
   output: "standalone",
 
