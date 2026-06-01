@@ -237,3 +237,39 @@ export function formatDayPart(
   // string so the calling component is guaranteed a non-blank label.
   return dp.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+// =========================================================================
+// Country code → display abbreviation
+// =========================================================================
+
+/**
+ * Map ISO 3166-1 alpha-2 country codes (CA / US / GB / IE / AU…) to
+ * the user-friendly abbreviation operators read in their head.
+ *
+ *   GB → UK   (vernacular over ISO)
+ *   US → USA  (3-letter feels more like a country than 2)
+ *   CA → CAN
+ *
+ * Used by the tracker city-name badge per operator: "the country
+ * abbrev needs to be beside the city like London CAN or London UK".
+ *
+ * Anything not in the map falls through to the original 2-letter
+ * code uppercased, so a brand-new country still renders something
+ * reasonable. Empty input returns empty string so the caller can
+ * decide whether to render the badge at all.
+ */
+const COUNTRY_DISPLAY_ABBREV: Record<string, string> = {
+  CA: "CAN",
+  US: "USA",
+  GB: "UK",
+  IE: "IRE",
+  AU: "AUS",
+  NZ: "NZL",
+  // Add more as the operator's market expands.
+};
+
+export function formatCountryAbbrev(code: string | null | undefined): string {
+  if (!code) return "";
+  const upper = code.toUpperCase();
+  return COUNTRY_DISPLAY_ABBREV[upper] ?? upper;
+}

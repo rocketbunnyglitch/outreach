@@ -15,6 +15,7 @@ import {
   STATUS_PILL_LABEL,
   STATUS_PILL_TONE,
   type SlotKind,
+  formatCountryAbbrev,
 } from "@/lib/tracker-status-types";
 import { Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -43,6 +44,17 @@ export interface TrackerRow {
   cityCampaignId: string;
   cityId: string;
   cityName: string;
+  /**
+   * 2-letter ISO 3166-1 alpha-2 country code (e.g. "CA", "US",
+   * "GB"). Mapped to a user-friendly display abbrev by
+   * formatCountryAbbrev() in tracker-status-types.ts — e.g.
+   * GB → UK, US → USA, CA → CAN. Rendered as a quiet small-font
+   * badge beside the city name to disambiguate "London CAN" vs
+   * "London UK" per operator feedback. Optional for forward-
+   * compat with seed data that predates the field; renderer
+   * omits the badge when null.
+   */
+  countryCode?: string | null;
   priority: number;
   totalSalesCents: number;
   status: "planning" | "active" | "confirmed" | "cancelled";
@@ -1006,6 +1018,14 @@ function CityCard({
               className="min-w-0 flex-1 truncate font-medium text-base text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
             >
               {row.cityName}
+              {/* Country abbrev — small quiet badge to disambiguate
+                  cities with the same name across countries
+                  ("London CAN" vs "London UK"). Operator feedback. */}
+              {row.countryCode && (
+                <span className="ml-1.5 font-mono text-[10px] text-zinc-400 tracking-wider">
+                  {formatCountryAbbrev(row.countryCode)}
+                </span>
+              )}
             </Link>
             <span className="font-mono text-xs text-zinc-500 tabular-nums">
               {formatSales(row.totalSalesCents)}
@@ -1213,6 +1233,14 @@ function CityRow({
             className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
           >
             {row.cityName}
+            {/* Country abbrev — small quiet badge for cross-country
+                disambiguation. Same affordance as the expanded card
+                view above. */}
+            {row.countryCode && (
+              <span className="ml-1.5 font-mono text-[10px] text-zinc-400 tracking-wider">
+                {formatCountryAbbrev(row.countryCode)}
+              </span>
+            )}
           </Link>
         </td>
 

@@ -62,7 +62,14 @@ export default async function DashboardHome({
   // stale/archived campaign (which makes getCurrentCampaign() return
   // null while the cookie is still present).
   if (!currentCampaign && !allCampaigns) {
-    redirect(staff.role === "admin" ? "/admin" : "/campaigns");
+    // Admin → /admin (campaign-agnostic overview)
+    // Non-admin → /pick-campaign (one-click picker, no dropdown
+    //              required). Operator: "If a non admin logins
+    //              and doesn't select a campaign they have a
+    //              loading screen with active campaigns to click
+    //              to automatically load it rather than having
+    //              to select it from the drop down at the top."
+    redirect(staff.role === "admin" ? "/admin" : "/pick-campaign");
   }
   // If the operator picked a campaign in the switcher AND hasn't opted into
   // "all campaigns" via the URL, scope the dashboard to that campaign.

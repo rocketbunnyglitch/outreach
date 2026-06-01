@@ -28,6 +28,10 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
       cityCampaignId: cityCampaigns.id,
       cityId: cities.id,
       cityName: cities.name,
+      // 3-letter ISO country code rendered as a quiet badge next
+      // to the city name to disambiguate "London CAN" vs "London
+      // GBR" — operator feedback (screenshot).
+      cityCountryCode: cities.countryCode,
       priority: cityCampaigns.priority,
       status: cityCampaigns.status,
       leadStaffId: cityCampaigns.leadStaffId,
@@ -76,6 +80,7 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
     cityCampaignId: r.cityCampaignId,
     cityId: r.cityId,
     cityName: r.cityName,
+    countryCode: r.cityCountryCode ?? null,
     priority: r.priority ?? 5,
     totalSalesCents: salesMap[r.cityCampaignId] ?? 0,
     status: (r.status as TrackerRow["status"]) ?? "planning",
