@@ -77,8 +77,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const op = newOpError("api.admin.venues.patch");
 
   try {
-    // Need at least one updatable field to do anything.
-    if (parsed.data.name === undefined && parsed.data.address === undefined) {
+    // Need at least one updatable field OR a verifiedFromGoogle
+    // flag to do anything. A bare {verifiedFromGoogle: true} call
+    // is valid — the operator is confirming "already correct, no
+    // changes needed" which still counts as a verification act +
+    // gets timestamped below.
+    if (
+      parsed.data.name === undefined &&
+      parsed.data.address === undefined &&
+      !parsed.data.verifiedFromGoogle
+    ) {
       return NextResponse.json({
         ok: true,
         data: { id, changed: false, fields: [] },
@@ -113,6 +121,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (parsed.data.address !== undefined && addressNorm !== existing.address) {
       cleanUpdates.address = addressNorm;
       changedFields.push("address");
+    }
+
+    // Stamp verified_from_google_at when the caller flags this PATCH
+    // as a Google verification. This locks name/address against
+    // future xlsx-import backfill (see venue-resolver maybeBackfill).
+    // We stamp on EVERY verifiedFromGoogle: true call — even when no
+    // fields changed — because the operator confirming "already
+    // correct" is itself a verification act.
+    if (parsed.data.verifiedFromGoogle === true) {
+      cleanUpdates.verifiedFromGoogleAt = new Date();
+      if (!changedFields.includes("verifiedFromGoogleAt")) {
+        changedFields.push("verifiedFromGoogleAt");
+      }
     }
 
     if (changedFields.length === 0) {

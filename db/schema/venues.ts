@@ -49,6 +49,13 @@ export const venues = pgTable(
      *  venue_events.night_of_contact_name which tracks per-event slot
      *  contacts. Mig 0080. */
     contactName: text("contact_name"),
+    /** When NOT NULL, the venue's name + address have been verified
+     *  against Google Maps via the operator's Claude-in-Chrome verify
+     *  pass. Subsequent xlsx imports MUST NOT backfill name or address
+     *  on these rows — the verified value is canonical. Mig 0081. */
+    verifiedFromGoogleAt: timestamp("verified_from_google_at", {
+      withTimezone: true,
+    }),
     alternateEmails: text("alternate_emails").array().notNull().default([]),
     websiteUrl: text("website_url"),
     instagramHandle: text("instagram_handle"),

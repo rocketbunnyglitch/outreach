@@ -50,6 +50,10 @@ import {
 import { db } from "@/lib/db";
 import { matchCity } from "@/lib/halloween-import/city-matcher";
 import {
+  type ResolverOverrides,
+  loadResolverOverrides,
+} from "@/lib/halloween-import/resolver-overrides";
+import {
   type ResolveDecision,
   type ResolveResult,
   resolveVenue,
@@ -60,6 +64,7 @@ import { and, eq, isNull } from "drizzle-orm";
 const CAMPAIGN_SLUG = "halloween-2025";
 const CAMPAIGN_NAME = "Halloween 2025";
 const JSON_PATH = "data/halloween_2025.json";
+const OVERRIDES_PATH = "data/halloween_2025_resolver_overrides.json";
 
 /**
  * Resolve the import JSON. Next.js standalone builds strip
@@ -248,6 +253,7 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
       trgm: 0,
       stub_new: 0,
       skipped: 0,
+      override: 0,
       city_skipped: 0,
     },
     countsByOrigin: { confirmed: 0, warm: 0, cold: 0 },
@@ -267,6 +273,19 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
     report.warnings.push((err as Error).message);
     report.endedAt = new Date().toISOString();
     return report;
+  }
+
+  // ---------------- Load resolver overrides ----------------
+  // The override map redirects 45 source rows (city, venueName) to
+  // the correct venue ID, protecting the operator's verify-pass
+  // relinks/splits from being undone by trgm fuzzy-matching. Safe
+  // to call unconditionally — degrades to EMPTY when the file is
+  // missing (e.g. fresh campaigns that haven't had a verify pass).
+  const overrides = await loadResolverOverrides(OVERRIDES_PATH);
+  if (overrides.size > 0) {
+    report.warnings.push(
+      `resolver overrides loaded: ${overrides.size} (city, venue) → venueId mappings active`,
+    );
   }
 
   // ---------------- Ensure campaign row exists ----------------
@@ -344,6 +363,7 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
         sheetName,
         dryRun,
         report,
+        overrides,
       });
       await processWarmLeads({
         body,
@@ -352,6 +372,7 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
         sheetName,
         dryRun,
         report,
+        overrides,
       });
       await processColdOutreach({
         body,
@@ -360,6 +381,7 @@ export async function runHalloween2025Import(opts: ImportOpts): Promise<ImportRe
         sheetName,
         dryRun,
         report,
+        overrides,
       });
     } catch (cityErr) {
       const msg = (cityErr as Error).message ?? String(cityErr);
@@ -517,6 +539,7 @@ async function processConfirmedVenues(args: {
   sheetName: string;
   dryRun: boolean;
   report: ImportReport;
+  overrides: ResolverOverrides;
 }): Promise<void> {
   for (const v of args.body.confirmed_venues) {
     args.report.countsByOrigin.confirmed++;
@@ -528,6 +551,8 @@ async function processConfirmedVenues(args: {
       const resolved = await resolveVenue({
         name: v.venue_name,
         cityId: args.cityResult.cityId,
+        sourceCity: args.sheetName,
+        overrides: args.overrides,
         source: {
           email: v.venue_email ?? null,
           phoneRaw: v.contact_phone ?? null,
@@ -630,6 +655,7 @@ async function processWarmLeads(args: {
   sheetName: string;
   dryRun: boolean;
   report: ImportReport;
+  overrides: ResolverOverrides;
 }): Promise<void> {
   for (const v of args.body.warm_leads) {
     args.report.countsByOrigin.warm++;
@@ -637,6 +663,8 @@ async function processWarmLeads(args: {
       const resolved = await resolveVenue({
         name: v.venue_name,
         cityId: args.cityResult.cityId,
+        sourceCity: args.sheetName,
+        overrides: args.overrides,
         source: {
           email: v.venue_email ?? null,
           phoneRaw: v.contact_phone ?? null,
@@ -686,6 +714,7 @@ async function processColdOutreach(args: {
   sheetName: string;
   dryRun: boolean;
   report: ImportReport;
+  overrides: ResolverOverrides;
 }): Promise<void> {
   for (const v of args.body.cold_outreach) {
     args.report.countsByOrigin.cold++;
@@ -693,6 +722,8 @@ async function processColdOutreach(args: {
       const resolved = await resolveVenue({
         name: v.venue_name,
         cityId: args.cityResult.cityId,
+        sourceCity: args.sheetName,
+        overrides: args.overrides,
         source: {
           email: v.venue_email ?? v.alt_email ?? null,
           phoneRaw: v.phone ?? v.other_contact ?? null,

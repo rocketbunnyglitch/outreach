@@ -29,14 +29,24 @@ import { venues } from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import type { ResolverOverrides } from "./resolver-overrides";
 
 const TRGM_SIMILARITY_THRESHOLD = 0.5;
 
-export type ResolveDecision = "exact" | "trgm" | "stub_new" | "skipped";
+export type ResolveDecision = "exact" | "trgm" | "stub_new" | "skipped" | "override";
 
 export interface ResolveInput {
   name: string;
   cityId: string;
+  /** The xlsx sheet name (e.g. "Calgary, AB") — used as the city
+   *  side of the override-map key. Optional because the resolver
+   *  works without overrides; when omitted, override lookup is
+   *  skipped. */
+  sourceCity?: string;
+  /** Optional overrides table. When provided AND a (sourceCity,
+   *  name) pair matches, the resolver short-circuits to the override
+   *  target venueId without running exact/trgm matching. */
+  overrides?: ResolverOverrides;
   source?: {
     email?: string | null;
     phoneRaw?: string | null;
@@ -83,6 +93,60 @@ export async function resolveVenue(input: ResolveInput): Promise<ResolveResult> 
     };
   }
 
+  // ---------------- 0. Override map ----------------
+  // Consult the (sourceCity, sourceVenueName) → venueId override map
+  // BEFORE running exact / trgm matching. This protects relink/split
+  // corrections from being undone by the resolver's fuzzy matcher on
+  // a re-run. See lib/halloween-import/resolver-overrides.ts.
+  if (input.overrides && input.sourceCity) {
+    const overrideVenueId = input.overrides.lookup(input.sourceCity, name);
+    if (overrideVenueId) {
+      // Load the target venue to (a) confirm it still exists +
+      // unarchived, (b) provide the existing-row data for the
+      // backfill helper.
+      const overrideRow = await db
+        .select({
+          id: venues.id,
+          name: venues.name,
+          address: venues.address,
+          email: venues.email,
+          phoneE164: venues.phoneE164,
+          capacity: venues.capacity,
+          contactName: venues.contactName,
+          verifiedFromGoogleAt: venues.verifiedFromGoogleAt,
+        })
+        .from(venues)
+        .where(and(eq(venues.id, overrideVenueId), isNull(venues.archivedAt)))
+        .limit(1)
+        .then((r) => r[0]);
+
+      if (overrideRow) {
+        const fieldBackfills = await maybeBackfill({
+          venueId: overrideRow.id,
+          input,
+          existing: overrideRow,
+          dryRun: input.dryRun ?? false,
+        });
+        return {
+          decision: "override",
+          venueId: overrideRow.id,
+          resolvedName: overrideRow.name,
+          resolvedAddress: overrideRow.address,
+          similarity: null,
+          fieldBackfills,
+          wouldCreate: false,
+        };
+      }
+      // The override target is gone (archived?). Log + fall through
+      // to normal resolution. The operator should regenerate the
+      // override map in this case.
+      logger.warn(
+        { overrideVenueId, sourceCity: input.sourceCity, name },
+        "resolver: override target venue not found, falling back to fuzzy match",
+      );
+    }
+  }
+
   // ---------------- 1. Exact match ----------------
   const exactRow = await db
     .select({
@@ -93,6 +157,7 @@ export async function resolveVenue(input: ResolveInput): Promise<ResolveResult> 
       phoneE164: venues.phoneE164,
       capacity: venues.capacity,
       contactName: venues.contactName,
+      verifiedFromGoogleAt: venues.verifiedFromGoogleAt,
     })
     .from(venues)
     .where(
@@ -133,6 +198,7 @@ export async function resolveVenue(input: ResolveInput): Promise<ResolveResult> 
       phoneE164: venues.phoneE164,
       capacity: venues.capacity,
       contactName: venues.contactName,
+      verifiedFromGoogleAt: venues.verifiedFromGoogleAt,
       similarity: sql<number>`similarity(${venues.name}, ${name})`,
     })
     .from(venues)
@@ -206,6 +272,11 @@ interface MatchedVenueRow {
   phoneE164: string | null;
   capacity: number | null;
   contactName: string | null;
+  /** When NOT NULL, the venue's name + address have been verified
+   *  against Google Maps by the operator's Claude-in-Chrome verify
+   *  pass. Backfill MUST skip those two fields regardless of NULL
+   *  state — see comment in maybeBackfill. */
+  verifiedFromGoogleAt: Date | null;
 }
 
 async function maybeBackfill(opts: {
@@ -217,6 +288,19 @@ async function maybeBackfill(opts: {
   const filled: ResolveResult["fieldBackfills"] = [];
   const src = opts.input.source;
   if (!src) return filled;
+
+  // Verified-from-Google guard: when this venue has been corrected
+  // by the operator's verify pass, its NAME and ADDRESS are
+  // canonical and must never be overwritten by an import — even if
+  // the existing value is currently set (it's the correct one).
+  // Address is normally a backfill-on-NULL field, but if a verify
+  // pass left address NULL on a verified venue (rare but possible
+  // if Google had no formatted address), we'd still want to leave
+  // it alone since the operator decided to clear it.
+  //
+  // Email / phone / capacity / contact_name are NOT in the verify
+  // pass scope — those backfill normally.
+  const isVerified = opts.existing.verifiedFromGoogleAt != null;
 
   const updates: Record<string, unknown> = {};
 
@@ -231,7 +315,11 @@ async function maybeBackfill(opts: {
       filled.push("phoneE164");
     }
   }
-  if (!opts.existing.address && src.address) {
+  // Address only backfills when (a) currently NULL AND (b) not
+  // Google-verified. The non-NULL check already covers post-verify
+  // rows in practice, but the verified guard makes the rule explicit
+  // + future-proof against verify passes that clear address.
+  if (!opts.existing.address && !isVerified && src.address) {
     updates.address = src.address.trim();
     filled.push("address");
   }

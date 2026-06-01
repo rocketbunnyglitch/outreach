@@ -1,0 +1,367 @@
+{
+  "_doc": "xlsx 'sourceCity||sourceVenueName' -> correct venueId (post Google-verify relink, 2026-05-31)",
+  "map": {
+    "Ocean City||Epic Bar And Grill": "cbe1106a-8e09-431d-ae10-eeb3d6008632",
+    "New Orleans, LA||Oz New Orleans": "8adf2c88-2299-4997-a4d5-4914c9d22f8c",
+    "New Orleans, LA||Molly's Irish Pub": "87ed9d7b-cb3e-407f-aeee-eb8ac1d60e62",
+    "Seattle, WA||Linda's Tavern": "a9cb23b2-29fb-40b5-acb3-5be5bd27dbf1",
+    "Seattle, WA||OOLA Capitol Hill": "b969e880-4cb5-46ae-bb78-894ed415aa62",
+    "Scottsdale||Hi Fi Kitchen Cocktails": "7314d8cc-a6e4-4d76-980e-dad342372eed",
+    "Miami - South Beach, FL||Lush - South Beach": "2d6550ba-7bdb-4066-ac36-63fa5835f8a8",
+    "Cleveland, OH||The Clevelander Bar & Grill": "f1d81575-529a-49ff-90c8-a65c78882851",
+    "Boston, MA||Joe's Waterfront": "91dcaf56-1679-4761-93d5-cb1bbe62d1d8",
+    "Detroit||Queens Bar Detroit": "5d570306-6b20-49d9-abec-3298da514c66",
+    "Albuquerque, NM||Effex NightClub": "7e45fe72-acb0-4ece-b4f6-db69671e625d",
+    "Vancouver, BC||MIA Nightclub": "5056fd64-b4de-4912-9533-7c5a926fa1a2",
+    "Vancouver, BC||The Stock Room": "c4fe3da6-4a9d-43ae-b102-048facf9422d",
+    "Edmonton, AB||Tavern on Whyte": "3eb6bd5b-6de8-4690-822e-7087ff2dd97d",
+    "Halifax, NS||The Brown Hound Public House": "ff758dbe-2d98-400f-8414-c0910cdea42a",
+    "Halifax, NS||Lot Six Bar & Restaurant": "e2c32912-d992-48e3-9777-82746551cb45",
+    "Calgary, AB||National on 17th": "db4c5d70-7e5c-48a5-8250-0a8920189666",
+    "Calgary, AB||St. James Corner Restaurant & Irish Pub": "db3718ba-eb91-49ef-a1e7-c18d4e0f0d9b",
+    "Auckland||The Nicolino Restaurant & Cube Bar": "2de92f12-bb08-4bee-b104-ea62abe2a589",
+    "Dublin||The DL Bar and Restaurant": "ca7f9811-6016-456c-a1d1-760625a6e40c",
+    "Liverpool, England||Soho Bar Liverpool": "872212a2-ae53-4358-9c70-ab05f2fb4a4b",
+    "Edinburgh, Scotland||The Advocate": "1d33a8db-1af5-4405-9522-30491499b633",
+    "Birmingham, England||Reflex - Birmingham": "7c0dbfc8-43da-41ef-967e-5dbafbc499e9",
+    "Manchester, England||Pixel Bar Manchester": "7cba79ff-f6ab-4b9b-8619-76da90df59de",
+    "Manchester, England||Tank & Paddle Manchester Printworks": "bc5a9005-b318-49af-969e-ba9e89f30961",
+    "Perth, WA||399 Small Bar": "8fd59051-ba68-4a66-b895-c3f884178634",
+    "Brisbane, QLD||Retro's Fortitude Valley": "ea249843-227b-4f58-8866-cd603d126e70",
+    "Brisbane, QLD||The MET Brisbane": "53862158-43f9-4423-873c-196ac0eca926",
+    "Sydney, NSW||O Bar and Dining": "5d790c68-1a0a-46ed-ac3e-0bd91c2b0714",
+    "Charlotte, NC||PARA Charlotte": "9e09248f-aa68-42dd-8dbb-a6351bc600b3",
+    "Charlotte, NC||Slate Charlotte": "f9c8b23e-d0fa-4063-b350-3bc756bf85fe",
+    "Boston, MA||Icon Nightclub": "7830ca94-f6cf-478f-9936-f054cd65ba1e",
+    "Boston, MA||Venu Nightclub": "bc634abc-fdd2-47c3-9204-a7d25698927e",
+    "Washington, DC||Harlot DC Lounge & Restaurant": "b438a1b6-2a58-4dcf-be4c-23c8a429b171",
+    "Washington, DC||Sax Restaurant & Lounge": "37017c65-58dd-43cc-8281-311399be8aaa",
+    "Washington, DC||Space DC Restaurant & Lounge": "30e13cbb-c8a7-43f9-8cac-0a06f7beb8c3",
+    "Washington, DC||Empire Lounge DC": "c9cb58bd-4a17-480f-9ebe-48f818dfccea",
+    "Washington, DC||MK Lounge DC": "b12ac8bb-2215-4773-973c-f03d64a78ed1",
+    "Edinburgh, Scotland||The Bow Bar": "47dbd70f-7064-4c08-9546-0d62c74c528f",
+    "Edinburgh, Scotland||The Jazz Bar": "c865ffb5-1ee7-40ca-b252-531556cfe232",
+    "London, England||Soho Theatre Bar": "42806d47-c56f-4298-84eb-dd75dfc583cc",
+    "London, England||The Yard Bar Soho": "10aedff2-9afd-498f-8967-010c4a33cc1d",
+    "London, England||Thirst Bar Soho": "84844de3-991a-488d-8c5b-a24a2404a617",
+    "Melbourne, VIC||Fleet Rooftop Bar": "8510f517-dd37-45c0-9c39-4cf57cb3ee30",
+    "Melbourne, VIC||Rooftop Bar": "45338238-b504-4b89-a413-12562012066f"
+  },
+  "rows": [
+    {
+      "sourceCity": "Ocean City",
+      "sourceVenueName": "Epic Bar And Grill",
+      "oldWrongVenueId": "24bf8ca7-98ae-482e-9dde-468a3df3ef45",
+      "newRightVenueId": "cbe1106a-8e09-431d-ae10-eeb3d6008632",
+      "newVenueName": "EPIC Bar and Grille"
+    },
+    {
+      "sourceCity": "New Orleans, LA",
+      "sourceVenueName": "Oz New Orleans",
+      "oldWrongVenueId": "97b7e020-f753-4965-8941-19fb522b2162",
+      "newRightVenueId": "8adf2c88-2299-4997-a4d5-4914c9d22f8c",
+      "newVenueName": "Oz New Orleans"
+    },
+    {
+      "sourceCity": "New Orleans, LA",
+      "sourceVenueName": "Molly's Irish Pub",
+      "oldWrongVenueId": "df47a259-96ea-4ab3-b38c-576791b922d8",
+      "newRightVenueId": "87ed9d7b-cb3e-407f-aeee-eb8ac1d60e62",
+      "newVenueName": "Molly's Irish Pub"
+    },
+    {
+      "sourceCity": "Seattle, WA",
+      "sourceVenueName": "Linda's Tavern",
+      "oldWrongVenueId": "7153e758-c282-4677-9389-cbe6e0a2c2d3",
+      "newRightVenueId": "a9cb23b2-29fb-40b5-acb3-5be5bd27dbf1",
+      "newVenueName": "Linda's Tavern"
+    },
+    {
+      "sourceCity": "Seattle, WA",
+      "sourceVenueName": "OOLA Capitol Hill",
+      "oldWrongVenueId": "7c324100-ac24-4f66-981e-cb149edbd8db",
+      "newRightVenueId": "b969e880-4cb5-46ae-bb78-894ed415aa62",
+      "newVenueName": "OOLA Capitol Hill"
+    },
+    {
+      "sourceCity": "Scottsdale",
+      "sourceVenueName": "Hi Fi Kitchen Cocktails",
+      "oldWrongVenueId": "2c53ebca-6b8d-42d2-991e-0831f204cd83",
+      "newRightVenueId": "7314d8cc-a6e4-4d76-980e-dad342372eed",
+      "newVenueName": "HiFi Kitchen and Cocktails"
+    },
+    {
+      "sourceCity": "Miami - South Beach, FL",
+      "sourceVenueName": "Lush - South Beach",
+      "oldWrongVenueId": "c3b2dc66-064a-4d6c-a09a-f9bf1d749d34",
+      "newRightVenueId": "2d6550ba-7bdb-4066-ac36-63fa5835f8a8",
+      "newVenueName": "Lush South Beach"
+    },
+    {
+      "sourceCity": "Cleveland, OH",
+      "sourceVenueName": "The Clevelander Bar & Grill",
+      "oldWrongVenueId": "627ec8fa-cb08-47db-9571-c32264e00f1d",
+      "newRightVenueId": "f1d81575-529a-49ff-90c8-a65c78882851",
+      "newVenueName": "The Clevelander Bar & Grill"
+    },
+    {
+      "sourceCity": "Boston, MA",
+      "sourceVenueName": "Joe's Waterfront",
+      "oldWrongVenueId": "ea37d23e-a6dd-4cec-aff5-2295f6241c12",
+      "newRightVenueId": "91dcaf56-1679-4761-93d5-cb1bbe62d1d8",
+      "newVenueName": "Joe's Waterfront"
+    },
+    {
+      "sourceCity": "Detroit",
+      "sourceVenueName": "Queens Bar Detroit",
+      "oldWrongVenueId": "791ca924-9dfe-4026-b5e8-b673468e68b7",
+      "newRightVenueId": "5d570306-6b20-49d9-abec-3298da514c66",
+      "newVenueName": "Queens Bar"
+    },
+    {
+      "sourceCity": "Albuquerque, NM",
+      "sourceVenueName": "Effex NightClub",
+      "oldWrongVenueId": "9f48f1af-ca1d-4a34-921a-4ab55a8facb2",
+      "newRightVenueId": "7e45fe72-acb0-4ece-b4f6-db69671e625d",
+      "newVenueName": "Effex Nightclub"
+    },
+    {
+      "sourceCity": "Vancouver, BC",
+      "sourceVenueName": "MIA Nightclub",
+      "oldWrongVenueId": "280a66c3-2c21-4c11-b076-e808775948c0",
+      "newRightVenueId": "5056fd64-b4de-4912-9533-7c5a926fa1a2",
+      "newVenueName": "M.I.A. Nightclub"
+    },
+    {
+      "sourceCity": "Vancouver, BC",
+      "sourceVenueName": "The Stock Room",
+      "oldWrongVenueId": "cb3c0eee-f77a-400d-b5b5-ffd9283bf289",
+      "newRightVenueId": "c4fe3da6-4a9d-43ae-b102-048facf9422d",
+      "newVenueName": "The Stock Room"
+    },
+    {
+      "sourceCity": "Edmonton, AB",
+      "sourceVenueName": "Tavern on Whyte",
+      "oldWrongVenueId": "d07cefe3-cf26-43dd-834f-12a83f51f4f7",
+      "newRightVenueId": "3eb6bd5b-6de8-4690-822e-7087ff2dd97d",
+      "newVenueName": "Tavern on Whyte"
+    },
+    {
+      "sourceCity": "Halifax, NS",
+      "sourceVenueName": "The Brown Hound Public House",
+      "oldWrongVenueId": "250a7e9e-776d-4e98-8c0b-560bc26aefcc",
+      "newRightVenueId": "ff758dbe-2d98-400f-8414-c0910cdea42a",
+      "newVenueName": "The Brown Hound Public House"
+    },
+    {
+      "sourceCity": "Halifax, NS",
+      "sourceVenueName": "Lot Six Bar & Restaurant",
+      "oldWrongVenueId": "1ed0265e-66f0-4b4d-989c-dbbaaaac13d1",
+      "newRightVenueId": "e2c32912-d992-48e3-9777-82746551cb45",
+      "newVenueName": "Lot Six Bar & Restaurant"
+    },
+    {
+      "sourceCity": "Calgary, AB",
+      "sourceVenueName": "National on 17th",
+      "oldWrongVenueId": "0230785d-4eba-48de-9995-acce9ad6e472",
+      "newRightVenueId": "db4c5d70-7e5c-48a5-8250-0a8920189666",
+      "newVenueName": "National on 17th"
+    },
+    {
+      "sourceCity": "Calgary, AB",
+      "sourceVenueName": "St. James Corner Restaurant & Irish Pub",
+      "oldWrongVenueId": "aceb0b44-cdea-45e7-b631-a63ffddecfac",
+      "newRightVenueId": "db3718ba-eb91-49ef-a1e7-c18d4e0f0d9b",
+      "newVenueName": "St. James Corner Restaurant & Irish Pub"
+    },
+    {
+      "sourceCity": "Auckland",
+      "sourceVenueName": "The Nicolino Restaurant & Cube Bar",
+      "oldWrongVenueId": "b8a9167e-6cc5-4f1a-b57f-c08fd2154eca",
+      "newRightVenueId": "2de92f12-bb08-4bee-b104-ea62abe2a589",
+      "newVenueName": "Nicolino Restaurant & Cube Bar"
+    },
+    {
+      "sourceCity": "Dublin",
+      "sourceVenueName": "The DL Bar and Restaurant",
+      "oldWrongVenueId": "4ed903b8-821e-45ca-be86-e943e758f548",
+      "newRightVenueId": "ca7f9811-6016-456c-a1d1-760625a6e40c",
+      "newVenueName": "The DL Bar and Restaurant"
+    },
+    {
+      "sourceCity": "Liverpool, England",
+      "sourceVenueName": "Soho Bar Liverpool",
+      "oldWrongVenueId": "9866e551-fd60-49b9-b952-64e07523714a",
+      "newRightVenueId": "872212a2-ae53-4358-9c70-ab05f2fb4a4b",
+      "newVenueName": "Soho Bar Liverpool"
+    },
+    {
+      "sourceCity": "Edinburgh, Scotland",
+      "sourceVenueName": "The Advocate",
+      "oldWrongVenueId": "8e45de06-585b-4499-94b3-e3af0231fc10",
+      "newRightVenueId": "1d33a8db-1af5-4405-9522-30491499b633",
+      "newVenueName": "The Advocate"
+    },
+    {
+      "sourceCity": "Birmingham, England",
+      "sourceVenueName": "Reflex - Birmingham",
+      "oldWrongVenueId": "1a2de905-3fb5-4052-9212-998a8be9b4ad",
+      "newRightVenueId": "7c0dbfc8-43da-41ef-967e-5dbafbc499e9",
+      "newVenueName": "Reflex Birmingham"
+    },
+    {
+      "sourceCity": "Manchester, England",
+      "sourceVenueName": "Pixel Bar Manchester",
+      "oldWrongVenueId": "b15bee15-db72-466c-94c8-848295b834c1",
+      "newRightVenueId": "7cba79ff-f6ab-4b9b-8619-76da90df59de",
+      "newVenueName": "Pixel Bar Manchester"
+    },
+    {
+      "sourceCity": "Manchester, England",
+      "sourceVenueName": "Tank & Paddle Manchester Printworks",
+      "oldWrongVenueId": "2bab0ad7-7289-43ee-a0b6-ff0b5ceb4683",
+      "newRightVenueId": "bc5a9005-b318-49af-969e-ba9e89f30961",
+      "newVenueName": "Tank & Paddle Manchester Printworks"
+    },
+    {
+      "sourceCity": "Perth, WA",
+      "sourceVenueName": "399 Small Bar",
+      "oldWrongVenueId": "2698f22d-c57d-4981-8cc9-1de41afdfd4a",
+      "newRightVenueId": "8fd59051-ba68-4a66-b895-c3f884178634",
+      "newVenueName": "399 Bar"
+    },
+    {
+      "sourceCity": "Brisbane, QLD",
+      "sourceVenueName": "Retro's Fortitude Valley",
+      "oldWrongVenueId": "209c00fd-2731-4c7e-ae40-93ad8a21d5e0",
+      "newRightVenueId": "ea249843-227b-4f58-8866-cd603d126e70",
+      "newVenueName": "Retro's Cocktail Lounge"
+    },
+    {
+      "sourceCity": "Brisbane, QLD",
+      "sourceVenueName": "The MET Brisbane",
+      "oldWrongVenueId": "1ce57f1e-a4d9-419a-9a4c-40ee16093a0a",
+      "newRightVenueId": "53862158-43f9-4423-873c-196ac0eca926",
+      "newVenueName": "The Met Brisbane"
+    },
+    {
+      "sourceCity": "Sydney, NSW",
+      "sourceVenueName": "O Bar and Dining",
+      "oldWrongVenueId": "46df1498-d003-449c-b792-4684906f6e41",
+      "newRightVenueId": "5d790c68-1a0a-46ed-ac3e-0bd91c2b0714",
+      "newVenueName": "O Bar and Dining"
+    },
+    {
+      "sourceCity": "Charlotte, NC",
+      "sourceVenueName": "PARA Charlotte",
+      "oldWrongVenueId": "2f1cbdfc-1ccb-4e6d-ae1d-d077f09a5487",
+      "newRightVenueId": "9e09248f-aa68-42dd-8dbb-a6351bc600b3",
+      "newVenueName": "PARA"
+    },
+    {
+      "sourceCity": "Charlotte, NC",
+      "sourceVenueName": "Slate Charlotte",
+      "oldWrongVenueId": "2f1cbdfc-1ccb-4e6d-ae1d-d077f09a5487",
+      "newRightVenueId": "f9c8b23e-d0fa-4063-b350-3bc756bf85fe",
+      "newVenueName": "Slate"
+    },
+    {
+      "sourceCity": "Boston, MA",
+      "sourceVenueName": "Icon Nightclub",
+      "oldWrongVenueId": "d1d53bbb-f0bf-49db-ab99-c623dac8eb2c",
+      "newRightVenueId": "7830ca94-f6cf-478f-9936-f054cd65ba1e",
+      "newVenueName": "ICON Nightclub"
+    },
+    {
+      "sourceCity": "Boston, MA",
+      "sourceVenueName": "Venu Nightclub",
+      "oldWrongVenueId": "d1d53bbb-f0bf-49db-ab99-c623dac8eb2c",
+      "newRightVenueId": "bc634abc-fdd2-47c3-9204-a7d25698927e",
+      "newVenueName": "Venu Nightclub"
+    },
+    {
+      "sourceCity": "Washington, DC",
+      "sourceVenueName": "Harlot DC Lounge & Restaurant",
+      "oldWrongVenueId": "c60ccc35-bbd1-4f7a-a06f-eb3723af9a0d",
+      "newRightVenueId": "b438a1b6-2a58-4dcf-be4c-23c8a429b171",
+      "newVenueName": "Harlot DC"
+    },
+    {
+      "sourceCity": "Washington, DC",
+      "sourceVenueName": "Sax Restaurant & Lounge",
+      "oldWrongVenueId": "c60ccc35-bbd1-4f7a-a06f-eb3723af9a0d",
+      "newRightVenueId": "37017c65-58dd-43cc-8281-311399be8aaa",
+      "newVenueName": "Sax Dinner Theater and Lounge"
+    },
+    {
+      "sourceCity": "Washington, DC",
+      "sourceVenueName": "Space DC Restaurant & Lounge",
+      "oldWrongVenueId": "c60ccc35-bbd1-4f7a-a06f-eb3723af9a0d",
+      "newRightVenueId": "30e13cbb-c8a7-43f9-8cac-0a06f7beb8c3",
+      "newVenueName": "Space DC Restaurant & Lounge"
+    },
+    {
+      "sourceCity": "Washington, DC",
+      "sourceVenueName": "Empire Lounge DC",
+      "oldWrongVenueId": "348215d6-1e6b-45e2-a750-5bfa73c23e7d",
+      "newRightVenueId": "c9cb58bd-4a17-480f-9ebe-48f818dfccea",
+      "newVenueName": "Empire Lounge DC"
+    },
+    {
+      "sourceCity": "Washington, DC",
+      "sourceVenueName": "MK Lounge DC",
+      "oldWrongVenueId": "348215d6-1e6b-45e2-a750-5bfa73c23e7d",
+      "newRightVenueId": "b12ac8bb-2215-4773-973c-f03d64a78ed1",
+      "newVenueName": "MK Lounge DC"
+    },
+    {
+      "sourceCity": "Edinburgh, Scotland",
+      "sourceVenueName": "The Bow Bar",
+      "oldWrongVenueId": "d9ceda5c-477a-45a6-9416-3af87d51161c",
+      "newRightVenueId": "47dbd70f-7064-4c08-9546-0d62c74c528f",
+      "newVenueName": "The Bow Bar"
+    },
+    {
+      "sourceCity": "Edinburgh, Scotland",
+      "sourceVenueName": "The Jazz Bar",
+      "oldWrongVenueId": "d9ceda5c-477a-45a6-9416-3af87d51161c",
+      "newRightVenueId": "c865ffb5-1ee7-40ca-b252-531556cfe232",
+      "newVenueName": "The Jazz Bar"
+    },
+    {
+      "sourceCity": "London, England",
+      "sourceVenueName": "Soho Theatre Bar",
+      "oldWrongVenueId": "44b1f9f0-7444-428c-8695-d4dd138a9957",
+      "newRightVenueId": "42806d47-c56f-4298-84eb-dd75dfc583cc",
+      "newVenueName": "Soho Theatre Bar"
+    },
+    {
+      "sourceCity": "London, England",
+      "sourceVenueName": "The Yard Bar Soho",
+      "oldWrongVenueId": "44b1f9f0-7444-428c-8695-d4dd138a9957",
+      "newRightVenueId": "10aedff2-9afd-498f-8967-010c4a33cc1d",
+      "newVenueName": "The Yard Bar Soho"
+    },
+    {
+      "sourceCity": "London, England",
+      "sourceVenueName": "Thirst Bar Soho",
+      "oldWrongVenueId": "44b1f9f0-7444-428c-8695-d4dd138a9957",
+      "newRightVenueId": "84844de3-991a-488d-8c5b-a24a2404a617",
+      "newVenueName": "Thirst Bar"
+    },
+    {
+      "sourceCity": "Melbourne, VIC",
+      "sourceVenueName": "Fleet Rooftop Bar",
+      "oldWrongVenueId": "8ef799a5-e936-4738-89c3-0cbbfb080f4b",
+      "newRightVenueId": "8510f517-dd37-45c0-9c39-4cf57cb3ee30",
+      "newVenueName": "Fleet Rooftop Bar"
+    },
+    {
+      "sourceCity": "Melbourne, VIC",
+      "sourceVenueName": "Rooftop Bar",
+      "oldWrongVenueId": "8ef799a5-e936-4738-89c3-0cbbfb080f4b",
+      "newRightVenueId": "45338238-b504-4b89-a413-12562012066f",
+      "newVenueName": "Rooftop Bar"
+    }
+  ]
+}
