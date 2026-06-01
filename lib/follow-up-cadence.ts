@@ -33,7 +33,7 @@
  */
 
 import "server-only";
-import { emailThreads } from "@/db/schema";
+import { emailThreads, venues } from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, eq, lte, sql } from "drizzle-orm";
@@ -165,8 +165,10 @@ export async function runFollowUpCadence(): Promise<CadenceRunResult> {
       subject: emailThreads.subject,
       assignedStaffId: emailThreads.assignedStaffId,
       lastSenderName: emailThreads.lastSenderName,
+      venueName: venues.name,
     })
     .from(emailThreads)
+    .leftJoin(venues, eq(venues.id, emailThreads.venueId))
     .where(
       and(
         eq(emailThreads.followUpStage, 1),
@@ -178,10 +180,62 @@ export async function runFollowUpCadence(): Promise<CadenceRunResult> {
   let tasksCreated = 0;
   for (const t of stage2Candidates) {
     try {
+      // Idempotency guard: skip if a non-completed auto-task
+      // already exists for this thread. Protects against re-entry
+      // when a prior cron run inserted the task but failed to bump
+      // the thread's follow_up_stage (network blip between the
+      // INSERT and the UPDATE). Without this guard, the next cron
+      // tick would mint a duplicate task.
+      //
+      // We only check `source='auto'` so a manual "Call X" task
+      // created by the operator doesn't suppress the auto-creation
+      // — the operator's task is for a different reason and may
+      // not be a phone follow-up anyway.
+      //
+      // We also only consider status='pending' or 'in_progress' as
+      // blocking: a previously-auto-created task that the operator
+      // already completed shouldn't suppress a new one if the
+      // thread re-entered the cadence after a reply + relapse.
+      const existing = await db.execute<{ id: string }>(sql`
+        SELECT id FROM tasks
+        WHERE source = 'auto'
+          AND target_type = 'email_thread'
+          AND target_id = ${t.id}
+          AND status IN ('pending', 'in_progress')
+        LIMIT 1
+      `);
+      // drizzle's db.execute<T> returns a result shape that varies
+      // by driver. Normalize to an array.
+      const existingRows: Array<{ id: string }> = Array.isArray(existing)
+        ? existing
+        : ((existing as { rows?: Array<{ id: string }> }).rows ?? []);
+      if (existingRows.length > 0) {
+        // Bump the stage anyway so the cadence doesn't keep
+        // re-checking this thread. The existing task carries the
+        // operator's attention; cadence's job here is just to
+        // advance state, and the task already exists.
+        await db
+          .update(emailThreads)
+          .set({
+            followUpStage: 2,
+            followUpNextDueAt: null,
+            followUpLastAdvancedAt: now,
+          })
+          .where(eq(emailThreads.id, t.id));
+        continue;
+      }
+
+      // Title prefers venue name ("Call follow-up: Lavelle") over
+      // the email subject ("Call follow-up: Re: Halloween availability")
+      // — operators triaging the task list need to know WHO to
+      // call, not what the email thread was about. Falls back to
+      // the subject when the thread isn't matched to a venue yet.
+      const titleLabel = t.venueName ?? t.subject ?? "(no subject)";
+
       await db.execute(sql`
         INSERT INTO tasks (title, description, source, status, target_type, target_id, assigned_staff_id, due_at)
         VALUES (
-          ${`Call follow-up: ${t.subject ?? "(no subject)"}`},
+          ${`Call follow-up: ${titleLabel}`},
           ${`Auto-created by cadence after ${STAGE_2_DAYS} days of no reply on a cold outreach thread. Consider a phone follow-up.`},
           'auto',
           'pending',
