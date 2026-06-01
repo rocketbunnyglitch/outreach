@@ -385,6 +385,33 @@ async function renderAdminPage() {
         </header>
       </section>
 
+      {/* Archived campaigns — third archive surface. Per operator:
+          "archived campaigns should not show on the dropdown
+          campaign at the top nor on the non-admin home page". Both
+          filters already in place (campaign-switcher.tsx line 25 +
+          getCurrentCampaign in lib/current-campaign.ts line 63).
+          This page is the restore + hard-delete surface. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-center justify-between gap-4 px-6 py-4">
+          <div className="flex items-start gap-3">
+            <Archive className="mt-0.5 h-5 w-5 text-zinc-500" />
+            <div>
+              <h2 className="font-semibold text-lg tracking-tight">Archived campaigns</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Soft-deleted campaigns. Hidden from the campaign switcher and the non-admin home
+                page. Restore brings them back (status → planning); permanently delete cascades
+                through city_campaigns + events + cold_outreach (irreversible).
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/archived-campaigns">
+              Open <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        </header>
+      </section>
+
       {/* Classifier backfill — admin-only tool to apply the rule-based
           triage classifier to historical unclassified threads. The
           classifier runs live on new mail (gmail-poll-worker.ts), but

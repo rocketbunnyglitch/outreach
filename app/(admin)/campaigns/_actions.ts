@@ -224,7 +224,27 @@ export async function updateCampaign(
   };
   if (input.name !== undefined) patch.name = input.name;
   if (input.holidayType !== undefined) patch.holidayType = input.holidayType;
-  if (input.status !== undefined) patch.status = input.status;
+  if (input.status !== undefined) {
+    patch.status = input.status;
+    // Status changes drive archive presence — keep archived_at in
+    // sync so the campaign switcher + non-admin home page (both
+    // gated on archived_at IS NULL) reflect the change immediately.
+    //
+    // status → 'archived'      ⇒ stamp archived_at
+    // status → anything else   ⇒ clear archived_at (restore from
+    //                            archive without needing the
+    //                            explicit unarchiveCampaign action)
+    //
+    // Operator: "archived campaigns should not show on the dropdown
+    // campaign at the top nor on the non-admin home page" — both
+    // already filter isNull(archivedAt), so this autosync is what
+    // wires the inline status toggle to the visibility rule.
+    if (input.status === "archived") {
+      patch.archivedAt = new Date();
+    } else {
+      patch.archivedAt = null;
+    }
+  }
   if (input.startDate !== undefined) patch.startDate = input.startDate;
   if (input.endDate !== undefined) patch.endDate = input.endDate;
   // publicSubdomain / revenueGoalCents / venueCountGoal removed from
@@ -246,6 +266,7 @@ export async function updateCampaign(
     );
     revalidatePath(`/campaigns/${id}`);
     revalidatePath("/campaigns");
+    revalidatePath("/admin/archived-campaigns");
     return { ok: true, data: { id } };
   } catch (err) {
     return wrapDbError(err, "update campaign");
@@ -261,8 +282,66 @@ export async function archiveCampaign(id: string): Promise<void> {
       .where(eq(campaigns.id, id)),
   );
   revalidatePath("/campaigns");
+  revalidatePath("/admin/archived-campaigns");
   revalidatePath(`/campaigns/${id}`);
   redirect("/campaigns");
+}
+
+/**
+ * Same as archiveCampaign but returns a result instead of redirecting.
+ * Used by the per-row archive button on /campaigns (caller already
+ * there — no need to redirect to same page).
+ */
+export async function archiveCampaignNoRedirect(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(campaigns)
+        .set({ status: "archived", archivedAt: new Date(), updatedBy: staff.id })
+        .where(eq(campaigns.id, id)),
+    );
+    revalidatePath("/campaigns");
+    revalidatePath("/admin/archived-campaigns");
+    revalidatePath(`/campaigns/${id}`);
+    return { ok: true };
+  } catch (err) {
+    console.error("[archiveCampaignNoRedirect] failed", { err, campaignId: id, by: staff.id });
+    return { ok: false, error: "Couldn't archive campaign." };
+  }
+}
+
+/**
+ * Restore a previously-archived campaign. Clears archived_at and
+ * resets status to 'planning' (operator can then transition forward
+ * via the campaign detail page).
+ *
+ * Admin-only — restoring a campaign affects every city_campaign +
+ * event + venue_event under it, and the campaign switcher will
+ * surface it again.
+ */
+export async function unarchiveCampaign(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { staff } = await requireStaff();
+  if (staff.role !== "admin") {
+    return { ok: false, error: "Admin role required to restore archived campaigns." };
+  }
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(campaigns)
+        .set({ status: "planning", archivedAt: null, updatedBy: staff.id })
+        .where(eq(campaigns.id, id)),
+    );
+    revalidatePath("/campaigns");
+    revalidatePath("/admin/archived-campaigns");
+    revalidatePath(`/campaigns/${id}`);
+    return { ok: true };
+  } catch (err) {
+    console.error("[unarchiveCampaign] failed", { err, campaignId: id, by: staff.id });
+    return { ok: false, error: "Couldn't restore campaign." };
+  }
 }
 
 /**
