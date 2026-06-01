@@ -14,6 +14,7 @@
  */
 
 import { ArrowRight, Inbox, Mail, MapPin, Target } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 export const metadata = {
@@ -27,8 +28,17 @@ export default function AboutPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12 md:py-20">
       <header>
-        <p className="font-mono text-[11px] text-zinc-500 uppercase tracking-[0.2em]">PERSE</p>
-        <h1 className="mt-3 font-semibold text-4xl tracking-tight md:text-5xl">
+        {/* Brand wordmark — transparent PNG so dark mode renders the
+            same asset re-tinted via Tailwind's invert filter. */}
+        <Image
+          src="/brand/perse-512-transparent.png"
+          alt="PERSE"
+          width={220}
+          height={64}
+          priority
+          className="dark:invert"
+        />
+        <h1 className="mt-8 font-semibold text-4xl tracking-tight md:text-5xl">
           Outreach engine for multi-city event promoters.
         </h1>
         <p className="mt-4 max-w-2xl text-[17px] text-zinc-600 leading-relaxed dark:text-zinc-400">

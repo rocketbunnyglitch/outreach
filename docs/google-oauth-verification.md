@@ -39,18 +39,25 @@ yet, create them as Workspace aliases that forward to your real inbox.
 
 ## App logo
 
-Google asks for a 120x120 PNG logo. You don't currently have a brand
-asset committed; either:
+A 120×120 PNG of the PERSE wordmark has been generated and committed
+to the repo at:
 
-1. Quick option: design a simple "P" wordmark in any image tool, 120x120
-   PNG, transparent background, upload.
-2. Better option: hire a designer for a single logo asset, ~$50-200 on
-   Fiverr or 99designs. Worth doing once because the same logo gets
-   used in the Gmail OAuth consent screen every staff member sees
-   when connecting their inbox — first impressions matter.
+  `public/brand/perse-120-light.png`  (dark wordmark on white)
+  `public/brand/perse-120-dark.png`   (light wordmark on dark)
 
-Either way, upload to Google Cloud Console under OAuth consent screen
-→ Branding → Application logo.
+Use the **light** version (dark wordmark on white background) for the
+Google OAuth consent screen — it renders best inside the circular crop
+Google applies. After deploying, the file is available at:
+
+  https://outreach.barcrawlconnect.com/brand/perse-120-light.png
+
+Right-click → save the image, then upload to Google Cloud Console
+→ OAuth consent screen → Branding → Application logo.
+
+Higher-resolution variants are also available (256, 512) if Google
+later asks for a bigger file, plus a transparent-bg 512x512 in
+`public/brand/perse-512-transparent.png` for placement on any
+color.
 
 ---
 
@@ -182,10 +189,12 @@ Without this, the verification form won't accept your URLs.
 1. **TODAY:** Confirm the legal pages render publicly at the three
    URLs above (do this AFTER deploying). Just curl them or hit them
    in an incognito browser.
-2. **TODAY:** Create or alias `support@barcrawlconnect.com` and
+2. **TODAY:** Confirm the logo is available at
+   https://outreach.barcrawlconnect.com/brand/perse-120-light.png
+   and download it for upload to Google.
+3. **TODAY:** Create or alias `support@barcrawlconnect.com` and
    `privacy@barcrawlconnect.com`. They can be Workspace aliases of
    your existing inbox.
-3. **TODAY-ISH:** Get the 120x120 logo.
 4. **THIS WEEK:** Set up Google Search Console + verify the domain.
 5. **THIS WEEK:** Record the demo video.
 6. **THIS WEEK:** Submit the verification form with everything above.
