@@ -228,6 +228,37 @@ export async function loadDashboardData(
       ).rows ?? []);
 
   // ---- 5. KPI rollups (parallel) ----
+  //
+  // Campaign scope for venue + event KPIs. When options.campaignId
+  // is set, we restrict the counters to venue_events / events
+  // belonging to city_campaigns under that campaign. Without the
+  // join, the counters reflect the entire database — operator
+  // flagged that "Venues confirmed" showed >2000 on a campaign
+  // with zero confirmed venues, which was every confirmed venue
+  // ACROSS EVERY campaign in history.
+  //
+  // Archived events / city_campaigns / campaigns are excluded from
+  // both counts (matches the rest of the dashboard).
+  const kpiEventIds: string[] = await db
+    .select({ id: events.id })
+    .from(events)
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .where(
+      and(
+        isNull(events.archivedAt),
+        isNull(campaigns.archivedAt),
+        campaignFilter, // optional — only present when scoped
+      ),
+    )
+    .then((rows) => rows.map((r) => r.id));
+
+  // If the campaign has no events in scope (early-stage campaign,
+  // or no campaign selected when zero campaigns exist), short-
+  // circuit the COUNTs to zero. Saves a query AND avoids the
+  // empty-IN-clause SQL error.
+  const noEvents = kpiEventIds.length === 0;
+
   const [
     confirmedVenuesResult,
     outreachThisWeekResult,
@@ -235,14 +266,20 @@ export async function loadDashboardData(
     replyStatsResult,
     eventStatsResult,
   ] = await Promise.all([
-    db
-      .select({
-        confirmedVenues: sql<number>`count(*)::int`,
-        confirmedVenuesLast1d: sql<number>`count(*) filter (where confirmed_at >= now() - interval '1 day')::int`,
-        confirmedVenuesLast3d: sql<number>`count(*) filter (where confirmed_at >= now() - interval '3 days')::int`,
-      })
-      .from(venueEvents)
-      .where(eq(venueEvents.status, "confirmed")),
+    noEvents
+      ? Promise.resolve([
+          { confirmedVenues: 0, confirmedVenuesLast1d: 0, confirmedVenuesLast3d: 0 },
+        ])
+      : db
+          .select({
+            confirmedVenues: sql<number>`count(*)::int`,
+            confirmedVenuesLast1d: sql<number>`count(*) filter (where confirmed_at >= now() - interval '1 day')::int`,
+            confirmedVenuesLast3d: sql<number>`count(*) filter (where confirmed_at >= now() - interval '3 days')::int`,
+          })
+          .from(venueEvents)
+          .where(
+            and(eq(venueEvents.status, "confirmed"), inArray(venueEvents.eventId, kpiEventIds)),
+          ),
     db
       .select({
         outreachThisWeek: sql<number>`count(*)::int`,
@@ -272,19 +309,28 @@ export async function loadDashboardData(
       })
       .from(outreachLog)
       .where(gte(outreachLog.createdAt, THIRTY_DAYS_AGO as never)),
-    db
-      .select({
-        confirmedEvents: sql<number>`count(*) filter (where status = 'confirmed')::int`,
-        plannedEvents: sql<number>`count(*) filter (where status = 'planned')::int`,
-        // "Crawls complete" = events.status = confirmed. We use
-        // updated_at as the proxy for "when it became confirmed" —
-        // pragmatic since events rarely get edited after going
-        // confirmed; the audit trail's good enough for a KPI tile.
-        confirmedEventsLast1d: sql<number>`count(*) filter (where status = 'confirmed' and updated_at >= now() - interval '1 day')::int`,
-        confirmedEventsLast3d: sql<number>`count(*) filter (where status = 'confirmed' and updated_at >= now() - interval '3 days')::int`,
-      })
-      .from(events)
-      .where(isNull(events.archivedAt)),
+    noEvents
+      ? Promise.resolve([
+          {
+            confirmedEvents: 0,
+            plannedEvents: 0,
+            confirmedEventsLast1d: 0,
+            confirmedEventsLast3d: 0,
+          },
+        ])
+      : db
+          .select({
+            confirmedEvents: sql<number>`count(*) filter (where status = 'confirmed')::int`,
+            plannedEvents: sql<number>`count(*) filter (where status = 'planned')::int`,
+            // "Crawls complete" = events.status = confirmed. We use
+            // updated_at as the proxy for "when it became confirmed" —
+            // pragmatic since events rarely get edited after going
+            // confirmed; the audit trail's good enough for a KPI tile.
+            confirmedEventsLast1d: sql<number>`count(*) filter (where status = 'confirmed' and updated_at >= now() - interval '1 day')::int`,
+            confirmedEventsLast3d: sql<number>`count(*) filter (where status = 'confirmed' and updated_at >= now() - interval '3 days')::int`,
+          })
+          .from(events)
+          .where(and(isNull(events.archivedAt), inArray(events.id, kpiEventIds))),
   ]);
 
   const confirmedVenues = Number(confirmedVenuesResult[0]?.confirmedVenues ?? 0);
