@@ -377,32 +377,14 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
     // fail the engine-side mark-read.
     //
     // Asymmetric to setThreadStar: read-state is per-MESSAGE in
-    // Gmail, not per-thread. We call threads.modify to remove
-    // UNREAD which acts on every message in the thread --
-    // matches operator intent ("I've seen all of this").
-    try {
-      const [acct] = await db
-        .select({
-          gmailThreadId: emailThreads.gmailThreadId,
-          token: connectedAccounts.gmailOauthRefreshToken,
-        })
-        .from(emailThreads)
-        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
-        .where(eq(emailThreads.id, threadId))
-        .limit(1);
-      if (acct?.token) {
-        await modifyGmailThreadLabels({
-          encryptedRefreshToken: acct.token,
-          gmailThreadId: acct.gmailThreadId,
-          removeLabelIds: ["UNREAD"],
-        });
-      }
-    } catch (err) {
-      logger.warn(
-        { err, threadId },
-        "markThreadRead: Gmail UNREAD removal failed (engine state already updated)",
-      );
-    }
+    // Gmail, not per-thread. threads.modify removing UNREAD acts
+    // on every message in the thread -- matches operator intent
+    // ("I've seen all of this").
+    await mirrorGmailLabels({
+      threadId,
+      removeLabelIds: ["UNREAD"],
+      context: "markThreadRead",
+    });
 
     publishRealtime({
       table: "email_threads",
@@ -768,36 +750,12 @@ export async function setThreadStar(
     // success to the operator. The engine-side state is the
     // canonical source the UI shows; eventual consistency with
     // Gmail is the goal, not a hard requirement.
-    //
-    // Token + Gmail thread id are loaded in a single query
-    // alongside the team check above; the second query here is
-    // a separate hop because the engine update needs to commit
-    // before we touch Gmail (so a Gmail failure can't leave us
-    // in a half-applied state with no DB record).
-    try {
-      const [acct] = await db
-        .select({
-          gmailThreadId: emailThreads.gmailThreadId,
-          token: connectedAccounts.gmailOauthRefreshToken,
-        })
-        .from(emailThreads)
-        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
-        .where(eq(emailThreads.id, threadId))
-        .limit(1);
-      if (acct?.token) {
-        await modifyGmailThreadLabels({
-          encryptedRefreshToken: acct.token,
-          gmailThreadId: acct.gmailThreadId,
-          addLabelIds: isStarred ? ["STARRED"] : [],
-          removeLabelIds: isStarred ? [] : ["STARRED"],
-        });
-      }
-    } catch (err) {
-      logger.warn(
-        { err, threadId, isStarred },
-        "setThreadStar: Gmail mirror failed (engine state already updated)",
-      );
-    }
+    await mirrorGmailLabels({
+      threadId,
+      addLabelIds: isStarred ? ["STARRED"] : [],
+      removeLabelIds: isStarred ? [] : ["STARRED"],
+      context: "setThreadStar",
+    });
 
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
@@ -941,8 +899,6 @@ export async function reportThreadSpam(
     const [row] = await db
       .select({
         teamId: connectedAccounts.teamId,
-        gmailThreadId: emailThreads.gmailThreadId,
-        refreshToken: connectedAccounts.gmailOauthRefreshToken,
       })
       .from(emailThreads)
       .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
@@ -952,23 +908,17 @@ export async function reportThreadSpam(
       return { ok: false, error: "Thread not on your team." };
     }
 
-    // Best-effort Gmail SPAM label mutation.
-    let gmailReported = false;
-    if (row.refreshToken && row.gmailThreadId) {
-      try {
-        await modifyGmailThreadLabels({
-          encryptedRefreshToken: row.refreshToken,
-          gmailThreadId: row.gmailThreadId,
-          addLabelIds: ["SPAM"],
-          removeLabelIds: ["INBOX"],
-        });
-        gmailReported = true;
-      } catch (err) {
-        // Don't fail the whole action; log + continue with the local
-        // soft-delete so the operator's view stays clean.
-        logger.warn({ err, threadId }, "reportThreadSpam: Gmail label mutation failed");
-      }
-    }
+    // Best-effort Gmail SPAM label mutation. The local mirror
+    // helper returns true on a successful mutation, false when no
+    // Gmail context was available (no token / no gmail thread id)
+    // or when the API call itself failed (logged at warn). That's
+    // exactly the gmailReported boolean shape we want to return.
+    const gmailReported = await mirrorGmailLabels({
+      threadId,
+      addLabelIds: ["SPAM"],
+      removeLabelIds: ["INBOX"],
+      context: "reportThreadSpam",
+    });
 
     // Soft-delete locally so the thread leaves every mailbox view.
     await db
