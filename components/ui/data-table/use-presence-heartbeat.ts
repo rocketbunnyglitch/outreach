@@ -65,7 +65,7 @@ const DEFAULT_INTERVAL_MS = 10_000;
 
 // TEMP kill-switch: presence heartbeat disabled while debugging the
 // React #418 hydration freeze. Flip to false to re-enable.
-const PRESENCE_DISABLED: boolean = true;
+const PRESENCE_DISABLED: boolean = false;
 
 export function usePresenceHeartbeat({
   route,

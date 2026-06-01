@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // TEMP kill-switch: presence WS/cursors disabled while debugging the
 // React #418 hydration freeze. Flip to false to re-enable.
-const PRESENCE_DISABLED: boolean = true;
+const PRESENCE_DISABLED: boolean = false;
 
 export interface Peer {
   connId: string;
