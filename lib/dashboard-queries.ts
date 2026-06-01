@@ -60,6 +60,10 @@ export interface DashboardData {
   recentNotes: RecentNoteRow[];
   kpis: {
     venuesConfirmed: number;
+    /** Venues confirmed in the last 24h (via venue_events.confirmed_at). */
+    venuesConfirmedLast1d: number;
+    /** Venues confirmed in the last 72h. Superset of last1d. */
+    venuesConfirmedLast3d: number;
     venuesTargeted: number;
     salesCents: number;
     goalCents: number;
@@ -68,6 +72,10 @@ export interface DashboardData {
     outreachThisWeek: number;
     outreachPrevWeek: number;
     eventsConfirmed: number;
+    /** Events ("crawls complete") whose status=confirmed AND updated in last 24h. */
+    eventsConfirmedLast1d: number;
+    /** Events confirmed-and-updated in last 72h. Superset of last1d. */
+    eventsConfirmedLast3d: number;
     eventsPlanned: number;
     replyRate: number; // 0-100 percentage
     openTaskCount: number;
@@ -230,6 +238,8 @@ export async function loadDashboardData(
     db
       .select({
         confirmedVenues: sql<number>`count(*)::int`,
+        confirmedVenuesLast1d: sql<number>`count(*) filter (where confirmed_at >= now() - interval '1 day')::int`,
+        confirmedVenuesLast3d: sql<number>`count(*) filter (where confirmed_at >= now() - interval '3 days')::int`,
       })
       .from(venueEvents)
       .where(eq(venueEvents.status, "confirmed")),
@@ -266,18 +276,28 @@ export async function loadDashboardData(
       .select({
         confirmedEvents: sql<number>`count(*) filter (where status = 'confirmed')::int`,
         plannedEvents: sql<number>`count(*) filter (where status = 'planned')::int`,
+        // "Crawls complete" = events.status = confirmed. We use
+        // updated_at as the proxy for "when it became confirmed" —
+        // pragmatic since events rarely get edited after going
+        // confirmed; the audit trail's good enough for a KPI tile.
+        confirmedEventsLast1d: sql<number>`count(*) filter (where status = 'confirmed' and updated_at >= now() - interval '1 day')::int`,
+        confirmedEventsLast3d: sql<number>`count(*) filter (where status = 'confirmed' and updated_at >= now() - interval '3 days')::int`,
       })
       .from(events)
       .where(isNull(events.archivedAt)),
   ]);
 
   const confirmedVenues = Number(confirmedVenuesResult[0]?.confirmedVenues ?? 0);
+  const confirmedVenuesLast1d = Number(confirmedVenuesResult[0]?.confirmedVenuesLast1d ?? 0);
+  const confirmedVenuesLast3d = Number(confirmedVenuesResult[0]?.confirmedVenuesLast3d ?? 0);
   const outreachThisWeek = Number(outreachThisWeekResult[0]?.outreachThisWeek ?? 0);
   const outreachPrevWeek = Number(outreachPrevWeekResult[0]?.outreachPrevWeek ?? 0);
   const replyCount = Number(replyStatsResult[0]?.replyCount ?? 0);
   const totalOutreachCount = Number(replyStatsResult[0]?.totalOutreachCount ?? 0);
   const confirmedEvents = Number(eventStatsResult[0]?.confirmedEvents ?? 0);
   const plannedEvents = Number(eventStatsResult[0]?.plannedEvents ?? 0);
+  const confirmedEventsLast1d = Number(eventStatsResult[0]?.confirmedEventsLast1d ?? 0);
+  const confirmedEventsLast3d = Number(eventStatsResult[0]?.confirmedEventsLast3d ?? 0);
 
   // ---- 6. Assemble city → campaigns → events tree ----
   // Index venue counts: eventId → { confirmed, byRole }
@@ -594,6 +614,8 @@ export async function loadDashboardData(
     recentNotes,
     kpis: {
       venuesConfirmed: confirmedVenues,
+      venuesConfirmedLast1d: confirmedVenuesLast1d,
+      venuesConfirmedLast3d: confirmedVenuesLast3d,
       venuesTargeted,
       salesCents: totalSalesCents,
       goalCents: totalGoalCents,
@@ -601,6 +623,8 @@ export async function loadDashboardData(
       outreachThisWeek,
       outreachPrevWeek,
       eventsConfirmed: confirmedEvents,
+      eventsConfirmedLast1d: confirmedEventsLast1d,
+      eventsConfirmedLast3d: confirmedEventsLast3d,
       eventsPlanned: plannedEvents,
       replyRate,
       openTaskCount,

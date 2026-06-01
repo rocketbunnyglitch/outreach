@@ -130,27 +130,51 @@ export default async function DashboardHome({
   ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
 
+  // ----------------------------------------------------------------
+  // KPI tiles — operator: "this tile needs to have venues confirmed
+  // then the total confirmed and underneath it how many in the last
+  // day or 3 days. It also needs to have number of crawls complete
+  // (not cities) and underneath it how many in the last day or 3
+  // days."
+  //
+  // Replaces:
+  //   - "Events: 1707 — 0 confirmed · 1707 planned"  (read as
+  //      nonsense when 0 are actually confirmed)
+  //   - "Reply rate 30d: 0%"  (empty for early-stage campaigns
+  //      until outreach starts flowing; operator wanted the slot
+  //      reused for something operationally meaningful)
+  //
+  // The new pair shows total + 24h/3d momentum. "Crawls complete"
+  // is intentionally distinct from "cities completed" — operator
+  // tracks both, and the city-level KPI lives in a separate widget.
+  // ----------------------------------------------------------------
+  const fmtRecent = (last1d: number, last3d: number): string => {
+    if (last1d === 0 && last3d === 0) return "none recent";
+    if (last1d === last3d) return `+${last1d} in last 3d`;
+    if (last1d === 0) return `+${last3d} in last 3d`;
+    return `+${last1d} today · +${last3d} in 3d`;
+  };
+
   const kpis = [
     {
-      label: "Events",
-      value: (data.kpis.eventsConfirmed + data.kpis.eventsPlanned).toString(),
-      meta: `${data.kpis.eventsConfirmed} confirmed · ${data.kpis.eventsPlanned} planned`,
+      label: "Venues confirmed",
+      value: data.kpis.venuesConfirmed.toString(),
+      meta: fmtRecent(data.kpis.venuesConfirmedLast1d, data.kpis.venuesConfirmedLast3d),
       tooltip:
-        "Total crawls in scope — confirmed (locked in) plus planned (still being built out).",
-      trend: "flat" as const,
+        "Venue commitments that have flipped to confirmed across every campaign in scope. The recency line tracks momentum — how many came through in the last 24h and 72h.",
+      // Up arrow if anything came through in the last 24h; otherwise
+      // flat (avoid the "down" tone — confirmations are a cumulative
+      // metric so absence of recent activity isn't a regression,
+      // just a quiet stretch).
+      trend: data.kpis.venuesConfirmedLast1d > 0 ? ("up" as const) : ("flat" as const),
     },
     {
-      label: "Reply rate 30d",
-      value: `${data.kpis.replyRate}%`,
-      meta: "of all touchpoints",
+      label: "Crawls complete",
+      value: data.kpis.eventsConfirmed.toString(),
+      meta: fmtRecent(data.kpis.eventsConfirmedLast1d, data.kpis.eventsConfirmedLast3d),
       tooltip:
-        "Share of outreach messages in the last 30 days that got a reply. Higher is better; under ~10% suggests the outreach needs attention.",
-      trend:
-        data.kpis.replyRate >= 20
-          ? ("up" as const)
-          : data.kpis.replyRate >= 10
-            ? ("flat" as const)
-            : ("down" as const),
+        "Events whose status is 'confirmed' — every slot filled, contract done, ready to ship. The recency line shows how many flipped to confirmed recently.",
+      trend: data.kpis.eventsConfirmedLast1d > 0 ? ("up" as const) : ("flat" as const),
     },
   ];
 
