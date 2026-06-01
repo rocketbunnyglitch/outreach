@@ -78,6 +78,8 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       eventDate: events.eventDate,
       ticketsSold: events.ticketSalesCount,
       middleVenueGroupId: events.middleVenueGroupId,
+      // Drives day_party vs standard slot table layout.
+      crawlFormat: events.crawlFormat,
     })
     .from(events)
     .where(eq(events.cityCampaignId, cityCampaignId))
@@ -297,18 +299,34 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
     const ves = veRows.filter((v) => v.eventId === ev.id);
     const hasGroup = !!ev.middleVenueGroupId;
 
-    // Required default slots — middles ONLY when no shared group is set
+    // Required default slots — middles ONLY when no shared group is set.
+    // For day_party format (saturday_day / sunday_day crawls), the final
+    // slot is dropped entirely per operator: "day crawl is just a
+    // wristband venue and a minimum of 2 middle venues but you can add
+    // more". Standard format keeps the canonical wristband + 2 middles
+    // + final layout.
+    const isDayParty = ev.crawlFormat === "day_party";
     const defaultSlots: Array<{ role: SlotRole; slotPosition: number }> = hasGroup
-      ? [
-          { role: "wristband", slotPosition: 1 },
-          { role: "final", slotPosition: 1 },
-        ]
-      : [
-          { role: "wristband", slotPosition: 1 },
-          { role: "middle", slotPosition: 1 },
-          { role: "middle", slotPosition: 2 },
-          { role: "final", slotPosition: 1 },
-        ];
+      ? isDayParty
+        ? // Shared group + day party: only wristband as a default slot.
+          // The group itself supplies the middles; no final exists.
+          [{ role: "wristband", slotPosition: 1 }]
+        : [
+            { role: "wristband", slotPosition: 1 },
+            { role: "final", slotPosition: 1 },
+          ]
+      : isDayParty
+        ? [
+            { role: "wristband", slotPosition: 1 },
+            { role: "middle", slotPosition: 1 },
+            { role: "middle", slotPosition: 2 },
+          ]
+        : [
+            { role: "wristband", slotPosition: 1 },
+            { role: "middle", slotPosition: 1 },
+            { role: "middle", slotPosition: 2 },
+            { role: "final", slotPosition: 1 },
+          ];
 
     // Pull in extras: any ve with role+position not in defaultSlots, and
     // also skip ANY middle venue_events when a shared group is in use
@@ -376,6 +394,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       middleGroupMembers: ev.middleVenueGroupId
         ? (membersByGroup.get(ev.middleVenueGroupId) ?? [])
         : [],
+      crawlFormat: ev.crawlFormat,
       slots,
     };
   });

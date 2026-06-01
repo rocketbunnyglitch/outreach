@@ -276,6 +276,10 @@ export async function computeCityNeeds(
       needsMiddle1: open >= slotTarget - 1,
       needsMiddle2: open >= slotTarget - 2,
       needsFinal: noFinalSlot ? false : open >= 1,
+      // hasFinalSlot lets the UI tell "filled" from "doesn't exist"
+      // when needsFinal=false. Day crawls render only 3 segments;
+      // standard crawls render 4.
+      hasFinalSlot: !noFinalSlot,
       ticketsSold: b.ticketsSold,
       // Per-crawl sales is tickets × $30 (cents), mirroring the city-level
       // salesMap in tracker-data.ts. Will be replaced by a real Eventbrite

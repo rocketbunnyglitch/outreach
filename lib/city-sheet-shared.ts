@@ -109,9 +109,21 @@ export interface CrawlCard {
   /** Group's venues. Empty unless middleVenueGroupId is set. */
   middleGroupMembers: GroupMemberRow[];
   /**
+   * Crawl shape (events.crawl_format).
+   *   "standard"  — wristband + 2 middles + final (4 venues)
+   *   "day_party" — wristband + 2 middles, NO final (3 venues min)
+   *
+   * Drives slot table layout (defaultSlots in city-sheet-data.ts
+   * drops the final default row when day_party) and the
+   * crawl-slot-table's hasMinSlots check (day_party needs 3 instead
+   * of 4 to count as fully booked).
+   */
+  crawlFormat: "standard" | "day_party";
+  /**
    * Slot rows. When middleVenueGroupId is set, the Middle 1/Middle 2
    * default slots are OMITTED — the group's members render in their
-   * place. Wristband + Final + Alt Finals are always slot rows.
+   * place. Wristband + Final + Alt Finals are always slot rows
+   * (except: when crawlFormat='day_party', Final is omitted too).
    */
   slots: SlotRow[];
 }

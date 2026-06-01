@@ -183,6 +183,23 @@ function CrawlHeader({
       <div className="group/crawlhdr flex items-baseline gap-3">
         <h3 className="font-semibold text-base tracking-tight">
           {formatDayPart(crawl.dayPart)} crawl {crawl.crawlNumber}
+          {/* Sun icon when this crawl is classified as a day party.
+              Matches the same affordance on the tracker (Round 1
+              commit 2244135 added it to the CrawlSlotNeedGrid +
+              CrawlGlowGrid day labels). Operator: "there needs to be
+              a sun icon next to the Saturday Crawl 4 at the top when
+              the crawl is classified as a day crawl." Amber-500 to
+              read as warm-daylight without competing with the
+              wristband orange. */}
+          {crawl.crawlFormat === "day_party" && (
+            <span
+              className="ml-1 align-middle text-amber-500 dark:text-amber-400"
+              aria-label="day crawl"
+              title="Day crawl (wristband + 2+ middles, no final)"
+            >
+              ☀
+            </span>
+          )}
           {crawl.routeLabel && (
             <span className="ml-2 font-normal text-zinc-500">· {crawl.routeLabel}</span>
           )}
@@ -599,13 +616,23 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   const isConfirmedStatus = (s: string | null | undefined) =>
     s === "confirmed" || s === "contract_signed";
   const hasGroup = !!crawl.middleVenueGroupId;
+  const isDayParty = crawl.crawlFormat === "day_party";
   const requiredSlots = crawl.slots.filter((s) => {
     if (s.role === "wristband") return true;
-    if (s.role === "final" && s.slotPosition === 1) return true;
+    // Day party crawls don't have a final slot at all.
+    if (s.role === "final" && s.slotPosition === 1 && !isDayParty) return true;
     if (s.role === "middle" && !hasGroup) return true;
     return false;
   });
-  const hasMinSlots = hasGroup ? requiredSlots.length >= 2 : requiredSlots.length >= 4;
+  // Minimum required-slot counts:
+  //   - shared group + standard:  wristband + final = 2 (group supplies middles)
+  //   - shared group + day_party: wristband only    = 1
+  //   - no group + standard:      wristband + 2 middles + final = 4
+  //   - no group + day_party:     wristband + 2 middles         = 3
+  // Per operator: "day crawl is just a wristband venue and a minimum
+  // of 2 middle venues but you can add more". NO final.
+  const minSlots = hasGroup ? (isDayParty ? 1 : 2) : isDayParty ? 3 : 4;
+  const hasMinSlots = requiredSlots.length >= minSlots;
   const allRequiredFilled =
     hasMinSlots && requiredSlots.every((s) => !!s.venueEventId && isConfirmedStatus(s.status));
   // When using a shared middle group, the group's own members must

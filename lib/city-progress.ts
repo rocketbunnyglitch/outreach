@@ -182,9 +182,22 @@ export async function loadCityCampaignProgress(campaignId: string): Promise<City
     pipeline AS (
       SELECT
         coe.city_campaign_id,
-        COUNT(*) FILTER (WHERE coe.status IN ('not_contacted','email_sent','called','voicemail','no_answer','follow_up_due')) AS cold,
-        COUNT(*) FILTER (WHERE coe.status IN ('interested')) AS warm,
+        -- cold = ALL non-archived rows in the cold queue (the mass
+        -- outreach surface). Per operator #1: "cold should be
+        -- preserved and warm moves up — a row that shows up in
+        -- each table." Pre-0082 this filtered out interested via
+        -- the funnel-state list, which produced bogus pipeline
+        -- numbers once is_warm became independent of status.
+        COUNT(*) AS cold,
+        -- warm = is_warm flag (migration 0082). Independent of
+        -- status. Operator's "Move to warm" flips this without
+        -- touching status.
+        COUNT(*) FILTER (WHERE coe.is_warm = true) AS warm,
         0::bigint AS verbal,
+        -- declined buckets remain status-driven — these are
+        -- terminal outreach outcomes, not warm signals. The
+        -- updateColdOutreachField auto-clears is_warm when status
+        -- moves here, so the warm column won't double-count them.
         COUNT(*) FILTER (WHERE coe.status IN ('declined','do_not_contact','bad_email','wrong_number')) AS declined
       FROM cold_outreach_entries coe
       WHERE coe.archived_at IS NULL

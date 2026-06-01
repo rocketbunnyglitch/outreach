@@ -45,6 +45,17 @@ export interface CrawlNeed {
   needsMiddle1: boolean;
   needsMiddle2: boolean;
   needsFinal: boolean;
+  /**
+   * True when this crawl HAS a final-venue slot (standard format).
+   * False when it doesn't (day_party format = wristband + 2 middles
+   * only). Distinguished from needsFinal: needsFinal=false can mean
+   * "slot exists and is filled" OR "slot doesn't exist at all". The
+   * tracker need-bar uses hasFinalSlot to decide whether to render
+   * the 4th segment at all — day crawls render only 3 segments.
+   *
+   * Sourced from events.required_final_count > 0 in tracker-status.ts.
+   */
+  hasFinalSlot: boolean;
   /** Tickets sold for this specific crawl across its venue_events */
   ticketsSold: number;
   /** Sales total for this crawl */

@@ -1135,6 +1135,11 @@ async function maybeInsertColdOutreach(opts: {
     cityCampaignId: opts.cityCampaignId,
     venueId: opts.venueId,
     status: opts.status,
+    // Warm leads from the xlsx come in with status="interested"; mark
+    // them is_warm=true so the warm-leads panel shows them. Migration
+    // 0082's auto-toggle only fires on updateColdOutreachField — raw
+    // inserts skip it, so we set the flag explicitly here.
+    isWarm: opts.status === "interested",
   });
   return true;
 }

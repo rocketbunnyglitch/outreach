@@ -129,12 +129,20 @@ export function CrawlSlotNeedGrid({ crawls }: { crawls: CrawlNeed[] }) {
             <div className="flex flex-wrap items-center gap-1">
               {list.map((c) => {
                 const cancelled = c.status === "cancelled";
+                // Day crawls (saturday_day / sunday_day with day_party
+                // format) don't have a final slot — the events row's
+                // required_final_count = 0 propagates through CrawlNeed
+                // as hasFinalSlot = false. Drop the segment entirely
+                // instead of rendering it as filled — operator: "it
+                // shouldn't even show, it's not required".
                 const segs: Array<{ key: SlotKey; needed: boolean }> = [
                   { key: "wristband", needed: !cancelled && c.needsWristband },
                   { key: "middle1", needed: !cancelled && c.needsMiddle1 },
                   { key: "middle2", needed: !cancelled && c.needsMiddle2 },
-                  { key: "final", needed: !cancelled && c.needsFinal },
                 ];
+                if (c.hasFinalSlot) {
+                  segs.push({ key: "final", needed: !cancelled && c.needsFinal });
+                }
                 const neededLabels = segs.filter((s) => s.needed).map((s) => SLOT_LABEL[s.key]);
                 const labelText = cancelled
                   ? `Crawl ${c.crawlNumber}: cancelled`
