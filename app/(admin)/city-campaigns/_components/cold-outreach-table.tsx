@@ -1235,6 +1235,35 @@ function ColdRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, entry.entryId]);
 
+  // ---------------------------------------------------------------
+  // Optimistic state — instant visual update while the server
+  // roundtrip happens. Best-in-class apps flip the value at click
+  // time and roll back on server error. Pre-this-commit the cell
+  // waited for router.refresh before showing the new value, which
+  // felt sluggish on slow networks. Three fields can be edited
+  // (status, assignedStaffId, remarks); only status + assignment
+  // benefit from optimism — remarks have their own freeform editor
+  // with its own pending state.
+  // ---------------------------------------------------------------
+  const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
+  const [optimisticAssigned, setOptimisticAssigned] = useState<string | null>(null);
+
+  // The "resolved" value for render: optimistic if set, else server.
+  const displayStatus = optimisticStatus ?? entry.status;
+  const displayAssigned = optimisticAssigned ?? entry.assignedStaffId ?? "";
+
+  // Clear optimistic overlay when server value catches up.
+  useEffect(() => {
+    if (optimisticStatus !== null && entry.status === optimisticStatus) {
+      setOptimisticStatus(null);
+    }
+  }, [entry.status, optimisticStatus]);
+  useEffect(() => {
+    if (optimisticAssigned !== null && (entry.assignedStaffId ?? "") === optimisticAssigned) {
+      setOptimisticAssigned(null);
+    }
+  }, [entry.assignedStaffId, optimisticAssigned]);
+
   function commitField(field: "status" | "assignedStaffId" | "remarks", value: string) {
     // Capture prior value so the undo handler can restore it
     const prior =
@@ -1244,6 +1273,12 @@ function ColdRow({
           ? (entry.assignedStaffId ?? "")
           : (entry.remarks ?? "");
 
+    // Optimistic overlay — UI flips immediately. Cleared on server
+    // confirm (via the useEffect above) or rolled back on server
+    // error (below).
+    if (field === "status") setOptimisticStatus(value);
+    else if (field === "assignedStaffId") setOptimisticAssigned(value);
+
     const fd = new FormData();
     fd.set("entryId", entry.entryId);
     fd.set("field", field);
@@ -1252,6 +1287,9 @@ function ColdRow({
     startTx(async () => {
       const result = await updateColdOutreachField(null, fd);
       if (!result.ok) {
+        // Roll back optimistic overlay — the server rejected.
+        if (field === "status") setOptimisticStatus(null);
+        else if (field === "assignedStaffId") setOptimisticAssigned(null);
         toast.show({
           kind: "error",
           message: result.error ?? "Couldn't save.",
@@ -1425,7 +1463,7 @@ function ColdRow({
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <StatusSelect
-                  current={entry.status}
+                  current={displayStatus}
                   pending={pending}
                   onChange={(v) => commitField("status", v)}
                   entryId={entry.entryId}
@@ -1437,7 +1475,7 @@ function ColdRow({
                   ·
                 </span>
                 <AssignedSelect
-                  current={entry.assignedStaffId ?? ""}
+                  current={displayAssigned}
                   staff={staff}
                   pending={pending}
                   onChange={(v) => commitField("assignedStaffId", v)}
@@ -1795,7 +1833,7 @@ function ColdRow({
       {/* Status */}
       <td className="px-2 py-2 align-middle">
         <StatusSelect
-          current={entry.status}
+          current={displayStatus}
           pending={pending}
           onChange={(v) => commitField("status", v)}
           entryId={entry.entryId}
@@ -1805,7 +1843,7 @@ function ColdRow({
       {/* Assigned */}
       <td className="px-2 py-2 align-middle">
         <AssignedSelect
-          current={entry.assignedStaffId ?? ""}
+          current={displayAssigned}
           staff={staff}
           pending={pending}
           onChange={(v) => commitField("assignedStaffId", v)}
