@@ -24,6 +24,7 @@ import {
 import { draftReply } from "@/lib/ai-reply";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
+import { extractEmailAddress } from "@/lib/email-address";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { clearCadenceOnAction } from "@/lib/follow-up-cadence";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
@@ -242,6 +243,15 @@ export async function sendThreadReply(
       toAddresses: [recipient],
       ccAddresses: [],
       bccAddresses: [],
+      // Normalized columns. `recipient` was already produced via
+      // extractEmail() from the last inbound's from_address, which
+      // strips display names and lowercases — exactly the
+      // normalized form. senderInbox.email is the operator's clean
+      // address. No further parsing required.
+      fromEmailNormalized: senderInbox.email.toLowerCase(),
+      toEmailsNormalized: [recipient.toLowerCase()],
+      ccEmailsNormalized: [],
+      bccEmailsNormalized: [],
       subject,
       bodyText: body,
       bodyHtml: htmlBody,
@@ -1137,9 +1147,13 @@ export async function openReplyDraft(input: {
   }
 }
 
+// extractEmail used to be an inline regex helper duplicated across
+// inbox/_actions.ts + inbox/_attach-venue-action.ts. The shared
+// implementation in lib/email-address.ts has stricter parsing
+// (quoted display names, comma-aware splits, RFC-style edge cases).
+// Local function name preserved to minimize call-site churn.
 function extractEmail(headerVal: string): string | null {
-  const m = headerVal.match(/<([^>]+)>/) ?? headerVal.match(/([\w.\-+]+@[\w.\-]+)/);
-  return m?.[1]?.toLowerCase() ?? null;
+  return extractEmailAddress(headerVal);
 }
 
 function escapeHtml(s: string): string {

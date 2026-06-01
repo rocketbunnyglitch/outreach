@@ -148,6 +148,17 @@ export async function loadVenueCommunication(
   //    or any alternate email on the venue row). Limited to threads
   //    NOT already in directIdSet so we don't double-count.
   //    Source: "email_match".
+  //
+  //    PRIOR BUG: this used to compare `lower(from_address)` against
+  //    the venue's clean email list, which silently failed for any
+  //    sender with a display name in the From header (the common
+  //    case). After migration 0083 we query from_email_normalized
+  //    instead; the column is pre-normalized at ingest + send time
+  //    and indexed for fast equality / ANY().
+  //
+  //    Recipient side uses the to_emails_normalized array — the
+  //    `&&` (overlap) operator + GIN index makes this a much
+  //    cheaper plan than the previous unnest+lower scan.
   // ----------------------------------------------------------------
   const emailMatchIds = new Set<string>();
   if (emailSurface.size > 0) {
@@ -161,8 +172,9 @@ export async function loadVenueCommunication(
         and(
           eq(connectedAccounts.teamId, teamId),
           or(
-            sql`lower(${emailMessages.fromAddress}) = ANY(${emailList})`,
-            sql`EXISTS (SELECT 1 FROM unnest(${emailMessages.toAddresses}) AS t WHERE lower(t) = ANY(${emailList}))`,
+            sql`${emailMessages.fromEmailNormalized} = ANY(${emailList})`,
+            sql`${emailMessages.toEmailsNormalized} && ${emailList}::text[]`,
+            sql`${emailMessages.ccEmailsNormalized} && ${emailList}::text[]`,
           ),
         ),
       );
@@ -174,6 +186,13 @@ export async function loadVenueCommunication(
   // ----------------------------------------------------------------
   // 4. Domain-match threads (sender domain = venue website host).
   //    Limited to threads NOT already in direct or email match.
+  //
+  //    Same fix: query from_email_normalized so the LIKE pattern
+  //    actually matches. Previously `lower(from_address) LIKE
+  //    '%@venue.com'` failed on raw headers ending in '>' (the
+  //    closing angle bracket of a display-name form). Splitting
+  //    on '@' is cleaner than LIKE — exact match on the domain
+  //    half, indexable.
   // ----------------------------------------------------------------
   const domainMatchIds = new Set<string>();
   if (venueDomain) {
@@ -185,7 +204,7 @@ export async function loadVenueCommunication(
       .where(
         and(
           eq(connectedAccounts.teamId, teamId),
-          sql`lower(${emailMessages.fromAddress}) LIKE ${`%@${venueDomain}`}`,
+          sql`split_part(${emailMessages.fromEmailNormalized}, '@', 2) = ${venueDomain}`,
         ),
       );
     for (const r of matchedRows) {

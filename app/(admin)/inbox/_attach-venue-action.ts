@@ -23,6 +23,7 @@
 import { cities, emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { extractEmailAddress } from "@/lib/email-address";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { and, asc, desc, eq, ilike, isNull, sql } from "drizzle-orm";
@@ -170,6 +171,8 @@ export async function attachVenueToThread(
  * Returns null if no email can be extracted.
  */
 function extractEmail(headerVal: string): string | null {
-  const m = headerVal.match(/<([^>]+)>/) ?? headerVal.match(/([\w.\-+]+@[\w.\-]+)/);
-  return m?.[1]?.toLowerCase() ?? null;
+  // Delegates to the canonical parser in lib/email-address.ts.
+  // Kept as a named local so existing call sites in this file
+  // don't all need to be touched.
+  return extractEmailAddress(headerVal);
 }

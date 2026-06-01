@@ -45,6 +45,7 @@ import { emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/s
 import { classifyInboundMessageAsync } from "@/lib/ai-classify";
 import { extractPromisesAsync } from "@/lib/ai-extract-promises";
 import { db, withAuditContext } from "@/lib/db";
+import { parseEmailHeader, parseEmailList } from "@/lib/email-address";
 import { refreshAccessToken } from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { logger } from "@/lib/logger";
@@ -299,6 +300,11 @@ async function ingestMessage(opts: {
   const fromHeader = headers.from ?? "";
   const toHeader = headers.to ?? "";
   const ccHeader = headers.cc ?? "";
+  // bcc rarely appears on inbound (the recipient doesn't see it),
+  // but for OUTBOUND messages mirrored back through poll it does
+  // appear in the Sent folder copy. Capture defensively so the
+  // normalized array is populated for outbound rows.
+  const bccHeader = headers.bcc ?? "";
   const rfcMessageId = headers["message-id"] ?? null;
   const inReplyTo = headers["in-reply-to"] ?? null;
   const snippet = (msg.snippet as string) ?? "";
@@ -308,11 +314,34 @@ async function ingestMessage(opts: {
     ? new Date(internalDateMs).toISOString()
     : new Date().toISOString();
 
+  // Normalize every recipient header into the columns that venue
+  // matching + duplicate detection + the timeline join all use.
+  // The raw headers still get stored on from_address / to_addresses
+  // / cc_addresses (UI shows "Mike Smith <info@venue.com>" exactly
+  // as Gmail emitted it); these columns are what the engine
+  // queries against. See lib/email-address.ts + migration 0083.
+  const parsedFrom = parseEmailHeader(fromHeader);
+  const fromEmailNormalized = parsedFrom.email;
+  // Display name preference: parsed name from the header, falling
+  // back to anything Gmail might have provided separately. Empty
+  // string flattens to null for the column.
+  const fromNameFromHeader = parsedFrom.name;
+  const toEmailsNormalized = parseEmailList(toHeader);
+  const ccEmailsNormalized = parseEmailList(ccHeader);
+  const bccEmailsNormalized = parseEmailList(bccHeader);
+
   // Direction: if 'from' contains the inbox's own email, it's outbound.
-  // Otherwise inbound.
-  const direction = fromHeader.toLowerCase().includes(inbox.email.toLowerCase())
-    ? "outbound"
-    : "inbound";
+  // Otherwise inbound. Use the normalized form when available so a
+  // raw 'Mike <jc@brand.com>' from an outbound mirror correctly
+  // matches the inbox's clean address 'jc@brand.com'. Falls back to
+  // the prior substring check for the rare case where parseEmailHeader
+  // can't extract an address.
+  const inboxEmailLower = inbox.email.toLowerCase();
+  const direction =
+    (fromEmailNormalized && fromEmailNormalized === inboxEmailLower) ||
+    fromHeader.toLowerCase().includes(inboxEmailLower)
+      ? "outbound"
+      : "inbound";
 
   // Plain-text body extraction (light pass — full HTML rendering is
   // deferred until we sanitize on the way out)
@@ -452,9 +481,17 @@ async function ingestMessage(opts: {
       kind: "email",
       direction,
       fromAddress: fromHeader,
+      fromName: fromNameFromHeader,
       toAddresses: toHeader ? splitAddresses(toHeader) : [],
       ccAddresses: ccHeader ? splitAddresses(ccHeader) : [],
-      bccAddresses: [],
+      bccAddresses: bccHeader ? splitAddresses(bccHeader) : [],
+      // Normalized address columns — see lib/email-address.ts.
+      // The raw arrays above preserve display names; these are
+      // the columns matching + duplicate detection query against.
+      fromEmailNormalized,
+      toEmailsNormalized,
+      ccEmailsNormalized,
+      bccEmailsNormalized,
       subject,
       bodyText,
       bodyHtml: null,

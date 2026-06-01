@@ -68,6 +68,33 @@ export const emailMessages = pgTable(
     bccAddresses: text("bcc_addresses").array().notNull().default([]),
 
     /**
+     * Normalized address columns (migration 0083). The raw
+     * fromAddress / toAddresses / ccAddresses / bccAddresses
+     * preserve exactly what Gmail's header stored ("Mike Smith
+     * <info@venue.com>"); these columns hold the lowercased,
+     * display-name-stripped form ("info@venue.com") for matching,
+     * duplicate detection, and venue-communication timeline
+     * queries.
+     *
+     * Populated:
+     *   - on Gmail ingest (lib/gmail-poll-worker.ts) via
+     *     parseEmailHeader / parseEmailList
+     *   - on outbound send (lib/compose-send-impl.ts and
+     *     app/(admin)/inbox/_actions.ts) from the already-clean
+     *     toList / ccList / bccList in compose scope
+     *   - by the 0083 backfill for every historical row
+     *
+     * Always compare on the normalized columns — never the raw
+     * fromAddress / toAddresses / ccAddresses / bccAddresses.
+     * Comparing the raw columns silently misses any sender with
+     * a display name.
+     */
+    fromEmailNormalized: text("from_email_normalized"),
+    toEmailsNormalized: text("to_emails_normalized").array().notNull().default([]),
+    ccEmailsNormalized: text("cc_emails_normalized").array().notNull().default([]),
+    bccEmailsNormalized: text("bcc_emails_normalized").array().notNull().default([]),
+
+    /**
      * Raw subject from this specific message. The Re:/Fwd:-stripped
      * canonical version is on email_threads.subject.
      */
@@ -123,6 +150,21 @@ export const emailMessages = pgTable(
     threadDirectionIdx: index("email_messages_thread_direction_idx").on(
       table.threadId,
       table.direction,
+    ),
+    /**
+     * Normalized From index for venue-communication matching +
+     * duplicate-outreach detection. Both query paths boil down to
+     * "find every message where from_email_normalized = ANY(...)";
+     * a btree on that column is the right shape.
+     *
+     * The corresponding GIN indexes on to_emails_normalized and
+     * cc_emails_normalized (for `... && ARRAY[...]` lookups) are
+     * declared only in migration 0083 — Drizzle's index() helper
+     * doesn't model the `USING GIN` syntax and we don't need to
+     * round-trip them.
+     */
+    fromEmailNormalizedIdx: index("email_messages_from_email_normalized_idx").on(
+      table.fromEmailNormalized,
     ),
   }),
 );

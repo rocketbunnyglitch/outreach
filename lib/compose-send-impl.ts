@@ -535,6 +535,16 @@ export async function composeAndSendImpl(
       toAddresses: toList,
       ccAddresses: ccList,
       bccAddresses: bccList,
+      // Normalized columns — see lib/email-address.ts + 0083 migration.
+      // For outbound the raw and normalized are the same: the operator
+      // typed clean addresses (validated by EMAIL_RE before this call)
+      // and the From is the inbox's own clean email address. The poll
+      // worker mirror of this same message will populate identical
+      // values when Gmail eventually surfaces it back via the API.
+      fromEmailNormalized: inbox.email.toLowerCase(),
+      toEmailsNormalized: toList.map((s) => s.toLowerCase()),
+      ccEmailsNormalized: ccList.map((s) => s.toLowerCase()),
+      bccEmailsNormalized: bccList.map((s) => s.toLowerCase()),
       subject,
       bodyText: body,
       bodyHtml: htmlBody,

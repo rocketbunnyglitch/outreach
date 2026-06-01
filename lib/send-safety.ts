@@ -241,15 +241,20 @@ async function findDuplicateOutreach(opts: {
           eq(emailThreads.state, "follow_up_due"),
         ),
         opts.excludeThreadId ? ne(emailThreads.id, opts.excludeThreadId) : undefined,
-        // The recipient matches at least one to_address on the
-        // thread's most recent message OR matches the from_address
-        // (which means we sent to them previously OR they're a sender).
+        // The recipient matches at least one to/cc normalized
+        // address on a message of the thread OR matches the
+        // from_email_normalized (we previously sent to them or
+        // they're a sender). Uses migration 0083's normalized
+        // columns so a sender with a display name in the From
+        // header — the common case — actually matches against
+        // opts.recipient (already lowercased upstream).
         sql`EXISTS (
           SELECT 1 FROM email_messages em
           WHERE em.thread_id = ${emailThreads.id}
             AND (
-              ${opts.recipient} = ANY (SELECT lower(unnest(em.to_addresses)))
-              OR lower(em.from_address) = ${opts.recipient}
+              ${opts.recipient} = ANY (em.to_emails_normalized)
+              OR ${opts.recipient} = ANY (em.cc_emails_normalized)
+              OR em.from_email_normalized = ${opts.recipient}
             )
         )`,
       ),
