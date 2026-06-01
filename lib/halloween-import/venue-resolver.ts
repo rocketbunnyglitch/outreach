@@ -42,6 +42,7 @@ export interface ResolveInput {
     phoneRaw?: string | null;
     address?: string | null;
     capacity?: number | null;
+    contactName?: string | null;
   };
   dryRun?: boolean;
 }
@@ -52,7 +53,7 @@ export interface ResolveResult {
   similarity: number | null;
   resolvedName: string | null;
   resolvedAddress: string | null;
-  fieldBackfills: Array<"email" | "phoneE164" | "address" | "capacity">;
+  fieldBackfills: Array<"email" | "phoneE164" | "address" | "capacity" | "contactName">;
   wouldCreate: boolean;
 }
 
@@ -91,6 +92,7 @@ export async function resolveVenue(input: ResolveInput): Promise<ResolveResult> 
       email: venues.email,
       phoneE164: venues.phoneE164,
       capacity: venues.capacity,
+      contactName: venues.contactName,
     })
     .from(venues)
     .where(
@@ -130,6 +132,7 @@ export async function resolveVenue(input: ResolveInput): Promise<ResolveResult> 
       email: venues.email,
       phoneE164: venues.phoneE164,
       capacity: venues.capacity,
+      contactName: venues.contactName,
       similarity: sql<number>`similarity(${venues.name}, ${name})`,
     })
     .from(venues)
@@ -202,6 +205,7 @@ interface MatchedVenueRow {
   email: string | null;
   phoneE164: string | null;
   capacity: number | null;
+  contactName: string | null;
 }
 
 async function maybeBackfill(opts: {
@@ -235,6 +239,10 @@ async function maybeBackfill(opts: {
     updates.capacity = src.capacity;
     filled.push("capacity");
   }
+  if (!opts.existing.contactName && src.contactName) {
+    updates.contactName = src.contactName.trim();
+    filled.push("contactName");
+  }
 
   if (Object.keys(updates).length === 0) return filled;
   if (opts.dryRun) return filled;
@@ -256,6 +264,7 @@ async function createStubVenue(opts: {
     email: opts.sourceContacts?.email?.trim().toLowerCase() ?? null,
     phoneE164: phone ?? null,
     capacity: opts.sourceContacts?.capacity ?? null,
+    contactName: opts.sourceContacts?.contactName?.trim() || null,
     venueType: [] as string[],
   };
   const [row] = await db.insert(venues).values(values).returning({ id: venues.id });

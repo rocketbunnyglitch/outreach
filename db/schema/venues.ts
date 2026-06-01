@@ -44,6 +44,11 @@ export const venues = pgTable(
     // Contact channels
     phoneE164: text("phone_e164"),
     email: text("email"),
+    /** Primary contact person at the venue (owner / manager). Populated
+     *  by xlsx imports + manual edits on the venue page. Distinct from
+     *  venue_events.night_of_contact_name which tracks per-event slot
+     *  contacts. Mig 0080. */
+    contactName: text("contact_name"),
     alternateEmails: text("alternate_emails").array().notNull().default([]),
     websiteUrl: text("website_url"),
     instagramHandle: text("instagram_handle"),

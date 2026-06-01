@@ -52,6 +52,10 @@ const baseVenue = z.object({
   latitude: optionalLat,
   phoneE164: optionalPhone,
   email: optionalEmail,
+  /** Primary contact person (owner / manager). Optional. */
+  contactName: z
+    .union([z.literal("").transform(() => undefined), z.string().trim().max(120)])
+    .optional(),
   websiteUrl: z
     .union([z.literal("").transform(() => undefined), z.string().url("Must be a valid URL")])
     .optional(),

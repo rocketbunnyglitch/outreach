@@ -149,6 +149,7 @@ export async function updateVenue(
   }
   if (input.phoneE164 !== undefined) patch.phoneE164 = input.phoneE164;
   if (input.email !== undefined) patch.email = input.email;
+  if (input.contactName !== undefined) patch.contactName = input.contactName;
   if (input.websiteUrl !== undefined) patch.websiteUrl = input.websiteUrl;
   if (input.instagramHandle !== undefined) patch.instagramHandle = input.instagramHandle;
   if (input.capacity !== undefined) patch.capacity = input.capacity;

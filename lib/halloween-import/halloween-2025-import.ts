@@ -533,6 +533,7 @@ async function processConfirmedVenues(args: {
           phoneRaw: v.contact_phone ?? null,
           address: v.address ?? null,
           capacity: parseCapacity(v.capacity),
+          contactName: v.contact_name ?? null,
         },
         dryRun: args.dryRun,
       });
@@ -573,6 +574,14 @@ async function processConfirmedVenues(args: {
             venueId: resolved.venueId,
             role: mapSlotRole(v.slot_role),
             slotPosition: v.slot_position,
+            // Per-event fields from the xlsx row. These are the
+            // bar-side contact for this specific slot + the agreed
+            // hours + drink specials. Different from the venue's
+            // primary email/phone (which go on the venues table).
+            nightOfContactName: v.contact_name ?? null,
+            nightOfContactPhoneRaw: v.contact_phone ?? null,
+            agreedHoursText: v.proposed_hours ?? null,
+            drinkSpecials: v.specials ?? null,
             dryRun: args.dryRun,
           });
         } else if (args.dryRun) {
@@ -632,6 +641,7 @@ async function processWarmLeads(args: {
           email: v.venue_email ?? null,
           phoneRaw: v.contact_phone ?? null,
           capacity: parseCapacity(v.capacity),
+          contactName: v.contact_name ?? null,
         },
         dryRun: args.dryRun,
       });
@@ -732,6 +742,16 @@ async function maybeInsertVenueEvent(opts: {
   venueId: string;
   role: string;
   slotPosition: number | null;
+  /** Bar-side contact for THIS event slot — different from
+   *  venues.phoneE164 (which is the main venue line). The xlsx
+   *  provides this per-row. */
+  nightOfContactName?: string | null;
+  nightOfContactPhoneRaw?: string | null;
+  /** Free-text hours like "7:30-10:30" — agreed-on slot for this
+   *  particular event. */
+  agreedHoursText?: string | null;
+  /** Specials the venue is offering for this event. */
+  drinkSpecials?: string | null;
   dryRun: boolean;
 }): Promise<boolean> {
   // Dedupe rule: don't insert two venue_events for the same
@@ -740,7 +760,13 @@ async function maybeInsertVenueEvent(opts: {
   // app-level dedupe is "same venue can't take two roles in the
   // same event" — pragmatic for an import.
   const existing = await db
-    .select({ id: venueEvents.id })
+    .select({
+      id: venueEvents.id,
+      nightOfContactName: venueEvents.nightOfContactName,
+      nightOfContactPhoneE164: venueEvents.nightOfContactPhoneE164,
+      agreedHoursText: venueEvents.agreedHoursText,
+      drinkSpecials: venueEvents.drinkSpecials,
+    })
     .from(venueEvents)
     .where(
       and(
@@ -752,7 +778,43 @@ async function maybeInsertVenueEvent(opts: {
     )
     .limit(1)
     .then((r) => r[0]);
-  if (existing) return false;
+
+  // Helper to normalize the source phone to E.164 format. Same
+  // pattern as venue-resolver — lenient with operator typos.
+  const normalizePhone = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const trimmed = String(raw).trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("+")) return trimmed;
+    const digits = trimmed.replace(/[^\d]/g, "");
+    if (!digits) return null;
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    return digits;
+  };
+
+  if (existing) {
+    // Backfill — populate ONLY currently-NULL fields. Never
+    // overwrite operator edits.
+    const updates: Record<string, unknown> = {};
+    if (!existing.nightOfContactName && opts.nightOfContactName) {
+      updates.nightOfContactName = opts.nightOfContactName.trim();
+    }
+    if (!existing.nightOfContactPhoneE164 && opts.nightOfContactPhoneRaw) {
+      const e164 = normalizePhone(opts.nightOfContactPhoneRaw);
+      if (e164) updates.nightOfContactPhoneE164 = e164;
+    }
+    if (!existing.agreedHoursText && opts.agreedHoursText) {
+      updates.agreedHoursText = opts.agreedHoursText.trim();
+    }
+    if (!existing.drinkSpecials && opts.drinkSpecials) {
+      updates.drinkSpecials = opts.drinkSpecials.trim();
+    }
+    if (!opts.dryRun && Object.keys(updates).length > 0) {
+      await db.update(venueEvents).set(updates).where(eq(venueEvents.id, existing.id));
+    }
+    return false;
+  }
 
   if (opts.dryRun) return true;
 
@@ -763,6 +825,10 @@ async function maybeInsertVenueEvent(opts: {
     role: opts.role as any,
     slotPosition: opts.slotPosition,
     status: "confirmed",
+    nightOfContactName: opts.nightOfContactName?.trim() || null,
+    nightOfContactPhoneE164: normalizePhone(opts.nightOfContactPhoneRaw),
+    agreedHoursText: opts.agreedHoursText?.trim() || null,
+    drinkSpecials: opts.drinkSpecials?.trim() || null,
   });
   return true;
 }

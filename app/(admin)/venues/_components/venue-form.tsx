@@ -28,6 +28,7 @@ interface VenueFormProps {
     location: { lng: number; lat: number } | null;
     phoneE164: string | null;
     email: string | null;
+    contactName: string | null;
     websiteUrl: string | null;
     instagramHandle: string | null;
     capacity: number | null;
@@ -154,6 +155,14 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
         description="How we reach this venue. Phone in E.164 format (e.g. +14165551234)."
       >
         <FieldRow>
+          <FieldShell label="Contact name" name="contactName">
+            <Input
+              id="contactName"
+              name="contactName"
+              defaultValue={initial?.contactName ?? ""}
+              placeholder="e.g. Sadie, Suraj, Jamal"
+            />
+          </FieldShell>
           <FieldShell label="Phone (E.164)" name="phoneE164">
             <Input
               id="phoneE164"
@@ -163,6 +172,8 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               pattern="\+[1-9]\d{9,14}"
             />
           </FieldShell>
+        </FieldRow>
+        <FieldRow>
           <FieldShell label="Email" name="email">
             <Input
               id="email"
@@ -172,8 +183,6 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               placeholder="events@venue.com"
             />
           </FieldShell>
-        </FieldRow>
-        <FieldRow>
           <FieldShell label="Website" name="websiteUrl">
             <Input
               id="websiteUrl"
@@ -183,6 +192,8 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               placeholder="https://thedrakehotel.ca"
             />
           </FieldShell>
+        </FieldRow>
+        <FieldRow>
           <FieldShell label="Instagram handle" name="instagramHandle">
             <Input
               id="instagramHandle"
@@ -191,6 +202,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               placeholder="thedrakehotel"
             />
           </FieldShell>
+          <div /> {/* spacer to keep two-column grid */}
         </FieldRow>
       </FormSection>
 
