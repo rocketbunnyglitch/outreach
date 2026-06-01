@@ -57,7 +57,7 @@ export default async function MyInboxHealthPage() {
     accounts.map(async (a) => {
       const tz = a.ownerTimezone ?? "UTC";
       const todayStart = startOfLocalDay(tz);
-      const [coldSendsTodayRow, unreadRow, staleRow] = await Promise.all([
+      const [coldSendsTodayRow, unreadRow, staleRow, oldestStaleRow] = await Promise.all([
         db.execute<{ n: number }>(sql`
           SELECT COUNT(*)::int AS n
           FROM ${emailSendEvents}
@@ -75,6 +75,13 @@ export default async function MyInboxHealthPage() {
           .select({ n: sql<number>`COUNT(*)::int` })
           .from(emailThreads)
           .where(and(eq(emailThreads.staffOutreachEmailId, a.id), eq(emailThreads.isStale, true))),
+        // Oldest stale_since gives us the "worst case" age. A single
+        // 5-day-stale thread among 30 stale threads is worse than 30
+        // 1-hour-stale threads; the count alone hides that.
+        db
+          .select({ oldest: sql<Date | null>`MIN(${emailThreads.staleSince})` })
+          .from(emailThreads)
+          .where(and(eq(emailThreads.staffOutreachEmailId, a.id), eq(emailThreads.isStale, true))),
       ]);
       // drizzle execute returns array OR { rows }; normalize.
       const coldArr = Array.isArray(coldSendsTodayRow)
@@ -83,6 +90,14 @@ export default async function MyInboxHealthPage() {
       const coldSendsToday = Number(coldArr[0]?.n ?? 0);
       const unread = Number(unreadRow[0]?.n ?? 0);
       const stale = Number(staleRow[0]?.n ?? 0);
+      // Format the age of the oldest stale thread, when any exist.
+      // Bucketed compactly: minutes / hours / days so the cell value
+      // stays narrow even for week-old stragglers. Null when stale=0.
+      const oldestStaleAt = oldestStaleRow[0]?.oldest ?? null;
+      const oldestStaleAgeMs = oldestStaleAt
+        ? now.getTime() - new Date(oldestStaleAt).getTime()
+        : null;
+      const oldestStaleLabel = oldestStaleAgeMs !== null ? formatAgeLabel(oldestStaleAgeMs) : null;
       // Sync staleness threshold: anything older than 30 minutes
       // is suspicious. The poll worker runs every 5 minutes
       // normally so 30 minutes is 6x missed cycles -- enough
@@ -100,6 +115,8 @@ export default async function MyInboxHealthPage() {
         coldSendsToday,
         unread,
         stale,
+        oldestStaleAgeMs,
+        oldestStaleLabel,
         lastSyncedAt: lastSync,
         minutesSinceSync,
         syncStale,
@@ -108,17 +125,25 @@ export default async function MyInboxHealthPage() {
   );
 
   // Totals across YOUR accounts. Useful when an operator has more
-  // than one connected inbox.
+  // than one connected inbox. The oldest-stale age is taken as a
+  // MAX (worst case) across accounts rather than summed -- the
+  // operator's worst-sitting thread is the actionable signal, not
+  // some aggregate of "average old."
   const totals = rows.reduce(
     (acc, r) => {
       acc.coldSendsToday += r.coldSendsToday;
       acc.capTotalToday += r.coldSendCap;
       acc.unread += r.unread;
       acc.stale += r.stale;
+      if (r.oldestStaleAgeMs !== null && r.oldestStaleAgeMs > acc.worstStaleAgeMs) {
+        acc.worstStaleAgeMs = r.oldestStaleAgeMs;
+      }
       return acc;
     },
-    { coldSendsToday: 0, capTotalToday: 0, unread: 0, stale: 0 },
+    { coldSendsToday: 0, capTotalToday: 0, unread: 0, stale: 0, worstStaleAgeMs: 0 },
   );
+  const worstStaleLabel =
+    totals.stale > 0 && totals.worstStaleAgeMs > 0 ? formatAgeLabel(totals.worstStaleAgeMs) : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10 sm:px-10">
@@ -162,6 +187,7 @@ export default async function MyInboxHealthPage() {
                 value={totals.stale.toLocaleString("en-US")}
                 tone="text-amber-600 dark:text-amber-400"
                 warn={totals.stale > 0}
+                subtitle={worstStaleLabel ? `oldest: ${worstStaleLabel}` : null}
               />
               <StatCell
                 label="Accounts"
@@ -187,11 +213,14 @@ function StatCell({
   value,
   tone,
   warn,
+  subtitle,
 }: {
   label: string;
   value: string;
   tone: string;
   warn?: boolean;
+  /** Optional smaller line below the value, e.g. "oldest: 3d". */
+  subtitle?: string | null;
 }) {
   return (
     <div className="bg-white px-5 py-4 dark:bg-zinc-950/60">
@@ -201,6 +230,11 @@ function StatCell({
       >
         {value}
       </p>
+      {subtitle && (
+        <p className="mt-0.5 font-mono text-[10px] text-zinc-500 tabular-nums dark:text-zinc-500">
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }
@@ -216,6 +250,8 @@ function AccountCard({
     coldSendsToday: number;
     unread: number;
     stale: number;
+    oldestStaleAgeMs: number | null;
+    oldestStaleLabel: string | null;
     lastSyncedAt: Date | null;
     minutesSinceSync: number | null;
     syncStale: boolean;
@@ -269,6 +305,7 @@ function AccountCard({
           label="Stale"
           value={row.stale.toLocaleString("en-US")}
           warn={row.stale > 0}
+          subtitle={row.oldestStaleLabel ? `oldest: ${row.oldestStaleLabel}` : null}
         />
       </div>
 
@@ -290,11 +327,14 @@ function SmallStat({
   label,
   value,
   warn,
+  subtitle,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   warn?: boolean;
+  /** Optional smaller line below the value. */
+  subtitle?: string | null;
 }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -307,6 +347,11 @@ function SmallStat({
       >
         {value}
       </span>
+      {subtitle && (
+        <span className="font-mono text-[10px] text-zinc-500 tabular-nums dark:text-zinc-500">
+          {subtitle}
+        </span>
+      )}
     </div>
   );
 }
@@ -327,4 +372,20 @@ function EmptyState() {
       </p>
     </div>
   );
+}
+
+/**
+ * Format a duration in milliseconds as a compact "Xm" / "Xh" / "Xd"
+ * label. Mirrors lib/inbox-data.ts's formatStaleDuration but takes
+ * a pre-computed delta (since this page already has now() in scope)
+ * rather than a Date argument. Rounds down to avoid false precision.
+ */
+function formatAgeLabel(ms: number): string {
+  if (ms <= 0) return "0m";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }
