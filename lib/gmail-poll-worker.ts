@@ -52,6 +52,7 @@ import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { reconcileGmailLabelsForThread, unreconcileGmailLabelsForThread } from "@/lib/team-labels";
 import { classifyInboundEmail } from "@/lib/triage-classifier";
+import { findVenuesByDomainAlias } from "@/lib/venue-domain-match";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 const BATCH_INBOX_LIMIT = 10;
@@ -1125,7 +1126,7 @@ async function resolveVenueFromAddress(fromHeader: string): Promise<string | nul
   if (exact[0]) return exact[0].id;
 
   // Tier 2 (high confidence): exact match on venues.alternate_emails.
-  // This is the canonical "operator-trained" signal — every time an
+  // This is the canonical "operator-trained" signal -- every time an
   // operator manually links an unmatched thread to a venue, the
   // thread's sender gets appended to that venue's alt_emails (see
   // attachVenueToThread in app/(admin)/inbox/_attach-venue-action.ts).
@@ -1141,6 +1142,29 @@ async function resolveVenueFromAddress(fromHeader: string): Promise<string | nul
     ? (altExact as unknown as Array<{ id: string }>)
     : ((altExact as unknown as { rows: Array<{ id: string }> }).rows ?? []);
   if (altList[0]) return altList[0].id;
+
+  // Tier 2.5 (high confidence): venue_domain_aliases match. Operator-
+  // curated mapping for parent-group domains where the venue's
+  // manager emails from a different host than the venue's own site
+  // (e.g. Lavelle's site is lavellenyc.com but the manager writes
+  // from @taohospitalitygroup.com). The lookup is keyed by the bare
+  // host (no '@', lowercase) which the helper normalizes from the
+  // full address.
+  //
+  // findVenuesByDomainAlias can return multiple venue ids in the
+  // rare case where one parent domain maps to several venues. We
+  // take the first row -- if operators have intentionally set up
+  // multiple aliases for the same domain, the inbound thread is
+  // ambiguous anyway; surfacing the first lets the operator
+  // re-attach manually if needed. A future enhancement could
+  // surface ambiguity in the UI rather than silently picking.
+  //
+  // This is Tier 2.5 (not Tier 3) because the alias is operator-
+  // curated -- higher confidence than the fuzzy domain-match
+  // fallback below.
+  const domainAliasMatches = await findVenuesByDomainAlias(email);
+  const [firstDomainAlias] = domainAliasMatches;
+  if (firstDomainAlias) return firstDomainAlias;
 
   // Tier 3 (medium confidence): domain match on venues.email.
   // Last-resort fallback for senders we haven't seen yet but whose
