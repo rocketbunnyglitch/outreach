@@ -28,7 +28,7 @@ import {
   type ReviewQueue,
   buildReviewQueue,
   renderReviewQueueMarkdown,
-} from "@/lib/halloween-import/review-queue";
+} from "@/lib/import/review-queue";
 import { newOpError } from "@/lib/op-error";
 import { revalidatePath } from "next/cache";
 

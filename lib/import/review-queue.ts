@@ -23,7 +23,7 @@ import "server-only";
  * source). The operator can also download it via the admin UI.
  */
 
-import type { ImportReport } from "./halloween-2025-import";
+import type { ImportReport } from "@/lib/import/generic-campaign-import";
 
 const TRGM_LOW_CONFIDENCE_THRESHOLD = 0.75;
 
