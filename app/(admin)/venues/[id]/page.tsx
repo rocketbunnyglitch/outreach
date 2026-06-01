@@ -4,6 +4,8 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  users,
+  venueDomainAliases,
   venueEvents,
   venues,
   wristbands,
@@ -31,7 +33,9 @@ import {
   logOutreach,
   updateVenue,
 } from "../_actions";
+import { addDomainAlias, removeDomainAlias } from "../_alias-actions";
 import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
+import { DomainAliasList } from "../_components/domain-alias-list";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
 import { VenueForm } from "../_components/venue-form";
@@ -99,6 +103,34 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     typeof suggestionsMap extends Map<string, infer V> ? V : never
   > = {};
   for (const [k, v] of suggestionsMap.entries()) suggestionsByNote[k] = v;
+
+  // Domain aliases for cross-domain sender matching, newest first,
+  // with the adder's name. createdAt is formatted here (server-side)
+  // so the client component renders a plain string -- no client-side
+  // date/locale work that could trip hydration.
+  const domainAliasRows = await db
+    .select({
+      id: venueDomainAliases.id,
+      domain: venueDomainAliases.domain,
+      notes: venueDomainAliases.notes,
+      createdAt: venueDomainAliases.createdAt,
+      createdByName: users.displayName,
+    })
+    .from(venueDomainAliases)
+    .leftJoin(users, eq(users.id, venueDomainAliases.createdBy))
+    .where(eq(venueDomainAliases.venueId, id))
+    .orderBy(desc(venueDomainAliases.createdAt));
+  const domainAliases = domainAliasRows.map((a) => ({
+    id: a.id,
+    domain: a.domain,
+    notes: a.notes,
+    createdByName: a.createdByName,
+    createdAtLabel: a.createdAt.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }),
+  }));
 
   // Confirmed/scheduled crawl history for this venue. Guarded so a query
   // failure (e.g. an enum value not yet migrated) degrades to an empty
@@ -258,6 +290,17 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       <CrawlHistorySection rows={crawlHistory} />
 
       <VenueWristbandSection rows={wristbandRows} />
+
+      {/* Domain aliases -- mark parent-group / brand domains so inbound
+          mail from those domains attaches to this venue automatically,
+          even when the sender address differs from the venue's own.
+          Complements the per-address alternate_emails matching. */}
+      <DomainAliasList
+        venueId={id}
+        aliases={domainAliases}
+        addAction={addDomainAlias}
+        removeAction={removeDomainAlias}
+      />
 
       {/* Edit form is moved below activity — staffers see/change the record's
           fields when they need to, but the journal is the primary surface. */}
