@@ -14,6 +14,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { runAuxStaleRules } from "@/lib/stale-rules-aux";
 import { runStaleTagger } from "@/lib/stale-tagger";
 import { NextResponse } from "next/server";
 
@@ -32,7 +33,12 @@ export async function POST(req: Request) {
 
   try {
     const result = await runStaleTagger();
-    return NextResponse.json({ ok: true, ...result });
+    // Run the auxiliary pass right after the canonical tagger so the
+    // unassigned-inbound rule is evaluated against the state the main
+    // tagger just settled. Its `flagged` count is merged into the
+    // response alongside the tagger's newlyStale / cleared.
+    const aux = await runAuxStaleRules();
+    return NextResponse.json({ ok: true, ...result, ...aux });
   } catch (err) {
     logger.error({ err }, "stale-tagger cron route failed");
     return NextResponse.json({ error: "stale-tagger failed" }, { status: 500 });
