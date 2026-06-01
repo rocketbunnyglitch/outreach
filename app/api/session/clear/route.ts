@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,12 +15,18 @@ export const dynamic = "force-dynamic";
  * Breaks the "edge says authenticated / page says not" redirect loop
  * (ERR_TOO_MANY_REDIRECTS) without the user resetting their browser.
  *
- * Use req.nextUrl (NOT req.url) for the redirect target: behind the nginx
- * proxy req.url is the internal http://localhost:3001 origin, whereas nextUrl
- * resolves to the public host from the forwarded Host header.
+ * We emit a RELATIVE Location ("/login?recovered=1") rather than building an
+ * absolute URL: behind the nginx proxy both req.url and req.nextUrl resolve to
+ * the internal http://localhost:3001 origin (only the NextAuth-wrapped
+ * middleware rewrites the host), which would send the browser to localhost.
+ * A relative redirect is resolved by the browser against the public URL it
+ * actually requested, so it always lands on the right origin.
  */
-export async function GET(req: NextRequest) {
-  const res = NextResponse.redirect(new URL("/login?recovered=1", req.nextUrl));
+export function GET() {
+  const res = new NextResponse(null, {
+    status: 307,
+    headers: { Location: "/login?recovered=1" },
+  });
   const bases = ["authjs.session-token", "__Secure-authjs.session-token"];
   const names: string[] = [];
   for (const b of bases) {
