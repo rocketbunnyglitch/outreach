@@ -91,7 +91,7 @@ export function GoalRow({
         </span>
       </td>
       <td className="px-4 py-2.5 text-right align-top font-mono tabular-nums">
-        {current.toLocaleString()}
+        {current.toLocaleString("en-US")}
       </td>
       <td className="px-4 py-2.5 text-right align-top">
         <form action={formAction} className="inline-flex items-center justify-end gap-1.5">

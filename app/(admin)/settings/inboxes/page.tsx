@@ -235,7 +235,7 @@ export default async function InboxesPage({ searchParams }: Props) {
                       <span className="truncate font-mono text-sm">{inbox.emailAddress}</span>
                       {inbox.lastSyncedAt && (
                         <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-                          · synced {inbox.lastSyncedAt.toLocaleString()}
+                          · synced {inbox.lastSyncedAt.toLocaleString("en-US")}
                         </span>
                       )}
                       <span className="font-mono text-[10px] text-zinc-500">·</span>

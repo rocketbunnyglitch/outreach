@@ -534,7 +534,7 @@ function ThreadTasksBlock({ tasks: rows }: { tasks: ThreadTaskRow[] }) {
                 {t.dueAt && (
                   <span className="font-mono">
                     Due{" "}
-                    {t.dueAt.toLocaleDateString(undefined, {
+                    {t.dueAt.toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                     })}

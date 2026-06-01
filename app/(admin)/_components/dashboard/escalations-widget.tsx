@@ -204,5 +204,5 @@ function relativeTime(iso: string): string {
   if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString("en-US");
 }

@@ -123,7 +123,7 @@ function FunnelCard({
     >
       <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.14em]">{label}</p>
       <p className={`mt-2 font-semibold text-3xl tracking-tight ${TONE_TEXT[tone] ?? ""}`}>
-        {value.toLocaleString()}
+        {value.toLocaleString("en-US")}
       </p>
       {sub && <p className="mt-1 font-mono text-[11px] text-zinc-500">{sub} of sent</p>}
     </div>
@@ -150,7 +150,7 @@ function SideCard({
       <div className="flex items-baseline justify-between gap-3">
         <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.14em]">{label}</p>
         <p className={`font-semibold text-2xl tracking-tight ${TONE_TEXT[tone] ?? ""}`}>
-          {value.toLocaleString()}
+          {value.toLocaleString("en-US")}
           {sub && <span className="ml-1.5 font-mono text-[11px] text-zinc-500">{sub}</span>}
         </p>
       </div>

@@ -268,7 +268,7 @@ function formatRelative(d: Date): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString("en-US");
 }
 
 function formatScheduled(d: Date): string {
@@ -279,7 +279,7 @@ function formatScheduled(d: Date): string {
   if (minutes < 60) return `in ${minutes}m`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `in ${hours}h`;
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",

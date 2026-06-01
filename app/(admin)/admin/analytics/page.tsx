@@ -119,7 +119,7 @@ function TotalsStrip({
             {it.label}
           </p>
           <p className={`mt-1 font-semibold text-2xl tabular-nums tracking-tight ${it.tone}`}>
-            {it.value.toLocaleString()}
+            {it.value.toLocaleString("en-US")}
           </p>
           {it.label === "Total touches" && totals.activeStaffCount > 0 && (
             <p className="mt-0.5 font-mono text-[10px] text-zinc-500">

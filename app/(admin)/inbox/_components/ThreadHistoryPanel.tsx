@@ -75,7 +75,7 @@ function relativeTime(iso: string): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 7) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(iso).toLocaleDateString("en-US");
 }
 
 export async function ThreadHistoryPanel({ threadId, venueId, limit }: Props) {
@@ -122,7 +122,7 @@ export async function ThreadHistoryPanel({ threadId, venueId, limit }: Props) {
               </p>
               <span
                 className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
-                title={new Date(e.changedAt).toLocaleString()}
+                title={new Date(e.changedAt).toLocaleString("en-US")}
               >
                 {relativeTime(e.changedAt)}
               </span>

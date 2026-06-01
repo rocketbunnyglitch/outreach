@@ -179,7 +179,7 @@ export function ThreadActions({
           disabled={pending}
           title={
             snoozeUntil
-              ? `Snoozed until ${new Date(snoozeUntil).toLocaleString()}`
+              ? `Snoozed until ${new Date(snoozeUntil).toLocaleString("en-US")}`
               : "Snooze this thread"
           }
         >

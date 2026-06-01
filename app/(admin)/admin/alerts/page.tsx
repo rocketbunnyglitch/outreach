@@ -187,7 +187,7 @@ export default async function AlertsAdminPage() {
                 {recentDispatches.map((d, i) => (
                   <tr key={d.id} className={i % 2 === 1 ? "dark:bg-white/[0.015]" : ""}>
                     <td className="px-4 py-2 font-mono text-[10px] text-zinc-500">
-                      {d.firedAt.toLocaleString()}
+                      {d.firedAt.toLocaleString("en-US")}
                     </td>
                     <td className="px-4 py-2 font-mono text-xs">{d.accountEmail}</td>
                     <td className="px-4 py-2 text-xs">{RULE_LABELS[d.ruleKind] ?? d.ruleKind}</td>

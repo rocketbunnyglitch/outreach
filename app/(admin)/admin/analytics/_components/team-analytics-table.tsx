@@ -153,7 +153,7 @@ export function TeamAnalyticsTable({ rows, windowDays }: Props) {
                   <td className="px-2 py-3 text-right align-middle font-mono text-sm tabular-nums">
                     {row.totalTouches > 0 ? (
                       <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {row.totalTouches.toLocaleString()}
+                        {row.totalTouches.toLocaleString("en-US")}
                       </span>
                     ) : (
                       <span className="text-zinc-400">—</span>
@@ -196,7 +196,7 @@ function NumberCell({
           )}
         >
           <Icon className="h-3 w-3 opacity-60" />
-          {value.toLocaleString()}
+          {value.toLocaleString("en-US")}
         </span>
       ) : (
         <span className="font-mono text-[10px] text-zinc-400">—</span>

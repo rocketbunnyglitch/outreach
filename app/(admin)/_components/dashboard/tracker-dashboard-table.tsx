@@ -875,7 +875,7 @@ function formatSales(cents: number): string {
   const dollars = cents / 100;
   return dollars >= 1000
     ? `$${(dollars / 1000).toFixed(1)}k`
-    : `$${Math.round(dollars).toLocaleString()}`;
+    : `$${Math.round(dollars).toLocaleString("en-US")}`;
 }
 
 /** Inline-editable city priority (1 = highest .. 10 = lowest). */

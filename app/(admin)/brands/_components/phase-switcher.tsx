@@ -51,7 +51,7 @@ export function PhaseSwitcher({ brandId, currentPhase, setAt }: Props) {
         </div>
         {setAt && (
           <p className="font-mono text-[10px] text-zinc-500 tabular-nums">
-            set {setAt.toLocaleDateString()}
+            set {setAt.toLocaleDateString("en-US")}
           </p>
         )}
       </header>

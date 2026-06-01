@@ -588,7 +588,7 @@ function EventRowLine({ event }: { event: EventRow }) {
         <div className="col-span-2 text-right font-mono tabular-nums">
           {event.ticketSalesCount > 0 ? (
             <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-              {event.ticketSalesCount.toLocaleString()}
+              {event.ticketSalesCount.toLocaleString("en-US")}
               <span className="ml-1 font-normal text-[10px] text-zinc-500">tix</span>
             </span>
           ) : (

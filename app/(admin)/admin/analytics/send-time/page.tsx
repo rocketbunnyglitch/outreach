@@ -54,7 +54,7 @@ export default async function SendTimeAnalyticsPage({
           <h1 className="mt-1 font-semibold text-3xl tracking-tight">Send time</h1>
           <p className="mt-1 text-sm text-zinc-500">
             Reply rate by hour of day, America/Toronto, last {days} days
-            {totalSends > 0 && ` · ${totalSends.toLocaleString()} sends`}.
+            {totalSends > 0 && ` · ${totalSends.toLocaleString("en-US")} sends`}.
           </p>
         </div>
         <WindowPicker active={days} />

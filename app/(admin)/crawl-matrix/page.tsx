@@ -207,7 +207,7 @@ function CrawlRow({ row, striped }: { row: CrawlMatrixRow; striped: boolean }) {
       </td>
       <td className="px-3 py-2.5 text-right font-mono tabular-nums">
         {row.ticketSalesCount > 0 ? (
-          <span className="font-semibold">{row.ticketSalesCount.toLocaleString()}</span>
+          <span className="font-semibold">{row.ticketSalesCount.toLocaleString("en-US")}</span>
         ) : (
           <span className="text-zinc-500">—</span>
         )}

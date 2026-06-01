@@ -71,7 +71,7 @@ export function FollowUpPrompt({ venueId, threadId, subject, to, onClose }: Prop
           message: result.error ?? "Couldn't schedule follow-up task.",
         });
       } else {
-        const dueLabel = due.toLocaleDateString(undefined, {
+        const dueLabel = due.toLocaleDateString("en-US", {
           weekday: "short",
           month: "short",
           day: "numeric",

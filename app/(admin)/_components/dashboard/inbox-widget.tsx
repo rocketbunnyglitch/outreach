@@ -160,7 +160,7 @@ function relativeTime(d: Date): string {
   if (diffHr < 24) return `${diffHr}h`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) {
-    return d.toLocaleDateString(undefined, { weekday: "short" });
+    return d.toLocaleDateString("en-US", { weekday: "short" });
   }
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }

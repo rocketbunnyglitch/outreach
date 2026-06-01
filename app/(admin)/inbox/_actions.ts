@@ -1053,7 +1053,7 @@ export async function openReplyDraft(input: {
   // chip below. compose-send-impl concatenates on send so the
   // recipient still sees the quote regardless of whether the
   // operator expanded it. See migration 0065.
-  const quoteHeader = `On ${message.sentAt.toLocaleString()}, ${message.fromName ?? message.fromAddress} wrote:`;
+  const quoteHeader = `On ${message.sentAt.toLocaleString("en-US")}, ${message.fromName ?? message.fromAddress} wrote:`;
   const escapeHtml = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const quotedTextBody = (message.bodyText ?? "")

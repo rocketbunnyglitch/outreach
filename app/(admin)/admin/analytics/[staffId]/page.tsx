@@ -188,7 +188,7 @@ function StatCell({
     <div className="bg-white px-5 py-4 dark:bg-zinc-950/60">
       <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">{label}</p>
       <p className={`mt-1 font-semibold text-2xl tabular-nums tracking-tight ${tone}`}>
-        {value.toLocaleString()}
+        {value.toLocaleString("en-US")}
       </p>
       {subtext && <p className="mt-0.5 font-mono text-[10px] text-zinc-500">{subtext}</p>}
     </div>

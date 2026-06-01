@@ -289,5 +289,5 @@ function RelativeTime({ date }: { date: Date }) {
   const days = Math.floor(hours / 24);
   if (days === 1) return <span>yesterday</span>;
   if (days < 7) return <span>{days}d ago</span>;
-  return <span>{date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>;
+  return <span>{date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>;
 }

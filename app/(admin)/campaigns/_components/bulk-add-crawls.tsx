@@ -407,7 +407,7 @@ function eventDateLabel(yyyymmdd: string, _result: { added: number }): string {
   if (!yyyymmdd) return "the date you picked";
   // Construct at noon UTC to avoid timezone shifting the date.
   const d = new Date(`${yyyymmdd}T12:00:00Z`);
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",

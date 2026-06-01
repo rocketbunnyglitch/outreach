@@ -411,7 +411,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       handleSaveAsDraft();
       toast.show({
         kind: "success",
-        message: `Scheduled to send ${new Date(instance.scheduledFor).toLocaleString()}.`,
+        message: `Scheduled to send ${new Date(instance.scheduledFor).toLocaleString("en-US")}.`,
       });
       return;
     }
@@ -1127,7 +1127,7 @@ function DraftStatusBadge({ instance }: { instance: ComposerInstance }) {
         <span className="font-mono text-[10px] text-zinc-500">
           Saved
           {instance.lastSavedAt && (
-            <span title={new Date(instance.lastSavedAt).toLocaleString()} className="ml-1">
+            <span title={new Date(instance.lastSavedAt).toLocaleString("en-US")} className="ml-1">
               ·{" "}
               {new Date(instance.lastSavedAt).toLocaleTimeString([], {
                 hour: "2-digit",

@@ -87,7 +87,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
             )}
             {task.completedAt && (
               <span className="font-mono text-xs text-zinc-500">
-                completed {task.completedAt.toLocaleString()}
+                completed {task.completedAt.toLocaleString("en-US")}
               </span>
             )}
           </div>

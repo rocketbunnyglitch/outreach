@@ -103,7 +103,7 @@ export function AllCrawlsSummary({
           <p className="font-mono text-[11px] text-zinc-500 uppercase tracking-[0.1em]">
             Total tickets sold ·{" "}
             <span className="font-semibold text-zinc-900 tabular-nums dark:text-zinc-100">
-              {totalTickets.toLocaleString()}
+              {totalTickets.toLocaleString("en-US")}
             </span>
           </p>
         ) : (
@@ -195,7 +195,7 @@ function StatCard({
       <p
         className={cn("mt-1.5 font-semibold text-2xl tabular-nums tracking-tight", tonalText[tone])}
       >
-        {value.toLocaleString()}
+        {value.toLocaleString("en-US")}
         {suffix && (
           <span className="ml-1.5 font-mono font-normal text-[11px] text-zinc-500">{suffix}</span>
         )}

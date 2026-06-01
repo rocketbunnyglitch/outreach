@@ -56,7 +56,7 @@ export function PendingExternalHostsSection({
     const d = new Date(`${iso}T00:00:00`);
     return Number.isNaN(d.getTime())
       ? iso
-      : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+      : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
 
   return (

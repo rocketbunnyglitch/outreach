@@ -65,7 +65,7 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
         <PriorityStatCard cityCampaignId={data.cityCampaignId} priority={data.priority} />
         <StatCard
           label="Tickets sold"
-          value={totalTicketsSold.toLocaleString()}
+          value={totalTicketsSold.toLocaleString("en-US")}
           mono
           tint="emerald"
           tooltip="Total tickets sold across every crawl in this city campaign."

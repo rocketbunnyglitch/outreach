@@ -159,7 +159,7 @@ export default async function AuditLogPage({ searchParams }: AuditPageProps) {
           </Button>
         )}
         <span className="ml-auto font-mono text-xs text-zinc-500">
-          {total.toLocaleString()} entries · page {page} / {totalPages}
+          {total.toLocaleString("en-US")} entries · page {page} / {totalPages}
         </span>
       </form>
 
@@ -320,7 +320,7 @@ function formatRelative(d: Date): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return d.toLocaleDateString();
+  return d.toLocaleDateString("en-US");
 }
 
 function Pagination({

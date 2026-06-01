@@ -149,10 +149,15 @@ function GoalCard({ goal }: { goal: GoalCardData }) {
 
       <div className="mt-3 flex items-baseline gap-2">
         <p className="font-mono font-semibold text-2xl tabular-nums">
-          {isRevenue ? `$${currentDisplay.toLocaleString()}` : currentDisplay.toLocaleString()}
+          {isRevenue
+            ? `$${currentDisplay.toLocaleString("en-US")}`
+            : currentDisplay.toLocaleString("en-US")}
         </p>
         <p className="font-mono text-sm text-zinc-500 tabular-nums">
-          of {isRevenue ? `$${targetDisplay.toLocaleString()}` : targetDisplay.toLocaleString()}
+          of{" "}
+          {isRevenue
+            ? `$${targetDisplay.toLocaleString("en-US")}`
+            : targetDisplay.toLocaleString("en-US")}
         </p>
       </div>
 

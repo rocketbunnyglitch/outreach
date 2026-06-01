@@ -350,7 +350,7 @@ function prettyDate(yyyymmdd: string): string {
   if (!yyyymmdd) return "—";
   const d = new Date(`${yyyymmdd}T00:00:00`);
   if (Number.isNaN(d.getTime())) return yyyymmdd;
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",

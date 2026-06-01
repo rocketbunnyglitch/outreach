@@ -162,7 +162,7 @@ function WarmLeadRowItem({
         {lead.bestOutreachOutcome && lead.pastConfirmedCount === 0 && (
           <span
             className="font-mono text-[10px] text-amber-600 uppercase tracking-[0.1em] dark:text-amber-400"
-            title={lead.lastPositiveAt?.toLocaleDateString()}
+            title={lead.lastPositiveAt?.toLocaleDateString("en-US")}
           >
             {lead.bestOutreachOutcome.replace("_", " ")}
           </span>

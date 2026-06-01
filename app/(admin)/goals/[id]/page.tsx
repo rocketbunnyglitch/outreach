@@ -86,9 +86,14 @@ export default async function GoalDetailPage({ params }: Props) {
           )}
         </div>
         <p className="mt-2 font-mono font-semibold text-3xl tabular-nums">
-          {isRevenue ? `$${currentDisplay.toLocaleString()}` : currentDisplay.toLocaleString()}
+          {isRevenue
+            ? `$${currentDisplay.toLocaleString("en-US")}`
+            : currentDisplay.toLocaleString("en-US")}
           <span className="ml-2 text-base text-zinc-500">
-            of {isRevenue ? `$${targetDisplay.toLocaleString()}` : targetDisplay.toLocaleString()}
+            of{" "}
+            {isRevenue
+              ? `$${targetDisplay.toLocaleString("en-US")}`
+              : targetDisplay.toLocaleString("en-US")}
           </span>
         </p>
         {progress.applicable && (

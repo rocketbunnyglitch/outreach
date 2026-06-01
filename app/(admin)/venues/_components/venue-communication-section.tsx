@@ -310,10 +310,10 @@ function formatTimestamp(d: Date): string {
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
   if (sameDay) {
-    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const sameYear = d.getFullYear() === now.getFullYear();
   return sameYear
-    ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-    : d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }

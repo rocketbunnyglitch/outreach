@@ -258,7 +258,7 @@ function formatCrawlLabel(
 ): string {
   // eventDate is YYYY-MM-DD; format as 'Fri Sep 12'
   const d = new Date(`${eventDate}T12:00:00Z`);
-  const formatted = d.toLocaleDateString(undefined, {
+  const formatted = d.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
