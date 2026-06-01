@@ -40,8 +40,19 @@ const config: NextConfig = {
 
   // We never serve images from third parties without an allowlist.
   // shadcn/ui + Tailwind + our own assets only for now.
+  //
+  // unoptimized: the `sharp` native binary for linux-x64 fails to load in
+  // the standalone runtime ("Could not load the sharp module using the
+  // linux-x64 runtime"), so every /_next/image request 500s and all images
+  // (logo, login art) break sitewide. We only serve a handful of static
+  // first-party assets, so on-the-fly resizing/format-conversion buys us
+  // nothing — bypass the optimizer entirely. This renders next/image as a
+  // plain <img src=originalsrc>, removing the sharp dependency from the
+  // critical path. (If we ever need true optimization, install the linux
+  // sharp binary into the standalone bundle and drop this flag.)
   images: {
     remotePatterns: [],
+    unoptimized: true,
   },
 
   // Sensible defaults for a server-rendered admin app behind Caddy.
