@@ -78,6 +78,14 @@ const SLOT_LIT: Record<SlotKey, string> = {
   final: "bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.7)]",
 };
 
+/** Slot is FILLED — venue confirmed for this slot. Glows emerald
+ *  to give the operator instant feedback that progress is real.
+ *  Color reservation honors the project's done/healthy = emerald
+ *  rule. Crawl-cancelled slots stay dark instead. */
+const SLOT_FILLED = "bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.7)]";
+
+/** Crawl is cancelled — show the segment dark so it doesn't claim
+ *  visual weight. */
 const SLOT_DARK = "bg-zinc-400/30 dark:bg-zinc-700/40";
 
 const SLOT_LABEL: Record<SlotKey, string> = {
@@ -106,8 +114,17 @@ export function CrawlSlotNeedGrid({ crawls }: { crawls: CrawlNeed[] }) {
         const list = byDay.get(d) ?? [];
         return (
           <div key={d} className="flex items-center gap-1.5" title={DAY_LABEL_LONG[d] ?? d}>
-            <span className="w-7 shrink-0 font-mono text-[8.5px] text-zinc-500 uppercase tracking-widest">
+            <span className="inline-flex w-7 shrink-0 items-center gap-0.5 font-mono text-[8.5px] text-zinc-500 uppercase tracking-widest">
               {DAY_LABEL[d] ?? d.slice(0, 3)}
+              {/* Sun icon distinguishes day crawls from night crawls when
+                  both share the same weekday abbreviation ("Sat" for
+                  saturday_day vs saturday_night). Plain text glyph
+                  keeps the layout compact + dark-mode-safe. */}
+              {(d === "saturday_day" || d === "sunday_day") && (
+                <span className="text-amber-500 dark:text-amber-400" aria-label="day crawl">
+                  ☀
+                </span>
+              )}
             </span>
             <div className="flex flex-wrap items-center gap-1">
               {list.map((c) => {
@@ -131,19 +148,30 @@ export function CrawlSlotNeedGrid({ crawls }: { crawls: CrawlNeed[] }) {
                     title={labelText}
                     className="inline-flex items-center gap-px"
                   >
-                    {segs.map((s) => (
-                      <span
-                        key={s.key}
-                        className={cn(
-                          // Each sub-bar is 1/4 the parent pill
-                          // width (4px) at the same height (1px)
-                          // and not rounded so the four read as
-                          // one continuous segmented bar.
-                          "inline-block h-1 w-1",
-                          s.needed ? SLOT_LIT[s.key] : SLOT_DARK,
-                        )}
-                      />
-                    ))}
+                    {segs.map((s) => {
+                      // Three states per segment:
+                      //   needed       → lit in slot color (still open,
+                      //                  draws operator attention)
+                      //   filled       → emerald glow (slot confirmed,
+                      //                  progress signal per operator
+                      //                  request)
+                      //   cancelled    → dark (slot doesn't matter for
+                      //                  this crawl anymore)
+                      const tone = cancelled ? SLOT_DARK : s.needed ? SLOT_LIT[s.key] : SLOT_FILLED;
+                      return (
+                        <span
+                          key={s.key}
+                          className={cn(
+                            // Each sub-bar is 1/4 the parent pill
+                            // width (4px) at the same height (1px)
+                            // and not rounded so the four read as
+                            // one continuous segmented bar.
+                            "inline-block h-1 w-1",
+                            tone,
+                          )}
+                        />
+                      );
+                    })}
                   </span>
                 );
               })}

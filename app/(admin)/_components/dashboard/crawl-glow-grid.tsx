@@ -157,8 +157,16 @@ export function CrawlGlowGrid({
         const list = byDay.get(d) ?? [];
         return (
           <div key={d} className="flex items-center gap-1.5" title={DAY_LABEL_LONG[d] ?? d}>
-            <span className="w-7 shrink-0 font-mono text-[8.5px] text-zinc-500 uppercase tracking-widest">
+            <span className="inline-flex w-7 shrink-0 items-center gap-0.5 font-mono text-[8.5px] text-zinc-500 uppercase tracking-widest">
               {DAY_LABEL[d] ?? d.slice(0, 3)}
+              {/* Sun icon distinguishes day crawls — matches the
+                  same affordance in CrawlSlotNeedGrid. Plain text
+                  glyph keeps the layout compact + dark-mode-safe. */}
+              {(d === "saturday_day" || d === "sunday_day") && (
+                <span className="text-amber-500 dark:text-amber-400" aria-label="day crawl">
+                  ☀
+                </span>
+              )}
             </span>
             <div className="flex flex-wrap items-center gap-1">
               {list.map((c) => {

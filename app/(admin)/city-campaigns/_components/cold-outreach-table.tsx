@@ -176,7 +176,13 @@ interface Props {
    */
   crawlsForPromote?: Array<{
     eventId: string;
-    dayPart: "thursday_night" | "friday_night" | "saturday_night";
+    dayPart:
+      | "thursday_night"
+      | "friday_night"
+      | "saturday_day"
+      | "saturday_night"
+      | "sunday_day"
+      | "sunday_night";
     crawlNumber: number;
     middleVenueGroupId: string | null;
     filledSlots: Array<{
@@ -1010,7 +1016,13 @@ function ColdRow({
   /** Crawls in this city_campaign for the per-row Promote picker. */
   crawlsForPromote?: Array<{
     eventId: string;
-    dayPart: "thursday_night" | "friday_night" | "saturday_night";
+    dayPart:
+      | "thursday_night"
+      | "friday_night"
+      | "saturday_day"
+      | "saturday_night"
+      | "sunday_day"
+      | "sunday_night";
     crawlNumber: number;
     middleVenueGroupId: string | null;
     filledSlots: Array<{

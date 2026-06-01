@@ -248,11 +248,25 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
               (
                 c,
               ): c is typeof c & {
-                dayPart: "thursday_night" | "friday_night" | "saturday_night";
+                dayPart:
+                  | "thursday_night"
+                  | "friday_night"
+                  | "saturday_day"
+                  | "saturday_night"
+                  | "sunday_day"
+                  | "sunday_night";
               } =>
+                // All viable day/night parts. Previously this only
+                // accepted thursday/friday/saturday NIGHT — operator
+                // pointed out day crawls (e.g. "Saturday Day Crawl")
+                // never showed up in the promote picker. Sunday
+                // night included for symmetry.
                 c.dayPart === "thursday_night" ||
                 c.dayPart === "friday_night" ||
-                c.dayPart === "saturday_night",
+                c.dayPart === "saturday_day" ||
+                c.dayPart === "saturday_night" ||
+                c.dayPart === "sunday_day" ||
+                c.dayPart === "sunday_night",
             )
             .map((c) => ({
               eventId: c.eventId,
