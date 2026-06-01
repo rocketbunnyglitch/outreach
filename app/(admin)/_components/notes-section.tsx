@@ -171,9 +171,16 @@ function NoteCard({
               </span>
             )}
           </span>
+          {/* suppressHydrationWarning: both the relative-time text
+              (formatRelative reads the clock) and the title (locale-
+              dependent toLocaleString) legitimately differ between the
+              server render and client hydration. Without this the text
+              mismatch throws React #418; inside a streaming Suspense
+              boundary that can bail the whole page's hydration. */}
           <span
+            suppressHydrationWarning
             className="font-mono text-[10px] text-zinc-500 tabular-nums"
-            title={note.createdAt.toLocaleString(undefined, {
+            title={note.createdAt.toLocaleString("en-US", {
               dateStyle: "medium",
               timeStyle: "short",
             })}

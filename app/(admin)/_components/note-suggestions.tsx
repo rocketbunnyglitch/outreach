@@ -190,6 +190,9 @@ function formatDueAt(d: Date, tz: string): string {
       timeZoneName: "short",
     }).format(d);
   } catch {
-    return d.toLocaleString();
+    // Pin locale so the server (Node ICU default) and client (browser
+    // locale) format identically — a bare toLocaleString() can diverge
+    // and trip a #418 hydration mismatch.
+    return d.toLocaleString("en-US");
   }
 }
