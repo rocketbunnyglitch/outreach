@@ -35,7 +35,12 @@ import { searchGmailContacts } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import type { SendUsage } from "@/lib/send-cap";
 import { startOfLocalDay } from "@/lib/send-cap";
-import type { DncBlock, DuplicateWarning, SuppressionBlock } from "@/lib/send-safety";
+import type {
+  DncBlock,
+  DuplicateWarning,
+  SafetyWarning,
+  SuppressionBlock,
+} from "@/lib/send-safety";
 import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
@@ -286,9 +291,24 @@ export type ComposeResult =
        *  No bypass — operator must fix the underlying state
        *  (un-suppress / clear DNC) before retrying. */
       safetyBlock?: SuppressionBlock | DncBlock;
-      /** Set when the send is OK but there are duplicate-outreach
+      /** Set when the send is OK but there are pre-send safety
        *  warnings the operator must acknowledge. UI shows a confirm
-       *  step that re-submits with ackDuplicates=1. */
+       *  step that re-submits with ackDuplicates=1. The field is
+       *  named `safetyWarnings` and carries both duplicate
+       *  warnings (DuplicateWarning) and recent-decline warnings
+       *  (RecentDeclineWarning) — both kinds are produced by
+       *  lib/send-safety and acknowledged with the same form
+       *  field, since the operator's "I know, send anyway" is a
+       *  single decision either way. The old field name
+       *  `duplicateWarnings` is kept as an alias for backwards
+       *  compatibility with existing client code that only knows
+       *  about the duplicate kind; new code should read
+       *  safetyWarnings. */
+      safetyWarnings?: SafetyWarning[];
+      /** @deprecated use safetyWarnings (which includes duplicate
+       *  warnings AND recent-decline warnings). Kept so existing
+       *  composer-window.tsx code path keeps compiling without a
+       *  rip-and-replace; we populate both. */
       duplicateWarnings?: DuplicateWarning[];
       /** Set when a reply was attempted from a connected account
        *  that doesn't match the thread's account. UI surfaces this

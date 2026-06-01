@@ -144,9 +144,22 @@ export async function sendThreadReply(
   }
   const ackDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
   if (safety.warnings.length > 0 && !ackDuplicates) {
+    // Surface the most actionable warning kind first. recent_decline
+    // is more critical context than a duplicate count, so lead with
+    // it when present — operators reading "Lavelle declined 12 days
+    // ago" think harder than "X open threads to this address".
+    const declineWarning = safety.warnings.find((w) => w.kind === "recent_decline");
+    let message: string;
+    if (declineWarning && declineWarning.kind === "recent_decline") {
+      const eventBit = declineWarning.eventLabel ? ` (${declineWarning.eventLabel})` : "";
+      message = `${declineWarning.venueName} declined ${declineWarning.daysAgo} day${declineWarning.daysAgo === 1 ? "" : "s"} ago${eventBit}. Re-send to confirm.`;
+    } else {
+      const dupCount = safety.warnings.filter((w) => w.kind === "duplicate").length;
+      message = `Possible duplicate outreach (${dupCount} other open thread${dupCount === 1 ? "" : "s"} to this address). Re-send to confirm.`;
+    }
     return {
       ok: false,
-      error: `Possible duplicate outreach (${safety.warnings.length} other open thread${safety.warnings.length === 1 ? "" : "s"} to this address). Re-send to confirm.`,
+      error: message,
     };
   }
 

@@ -27,7 +27,7 @@ import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
-import { describeBlock, runSendSafety } from "@/lib/send-safety";
+import { type DuplicateWarning, describeBlock, runSendSafety } from "@/lib/send-safety";
 import { applyLabelToThread } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -226,10 +226,28 @@ export async function composeAndSendImpl(
   // so the modal can render the confirm step.
   const acknowledgedDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
   if (safety.warnings.length > 0 && !acknowledgedDuplicates) {
+    // Compose an error message that names the worst-case warning
+    // first. Recent-decline reads stronger than duplicate ("declined
+    // 12 days ago" demands more thought than "open thread exists"),
+    // so we lead with it when present.
+    const declineWarning = safety.warnings.find((w) => w.kind === "recent_decline");
+    const duplicateCount = safety.warnings.filter((w) => w.kind === "duplicate").length;
+    let message: string;
+    if (declineWarning && declineWarning.kind === "recent_decline") {
+      const eventBit = declineWarning.eventLabel ? ` (${declineWarning.eventLabel})` : "";
+      message = `${declineWarning.venueName} declined ${declineWarning.daysAgo} day${declineWarning.daysAgo === 1 ? "" : "s"} ago${eventBit}. Continue anyway?`;
+    } else {
+      message = `Possible duplicate outreach (${duplicateCount} open thread${duplicateCount === 1 ? "" : "s"} already to this address).`;
+    }
+    // Keep duplicateWarnings populated with just the duplicate-kind
+    // entries for backwards compatibility with existing UI code; new
+    // UI can read safetyWarnings to also surface the decline card.
+    const duplicates = safety.warnings.filter((w): w is DuplicateWarning => w.kind === "duplicate");
     return {
       ok: false,
-      error: `Possible duplicate outreach (${safety.warnings.length} open thread${safety.warnings.length === 1 ? "" : "s"} already to this address).`,
-      duplicateWarnings: safety.warnings,
+      error: message,
+      duplicateWarnings: duplicates,
+      safetyWarnings: safety.warnings,
     };
   }
 
