@@ -520,6 +520,20 @@ export async function setThreadState(
       });
     }
 
+    // Cancel pending cadence tasks for threads moving to a
+    // terminal state. archived/closed/won/lost mean the operator
+    // is done with the thread; the auto "Call follow-up" tasks
+    // are noise from here on. open/working states (needs_reply /
+    // waiting_on_them / follow_up_due) keep their tasks.
+    const TERMINAL_STATES: ReadonlySet<string> = new Set(["archived", "closed", "won", "lost"]);
+    if (TERMINAL_STATES.has(state)) {
+      await cancelAutoTasksForThreads({
+        threadIds: [threadId],
+        staffId: staff.id,
+        context: `setThreadState:${state}`,
+      });
+    }
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     publishRealtime({
@@ -641,6 +655,66 @@ async function mirrorGmailLabelsBatch(opts: {
     }
   }
   return ok;
+}
+
+/**
+ * Cancel pending cadence tasks for threads moving to a terminal
+ * state.
+ *
+ * When an operator archives, trashes, or otherwise closes out a
+ * thread, any pending auto-generated "Call follow-up" tasks
+ * targeting that thread no longer make sense -- the operator
+ * already decided this thread is done. Leaving them as 'pending'
+ * clutters the task list and triggers SLA-overdue alerts for
+ * tasks the operator implicitly already handled.
+ *
+ * Only auto-tasks (source='auto') are cancelled. Manual tasks
+ * the operator created on the same thread stay untouched --
+ * those represent the operator's own deliberate work, not the
+ * cadence engine's guess.
+ *
+ * Status transition: pending|in_progress -> cancelled.
+ * 'completed' tasks are not touched (history is history).
+ *
+ * Best-effort -- a failure logs but does NOT fail the thread
+ * action. Engine thread state is the canonical signal; lingering
+ * task rows are an annoyance, not a correctness issue.
+ *
+ * Returns the count of cancelled tasks for the caller to log.
+ */
+async function cancelAutoTasksForThreads(opts: {
+  threadIds: string[];
+  staffId: string;
+  context: string;
+}): Promise<number> {
+  if (opts.threadIds.length === 0) return 0;
+  try {
+    const result = await db.execute<{ id: string }>(sql`
+      UPDATE tasks
+      SET
+        status = 'cancelled',
+        updated_at = NOW(),
+        updated_by = ${opts.staffId}
+      WHERE source = 'auto'
+        AND target_type = 'email_thread'
+        AND target_id IN (${sql.join(
+          opts.threadIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND status IN ('pending', 'in_progress')
+      RETURNING id
+    `);
+    const rows = Array.isArray(result)
+      ? result
+      : ((result as { rows?: Array<{ id: string }> }).rows ?? []);
+    return rows.length;
+  } catch (err) {
+    logger.warn(
+      { err, threadCount: opts.threadIds.length, context: opts.context },
+      "cancelAutoTasksForThreads failed (thread state already updated)",
+    );
+    return 0;
+  }
 }
 
 /**
@@ -806,6 +880,19 @@ export async function setThreadTrash(
       context: trashed ? "setThreadTrash:trash" : "setThreadTrash:restore",
     });
 
+    // Cancel pending cadence tasks when trashing. Restoring does
+    // NOT re-create them; if the operator wants the cadence
+    // re-bootstrapped they can set the thread back to a working
+    // state (the cadence engine picks it back up on its next
+    // pass).
+    if (trashed) {
+      await cancelAutoTasksForThreads({
+        threadIds: [threadId],
+        staffId: staff.id,
+        context: "setThreadTrash",
+      });
+    }
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     publishRealtime({
@@ -891,6 +978,15 @@ export async function reportThreadSpam(
         updatedBy: staff.id,
       })
       .where(eq(emailThreads.id, threadId));
+
+    // Mark thread as spam = operator decided this thread is done +
+    // the sender shouldn't have been pitched. Cancel any pending
+    // auto cadence tasks for it.
+    await cancelAutoTasksForThreads({
+      threadIds: [threadId],
+      staffId: staff.id,
+      context: "reportThreadSpam",
+    });
 
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
@@ -1209,6 +1305,21 @@ export async function bulkUpdateThreads(
         threadIds: okIds,
         addLabelIds: addLabels,
         removeLabelIds: removeLabels,
+        context: `bulkUpdateThreads:${act}`,
+      });
+    }
+
+    // Cancel pending cadence tasks when the bulk action is a
+    // terminal transition (archive or trash). Skipped for
+    // unarchive/restore (the cadence re-bootstraps from the
+    // engine on its next pass if the thread re-enters a working
+    // state), star/unstar (orthogonal to ownership of the
+    // thread), and mark_read/mark_unread (read-state has no
+    // bearing on whether the thread is done).
+    if (act === "archive" || act === "trash") {
+      await cancelAutoTasksForThreads({
+        threadIds: okIds,
+        staffId: staff.id,
         context: `bulkUpdateThreads:${act}`,
       });
     }
