@@ -212,6 +212,7 @@ export async function composeAndSendImpl(
   // excludeThreadId.
   const safety = await runSendSafety({
     teamId: staff.teamId,
+    staffId: staff.id,
     to,
     venueId,
   });
@@ -226,16 +227,29 @@ export async function composeAndSendImpl(
   // so the modal can render the confirm step.
   const acknowledgedDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
   if (safety.warnings.length > 0 && !acknowledgedDuplicates) {
-    // Compose an error message that names the worst-case warning
-    // first. Recent-decline reads stronger than duplicate ("declined
-    // 12 days ago" demands more thought than "open thread exists"),
-    // so we lead with it when present.
+    // Compose an error message that leads with the most actionable
+    // warning kind. Priority order (most -> least actionable):
+    //
+    //   1. recent_decline       — venue said no recently; rethink
+    //                             before re-pitching
+    //   2. cross_staff_owner    — teammate is on this; coordinate
+    //                             first
+    //   3. duplicate            — open thread already exists
+    //
+    // The "duplicate" case is the most common but least
+    // information-rich; we lead with it only when there's
+    // nothing stronger to surface.
     const declineWarning = safety.warnings.find((w) => w.kind === "recent_decline");
+    const crossStaff = safety.warnings.find((w) => w.kind === "cross_staff_owner");
     const duplicateCount = safety.warnings.filter((w) => w.kind === "duplicate").length;
     let message: string;
     if (declineWarning && declineWarning.kind === "recent_decline") {
       const eventBit = declineWarning.eventLabel ? ` (${declineWarning.eventLabel})` : "";
       message = `${declineWarning.venueName} declined ${declineWarning.daysAgo} day${declineWarning.daysAgo === 1 ? "" : "s"} ago${eventBit}. Continue anyway?`;
+    } else if (crossStaff && crossStaff.kind === "cross_staff_owner") {
+      const ownerBit = crossStaff.ownerStaffName ?? "Another teammate";
+      const eventBit = crossStaff.eventLabel ? ` (${crossStaff.eventLabel})` : "";
+      message = `${ownerBit} is contacting ${crossStaff.venueName}${eventBit}. Coordinate before sending.`;
     } else {
       message = `Possible duplicate outreach (${duplicateCount} open thread${duplicateCount === 1 ? "" : "s"} already to this address).`;
     }

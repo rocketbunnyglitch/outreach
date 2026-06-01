@@ -135,6 +135,7 @@ export async function sendThreadReply(
   // duplicate of itself).
   const safety = await runSendSafety({
     teamId: staff.teamId,
+    staffId: staff.id,
     to: recipient,
     excludeThreadId: threadId,
     venueId: row.thread.venueId ?? null,
@@ -144,15 +145,21 @@ export async function sendThreadReply(
   }
   const ackDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
   if (safety.warnings.length > 0 && !ackDuplicates) {
-    // Surface the most actionable warning kind first. recent_decline
-    // is more critical context than a duplicate count, so lead with
-    // it when present — operators reading "Lavelle declined 12 days
-    // ago" think harder than "X open threads to this address".
+    // Priority order matches compose path:
+    //   1. recent_decline
+    //   2. cross_staff_owner
+    //   3. duplicate
+    // See lib/compose-send-impl.ts for the rationale.
     const declineWarning = safety.warnings.find((w) => w.kind === "recent_decline");
+    const crossStaff = safety.warnings.find((w) => w.kind === "cross_staff_owner");
     let message: string;
     if (declineWarning && declineWarning.kind === "recent_decline") {
       const eventBit = declineWarning.eventLabel ? ` (${declineWarning.eventLabel})` : "";
       message = `${declineWarning.venueName} declined ${declineWarning.daysAgo} day${declineWarning.daysAgo === 1 ? "" : "s"} ago${eventBit}. Re-send to confirm.`;
+    } else if (crossStaff && crossStaff.kind === "cross_staff_owner") {
+      const ownerBit = crossStaff.ownerStaffName ?? "Another teammate";
+      const eventBit = crossStaff.eventLabel ? ` (${crossStaff.eventLabel})` : "";
+      message = `${ownerBit} is contacting ${crossStaff.venueName}${eventBit}. Re-send to confirm.`;
     } else {
       const dupCount = safety.warnings.filter((w) => w.kind === "duplicate").length;
       message = `Possible duplicate outreach (${dupCount} other open thread${dupCount === 1 ? "" : "s"} to this address). Re-send to confirm.`;

@@ -99,7 +99,37 @@ export interface RecentDeclineWarning {
   eventLabel: string | null;
 }
 
-export type SafetyWarning = DuplicateWarning | RecentDeclineWarning;
+/**
+ * Another staff member is actively contacting this venue for one
+ * or more events. Sending under the current operator's name would
+ * confuse the venue and step on a teammate's pitch.
+ *
+ * "Actively contacting" = there's at least one venue_event row
+ * where ourContactStaffId points to a different staff member AND
+ * the venue_event isn't in a terminal state
+ * (declined/cancelled).
+ *
+ * NOT a hard block — sometimes coverage IS the right move
+ * (teammate is OOO, venue is hot and time-sensitive, the
+ * operator is the brand owner stepping in). The warning gives
+ * the operator a chance to message the teammate first.
+ */
+export interface CrossStaffOwnershipWarning {
+  kind: "cross_staff_owner";
+  venueId: string;
+  venueName: string;
+  /** The other staff member's display name. */
+  ownerStaffName: string | null;
+  /** The other staff member's user id, for the UI to link to
+   *  their profile or open a DM. */
+  ownerStaffId: string;
+  /** Optional event label so operator knows WHICH event this is
+   *  about. May be null if the join couldn't resolve a clean
+   *  label. */
+  eventLabel: string | null;
+}
+
+export type SafetyWarning = DuplicateWarning | RecentDeclineWarning | CrossStaffOwnershipWarning;
 
 export type SafetyResult =
   | { ok: true; warnings: SafetyWarning[] }
@@ -122,6 +152,13 @@ export async function runSendSafety(opts: {
   /** When set, used to look up DNC on a known venue without an
    *  email-domain join. */
   venueId?: string | null;
+  /** Current operator's staff id. When set, the cross-staff
+   *  ownership warning excludes them (they own the venue
+   *  themselves → no warning). When undefined the cross-staff
+   *  check is skipped — without knowing who's sending we can't
+   *  meaningfully say it's "someone else's venue." Most callers
+   *  should pass this. */
+  staffId?: string;
 }): Promise<SafetyResult> {
   const to = normaliseEmail(opts.to);
   if (!to) {
@@ -193,6 +230,20 @@ export async function runSendSafety(opts: {
     venueId: opts.venueId ?? null,
   });
   warnings.push(...declines);
+
+  // Cross-staff ownership: another operator is actively contacting
+  // this venue. Sending under the current operator's name would
+  // confuse the venue and step on a teammate's pitch. Skipped when
+  // we don't have an opts.staffId to compare against (caller
+  // didn't supply, or the operator IS the current owner).
+  if (opts.staffId) {
+    const ownership = await findCrossStaffOwnership({
+      recipient: to,
+      venueId: opts.venueId ?? null,
+      currentStaffId: opts.staffId,
+    });
+    warnings.push(...ownership);
+  }
 
   return { ok: true, warnings };
 }
@@ -489,6 +540,90 @@ async function findRecentDeclines(opts: {
       venueName: decline.venueName,
       declinedAt: new Date(decline.declinedAt),
       daysAgo,
+      eventLabel,
+    },
+  ];
+}
+
+/**
+ * Cross-staff venue ownership detector.
+ *
+ * Finds the most relevant other staff member actively contacting
+ * the resolved venue. "Actively" excludes venue_events in terminal
+ * states (declined, cancelled). When the current operator is
+ * already among the owners, no warning is emitted.
+ *
+ * Pick the MOST RECENT venue_event row by updated_at so the warning
+ * names the staffer currently engaged, not someone who touched
+ * the venue six months ago and moved on.
+ *
+ * Returns at most one warning. Multiple cross-staff owners
+ * collapse to the most active one — surfacing every teammate
+ * who's ever owned this venue would be noise.
+ */
+async function findCrossStaffOwnership(opts: {
+  recipient: string;
+  venueId: string | null;
+  currentStaffId: string;
+}): Promise<CrossStaffOwnershipWarning[]> {
+  // Resolve venueId same way as the other warnings.
+  let resolvedVenueId: string | null = opts.venueId;
+  if (!resolvedVenueId) {
+    const [v] = await db
+      .select({ id: venues.id })
+      .from(venues)
+      .where(sql`lower(${venues.email}) = ${opts.recipient}`)
+      .limit(1);
+    resolvedVenueId = v?.id ?? null;
+  }
+  if (!resolvedVenueId) return [];
+
+  // Find the most recent active venue_event with a different owner.
+  // "Active" = NOT in declined or cancelled.
+  const [row] = await db
+    .select({
+      venueId: venues.id,
+      venueName: venues.name,
+      ownerStaffId: venueEvents.ourContactStaffId,
+      ownerStaffName: users.displayName,
+      campaignName: campaigns.name,
+      cityName: cities.name,
+    })
+    .from(venueEvents)
+    .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+    .innerJoin(users, eq(users.id, venueEvents.ourContactStaffId))
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+    .where(
+      and(
+        eq(venueEvents.venueId, resolvedVenueId),
+        ne(venueEvents.ourContactStaffId, opts.currentStaffId),
+        // Terminal statuses are excluded — once declined or
+        // cancelled, the prior owner has stepped away from this
+        // venue/event combo and there's nothing to step on.
+        ne(venueEvents.status, "declined"),
+        ne(venueEvents.status, "cancelled"),
+      ),
+    )
+    .orderBy(desc(venueEvents.updatedAt))
+    .limit(1);
+
+  if (!row || !row.ownerStaffId) return [];
+
+  const labelParts: string[] = [];
+  if (row.campaignName) labelParts.push(row.campaignName);
+  if (row.cityName) labelParts.push(row.cityName);
+  const eventLabel = labelParts.length > 0 ? labelParts.join(" — ") : null;
+
+  return [
+    {
+      kind: "cross_staff_owner",
+      venueId: row.venueId,
+      venueName: row.venueName,
+      ownerStaffId: row.ownerStaffId,
+      ownerStaffName: row.ownerStaffName,
       eventLabel,
     },
   ];
