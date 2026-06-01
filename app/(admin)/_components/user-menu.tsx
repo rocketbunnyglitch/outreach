@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import type { StaffMember } from "@/db/schema";
 import { cn } from "@/lib/cn";
-import { BarChart3, LogOut, RotateCcw } from "lucide-react";
+import { BarChart3, LogOut, Mail, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { signOutAction } from "../_actions";
@@ -220,6 +220,24 @@ export function UserMenu({ staff, provider }: UserMenuProps) {
             <span className="flex flex-col leading-tight">
               <span className="text-zinc-900 dark:text-zinc-100">My activity</span>
               <span className="text-[10px] text-zinc-500">Your stats: calls, sends, replies</span>
+            </span>
+          </Link>
+
+          {/* Operator-facing inbox health. Same self-scope rationale
+              as /me/activity: the /admin/email-health view is
+              admin-only and covers every account; this one surfaces
+              the caller's own send-cap usage + sync status so a rep
+              can self-monitor without paging a manager. */}
+          <Link
+            href="/me/inbox-health"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40"
+          >
+            <Mail className="h-3.5 w-3.5 text-zinc-500" />
+            <span className="flex flex-col leading-tight">
+              <span className="text-zinc-900 dark:text-zinc-100">Inbox health</span>
+              <span className="text-[10px] text-zinc-500">Send cap, sync status, unread</span>
             </span>
           </Link>
 
