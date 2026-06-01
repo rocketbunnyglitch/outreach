@@ -1,5 +1,5 @@
 import { requireStaff } from "@/lib/auth";
-import { BarChart3, ChevronRight, Mail } from "lucide-react";
+import { BarChart3, ChevronRight, Mail, Settings } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +38,12 @@ export default async function MeIndexPage() {
           icon={<Mail className="h-4 w-4 text-zinc-500" />}
           title="Inbox health"
           subtitle="Send-cap usage, sync status, unread + stale counts."
+        />
+        <HubCard
+          href="/me/preferences"
+          icon={<Settings className="h-4 w-4 text-zinc-500" />}
+          title="Preferences"
+          subtitle="Daily digest opt-in and other personal settings."
         />
       </section>
     </main>

@@ -30,6 +30,11 @@ export interface UserPrefs {
    *  selected. Empty arrays + missing keys both mean "default to
    *  every account I can see." */
   inboxAccountFilters: Record<string, string[]>;
+  /** Daily digest opt-in. true = receive daily digest emails;
+   *  false = opted out; null = use default (currently opted-in).
+   *  The cron at /api/cron/daily-digest reads this and skips
+   *  rows whose value is explicitly false. */
+  dailyDigestEnabled: boolean | null;
 }
 
 export async function getUserPreferences(userId: string): Promise<UserPrefs | null> {
@@ -38,6 +43,7 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
       inboxDensity: userPreferences.inboxDensity,
       inboxReadingPane: userPreferences.inboxReadingPane,
       inboxAccountFilters: userPreferences.inboxAccountFilters,
+      dailyDigestEnabled: userPreferences.dailyDigestEnabled,
     })
     .from(userPreferences)
     .where(eq(userPreferences.userId, userId))
@@ -47,6 +53,7 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
     inboxDensity: (row.inboxDensity as InboxDensity | null) ?? null,
     inboxReadingPane: (row.inboxReadingPane as ReadingPanePosition | null) ?? null,
     inboxAccountFilters: (row.inboxAccountFilters as Record<string, string[]> | null) ?? {},
+    dailyDigestEnabled: row.dailyDigestEnabled ?? null,
   };
 }
 
@@ -60,13 +67,26 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
  * separate INSERT path.
  */
 export async function setUserPreference(userId: string, patch: Partial<UserPrefs>): Promise<void> {
-  // Validate enum values defensively — the action is callable from
+  // Validate enum values defensively -- the action is callable from
   // the client.
   const density = isInboxDensity(patch.inboxDensity ?? null) ? patch.inboxDensity : undefined;
   const pane = isReadingPanePosition(patch.inboxReadingPane ?? null)
     ? patch.inboxReadingPane
     : undefined;
-  if (density === undefined && pane === undefined) return;
+  // dailyDigestEnabled: only accept actual booleans or explicit
+  // null. Undefined (key not present in patch) means "don't touch."
+  // We can't use `patch.dailyDigestEnabled === undefined` cleanly
+  // since `in` checks the key presence, so use `in` directly.
+  const digestProvided = "dailyDigestEnabled" in patch;
+  const digest = digestProvided
+    ? typeof patch.dailyDigestEnabled === "boolean" || patch.dailyDigestEnabled === null
+      ? patch.dailyDigestEnabled
+      : undefined
+    : undefined;
+
+  if (density === undefined && pane === undefined && digest === undefined && !digestProvided) {
+    return;
+  }
 
   await db
     .insert(userPreferences)
@@ -74,12 +94,18 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
       userId,
       inboxDensity: density ?? null,
       inboxReadingPane: pane ?? null,
+      // dailyDigestEnabled column default is TRUE; an explicit
+      // false here records the opt-out. NULL here means "not set
+      // by this insert", which on a fresh row falls back to the
+      // column default of TRUE -- correct semantics.
+      ...(digestProvided ? { dailyDigestEnabled: digest ?? null } : {}),
     })
     .onConflictDoUpdate({
       target: userPreferences.userId,
       set: {
         ...(density !== undefined ? { inboxDensity: density ?? null } : {}),
         ...(pane !== undefined ? { inboxReadingPane: pane ?? null } : {}),
+        ...(digestProvided ? { dailyDigestEnabled: digest ?? null } : {}),
         updatedAt: sql`NOW()`,
       },
     });
