@@ -8,14 +8,12 @@ import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import type { CityStatusPill } from "@/lib/tracker-status";
-import { findWarmLeads } from "@/lib/warm-leads";
 import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { goToCampaignDashboard } from "../../_actions";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
-import { WarmLeadsPanel } from "../../_components/warm-leads-panel";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { loadEscalationTargets } from "../_actions/escalation-actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
@@ -76,14 +74,6 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     typeof suggestionsMap extends Map<string, infer V> ? V : never
   > = {};
   for (const [k, v] of suggestionsMap.entries()) suggestionsByNote[k] = v;
-
-  // Warm leads — venues confirmed or with positive outreach in past
-  // campaigns in this city, excluding the current one.
-  const warmLeads = await findWarmLeads({
-    cityId: cc.city.id,
-    excludeCampaignId: cc.campaign.id,
-    limit: 30,
-  });
 
   // Per-event venue counts as a separate query (kept simple, joins get
   // hairy with group-bys in Drizzle's typed builder).
@@ -224,28 +214,6 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           </div>
         </section>
       )}
-
-      <WarmLeadsPanel
-        cityName={cc.city.name}
-        campaignName={cc.campaign.name}
-        leads={warmLeads}
-        cityCampaignId={id}
-        crawls={
-          sheetData?.crawls.map((c) => ({
-            eventId: c.eventId,
-            dayPart: c.dayPart,
-            crawlNumber: c.crawlNumber,
-            middleVenueGroupId: c.middleVenueGroupId,
-            filledSlots: c.slots
-              .filter((s) => s.venueEventId != null)
-              .map((s) => ({
-                role: s.role,
-                slotPosition: s.slotPosition,
-                venueName: s.venueName,
-              })),
-          })) ?? []
-        }
-      />
 
       {/* Warm leads — same component as the cold-outreach table below,
           just rendered in "warm" mode (filters to status='interested',
