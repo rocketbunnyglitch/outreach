@@ -12,6 +12,7 @@ import { asc, count, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { goToCampaignDashboard } from "../../_actions";
+import { ClientOnly } from "../../_components/client-only";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
@@ -188,8 +189,14 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
               </p>
             </div>
             {/* Live presence — avatar stack here, cursor overlay is fixed.
-                Dormant until the /ws sidecar is live. */}
-            <CityPresence cityCampaignId={id} viewerName={currentStaff.displayName} />
+                Dormant until the /ws sidecar is live. Wrapped in
+                ClientOnly because usePresence opens a WebSocket and
+                useMeetingMode reads localStorage — both browser-only
+                state. Same hydration-risk class as the dashboard
+                header's WhosOnline + MeetingMode (see app/(admin)/page.tsx). */}
+            <ClientOnly>
+              <CityPresence cityCampaignId={id} viewerName={currentStaff.displayName} />
+            </ClientOnly>
           </header>
           {sheetData.crawls.map((crawl) => (
             <div key={crawl.eventId} id={`crawl-${crawl.eventId}`} className="scroll-mt-24">

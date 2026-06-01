@@ -10,6 +10,7 @@ import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ClientOnly } from "./_components/client-only";
 import { CitiesCompletedKpi } from "./_components/dashboard/cities-completed-kpi";
 import { CitiesTable } from "./_components/dashboard/cities-table";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
@@ -159,11 +160,25 @@ export default async function DashboardHome({
           <h1 className="mt-1 font-semibold text-4xl tracking-tight">Dashboard</h1>
         </div>
         <div className="flex items-center gap-3 sm:justify-end">
-          <WhosOnline currentStaffId={staff.id} compact />
-          <MeetingMode
-            room={`dashboard:${campaignId ?? "global"}`}
-            viewerName={staff.displayName}
-          />
+          {/* WhosOnline + MeetingMode are browser-state-dependent
+              (presence polling, localStorage-backed flags, live
+              cursor layer). They were the suspected source of an
+              intermittent React #418 (HTML element-type mismatch)
+              when the operator's localStorage had meeting mode ON +
+              the WebSocket landed a peer message mid-hydration. They
+              also contribute nothing to the initial server HTML —
+              the user can't interact with them until JS hydrates.
+              Rendering them client-only after mount eliminates the
+              hydration risk without changing perceived behavior. */}
+          <ClientOnly>
+            <WhosOnline currentStaffId={staff.id} compact />
+          </ClientOnly>
+          <ClientOnly>
+            <MeetingMode
+              room={`dashboard:${campaignId ?? "global"}`}
+              viewerName={staff.displayName}
+            />
+          </ClientOnly>
           {/* Scope tile — compact, top-right. Communicates exactly what the
               dashboard is showing without taking a full-width row. */}
           <div className="card-surface-quiet flex items-center gap-3 px-3 py-2">
