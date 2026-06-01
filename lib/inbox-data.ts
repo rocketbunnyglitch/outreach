@@ -281,6 +281,12 @@ export interface InboxThreadRow {
   isStale: boolean;
   /** Short reason string the UI shows as a tooltip on the stale chip. */
   staleReason: string | null;
+  /** Precomputed compact duration ("3h", "12m", "2d") since the
+   *  thread first became stale in its current stale state. Rendered
+   *  inline on the stale pill so triage sees lateness at a glance
+   *  without expanding the tooltip. Null when isStale is false or
+   *  stale_since wasn't recorded (legacy rows from pre-tagger). */
+  staleDurationLabel: string | null;
   /** Gmail-style star. Operator can toggle via the star button. */
   isStarred: boolean;
   /** ISO snooze timestamp if the thread is snoozed; null otherwise.
@@ -431,6 +437,7 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       eventCrawlNumber: events.crawlNumber,
       isStale: emailThreads.isStale,
       staleReason: emailThreads.staleReason,
+      staleSince: emailThreads.staleSince,
       isStarred: emailThreads.isStarred,
       snoozeUntilDate: emailThreads.snoozeUntil,
       /** Connected Gmail address this thread flows through — surfaced
@@ -697,16 +704,50 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
   }
 
   return rows.map((r) => {
-    const { snoozeUntilDate, ...rest } = r;
+    const { snoozeUntilDate, staleSince, ...rest } = r;
     return {
-      ...(rest as Omit<InboxThreadRow, "slaBreached" | "labels" | "gmailLabels" | "snoozeUntil">),
+      ...(rest as Omit<
+        InboxThreadRow,
+        "slaBreached" | "labels" | "gmailLabels" | "snoozeUntil" | "staleDurationLabel"
+      >),
       snoozeUntil: snoozeUntilDate ? snoozeUntilDate.toISOString() : null,
+      // Compact "Xm" / "Xh" / "Xd" label for the stale pill. Computed
+      // server-side so the rendered list is deterministic for snapshot
+      // tests + screen readers; the per-tick refresh is fine because
+      // stale_since is preserved across ticks (see Rule 5 fix in
+      // f9ff147 -- before that the timestamp churned and these
+      // labels would have been useless).
+      staleDurationLabel: r.isStale && staleSince ? formatStaleDuration(staleSince) : null,
       labels: labelsByThread.get(r.id) ?? [],
       gmailLabels: gmailLabelsByThread.get(r.id) ?? [],
       slaBreached:
         r.state === "needs_reply" && r.lastInboundAt != null && r.lastInboundAt < slaCutoff,
     };
   });
+}
+
+/**
+ * Format the duration since a thread was first flagged stale as a
+ * compact "Xm" / "Xh" / "Xd" label suitable for an inline pill.
+ *
+ * Thresholds:
+ *   < 60 min        -> "Nm"   (e.g. "42m")
+ *   < 48 h          -> "Nh"   (e.g. "26h")
+ *   >= 48 h         -> "Nd"   (e.g. "3d")
+ *
+ * The label rounds down (28 minutes is "28m", not "<1h") to avoid
+ * giving the operator false precision. Anything older than 1d
+ * is bad enough that the exact hour count doesn't matter.
+ */
+function formatStaleDuration(staleSince: Date): string {
+  const ms = Date.now() - staleSince.getTime();
+  if (ms < 0) return "0m"; // clock skew defensiveness
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }
 
 // =========================================================================

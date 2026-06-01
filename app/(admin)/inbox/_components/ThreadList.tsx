@@ -271,11 +271,14 @@ function ThreadRow({
             </span>
           )}
 
-          {/* Stale badge — persisted by the stale-tagger cron.
+          {/* Stale badge -- persisted by the stale-tagger cron.
               Distinct from SLA: SLA is "thread breached its window";
               stale is "tagged stale by background scan with reason
               attached". Shown together when both apply (the rare
-              "really overdue" case). */}
+              "really overdue" case). The compact duration label
+              ("Stale 3h") is precomputed server-side from
+              stale_since so the operator can triage at a glance
+              without expanding the tooltip. */}
           {thread.isStale && (
             <span
               className="inline-flex items-center gap-1 rounded-sm bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] text-amber-800 uppercase tracking-widest dark:bg-amber-950/40 dark:text-amber-300"
@@ -283,6 +286,11 @@ function ThreadRow({
             >
               <AlertTriangle className="h-2.5 w-2.5" />
               Stale
+              {thread.staleDurationLabel && (
+                <span className="font-normal normal-case opacity-80">
+                  {thread.staleDurationLabel}
+                </span>
+              )}
             </span>
           )}
 
