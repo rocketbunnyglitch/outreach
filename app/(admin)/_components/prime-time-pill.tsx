@@ -73,15 +73,21 @@ export function classifyTimeWindow(d: Date, timezone: string): Window {
 }
 
 export function PrimeTimePill({ timezone }: Props) {
-  const [window, setWindow] = useState<Window>(() => classifyTimeWindow(new Date(), timezone));
+  // Start "off" (renders nothing) so SSR and the first client render match.
+  // Computing classifyTimeWindow(new Date(), …) in the useState initializer
+  // ran on the server clock AND the client clock; near a window boundary they
+  // classified differently → the rendered pill mismatched → React #418. The
+  // real value is computed on mount (post-hydration) in the effect below.
+  const [window, setWindow] = useState<Window>("off");
 
   useEffect(() => {
     function tick() {
       setWindow(classifyTimeWindow(new Date(), timezone));
     }
-    // Schedule the next tick to align with the next minute boundary so
-    // every operator's pill flips at the same wall-clock instant. After
-    // that, fall back to a 60s interval.
+    // Compute immediately on mount, then align to the next minute boundary so
+    // every operator's pill flips at the same wall-clock instant. After that,
+    // fall back to a 60s interval.
+    tick();
     const now = new Date();
     const msToNextMinute = 60_000 - now.getSeconds() * 1000 - now.getMilliseconds();
     let interval: ReturnType<typeof setInterval> | null = null;

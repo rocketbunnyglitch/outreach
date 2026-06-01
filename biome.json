@@ -7,7 +7,16 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["node_modules", ".next", "dist", "build", "db/migrations/*.sql", "*.md", "data/**"]
+    "ignore": [
+      "node_modules",
+      ".next",
+      "dist",
+      "build",
+      "db/migrations/*.sql",
+      "*.md",
+      "data/**",
+      "scripts/check-hydration-safety.cjs"
+    ]
   },
   "formatter": {
     "enabled": true,

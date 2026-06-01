@@ -15,3 +15,15 @@ npm run typecheck || {
   echo "X TypeScript errors. Fix before committing."
   exit 1
 }
+
+# Hydration-safety guardrail: blocks client components that read browser state
+# (localStorage/sessionStorage/cookies/navigator) during render or in a
+# useState/useMemo/useRef initializer, and unpinned toLocale*() — the recurring
+# "freezes on my profile but works in incognito" class. See
+# scripts/check-hydration-safety.cjs (clock reads are advisory warnings only).
+node scripts/check-hydration-safety.cjs || {
+  echo ""
+  echo "X Hydration-safety check failed. Read browser state in useEffect (not render),"
+  echo "  or use suppressHydrationWarning for intentional timestamps."
+  exit 1
+}

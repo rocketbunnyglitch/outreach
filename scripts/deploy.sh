@@ -211,6 +211,23 @@ for f in db/migrations/*.sql; do
     "INSERT INTO _outreach_migrations_applied (filename, checksum) VALUES ('$filename', '$checksum');" >/dev/null
 done
 
+# === Step 3.5: Hydration-safety gate ===
+# Blocks deploying a client component that reads browser state during render
+# or uses an unpinned locale — the recurring "freezes on my profile but works
+# in incognito" class. Defense-in-depth alongside the pre-commit hook (catches
+# anything pushed with --no-verify). Runs after npm ci so typescript resolves.
+# Clock reads are advisory warnings (printed, non-blocking); only ERROR-tier
+# violations abort. Skipped with --skip-build (no rebuild → nothing new to gate).
+if [ "$SKIP_BUILD" != "1" ]; then
+  log "running hydration-safety gate..."
+  node scripts/check-hydration-safety.cjs 2>&1 | tee -a "$LOG_FILE" || {
+    log "✗ HYDRATION-SAFETY GATE FAILED — a client component reads browser state in"
+    log "  render or uses an unpinned locale. Aborting BEFORE build; previous build"
+    log "  keeps serving. Fix per scripts/check-hydration-safety.cjs."
+    exit 5
+  }
+fi
+
 # === Step 4: Build ===
 if [ "$SKIP_BUILD" = "1" ]; then
   log "SKIP_BUILD set — skipping npm run build"
