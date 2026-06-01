@@ -83,17 +83,18 @@ export function AccountSwitcher({
     if (initialSelection && initialSelection.length > 0) {
       return new Set(initialSelection);
     }
-    // localStorage fallback — same-device continuity even before the
-    // server response.
-    if (typeof window !== "undefined") {
-      try {
-        const stored = window.localStorage.getItem(STORAGE_KEY);
-        if (stored) return new Set(JSON.parse(stored));
-      } catch {
-        /* ignore */
-      }
-    }
     // Default: every account on first visit.
+    //
+    // IMPORTANT: do NOT read localStorage here. This initializer runs during
+    // SSR (where window is undefined → it returns this default) AND during
+    // client hydration (where a populated localStorage would return a saved
+    // subset). When those differ, the rendered selection (checkbox states +
+    // count label) mismatches between server HTML and client → React #418,
+    // and because the inbox renders inside a streaming <Suspense> boundary
+    // that can bail the WHOLE page's hydration → frozen inbox. Incognito has
+    // empty localStorage so it always matched the default → "works in
+    // incognito" only. The saved-selection restore happens post-mount in the
+    // effect below, after hydration has completed cleanly.
     return new Set(accounts.map((a) => a.id));
   });
 
@@ -102,6 +103,26 @@ export function AccountSwitcher({
   useEffect(() => {
     if (urlSelected) setSelectedIds(urlSelected);
   }, [urlSelected]);
+
+  // localStorage fallback — applied AFTER hydration (never during render, see
+  // the initializer note above). Runs once on mount; only takes effect when
+  // there's no URL selection and no server-seeded selection.
+  const lsRestored = useRef(false);
+  useEffect(() => {
+    if (lsRestored.current) return;
+    lsRestored.current = true;
+    if (urlSelected || (initialSelection && initialSelection.length > 0)) return;
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setSelectedIds(new Set(parsed as string[]));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [urlSelected, initialSelection]);
 
   // Close on outside click.
   useEffect(() => {
