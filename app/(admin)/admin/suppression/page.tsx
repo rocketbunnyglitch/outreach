@@ -18,7 +18,9 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { ShieldOff } from "lucide-react";
+import { countMalformedSuppression } from "./_actions";
 import { AddSuppressionForm } from "./_components/add-suppression-form";
+import { CleanupMalformedButton } from "./_components/cleanup-malformed-button";
 import { SuppressionTable } from "./_components/suppression-table";
 
 export const metadata = { title: "Admin · Suppression" };
@@ -97,6 +99,11 @@ export default async function SuppressionPage({ searchParams }: Props) {
 
   const filtered = query.length > 0 || reasons.length > 0;
 
+  // Count malformed legacy rows (pre-ff2246c blockThreadSender bug).
+  // The CleanupMalformedButton renders only when count > 0 so the
+  // strip is invisible for clean teams.
+  const malformed = await countMalformedSuppression();
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -112,6 +119,8 @@ export default async function SuppressionPage({ searchParams }: Props) {
       </header>
 
       <AddSuppressionForm />
+
+      <CleanupMalformedButton count={malformed.count} sample={malformed.sample} />
 
       <SuppressionFilters query={query} reasons={reasons} totalCount={totalCount} />
 
