@@ -25,6 +25,8 @@ import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
+import { getSheetsBackupStatus } from "../_actions-sheets-backup";
+import { SheetsBackupCard } from "../_components/sheets-backup-card";
 
 export const metadata = { title: "Cron health · Admin" };
 export const dynamic = "force-dynamic";
@@ -62,6 +64,7 @@ export default async function CronHealthPage() {
   await requireAdmin();
 
   const cards = await Promise.all(CRON_NAMES.map(loadCronCard));
+  const sheetsBackup = await getSheetsBackupStatus();
 
   // Treat a 'running' row with started_at > 30 min ago as a stuck
   // run. The dashboard surfaces this as a warning even though the
@@ -125,6 +128,17 @@ export default async function CronHealthPage() {
         {cards.map((c) => (
           <CronCard key={c.name} data={c} now={now} />
         ))}
+      </section>
+
+      {/* Backups -- the nightly Google Sheets snapshot runs from
+          system cron (not app/api/cron/*), so it lives in its own
+          section with a manual "Export Now" trigger + last-run
+          status pulled from cron_runs. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-semibold text-lg tracking-tight">Backups</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <SheetsBackupCard initial={sheetsBackup} />
+        </div>
       </section>
     </div>
   );
