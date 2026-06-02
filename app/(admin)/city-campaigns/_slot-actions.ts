@@ -44,7 +44,7 @@ const assignSchema = z.object({
 export async function assignSlotVenue(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ venueEventId: string }>> {
+): Promise<ActionResult<{ venueEventId: string; warnings?: string[] }>> {
   const { staff } = await requireStaff();
   const parsed = assignSchema.safeParse({
     eventId: formData.get("eventId"),
@@ -149,13 +149,31 @@ export async function assignSlotVenue(
     conflictRows = [];
   }
 
-  if (conflictRows.length > 0) {
-    const c = conflictRows[0];
-    if (!c) return { ok: false, error: "Internal conflict-check error." };
-    const label = `${capitalize(c.other_day_part ?? "")} crawl ${c.other_crawl_number ?? "?"} (${c.other_role})`;
+  // Cross-crawl reuse is LEGITIMATE in real Halloween operations: a
+  // venue can be a middle in one crawl and a wristband in another
+  // same-day crawl, a final in one and a middle in another, etc. So
+  // same-day cross-role reuse is now a non-blocking WARNING surfaced
+  // to the operator for context -- NOT a hard refusal. (The old code
+  // returned ok:false here, which blocked valid schedules.) The
+  // same-event unique index still prevents true duplicate slot fills.
+  const reuseWarnings = conflictRows.map((c) => {
+    const label = `${capitalize(c.other_day_part ?? "")} crawl ${c.other_crawl_number ?? "?"}`;
+    return `Also used as ${c.other_role} in ${label} (same day).`;
+  });
+
+  // HARD BLOCK: a do-not-contact venue must never be scheduled into a
+  // slot. This is a real refusal (compliance), unlike cross-crawl
+  // reuse. Decline/cancel handling stays at the per-slot status level.
+  const [venueRow] = await db
+    .select({ dnc: venues.doNotContact, name: venues.name })
+    .from(venues)
+    .where(eq(venues.id, input.venueId))
+    .limit(1);
+  if (!venueRow) return { ok: false, error: "Venue not found." };
+  if (venueRow.dnc) {
     return {
       ok: false,
-      error: `Venue conflict: this venue is already used as ${c.other_role} on the same day in ${label}. Pick a different venue or change the other assignment first.`,
+      error: `${venueRow.name} is marked Do Not Contact and can't be scheduled. Clear the DNC flag on the venue first.`,
     };
   }
 
@@ -200,10 +218,13 @@ export async function assignSlotVenue(
     if (input.cityCampaignId) {
       revalidatePath(`/city-campaigns/${input.cityCampaignId}`);
     }
-    return { ok: true, data: { venueEventId: id } };
+    return {
+      ok: true,
+      data: { venueEventId: id, warnings: reuseWarnings.length > 0 ? reuseWarnings : undefined },
+    };
   } catch (err) {
     logger.error({ err }, "assignSlotVenue failed");
-    return { ok: false, error: "Couldn't assign venue. Check for role conflicts." };
+    return { ok: false, error: "Couldn't assign venue." };
   }
 }
 
@@ -466,7 +487,14 @@ export async function searchVenues(opts: {
     })
     .from(venues)
     .where(
-      and(eq(venues.cityId, opts.cityId), isNull(venues.archivedAt), ilike(venues.name, `%${q}%`)),
+      and(
+        eq(venues.cityId, opts.cityId),
+        isNull(venues.archivedAt),
+        // Don't offer do-not-contact venues in the slot picker -- they
+        // can't be scheduled anyway (hard-blocked in assignSlotVenue).
+        eq(venues.doNotContact, false),
+        ilike(venues.name, `%${q}%`),
+      ),
     )
     .orderBy(asc(venues.name))
     .limit(opts.limit ?? 8);
