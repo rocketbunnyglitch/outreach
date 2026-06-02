@@ -37,6 +37,7 @@ export function InboxDensityToggle() {
   const [density, setDensity] = useState<InboxDensity>("default");
   const [readingPane, setReadingPane] = useState<ReadingPanePosition>("right");
   const popRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Hydrate from localStorage on mount.
   useEffect(() => {
@@ -56,7 +57,17 @@ export function InboxDensityToggle() {
   useEffect(() => {
     if (!open) return;
     function onDown(e: PointerEvent) {
-      if (popRef.current && !popRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Exclude the trigger button: without this, a pointerdown on the
+      // gear closed the popover, then the button's onClick re-opened it,
+      // so the gear could never be used to close -- it took multiple
+      // clicks / felt unresponsive. Let the button's own onClick toggle.
+      if (
+        popRef.current &&
+        !popRef.current.contains(target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     }
@@ -84,6 +95,7 @@ export function InboxDensityToggle() {
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         title="Display settings"

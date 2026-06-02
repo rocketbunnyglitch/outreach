@@ -62,6 +62,7 @@ export function AccountSwitcher({
   const params = useSearchParams();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Resolve selected set from URL first (the persistence layer that
   // actually filters the thread query), then fall back to
@@ -128,7 +129,15 @@ export function AccountSwitcher({
   useEffect(() => {
     if (!open) return;
     function onDown(e: PointerEvent) {
-      if (popRef.current && !popRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Exclude the trigger so a pointerdown on it doesn't close-then-
+      // reopen via the button's onClick (the "needs multiple clicks" race).
+      if (
+        popRef.current &&
+        !popRef.current.contains(target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     }
@@ -199,6 +208,7 @@ export function AccountSwitcher({
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(!open)}
         aria-label="Account switcher"
