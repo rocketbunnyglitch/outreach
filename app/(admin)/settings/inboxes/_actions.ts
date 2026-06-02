@@ -260,6 +260,21 @@ export async function setInboxCap(
  * ingest cost is non-trivial; 365 is enough for any practical
  * onboarding).
  *
+ * Date-window input:
+ *   The operator can pass an explicit `afterDate` (YYYY-MM-DD) instead
+ *   of a preset days-back. We derive daysBack from it -- the number of
+ *   whole days between that start date and now -- because the worker
+ *   (pollOneInbox) only accepts a days-back lookback (firstPollDaysBack),
+ *   NOT an arbitrary date range. afterDate wins over daysBack when both
+ *   are present.
+ *
+ *   `beforeDate` (an upper bound on the window) is accepted but NOT
+ *   enforced: the worker's Gmail query is `newer_than:Nd` with no
+ *   `before:` clause, so the engine always ingests up through "now".
+ *   We echo beforeDate back (and a beforeUnsupported flag) so the UI can
+ *   warn the operator that the upper bound was ignored. Enforcing it
+ *   would require changing the worker, which is out of scope here.
+ *
  * Behavior:
  *   1. last_history_id is set to NULL (engine forgets its cursor).
  *   2. pollOneInbox runs with the custom firstPollDaysBack. The
@@ -278,16 +293,76 @@ export async function setInboxCap(
 export async function deepResyncInbox(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ messagesIngested: number; threadsCreated: number; daysBack: number }>> {
+): Promise<
+  ActionResult<{
+    messagesIngested: number;
+    threadsCreated: number;
+    daysBack: number;
+    afterDate: string | null;
+    beforeDate: string | null;
+    beforeUnsupported: boolean;
+  }>
+> {
   const { staff } = await requireStaff();
   const id = String(formData.get("id") ?? "");
   const daysBackRaw = String(formData.get("daysBack") ?? "30");
+  const afterRaw = String(formData.get("afterDate") ?? "").trim();
+  const beforeRaw = String(formData.get("beforeDate") ?? "").trim();
   if (!id) return { ok: false, error: "Missing inbox id" };
 
-  const daysBack = Number.parseInt(daysBackRaw, 10);
-  if (!Number.isFinite(daysBack) || daysBack < 1 || daysBack > 365) {
-    return { ok: false, error: "Days back must be between 1 and 365." };
+  // Validate any supplied dates as plain YYYY-MM-DD calendar days. We
+  // parse at UTC midnight so the days-back math is timezone-stable.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function parseDay(raw: string): number | null {
+    if (!DATE_RE.test(raw)) return null;
+    const ms = Date.parse(`${raw}T00:00:00.000Z`);
+    return Number.isNaN(ms) ? null : ms;
   }
+
+  let afterDate: string | null = null;
+  let beforeDate: string | null = null;
+  let daysBack: number;
+
+  if (afterRaw) {
+    const afterMs = parseDay(afterRaw);
+    if (afterMs === null) {
+      return { ok: false, error: "Start date must be a valid YYYY-MM-DD date." };
+    }
+    if (afterMs > Date.now()) {
+      return { ok: false, error: "Start date can't be in the future." };
+    }
+    // Derive whole-day lookback from the start date. Round UP so the
+    // chosen start day is fully inside the Gmail `newer_than:Nd` window
+    // (newer_than is exclusive-ish at the day boundary; an extra day of
+    // overlap is harmless thanks to ingest dedupe).
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    daysBack = Math.ceil((Date.now() - afterMs) / MS_PER_DAY) + 1;
+    if (daysBack < 1 || daysBack > 365) {
+      return { ok: false, error: "Start date must be within the last 365 days." };
+    }
+    afterDate = afterRaw;
+
+    // beforeDate is accepted for the UI's sake but the worker can't
+    // filter an upper bound (newer_than:Nd only). Validate + echo it so
+    // we can warn the operator; do NOT let it change what we ingest.
+    if (beforeRaw) {
+      const beforeMs = parseDay(beforeRaw);
+      if (beforeMs === null) {
+        return { ok: false, error: "End date must be a valid YYYY-MM-DD date." };
+      }
+      if (beforeMs <= afterMs) {
+        return { ok: false, error: "End date must be after the start date." };
+      }
+      beforeDate = beforeRaw;
+    }
+  } else {
+    // No explicit window: fall back to the preset days-back.
+    daysBack = Number.parseInt(daysBackRaw, 10);
+    if (!Number.isFinite(daysBack) || daysBack < 1 || daysBack > 365) {
+      return { ok: false, error: "Days back must be between 1 and 365." };
+    }
+  }
+  const beforeUnsupported = beforeDate !== null;
 
   // Same shape as resyncInbox: ownership check + connected check.
   const rows = await db
@@ -349,11 +424,17 @@ export async function deepResyncInbox(
       .set({ lastSyncedAt: new Date() })
       .where(eq(connectedAccounts.id, inbox.id));
 
-    logger.info({ inboxId: id, daysBack, ...result }, "deepResyncInbox complete");
+    logger.info(
+      { inboxId: id, daysBack, afterDate, beforeDate, beforeUnsupported, ...result },
+      "deepResyncInbox complete",
+    );
 
     revalidatePath("/settings/inboxes");
     revalidatePath("/inbox");
-    return { ok: true, data: { ...result, daysBack } };
+    return {
+      ok: true,
+      data: { ...result, daysBack, afterDate, beforeDate, beforeUnsupported },
+    };
   } catch (err) {
     logger.error({ err, inboxId: id, daysBack }, "deepResyncInbox failed");
     const msg = err instanceof Error ? err.message : String(err);
