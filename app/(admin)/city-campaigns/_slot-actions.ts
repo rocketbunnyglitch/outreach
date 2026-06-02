@@ -509,33 +509,83 @@ export async function searchVenues(opts: {
 const createVenueSchema = z.object({
   name: z.string().min(1).max(200),
   cityId: uuid,
+  // Optional contact channels -- when present they drive an EXACT-match
+  // dedupe (a phone or email belongs to exactly one venue). The form
+  // currently only sends name + cityId; the fields are accepted so other
+  // callers (and future form fields) can dedupe on contact identity too.
+  phone: z.string().trim().max(40).optional(),
+  email: z.string().trim().max(200).optional(),
 });
 
 export async function quickCreateVenue(
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ venueId: string }>> {
+): Promise<ActionResult<{ venueId: string; venueName: string; deduped: boolean }>> {
   const { staff } = await requireStaff();
   const parsed = createVenueSchema.safeParse({
     name: formData.get("name"),
     cityId: formData.get("cityId"),
+    phone: formData.get("phone") ?? undefined,
+    email: formData.get("email") ?? undefined,
   });
   if (!parsed.success) return { ok: false, error: "Invalid venue input." };
+  const { name, cityId, phone, email } = parsed.data;
+
+  // ----- Enforced dedupe (was advisory-only) -----
+  // 1. EXACT phone / email match (case-insensitive email) within the
+  //    city: a shared contact channel is a near-certain duplicate, so
+  //    return the existing venue instead of inserting.
+  const normEmail = email?.toLowerCase() || null;
+  const normPhone = phone || null;
+  if (normPhone || normEmail) {
+    const conds = [eq(venues.cityId, cityId), isNull(venues.archivedAt)];
+    const channel = normPhone
+      ? eq(venues.phoneE164, normPhone)
+      : sql`lower(${venues.email}) = ${normEmail}`;
+    const exact = await db
+      .select({ id: venues.id, name: venues.name })
+      .from(venues)
+      .where(and(...conds, channel))
+      .limit(1)
+      .then((r) => r[0]);
+    if (exact) {
+      return { ok: true, data: { venueId: exact.id, venueName: exact.name, deduped: true } };
+    }
+  }
+
+  // 2. High-confidence NAME similarity within the city (pg_trgm). The
+  //    advisory threshold is 0.4; for an enforced auto-merge we use a
+  //    conservative 0.85 so only near-identical names ("Drake Hotel" vs
+  //    "The Drake Hotel") collapse -- weaker matches still insert (the
+  //    operator typed a genuinely new name).
+  const { findVenueDuplicates } = await import("@/lib/venue-duplicates");
+  const dupes = await findVenueDuplicates({
+    candidateName: name,
+    cityId,
+    threshold: 0.85,
+    limit: 1,
+  });
+  const strong = dupes.find((d) => d.nameSimilarity >= 0.85);
+  if (strong) {
+    return { ok: true, data: { venueId: strong.id, venueName: strong.name, deduped: true } };
+  }
 
   try {
     const id = await withAuditContext(staff.id, async (tx) => {
       const [row] = await tx
         .insert(venues)
         .values({
-          name: parsed.data.name,
-          cityId: parsed.data.cityId,
+          name,
+          cityId,
+          phoneE164: normPhone,
+          email: normEmail,
           createdBy: staff.id,
           updatedBy: staff.id,
         })
         .returning({ id: venues.id });
       return row?.id ?? "";
     });
-    return { ok: true, data: { venueId: id } };
+    return { ok: true, data: { venueId: id, venueName: name, deduped: false } };
   } catch (err) {
     logger.error({ err }, "quickCreateVenue failed");
     return { ok: false, error: "Couldn't create venue." };
@@ -593,14 +643,27 @@ export async function createVenueFromMapsUrl(
 
   try {
     const result = await withAuditContext(staff.id, async (tx) => {
-      // Dedupe by place_id
+      // Dedupe by place_id. The unique index venues_google_place_id_unique
+      // spans archived rows too, so we look up INCLUDING archived and
+      // un-archive on re-add -- otherwise a blind insert of an archived
+      // place_id would hit the unique index and 500, and silently
+      // returning an archived venue would hand back a row that never
+      // shows up in any picker.
       const existing = await tx
-        .select({ id: venues.id, name: venues.name })
+        .select({ id: venues.id, name: venues.name, archivedAt: venues.archivedAt })
         .from(venues)
         .where(eq(venues.googlePlaceId, details.placeId))
         .limit(1)
         .then((r) => r[0]);
-      if (existing) return { venueId: existing.id, venueName: existing.name };
+      if (existing) {
+        if (existing.archivedAt !== null) {
+          await tx
+            .update(venues)
+            .set({ archivedAt: null, updatedBy: staff.id })
+            .where(eq(venues.id, existing.id));
+        }
+        return { venueId: existing.id, venueName: existing.name };
+      }
 
       const [row] = await tx
         .insert(venues)
@@ -615,6 +678,12 @@ export async function createVenueFromMapsUrl(
           // because Drizzle's geography helper expects a different shape
           createdBy: staff.id,
           updatedBy: staff.id,
+        })
+        // Guard against a concurrent add of the same place_id: resolve to
+        // an update + un-archive instead of a unique-violation 500.
+        .onConflictDoUpdate({
+          target: venues.googlePlaceId,
+          set: { archivedAt: null, updatedBy: staff.id },
         })
         .returning({ id: venues.id });
       const newId = row?.id ?? "";
