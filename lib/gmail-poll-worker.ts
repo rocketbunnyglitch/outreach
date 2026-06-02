@@ -58,7 +58,17 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 const BATCH_INBOX_LIMIT = 10;
 const PER_INBOX_MSG_LIMIT = 50;
-const FIRST_POLL_NEWER_THAN_DAYS = 7;
+// First-poll backfill window. A freshly-connected inbox ingests the last
+// N days of inbox+sent mail (the incremental history cursor then captures
+// everything new). 7 days was far too narrow: high-frequency automated
+// mail (Eventbrite, Google, calendar) dominates a single week, so a new
+// account surfaced almost entirely CATEGORY_UPDATES and ~no CATEGORY_
+// PERSONAL (Primary) conversations — operators reported "it only synced
+// my Updates folder." 90 days captures real conversation history while
+// staying well under FIRST_POLL_MAX_MESSAGES for any normal outreach
+// inbox. An admin deep-resync can override via opts.firstPollDaysBack /
+// afterDate for accounts that need their full archive.
+const FIRST_POLL_NEWER_THAN_DAYS = 90;
 // First-poll / deep-resync backfill: page through messages.list via
 // nextPageToken up to this overall cap so a fresh connection or an
 // operator-requested backfill captures historical mail (inbound AND
