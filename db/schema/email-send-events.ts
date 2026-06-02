@@ -19,6 +19,15 @@ export const emailSendEvents = pgTable(
     threadId: uuid("thread_id").references(() => emailThreads.id, { onDelete: "set null" }),
     sentByUserId: uuid("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
     recipientEmail: text("recipient_email").notNull(),
+    /** Full normalized (lowercased) recipient sets for the send
+     *  (migration 0090). recipientEmail above remains the primary To
+     *  for backward compatibility; these capture ALL recipients so the
+     *  audit log no longer drops Cc/Bcc and additional To addresses.
+     *  Nullable: legacy rows and callers that don't supply the lists
+     *  leave these NULL. */
+    toEmailsNormalized: text("to_emails_normalized").array(),
+    ccEmailsNormalized: text("cc_emails_normalized").array(),
+    bccEmailsNormalized: text("bcc_emails_normalized").array(),
     /** 'cold' counts against the cap; 'warm' does not. v1 stores
      *  these two values; a later migration may expand to the full
      *  spec set (follow_up / operational / internal). */

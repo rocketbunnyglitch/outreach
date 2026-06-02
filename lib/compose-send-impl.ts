@@ -655,6 +655,11 @@ export async function composeAndSendImpl(
       threadId,
       sentByUserId: staff.id,
       recipientEmail: to,
+      // Full recipient sets, lowercased (migration 0090). recipientEmail
+      // (the primary To) is kept above for backward compatibility.
+      toEmails: toList.map((s) => s.toLowerCase()),
+      ccEmails: ccList.map((s) => s.toLowerCase()),
+      bccEmails: bccList.map((s) => s.toLowerCase()),
       category: sendCategory,
       capBypassed,
       templateId,

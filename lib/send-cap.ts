@@ -224,6 +224,14 @@ export async function recordSendEvent(opts: {
   threadId: string | null;
   sentByUserId: string;
   recipientEmail: string;
+  /** Full normalized (lowercased) recipient sets for the send
+   *  (migration 0090). recipientEmail above stays the primary To for
+   *  backward compatibility; these record ALL recipients so the audit
+   *  log no longer drops Cc/Bcc and additional To addresses. Optional:
+   *  callers that don't supply them leave the columns NULL. */
+  toEmails?: string[];
+  ccEmails?: string[];
+  bccEmails?: string[];
   category: "cold" | "warm";
   capBypassed?: boolean;
   /** Template used for this send, if any (Phase C.1). */
@@ -253,6 +261,11 @@ export async function recordSendEvent(opts: {
     threadId: opts.threadId,
     sentByUserId: opts.sentByUserId,
     recipientEmail: opts.recipientEmail,
+    // Full recipient sets (migration 0090). Undefined -> NULL column,
+    // preserving the legacy behavior for callers that don't pass them.
+    toEmailsNormalized: opts.toEmails ?? null,
+    ccEmailsNormalized: opts.ccEmails ?? null,
+    bccEmailsNormalized: opts.bccEmails ?? null,
     category: opts.category,
     sendType,
     countedAgainstCap,
