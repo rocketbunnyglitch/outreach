@@ -1,4 +1,4 @@
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
 import { loadPendingEscalationsForStaff } from "@/lib/escalations-data";
@@ -69,7 +69,7 @@ export default async function DashboardHome({
     //              loading screen with active campaigns to click
     //              to automatically load it rather than having
     //              to select it from the drop down at the top."
-    redirect(staff.role === "admin" ? "/admin" : "/pick-campaign");
+    redirect(hasMinimumRole(staff, "admin") ? "/admin" : "/pick-campaign");
   }
   // If the operator picked a campaign in the switcher AND hasn't opted into
   // "all campaigns" via the URL, scope the dashboard to that campaign.
@@ -265,14 +265,14 @@ export default async function DashboardHome({
             completed={data.kpis.citiesCompleted}
             goal={data.kpis.citiesGoal}
             campaignId={campaignId}
-            isAdmin={staff.role === "admin"}
+            isAdmin={hasMinimumRole(staff, "admin")}
           />
         </div>
         <div className="col-span-1 sm:col-span-2">
           <TargetDateKpi
             endDate={currentCampaign?.campaign.endDate ?? null}
             campaignId={campaignId}
-            isAdmin={staff.role === "admin"}
+            isAdmin={hasMinimumRole(staff, "admin")}
           />
         </div>
         <div className="card-surface col-span-2 grid grid-cols-1 gap-px overflow-hidden bg-zinc-200 sm:col-span-2 sm:grid-cols-2 dark:bg-zinc-800/40">

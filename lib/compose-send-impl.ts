@@ -22,6 +22,7 @@ import "server-only";
 
 import { connectedAccounts, emailMessages, emailThreads } from "@/db/schema";
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
+import { type StaffRole, hasMinimumRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
@@ -40,7 +41,7 @@ export async function composeAndSendImpl(
   staff: {
     id: string;
     teamId: string;
-    role: string;
+    role: StaffRole;
     displayName: string | null;
     primaryEmail: string;
   },
@@ -294,11 +295,11 @@ export async function composeAndSendImpl(
     threadId: replyToThreadId,
   });
   if (!preflight.ok) {
-    if (!bypassCap || staff.role !== "admin") {
+    if (!bypassCap || !hasMinimumRole(staff, "admin")) {
       return {
         ok: false,
         error: `Daily cold-send cap reached on ${inbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
-          staff.role === "admin"
+          hasMinimumRole(staff, "admin")
             ? "Click 'Bypass cap' to send anyway."
             : "Try a different inbox, or ask an admin to bypass."
         }`,
@@ -384,7 +385,7 @@ export async function composeAndSendImpl(
     // since the operator already knows how that pattern works
     // from the cold-cap path.
     const wrongAccount = t.staffOutreachEmailId !== fromAccountId;
-    const wrongAccountBypassed = wrongAccount && bypassCap && staff.role === "admin";
+    const wrongAccountBypassed = wrongAccount && bypassCap && hasMinimumRole(staff, "admin");
     if (wrongAccount && !wrongAccountBypassed) {
       // Look up the right account's email + the chosen account's
       // email so the error message is concrete enough for the
@@ -410,7 +411,7 @@ export async function composeAndSendImpl(
       return {
         ok: false,
         error: `This thread is on ${rightEmail}; you picked ${chosenEmail} to reply from. Replying from a different inbox would start a brand-new Gmail thread on the venue's side and likely send from the wrong brand. ${
-          staff.role === "admin"
+          hasMinimumRole(staff, "admin")
             ? "Switch From to the right inbox, or check 'Bypass safety' to send from the chosen account anyway."
             : "Switch From to the right inbox, or ask an admin if you need to send from a different account."
         }`,

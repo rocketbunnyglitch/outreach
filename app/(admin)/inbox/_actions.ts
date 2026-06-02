@@ -22,7 +22,7 @@ import {
   teamLabels,
 } from "@/db/schema";
 import { draftReply } from "@/lib/ai-reply";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { extractEmailAddress } from "@/lib/email-address";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
@@ -206,11 +206,11 @@ export async function sendThreadReply(
     threadId,
   });
   if (!preflight.ok) {
-    if (!bypassCap || staff.role !== "admin") {
+    if (!bypassCap || !hasMinimumRole(staff, "admin")) {
       return {
         ok: false,
         error: `Daily cold-send cap reached on ${senderInbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
-          staff.role === "admin"
+          hasMinimumRole(staff, "admin")
             ? "Click 'Bypass cap' to send anyway."
             : "Wait for the daily reset, or ask an admin to bypass."
         }`,
@@ -1660,7 +1660,7 @@ export async function backfillThreadClassifications(): Promise<
   ActionResult<{ updated: number; remaining: number }>
 > {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Only admins can run the classifier backfill." };
   }
 

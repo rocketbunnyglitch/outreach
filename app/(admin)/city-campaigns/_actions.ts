@@ -6,7 +6,7 @@
  */
 
 import { cityCampaigns } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
@@ -56,7 +56,7 @@ export async function addCityToCampaign(
   // still POST the form with a salesGoalCents value. Silently drop it
   // here rather than 403 — preserves the rest of the payload (city,
   // priority, target counts) so the create still works as expected.
-  const isAdmin = staff.role === "admin";
+  const isAdmin = hasMinimumRole(staff, "admin");
   if (!isAdmin && input.salesGoalCents !== undefined) {
     logger.info(
       { staffId: staff.id, role: staff.role },
@@ -114,7 +114,7 @@ export async function updateCityCampaign(
   // above — silently drop salesGoalCents writes from non-admins so
   // the rest of the patch still applies. Logged so engineers can
   // see if a non-admin form is somehow surfacing the field.
-  const isAdmin = staff.role === "admin";
+  const isAdmin = hasMinimumRole(staff, "admin");
   if (!isAdmin && input.salesGoalCents !== undefined) {
     logger.info(
       { staffId: staff.id, role: staff.role, cityCampaignId: id },

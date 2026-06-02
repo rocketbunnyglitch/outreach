@@ -1,7 +1,7 @@
 import { addCityToCampaign } from "@/app/(admin)/city-campaigns/_actions";
 import { Button } from "@/components/ui/button";
 import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { listCrawlBrands, listOutreachBrands } from "@/lib/brand-context";
 import { loadCityCampaignProgress } from "@/lib/city-progress";
 import { db } from "@/lib/db";
@@ -106,7 +106,7 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
         progressRows={progressRows}
         unassignedCities={unassignedCities}
         addAction={addCityToCampaign}
-        isAdmin={staff.role === "admin"}
+        isAdmin={hasMinimumRole(staff, "admin")}
       />
 
       <form
@@ -129,14 +129,14 @@ export default async function EditCampaignPage({ params }: { params: Promise<{ i
       <DangerZoneBulkDelete
         campaignId={id}
         campaignName={campaign.name}
-        isAdmin={staff.role === "admin"}
+        isAdmin={hasMinimumRole(staff, "admin")}
         cityCount={ccRows.length}
       />
 
       <DeleteCampaignButton
         campaignId={id}
         campaignName={campaign.name}
-        isAdmin={staff.role === "admin"}
+        isAdmin={hasMinimumRole(staff, "admin")}
       />
     </div>
   );

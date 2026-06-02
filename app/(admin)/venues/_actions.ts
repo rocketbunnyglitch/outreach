@@ -1,7 +1,7 @@
 "use server";
 
 import { cities, outreachBrands, outreachLog, staffMembers, venues } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
 import { logger } from "@/lib/logger";
@@ -222,7 +222,7 @@ export async function archiveVenueNoRedirect(id: string): Promise<{ ok: boolean;
  */
 export async function unarchiveVenue(id: string): Promise<{ ok: boolean; error?: string }> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Admin role required to restore archived venues." };
   }
   try {
@@ -256,7 +256,7 @@ export async function unarchiveVenue(id: string): Promise<{ ok: boolean; error?:
  */
 export async function hardDeleteVenue(id: string): Promise<{ ok: boolean; error?: string }> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Admin role required to permanently delete venues." };
   }
   try {

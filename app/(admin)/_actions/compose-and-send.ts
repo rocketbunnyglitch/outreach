@@ -29,7 +29,7 @@ import {
   users,
   venues,
 } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { searchGmailContacts } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
@@ -376,7 +376,7 @@ export async function setInboxSignature(input: {
     return { ok: false, error: "Inbox not on your team." };
   }
   // Owner of the inbox OR admin on the team.
-  if (row.ownerUserId !== staff.id && staff.role !== "admin") {
+  if (row.ownerUserId !== staff.id && !hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Only the inbox owner or an admin can edit this signature." };
   }
 
@@ -422,7 +422,7 @@ export async function saveDraftAsTemplate(input: {
   stage?: "cold" | "follow_up_1" | "follow_up_2" | "custom";
 }): Promise<{ ok: true; templateId: string } | { ok: false; error: string }> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Only admins can save templates." };
   }
 

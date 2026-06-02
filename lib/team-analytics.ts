@@ -20,6 +20,7 @@
  * this. The loader doesn't enforce — that's the page's job.
  */
 
+import type { StaffRole } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
 
@@ -353,7 +354,7 @@ export interface StaffProfile {
   staffId: string;
   displayName: string;
   primaryEmail: string;
-  role: string;
+  role: StaffRole;
   status: string;
 }
 
@@ -481,7 +482,7 @@ export async function loadStaffActivityProfile(opts: {
       staffId: staffRow.id,
       displayName: staffRow.display_name,
       primaryEmail: staffRow.primary_email,
-      role: staffRow.role,
+      role: staffRow.role as StaffRole,
       status: staffRow.status,
     },
     windowDays,

@@ -21,7 +21,7 @@
  * slugs return a structured error rather than crashing.
  */
 
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import type { ActionResult } from "@/lib/form-utils";
 import { getCampaignConfig } from "@/lib/import/campaigns";
 import { type ImportReport, runCampaignImport } from "@/lib/import/generic-campaign-import";
@@ -43,7 +43,7 @@ export async function runCampaignDryRun(
   const op = newOpError("admin.campaign_import.dry_run");
   try {
     const { staff } = await requireStaff();
-    if (staff.role !== "admin") {
+    if (!hasMinimumRole(staff, "admin")) {
       return { ok: false, error: "Admin role required.", code: op.code };
     }
 
@@ -76,7 +76,7 @@ export async function runCampaignApply(
   const op = newOpError("admin.campaign_import.apply");
   try {
     const { staff } = await requireStaff();
-    if (staff.role !== "admin") {
+    if (!hasMinimumRole(staff, "admin")) {
       return { ok: false, error: "Admin role required.", code: op.code };
     }
 
@@ -121,7 +121,7 @@ export async function generateCampaignReviewQueue(
   const op = newOpError("admin.campaign_import.review_queue");
   try {
     const { staff } = await requireStaff();
-    if (staff.role !== "admin") {
+    if (!hasMinimumRole(staff, "admin")) {
       return { ok: false, error: "Admin role required.", code: op.code };
     }
 

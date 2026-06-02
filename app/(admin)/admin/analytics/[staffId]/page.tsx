@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth";
+import { hasMinimumRole, requireAdmin } from "@/lib/auth";
 import { loadStaffActivityProfile } from "@/lib/team-analytics";
 import { ChevronLeft, Download, ShieldCheck } from "lucide-react";
 import Link from "next/link";
@@ -84,7 +84,7 @@ function ProfileHeader({
     .map((w) => w.charAt(0).toUpperCase())
     .join("");
 
-  const isAdmin = profile.staff.role === "admin";
+  const isAdmin = hasMinimumRole(profile.staff, "admin");
 
   return (
     <section className="card-surface overflow-hidden">

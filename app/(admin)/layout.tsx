@@ -1,7 +1,7 @@
 import { ShortcutProvider } from "@/components/ui/shortcut-provider";
 import { StaleDataIndicator } from "@/components/ui/stale-data-indicator";
 import { ToastProvider } from "@/components/ui/toast";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { ShieldAlert } from "lucide-react";
@@ -60,11 +60,14 @@ export default async function AdminLayout({
                 SideNav takes over. Replaces the old hamburger drawer
                 (operator session 11). */}
             <MobileSectionNav
-              isAdmin={staff.role === "admin"}
+              isAdmin={hasMinimumRole(staff, "admin")}
               hasCurrentCampaign={hasCurrentCampaign}
             />
             <div className="flex flex-1">
-              <SideNav isAdmin={staff.role === "admin"} hasCurrentCampaign={hasCurrentCampaign} />
+              <SideNav
+                isAdmin={hasMinimumRole(staff, "admin")}
+                hasCurrentCampaign={hasCurrentCampaign}
+              />
               <main className="min-w-0 flex-1 px-6 py-10 sm:px-10 sm:py-14">{children}</main>
             </div>
             <GlobalShortcuts />

@@ -15,7 +15,7 @@
  */
 
 import { connectedAccounts, users } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isGmailOAuthConfigured } from "@/lib/gmail";
 import { classifyHealth, loadInboxAnalytics } from "@/lib/inbox-analytics";
@@ -366,7 +366,7 @@ export default async function InboxesPage({ searchParams }: Props) {
                       </td>
                       <td className="px-4 py-2.5 font-mono text-xs">{c.emailAddress}</td>
                       <td className="px-4 py-2.5">
-                        {staff.role === "admin" ? (
+                        {hasMinimumRole(staff, "admin") ? (
                           <CapEditor inboxId={c.id} initialCap={c.dailyColdSendCap} />
                         ) : (
                           <span className="font-mono text-[11px] text-zinc-500 tabular-nums">

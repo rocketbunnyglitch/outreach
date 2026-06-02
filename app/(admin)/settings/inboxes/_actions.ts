@@ -1,7 +1,7 @@
 "use server";
 
 import { connectedAccounts } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
@@ -219,7 +219,7 @@ export async function setInboxCap(
   if (inbox.teamId !== staff.teamId) {
     return { ok: false, error: "That inbox isn't on your team." };
   }
-  const isAdmin = staff.role === "admin";
+  const isAdmin = hasMinimumRole(staff, "admin");
   const isOwner = inbox.ownerUserId === staff.id;
   if (!isAdmin && !isOwner) {
     return { ok: false, error: "Only the inbox owner or an admin can change the cap." };

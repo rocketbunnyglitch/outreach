@@ -18,7 +18,7 @@
  * can paste into Claude.
  */
 
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import type { ActionResult } from "@/lib/form-utils";
 import {
   type ImportReport,
@@ -39,7 +39,7 @@ export async function runHalloween2025DryRun(input?: {
   const op = newOpError("admin.halloween_import.dry_run");
   try {
     const { staff } = await requireStaff();
-    if (staff.role !== "admin") {
+    if (!hasMinimumRole(staff, "admin")) {
       return { ok: false, error: "Admin role required.", code: op.code };
     }
     const report = await runHalloween2025Import({
@@ -63,7 +63,7 @@ export async function runHalloween2025Apply(input?: {
   const op = newOpError("admin.halloween_import.apply");
   try {
     const { staff } = await requireStaff();
-    if (staff.role !== "admin") {
+    if (!hasMinimumRole(staff, "admin")) {
       return { ok: false, error: "Admin role required.", code: op.code };
     }
     const report = await runHalloween2025Import({
@@ -104,7 +104,7 @@ export async function generateReviewQueueMarkdown(
   const op = newOpError("admin.halloween_import.review_queue");
   try {
     const { staff } = await requireStaff();
-    if (staff.role !== "admin") {
+    if (!hasMinimumRole(staff, "admin")) {
       return { ok: false, error: "Admin role required.", code: op.code };
     }
 

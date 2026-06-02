@@ -18,7 +18,7 @@
  */
 
 import { events, campaigns, cityCampaigns, crawlBrands, outreachBrands } from "@/db/schema";
-import { requireAdmin, requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireAdmin, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -324,7 +324,7 @@ export async function archiveCampaignNoRedirect(
  */
 export async function unarchiveCampaign(id: string): Promise<{ ok: boolean; error?: string }> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Admin role required to restore archived campaigns." };
   }
   try {
@@ -371,7 +371,7 @@ export async function deleteCampaignWithConfirmation(
   confirmName: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Only admins can delete a campaign." };
   }
 
@@ -1190,7 +1190,7 @@ export async function addRemainingCitiesAtNextPriority(input: {
   campaignId: string;
 }): Promise<ActionResult<{ added: number; priority: number; skipped: number }>> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Only admins can bulk-add the remaining cities." };
   }
 

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cities, countries } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { Plus } from "lucide-react";
@@ -65,7 +65,7 @@ export default async function CitiesListPage() {
         </Button>
       </header>
 
-      <CitiesListClient items={items} currentStaffIsAdmin={staff.role === "admin"} />
+      <CitiesListClient items={items} currentStaffIsAdmin={hasMinimumRole(staff, "admin")} />
     </div>
   );
 }

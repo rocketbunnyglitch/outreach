@@ -1,4 +1,4 @@
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
@@ -36,7 +36,9 @@ export default async function TrackerPage() {
         </div>
       </header>
 
-      {campaignId && <BulkRenameCrawls campaignId={campaignId} isAdmin={staff.role === "admin"} />}
+      {campaignId && (
+        <BulkRenameCrawls campaignId={campaignId} isAdmin={hasMinimumRole(staff, "admin")} />
+      )}
 
       {campaignId && rows.length > 0 ? (
         <TrackerDashboardTable rows={rows} staff={staffOpts} defaultPriorityFilter="all" />

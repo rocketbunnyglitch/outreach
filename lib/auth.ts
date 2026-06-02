@@ -153,8 +153,14 @@ const STAFF_ROLE_RANK: Record<StaffRole, number> = {
  * <ManageLabelsButton />}`) and in server-side branching where
  * throwing on insufficient role would be wrong (e.g. one of
  * several conditional fetches).
+ *
+ * Accepts any object with a `role` field of type StaffRole (i.e.
+ * the full StaffMember row OR a narrow projection of just the
+ * role). Callers commonly pass narrower types from select-
+ * projected queries (e.g. lib/compose-send-impl's staff snapshot
+ * is `{ id, teamId, role, displayName, primaryEmail }`).
  */
-export function hasMinimumRole(staff: StaffMember, minRole: StaffRole): boolean {
+export function hasMinimumRole(staff: { role: StaffRole }, minRole: StaffRole): boolean {
   return STAFF_ROLE_RANK[staff.role] >= STAFF_ROLE_RANK[minRole];
 }
 

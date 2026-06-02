@@ -11,7 +11,7 @@
  * to pick one via the campaign switcher.
  */
 
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { loadCampaignInfo } from "@/lib/campaign-info-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { Mail } from "lucide-react";
@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function CampaignInfoPage() {
   const { staff } = await requireStaff();
   const campaignCtx = await getCurrentCampaign();
-  const isAdmin = staff.role === "admin";
+  const isAdmin = hasMinimumRole(staff, "admin");
 
   if (!campaignCtx) {
     return (
