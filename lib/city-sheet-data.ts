@@ -300,47 +300,45 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
     .orderBy(asc(staffMembers.displayName));
 
   // Compose crawls with default 4 slots (wristband, middle 1, middle 2, final)
-  // plus any extra middles or alt_finals already filled. When a middle group
-  // is attached, the Middle 1/Middle 2 default slots are replaced with the
-  // group's members rendered as a read-only section.
+  // plus any extra middles or alt_finals already filled.
+  //
+  // TEMPLATE MODEL (shared middle groups): a middle group is now a
+  // TEMPLATE, not authoritative truth. Each crawl ALWAYS owns its own
+  // editable role='middle' venue_events; attaching a group copies its
+  // members into those venue_events (see _middle-group-actions.ts). So
+  // middles render as normal per-crawl slot rows whether or not a group
+  // is attached -- we no longer omit the Middle 1/2 default slots or
+  // filter out middle venue_events when a group is present. The group's
+  // member list is still surfaced (middleGroupMembers) as a reference
+  // panel + seed source, but it never overrides the crawl's own rows.
   const crawls: CrawlCard[] = eventRows.map((ev) => {
     const ves = veRows.filter((v) => v.eventId === ev.id);
     const hasGroup = !!ev.middleVenueGroupId;
 
-    // Required default slots — middles ONLY when no shared group is set.
-    // For day_party format (saturday_day / sunday_day crawls), the final
-    // slot is dropped entirely per operator: "day crawl is just a
-    // wristband venue and a minimum of 2 middle venues but you can add
-    // more". Standard format keeps the canonical wristband + 2 middles
-    // + final layout.
+    // Required default slots. For day_party format (saturday_day /
+    // sunday_day crawls), the final slot is dropped entirely per
+    // operator: "day crawl is just a wristband venue and a minimum of 2
+    // middle venues but you can add more". Standard format keeps the
+    // canonical wristband + 2 middles + final layout. Middles are ALWAYS
+    // present as editable defaults now (group or not).
     const isDayParty = ev.crawlFormat === "day_party";
-    const defaultSlots: Array<{ role: SlotRole; slotPosition: number }> = hasGroup
-      ? isDayParty
-        ? // Shared group + day party: only wristband as a default slot.
-          // The group itself supplies the middles; no final exists.
-          [{ role: "wristband", slotPosition: 1 }]
-        : [
-            { role: "wristband", slotPosition: 1 },
-            { role: "final", slotPosition: 1 },
-          ]
-      : isDayParty
-        ? [
-            { role: "wristband", slotPosition: 1 },
-            { role: "middle", slotPosition: 1 },
-            { role: "middle", slotPosition: 2 },
-          ]
-        : [
-            { role: "wristband", slotPosition: 1 },
-            { role: "middle", slotPosition: 1 },
-            { role: "middle", slotPosition: 2 },
-            { role: "final", slotPosition: 1 },
-          ];
+    const defaultSlots: Array<{ role: SlotRole; slotPosition: number }> = isDayParty
+      ? [
+          { role: "wristband", slotPosition: 1 },
+          { role: "middle", slotPosition: 1 },
+          { role: "middle", slotPosition: 2 },
+        ]
+      : [
+          { role: "wristband", slotPosition: 1 },
+          { role: "middle", slotPosition: 1 },
+          { role: "middle", slotPosition: 2 },
+          { role: "final", slotPosition: 1 },
+        ];
 
-    // Pull in extras: any ve with role+position not in defaultSlots, and
-    // also skip ANY middle venue_events when a shared group is in use
-    // (the group is authoritative for middles in that case)
+    // Pull in extras: any ve with role+position not already covered by a
+    // default slot. Middle venue_events are NOT filtered out when a group
+    // is attached anymore -- they're the crawl's own editable rows.
     const extras = ves.filter((v) => {
-      if (hasGroup && v.role === "middle") return false;
       return !defaultSlots.some(
         (d) => d.role === v.role && d.slotPosition === (v.slotPosition ?? 1),
       );

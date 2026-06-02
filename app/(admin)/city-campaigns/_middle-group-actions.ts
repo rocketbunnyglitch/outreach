@@ -26,7 +26,7 @@
  * group-membership editor.
  */
 
-import { events, middleVenueGroupMembers, middleVenueGroups } from "@/db/schema";
+import { events, middleVenueGroupMembers, middleVenueGroups, venueEvents } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -34,6 +34,124 @@ import { logger } from "@/lib/logger";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+
+/**
+ * Valid venue_event_status enum values. A middle_venue_group_member's
+ * status is free text (db/schema: kept as text on purpose), so when we
+ * seed it onto a venue_event we coerce anything unrecognized down to
+ * 'lead' rather than letting Postgres reject the insert on the enum.
+ */
+const VENUE_EVENT_STATUSES = new Set([
+  "lead",
+  "contacted",
+  "interested",
+  "negotiating",
+  "confirmed",
+  "scheduled",
+  "contract_signed",
+  "declined",
+  "cancelled",
+]);
+type VenueEventStatus =
+  | "lead"
+  | "contacted"
+  | "interested"
+  | "negotiating"
+  | "confirmed"
+  | "scheduled"
+  | "contract_signed"
+  | "declined"
+  | "cancelled";
+function coerceVenueEventStatus(s: string | null | undefined): VenueEventStatus {
+  return s != null && VENUE_EVENT_STATUSES.has(s) ? (s as VenueEventStatus) : "lead";
+}
+
+/**
+ * TEMPLATE COPY: seed a crawl's own role='middle' venue_events from a
+ * middle group's members. Runs inside the caller's audit transaction.
+ *
+ * Why copy instead of project: a shared middle group is a TEMPLATE, not
+ * authoritative truth. Each crawl must own editable middle rows so the
+ * operator can tweak hours / status / swap a venue per crawl without
+ * mutating every other crawl on the group. We additively INSERT one
+ * venue_event per group member that the crawl doesn't already have (the
+ * (venue_id, event_id) unique index guards against duplicates via
+ * onConflictDoNothing), seeding status / hours / specials from the
+ * member. Existing middle rows are left untouched -- this never deletes
+ * or overwrites a crawl's own data.
+ *
+ * Returns the number of rows inserted (for logging / no-op detection).
+ */
+async function copyGroupMembersIntoCrawl(
+  tx: Parameters<Parameters<typeof withAuditContext>[1]>[0],
+  opts: { eventId: string; middleVenueGroupId: string; staffId: string },
+): Promise<number> {
+  const members = await tx
+    .select({
+      venueId: middleVenueGroupMembers.venueId,
+      status: middleVenueGroupMembers.status,
+      slotStartTime: middleVenueGroupMembers.slotStartTime,
+      slotEndTime: middleVenueGroupMembers.slotEndTime,
+      agreedHoursText: middleVenueGroupMembers.agreedHoursText,
+      drinkSpecials: middleVenueGroupMembers.drinkSpecials,
+    })
+    .from(middleVenueGroupMembers)
+    .where(eq(middleVenueGroupMembers.middleVenueGroupId, opts.middleVenueGroupId))
+    .orderBy(asc(middleVenueGroupMembers.createdAt));
+
+  if (members.length === 0) return 0;
+
+  // Existing middle venue_events for this crawl: their venue ids (so we
+  // never re-seed one the crawl already has) and the current max
+  // slot_position (so new rows continue the numbering).
+  const existingMiddles = await tx
+    .select({
+      venueId: venueEvents.venueId,
+      slotPosition: venueEvents.slotPosition,
+    })
+    .from(venueEvents)
+    .where(and(eq(venueEvents.eventId, opts.eventId), eq(venueEvents.role, "middle")));
+
+  const existingVenueIds = new Set(existingMiddles.map((m) => m.venueId));
+  let nextPosition = existingMiddles.reduce((max, m) => Math.max(max, m.slotPosition ?? 0), 0) + 1;
+
+  let inserted = 0;
+  for (const m of members) {
+    if (existingVenueIds.has(m.venueId)) continue;
+    const result = await tx
+      .insert(venueEvents)
+      .values({
+        eventId: opts.eventId,
+        venueId: m.venueId,
+        role: "middle",
+        slotPosition: nextPosition,
+        status: coerceVenueEventStatus(m.status),
+        slotStartTime: m.slotStartTime,
+        slotEndTime: m.slotEndTime,
+        agreedHoursText: m.agreedHoursText,
+        drinkSpecials: m.drinkSpecials,
+        ourContactStaffId: opts.staffId,
+        createdBy: opts.staffId,
+        updatedBy: opts.staffId,
+      })
+      // venue_events has TWO unique constraints: (venue_id, event_id)
+      // and (event_id, role, slot_position). An untargeted
+      // ON CONFLICT DO NOTHING covers BOTH -- so if the venue is already
+      // on this crawl in any role, OR the computed slot_position somehow
+      // collides, we skip rather than error. We only count rows that
+      // actually inserted (returning is empty on a skipped conflict).
+      .onConflictDoNothing()
+      .returning({ id: venueEvents.id });
+    if (result.length > 0) {
+      inserted++;
+      // Only advance the position when a row actually landed, so a
+      // skipped (conflicting) member doesn't leave a gap.
+      nextPosition++;
+      existingVenueIds.add(m.venueId);
+    }
+  }
+  return inserted;
+}
 
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
@@ -68,6 +186,19 @@ export async function assignMiddleGroup(
           updatedBy: staff.id,
         })
         .where(eq(events.id, parsed.data.eventId));
+
+      // TEMPLATE MODEL: attaching a group SEEDS the crawl's own editable
+      // role='middle' venue_events from the group's members (additive,
+      // conflict-safe). Clearing a group (null) leaves the already-copied
+      // middle rows in place -- they're the crawl's own data now, not a
+      // projection that should vanish when the template is detached.
+      if (parsed.data.middleVenueGroupId) {
+        await copyGroupMembersIntoCrawl(tx, {
+          eventId: parsed.data.eventId,
+          middleVenueGroupId: parsed.data.middleVenueGroupId,
+          staffId: staff.id,
+        });
+      }
     });
     if (parsed.data.cityCampaignId) {
       revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);

@@ -609,46 +609,36 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
     }
   }
 
-  // "All venues confirmed" — when every required slot row has a
+  // "All venues confirmed" -- when every required slot row has a
   // venue_event in a confirmed/contract_signed state. Drives a green
   // outline + soft glow around the whole crawl section so the
   // operator can see at a glance which crawls are fully booked.
   //
-  // Logic: enumerate the slot rows that count as "required" (wristband
-  // + final are always required; middles are required only when there
-  // ISN'T a shared middle group, since shared groups have their own
-  // member roster that lives elsewhere). If all of those required
-  // rows have venueEventId AND status is confirmed/contract_signed,
-  // the crawl is fully locked.
+  // TEMPLATE MODEL: middles are now the crawl's OWN editable
+  // venue_events (a shared middle group only SEEDS them), so middle
+  // confirmation reads from crawl.slots like every other role -- not
+  // from a separate group-member roster. Required rows: wristband
+  // always; final always except day_party; all middle rows.
   const isConfirmedStatus = (s: string | null | undefined) =>
-    s === "confirmed" || s === "contract_signed";
-  const hasGroup = !!crawl.middleVenueGroupId;
+    s === "confirmed" || s === "contract_signed" || s === "scheduled";
   const isDayParty = crawl.crawlFormat === "day_party";
   const requiredSlots = crawl.slots.filter((s) => {
     if (s.role === "wristband") return true;
     // Day party crawls don't have a final slot at all.
     if (s.role === "final" && s.slotPosition === 1 && !isDayParty) return true;
-    if (s.role === "middle" && !hasGroup) return true;
+    if (s.role === "middle") return true;
     return false;
   });
-  // Minimum required-slot counts:
-  //   - shared group + standard:  wristband + final = 2 (group supplies middles)
-  //   - shared group + day_party: wristband only    = 1
-  //   - no group + standard:      wristband + 2 middles + final = 4
-  //   - no group + day_party:     wristband + 2 middles         = 3
+  // Minimum required-slot counts (middles always count as the crawl's
+  // own rows now):
+  //   - standard:   wristband + 2 middles + final = 4
+  //   - day_party:  wristband + 2 middles         = 3
   // Per operator: "day crawl is just a wristband venue and a minimum
   // of 2 middle venues but you can add more". NO final.
-  const minSlots = hasGroup ? (isDayParty ? 1 : 2) : isDayParty ? 3 : 4;
+  const minSlots = isDayParty ? 3 : 4;
   const hasMinSlots = requiredSlots.length >= minSlots;
-  const allRequiredFilled =
+  const allVenuesConfirmed =
     hasMinSlots && requiredSlots.every((s) => !!s.venueEventId && isConfirmedStatus(s.status));
-  // When using a shared middle group, the group's own members must
-  // also be in a confirmed state for the crawl to count as locked.
-  const groupVenuesConfirmed = hasGroup
-    ? crawl.middleGroupMembers.length > 0 &&
-      crawl.middleGroupMembers.every((m) => isConfirmedStatus(m.status))
-    : true;
-  const allVenuesConfirmed = allRequiredFilled && groupVenuesConfirmed;
 
   return (
     <section
@@ -688,42 +678,20 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         </div>
       </header>
 
-      {/* Shared middle group section — read-only summary of group members.
-          The /middle-groups management UI was removed (it barely worked);
-          the schema stays and the group still functions, but membership
-          can no longer be edited from this surface. */}
+      {/* Shared middle group = TEMPLATE banner. The group no longer
+          OWNS the middles -- attaching it copied its venues into this
+          crawl's own editable Middle rows below (see
+          _middle-group-actions.ts / city-sheet-data.ts). This banner is
+          just a reference: which template seeded the middles, and which
+          other crawls share it. Editing happens in the slot rows. */}
       {crawl.middleVenueGroupId && (
-        <div className="border-zinc-200/60 border-b bg-orange-500/[0.04] px-5 py-4 dark:border-zinc-800/40 dark:bg-orange-500/[0.06]">
-          <div className="mb-2 flex items-baseline justify-between">
-            <p className="font-mono text-[10px] text-orange-700 uppercase tracking-[0.12em] dark:text-orange-300">
-              Middle venues · {crawl.middleVenueGroupName}
-            </p>
-          </div>
-          {crawl.middleGroupMembers.length === 0 ? (
-            <p className="text-xs text-zinc-500 italic">Group has no venues yet.</p>
-          ) : (
-            <ul className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
-              {crawl.middleGroupMembers.map((m) => (
-                <li
-                  key={m.memberId}
-                  className="flex items-center gap-2 rounded-md bg-white/60 px-2.5 py-1.5 text-xs dark:bg-zinc-900/40"
-                >
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
-                  <span className="flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100">
-                    {m.venueName}
-                  </span>
-                  {m.venueCapacity != null && (
-                    <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-                      {m.venueCapacity}
-                    </span>
-                  )}
-                  <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
-                    {m.status}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="border-zinc-200/60 border-b bg-orange-500/[0.04] px-5 py-2.5 dark:border-zinc-800/40 dark:bg-orange-500/[0.06]">
+          <p className="font-mono text-[10px] text-orange-700 uppercase tracking-[0.12em] dark:text-orange-300">
+            Middle template: {crawl.middleVenueGroupName}
+            <span className="ml-2 text-orange-600/70 normal-case tracking-normal dark:text-orange-300/70">
+              seeds the editable Middle rows below; edit them per crawl.
+            </span>
+          </p>
         </div>
       )}
 
