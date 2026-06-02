@@ -283,7 +283,15 @@ export async function acknowledgeThreadMentions(input: {
           isNull(emailThreadMentions.acknowledgedAt),
         ),
       );
-    revalidatePath("/inbox");
+    // NOTE: no revalidatePath here. This helper is awaited DURING the
+    // render of /inbox/[threadId] (auto-ack on thread open), and
+    // revalidatePath during render is unsupported -- it threw on every
+    // open, spamming "[thread-notes] ack failed" and never revalidating.
+    // The DB write above is what matters; the viewing page already loads
+    // a fresh mention count this render, and force-dynamic re-fetches on
+    // the next navigation. The client-action wrapper
+    // (acknowledgeThreadMentionsAction) can revalidate if a client caller
+    // is ever added.
     return { ok: true };
   } catch (err) {
     logger.error({ err, threadId: input.threadId }, "[thread-notes] ack failed");

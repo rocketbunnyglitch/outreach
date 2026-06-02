@@ -51,7 +51,12 @@ export function ThreadActions({
     if (markedRef.current) return;
     if (unreadCount === 0) return;
     markedRef.current = true;
-    // Fire-and-forget; revalidation handles the UI refresh
+    // Optimistically clear the row's unread styling in the list pane the
+    // instant the thread opens (Gmail does this on open). ThreadRow listens
+    // for this event and un-bolds itself; the server revalidate inside
+    // markThreadRead then makes it durable across navigations.
+    document.dispatchEvent(new CustomEvent("inbox-thread-read", { detail: { threadId } }));
+    // Fire-and-forget; markThreadRead now revalidates /inbox + the thread.
     markThreadRead(threadId).catch(() => {});
   }, [threadId, unreadCount]);
 

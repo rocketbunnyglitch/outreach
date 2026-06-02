@@ -418,6 +418,14 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
       context: "markThreadRead",
     });
 
+    // Revalidate so the cached /inbox list + thread RSC re-fetch with
+    // unread_count=0. Without this, opening a thread cleared the DB but
+    // the row stayed bold until a hard refresh (the optimistic clear in
+    // ThreadRow handles the instant feedback; this makes it durable).
+    // Mirrors markThreadUnread, which already revalidates both paths.
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+
     publishRealtime({
       table: "email_threads",
       id: threadId,

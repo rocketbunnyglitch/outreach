@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { StarToggle } from "./StarToggle";
 import { ThreadRowHoverActions } from "./ThreadRowHoverActions";
 
@@ -125,6 +126,22 @@ function ThreadRow({
 }) {
   const href = preservedQuery ? `/inbox/${thread.id}?${preservedQuery}` : `/inbox/${thread.id}`;
 
+  // Optimistic read-state. Seeded false from a prop (hydration-safe: the
+  // initializer reads only props, never storage/clock/window). When the
+  // operator opens this thread, ThreadActions broadcasts an
+  // "inbox-thread-read" event so the row un-bolds instantly, before the
+  // server revalidate from markThreadRead lands. Listener is mount-gated.
+  const [locallyRead, setLocallyRead] = useState(false);
+  useEffect(() => {
+    function onRead(e: Event) {
+      const detail = (e as CustomEvent<{ threadId: string }>).detail;
+      if (detail?.threadId === thread.id) setLocallyRead(true);
+    }
+    document.addEventListener("inbox-thread-read", onRead);
+    return () => document.removeEventListener("inbox-thread-read", onRead);
+  }, [thread.id]);
+  const isUnread = thread.unreadCount > 0 && !locallyRead;
+
   return (
     <li>
       <Link
@@ -138,11 +155,11 @@ function ThreadRow({
             ? "bg-zinc-100 dark:bg-zinc-900"
             : isSelected
               ? "bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50"
-              : thread.unreadCount > 0
+              : isUnread
                 ? "bg-white font-semibold hover:bg-zinc-50 dark:bg-zinc-900/70 dark:hover:bg-zinc-900"
                 : "bg-zinc-50/40 hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900/50",
           // Unread threads get a slightly heavier left border accent
-          thread.unreadCount > 0 && "border-l-2 border-l-indigo-500",
+          isUnread && "border-l-2 border-l-indigo-500",
         )}
       >
         <div className="flex items-baseline justify-between gap-2">
@@ -152,7 +169,18 @@ function ThreadRow({
                 type="checkbox"
                 checked={isSelected}
                 onChange={() => onToggleSelect(thread.id)}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  // preventDefault cancels the surrounding <Link> anchor's
+                  // navigation (a click on a control nested in an <a href>
+                  // still activates the anchor; stopPropagation alone does
+                  // NOT cancel that). Without this, selecting a row bounced
+                  // into the thread and wiped the selection -- the reported
+                  // "select-all does not work" bug. Matches the StarToggle /
+                  // ThreadRowHoverActions pattern in the same row.
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onKeyDown={(e) => e.stopPropagation()}
                 aria-label={`Select thread from ${thread.lastSenderName ?? thread.venueName ?? "unknown"}`}
                 className="h-3.5 w-3.5 shrink-0 cursor-pointer"
               />
@@ -161,7 +189,7 @@ function ThreadRow({
             <p
               className={cn(
                 "min-w-0 flex-1 truncate text-sm",
-                thread.unreadCount > 0 ? "font-semibold" : "font-medium",
+                isUnread ? "font-semibold" : "font-medium",
               )}
             >
               {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
@@ -186,9 +214,7 @@ function ThreadRow({
           <p
             className={cn(
               "mt-0.5 truncate text-xs",
-              thread.unreadCount > 0
-                ? "text-zinc-800 dark:text-zinc-200"
-                : "text-zinc-600 dark:text-zinc-400",
+              isUnread ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600 dark:text-zinc-400",
             )}
           >
             {thread.subject}

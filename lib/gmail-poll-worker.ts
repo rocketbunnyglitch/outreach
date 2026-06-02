@@ -596,6 +596,19 @@ export async function pollOneInbox(
         AND em.direction = 'inbound'
         AND em.read_at IS NULL
     `);
+    // Surface this Gmail-side read to any open inbox. The drain-level
+    // publishRealtime fires only when NEW mail arrived; a pure read-state
+    // delta (operator opened the mail in Gmail, no new message) would
+    // otherwise emit nothing, so the open /inbox never re-synced and the
+    // thread stayed bold in the engine. byStaffId null => not self-
+    // suppressed for any operator. This is the missing-notification half
+    // of the Gmail->engine read-state bug.
+    publishRealtime({
+      table: "email_threads",
+      type: "update",
+      byStaffId: null,
+      byStaffName: "Gmail poll",
+    });
   }
 
   if (unreadAddList.length > 0) {
@@ -634,6 +647,15 @@ export async function pollOneInbox(
         AND em.direction = 'inbound'
         AND em.read_at IS NOT NULL
     `);
+    // Operator marked the thread unread again in Gmail -- notify open
+    // inboxes so the "N new" pill / re-sync reflects it (same rationale
+    // as the unreadRemoveList branch above).
+    publishRealtime({
+      table: "email_threads",
+      type: "update",
+      byStaffId: null,
+      byStaffName: "Gmail poll",
+    });
   }
 
   // Apply INBOX label changes harvested from history.list -> mirror
