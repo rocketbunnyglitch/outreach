@@ -169,6 +169,21 @@ export type SafetyResult =
   | { ok: false; block: SuppressionBlock | DncBlock; warnings: SafetyWarning[] };
 
 /**
+ * Multi-recipient send-safety result. Same shape as SafetyResult but
+ * the block also records WHICH recipient triggered it, so the caller
+ * can tell the operator that e.g. a Cc address (not the primary To)
+ * is the problem.
+ */
+export type MultiSafetyResult =
+  | { ok: true; warnings: SafetyWarning[] }
+  | {
+      ok: false;
+      block: SuppressionBlock | DncBlock;
+      blockedRecipient: string;
+      warnings: SafetyWarning[];
+    };
+
+/**
  * Run pre-send safety checks. The blocking checks short-circuit; the
  * duplicate check always runs so the caller can surface a warning
  * even on an OK result.
@@ -200,43 +215,14 @@ export async function runSendSafety(opts: {
     return { ok: true, warnings: [] };
   }
 
-  // --- HARD BLOCK 1: suppression list -----------------------------------
-  const suppression = await db
-    .select({
-      email: emailSuppression.email,
-      reason: emailSuppression.reason,
-      notes: emailSuppression.notes,
-    })
-    .from(emailSuppression)
-    .where(and(eq(emailSuppression.teamId, opts.teamId), eq(emailSuppression.email, to)))
-    .limit(1);
-  if (suppression[0]) {
-    return {
-      ok: false,
-      block: {
-        kind: "suppression",
-        email: to,
-        reason: suppression[0].reason as SuppressionBlock["reason"],
-        notes: suppression[0].notes,
-      },
-      warnings: [],
-    };
-  }
-
-  // --- HARD BLOCK 2: venue do-not-contact -------------------------------
-  // Two ways to discover DNC:
-  //   a) Caller passed venueId explicitly — direct lookup.
-  //   b) The recipient email matches a venue's email column or
-  //      one of its alternate emails (denormalised on the venue row
-  //      as a simple text column).
-  // We prefer (a) when set, falling back to (b).
-  const dnc = await findDncForRecipient({
+  // --- HARD BLOCKS: suppression + venue do-not-contact ------------------
+  const block = await findHardBlock({
     teamId: opts.teamId,
     recipient: to,
     venueId: opts.venueId ?? null,
   });
-  if (dnc) {
-    return { ok: false, block: dnc, warnings: [] };
+  if (block) {
+    return { ok: false, block, warnings: [] };
   }
 
   // --- WARNINGS -----------------------------------------------------
@@ -295,8 +281,165 @@ export async function runSendSafety(opts: {
 }
 
 /**
- * Look for a venue with do_not_contact=true whose primary email
- * matches the recipient. When venueId is passed, we check that
+ * SQL predicate matching a venue by EITHER its primary email OR any
+ * of its alternate_emails (case-insensitive). The recipient must be
+ * pre-normalised (lowercased). Used by every venue-resolution path so
+ * DNC / decline / ownership can't be evaded by emailing a venue's
+ * alternate address instead of its primary.
+ */
+function venueEmailMatches(recipient: string) {
+  return sql`(
+    lower(${venues.email}) = ${recipient}
+    OR EXISTS (
+      SELECT 1 FROM unnest(${venues.alternateEmails}) AS ae
+      WHERE lower(ae) = ${recipient}
+    )
+  )`;
+}
+
+/**
+ * The two HARD blocks (suppression + venue DNC) for a SINGLE
+ * normalised recipient. Returns the block or null. Extracted so both
+ * the single-recipient runSendSafety and the multi-recipient
+ * runSendSafetyForRecipients enforce identical block logic.
+ */
+async function findHardBlock(opts: {
+  teamId: string;
+  recipient: string;
+  venueId: string | null;
+}): Promise<SuppressionBlock | DncBlock | null> {
+  // Suppression list (lower() on the stored column so a row inserted
+  // before normalisation was enforced still matches).
+  const suppression = await db
+    .select({
+      email: emailSuppression.email,
+      reason: emailSuppression.reason,
+      notes: emailSuppression.notes,
+    })
+    .from(emailSuppression)
+    .where(
+      and(
+        eq(emailSuppression.teamId, opts.teamId),
+        sql`lower(${emailSuppression.email}) = ${opts.recipient}`,
+      ),
+    )
+    .limit(1);
+  if (suppression[0]) {
+    return {
+      kind: "suppression",
+      email: opts.recipient,
+      reason: suppression[0].reason as SuppressionBlock["reason"],
+      notes: suppression[0].notes,
+    };
+  }
+
+  // Venue do-not-contact (by explicit venueId or email/alternate match).
+  return await findDncForRecipient({
+    teamId: opts.teamId,
+    recipient: opts.recipient,
+    venueId: opts.venueId,
+  });
+}
+
+/**
+ * Multi-recipient send safety. Runs the HARD blocks against EVERY
+ * normalised recipient across To + Cc + Bcc (deduped); a single
+ * blocked recipient fails the whole send (the requirement: one
+ * suppressed/DNC address anywhere blocks the send). Warnings are
+ * gathered too: duplicate-outreach is checked for every recipient and
+ * deduped by thread; the venue-centric warnings (recent decline,
+ * cross-staff ownership, domain-alias suggestion) resolve off the
+ * primary To recipient + explicit venueId, since fanning them across
+ * Cc/Bcc would be noise.
+ *
+ * This is the gate every interactive + scheduled send should use --
+ * the old single-recipient path only ever checked the first To.
+ */
+export async function runSendSafetyForRecipients(opts: {
+  teamId: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  excludeThreadId?: string;
+  venueId?: string | null;
+  staffId?: string;
+}): Promise<MultiSafetyResult> {
+  const norm = (xs?: string[]) => (xs ?? []).map(normaliseEmail).filter(Boolean);
+  const toN = norm(opts.to);
+  const ccN = norm(opts.cc);
+  const bccN = norm(opts.bcc);
+
+  // Dedupe across all roles, preserving To -> Cc -> Bcc order.
+  const seen = new Set<string>();
+  const all: string[] = [];
+  for (const r of [...toN, ...ccN, ...bccN]) {
+    if (!seen.has(r)) {
+      seen.add(r);
+      all.push(r);
+    }
+  }
+  if (all.length === 0) return { ok: true, warnings: [] };
+
+  // HARD BLOCKS across every recipient. First block fails the send.
+  for (const recipient of all) {
+    const block = await findHardBlock({
+      teamId: opts.teamId,
+      recipient,
+      venueId: opts.venueId ?? null,
+    });
+    if (block) {
+      return { ok: false, block, blockedRecipient: recipient, warnings: [] };
+    }
+  }
+
+  // WARNINGS.
+  const warnings: SafetyWarning[] = [];
+
+  // Duplicate-outreach for every recipient, deduped by thread id, cap 3.
+  const dupByThread = new Map<string, DuplicateWarning>();
+  for (const recipient of all) {
+    const dups = await findDuplicateOutreach({
+      teamId: opts.teamId,
+      recipient,
+      excludeThreadId: opts.excludeThreadId,
+    });
+    for (const d of dups) {
+      if (!dupByThread.has(d.threadId)) dupByThread.set(d.threadId, d);
+    }
+  }
+  warnings.push(...Array.from(dupByThread.values()).slice(0, 3));
+
+  // Venue-centric warnings off the primary recipient + venueId.
+  // all[] is guaranteed non-empty here (early return above), but the
+  // `?? ""` keeps the type a plain string for the helper signatures.
+  const primary: string = toN[0] ?? all[0] ?? "";
+  warnings.push(
+    ...(await findRecentDeclines({
+      teamId: opts.teamId,
+      recipient: primary,
+      venueId: opts.venueId ?? null,
+    })),
+  );
+  if (opts.staffId) {
+    warnings.push(
+      ...(await findCrossStaffOwnership({
+        recipient: primary,
+        venueId: opts.venueId ?? null,
+        currentStaffId: opts.staffId,
+      })),
+    );
+  }
+  if (!opts.venueId) {
+    const candidates = await findDomainAliasCandidates({ teamId: opts.teamId, recipient: primary });
+    if (candidates) warnings.push(candidates);
+  }
+
+  return { ok: true, warnings };
+}
+
+/**
+ * Look for a venue with do_not_contact=true whose primary OR alternate
+ * email matches the recipient. When venueId is passed, we check that
  * specific venue directly (faster + handles cases where the email
  * doesn't match any venue but the caller knows the context).
  */
@@ -336,7 +479,7 @@ async function findDncForRecipient(opts: {
       reason: venues.doNotContactReason,
     })
     .from(venues)
-    .where(and(eq(venues.doNotContact, true), sql`lower(${venues.email}) = ${opts.recipient}`))
+    .where(and(eq(venues.doNotContact, true), venueEmailMatches(opts.recipient)))
     .limit(1);
   if (byEmail[0]) {
     return {
@@ -506,7 +649,7 @@ async function findRecentDeclines(opts: {
     const [v] = await db
       .select({ id: venues.id })
       .from(venues)
-      .where(sql`lower(${venues.email}) = ${opts.recipient}`)
+      .where(venueEmailMatches(opts.recipient))
       .limit(1);
     resolvedVenueId = v?.id ?? null;
   }
@@ -618,7 +761,7 @@ async function findCrossStaffOwnership(opts: {
     const [v] = await db
       .select({ id: venues.id })
       .from(venues)
-      .where(sql`lower(${venues.email}) = ${opts.recipient}`)
+      .where(venueEmailMatches(opts.recipient))
       .limit(1);
     resolvedVenueId = v?.id ?? null;
   }

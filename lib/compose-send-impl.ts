@@ -28,7 +28,11 @@ import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
-import { type DuplicateWarning, describeBlock, runSendSafety } from "@/lib/send-safety";
+import {
+  type DuplicateWarning,
+  describeBlock,
+  runSendSafetyForRecipients,
+} from "@/lib/send-safety";
 import { applyLabelToThread } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -47,6 +51,13 @@ export async function composeAndSendImpl(
   },
   formData: FormData,
 ): Promise<ComposeResult> {
+  // Readonly role can view mail but never send. Hard gate before any
+  // work; the composer/reply UI is also hidden client-side, but this
+  // is the authoritative check.
+  if (!hasMinimumRole(staff, "outreach")) {
+    return { ok: false, error: "Read-only access -- you can view mail but cannot send it." };
+  }
+
   const fromAccountId = String(formData.get("fromAccountId") ?? "");
   // Recipients — `to`/`cc`/`bcc` arrive as comma-separated strings
   // built by sendDraft from the draft's array columns. Split, trim,
@@ -193,12 +204,24 @@ export async function composeAndSendImpl(
       token: connectedAccounts.gmailOauthRefreshToken,
       status: connectedAccounts.status,
       teamId: connectedAccounts.teamId,
+      ownerUserId: connectedAccounts.ownerUserId,
     })
     .from(connectedAccounts)
     .where(and(eq(connectedAccounts.id, fromAccountId), eq(connectedAccounts.teamId, staff.teamId)))
     .limit(1);
   const inbox = sender[0];
   if (!inbox) return { ok: false, error: "That inbox isn't on your team." };
+  // Send-ownership gate: VIEW access to a teammate's inbox does NOT
+  // grant SEND access. Only the inbox owner (or an admin) may send
+  // from it -- otherwise an operator could send under a teammate's
+  // identity. The From dropdown should only list the operator's own
+  // inboxes for non-admins; this is the server-side enforcement.
+  if (inbox.ownerUserId && inbox.ownerUserId !== staff.id && !hasMinimumRole(staff, "admin")) {
+    return {
+      ok: false,
+      error: "You can view this inbox but can't send from it. Pick one of your own inboxes.",
+    };
+  }
   if (inbox.status === "disconnected" || !inbox.token) {
     return {
       ok: false,
@@ -211,16 +234,23 @@ export async function composeAndSendImpl(
   // explicitly acknowledge via the dismissDuplicateWarning form
   // field. Compose is always for a NEW thread, so we don't pass
   // excludeThreadId.
-  const safety = await runSendSafety({
+  const safety = await runSendSafetyForRecipients({
     teamId: staff.teamId,
     staffId: staff.id,
-    to,
+    to: toList,
+    cc: ccList,
+    bcc: bccList,
     venueId,
   });
   if (!safety.ok) {
+    // describeBlock names the address; prefix which recipient role
+    // tripped it when it's not the primary To, so the operator knows
+    // to fix a Cc/Bcc rather than hunting the To field.
+    const isPrimary = safety.blockedRecipient === (toList[0] ?? "").toLowerCase();
+    const prefix = isPrimary ? "" : `Recipient ${safety.blockedRecipient}: `;
     return {
       ok: false,
-      error: describeBlock(safety.block),
+      error: prefix + describeBlock(safety.block),
       safetyBlock: safety.block,
     };
   }
