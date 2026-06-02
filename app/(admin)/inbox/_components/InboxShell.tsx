@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { InboxRail } from "./InboxRail";
 
 /**
  * Three-pane Inbox shell.
@@ -69,17 +70,11 @@ export function InboxShell({
       {topRight && (
         <div className="absolute top-3 right-4 z-20 lg:top-4 lg:right-5">{topRight}</div>
       )}
-      {/* Left pane — folder list. Hidden on mobile; the scope bar
-          inside `middle` covers the essential folder pivots. */}
-      <aside
-        className={cn(
-          "hidden shrink-0 border-zinc-200/80 lg:block lg:w-[220px] lg:border-r",
-          "dark:border-zinc-800/60",
-          "p-3",
-        )}
-      >
-        {left}
-      </aside>
+      {/* Left pane — folder list. Static aside on desktop; on mobile it
+          becomes an off-canvas drawer (opened by InboxRailTrigger in the
+          list header) so the settings gear, folders, and Compose are
+          reachable on a phone. */}
+      <InboxRail>{left}</InboxRail>
       {/* Middle pane — thread list. Mobile: full width when no
           thread is selected; hidden when a thread is open. */}
       <section

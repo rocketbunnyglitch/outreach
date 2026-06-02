@@ -24,6 +24,7 @@ import { FolderList } from "./_components/FolderList";
 import { InboxFilterBar } from "./_components/InboxFilterBar";
 import { InboxLiveRefresh } from "./_components/InboxLiveRefresh";
 import { InboxPresenceBar } from "./_components/InboxPresenceBar";
+import { InboxRailTrigger } from "./_components/InboxRail";
 import { InboxScopeBar } from "./_components/InboxScopeBar";
 import { InboxShell } from "./_components/InboxShell";
 import { ThreadListWithBulk } from "./_components/ThreadListWithBulk";
@@ -312,8 +313,10 @@ export default async function InboxPage({ searchParams }: Props) {
         }
         middle={
           <div className="flex h-full flex-col">
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
+            <div className="flex items-center gap-2 px-2 lg:px-0">
+              {/* Mobile-only: opens the folder/settings rail drawer. */}
+              <InboxRailTrigger />
+              <div className="min-w-0 flex-1">
                 <InboxScopeBar
                   currentUserId={currentStaff.id}
                   isAdmin={hasMinimumRole(currentStaff, "admin")}
