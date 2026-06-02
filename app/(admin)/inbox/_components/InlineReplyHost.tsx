@@ -24,6 +24,7 @@
 
 import { useComposer } from "@/app/(admin)/_components/composer/composer-store";
 import { ComposerWindow } from "@/app/(admin)/_components/composer/composer-window";
+import { useEffect, useState } from "react";
 
 interface Props {
   threadId: string;
@@ -31,10 +32,32 @@ interface Props {
 
 export function InlineReplyHost({ threadId }: Props) {
   const { composers } = useComposer();
+  // Detect mobile (below lg) so a reply opens FULL-SCREEN on phones --
+  // Gmail-mobile behavior -- instead of a cramped inline box. When
+  // isMobile, ComposerWindow forces effectiveMode=fullscreen (a fixed
+  // overlay with the quoted original below via QuotedThreadBlock).
+  // matchMedia is read only in an effect (never during render), seeded
+  // false, so SSR and first hydration match -- hydration-safe.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
   const inline = Array.from(composers.values()).find(
     (c) => c.mode === "inline" && c.replyToThreadId === threadId,
   );
   if (!inline) return null;
+
+  // Mobile: full-screen overlay (the composer is position:fixed when
+  // fullscreen, so it doesn't need the in-thread wrapper).
+  if (isMobile) {
+    return <ComposerWindow instance={inline} index={0} isMobile />;
+  }
+  // Desktop: anchored inline surface at the bottom of the thread.
   return (
     <div className="border-zinc-200/80 border-t bg-white dark:border-zinc-800/60 dark:bg-zinc-950">
       <ComposerWindow instance={inline} index={0} isMobile={false} />
