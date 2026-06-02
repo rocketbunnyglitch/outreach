@@ -14,6 +14,7 @@
  * (account, stat_date) constraint.
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { runDailyInboxStats } from "@/lib/inbox-daily-stats";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -32,8 +33,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await runDailyInboxStats();
-    return NextResponse.json({ ok: true, ...result });
+    return await recordCronRun("inbox-daily-stats", async () => {
+      const result = await runDailyInboxStats();
+      return NextResponse.json({ ok: true, ...result });
+    });
   } catch (err) {
     logger.error({ err }, "inbox-daily-stats cron route failed");
     return NextResponse.json({ error: "inbox-daily-stats failed" }, { status: 500 });

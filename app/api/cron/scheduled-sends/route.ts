@@ -18,6 +18,7 @@
  * + 100/tick cap prevents double sends).
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { logger } from "@/lib/logger";
 import { runScheduledSends } from "@/lib/scheduled-send-runner";
 import { NextResponse } from "next/server";
@@ -35,8 +36,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const result = await runScheduledSends();
-    return NextResponse.json({ ok: true, ...result });
+    return await recordCronRun("scheduled-sends", async () => {
+      const result = await runScheduledSends();
+      return NextResponse.json({ ok: true, ...result });
+    });
   } catch (err) {
     logger.error({ err }, "scheduled-sends cron route failed");
     return NextResponse.json({ error: "scheduled-sends failed" }, { status: 500 });

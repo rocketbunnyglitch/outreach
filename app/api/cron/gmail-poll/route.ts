@@ -14,6 +14,7 @@
  * claim the same inbox.
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { drainGmailPolls } from "@/lib/gmail-poll-worker";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -33,10 +34,12 @@ export async function POST(req: Request) {
 
   const start = Date.now();
   try {
-    const summary = await drainGmailPolls();
-    const ms = Date.now() - start;
-    logger.info({ ...summary, ms }, "gmail-poll drain complete");
-    return NextResponse.json({ ok: true, ms, ...summary });
+    return await recordCronRun("gmail-poll", async () => {
+      const summary = await drainGmailPolls();
+      const ms = Date.now() - start;
+      logger.info({ ...summary, ms }, "gmail-poll drain complete");
+      return NextResponse.json({ ok: true, ms, ...summary });
+    });
   } catch (err) {
     logger.error({ err }, "gmail-poll drain failed");
     return NextResponse.json(

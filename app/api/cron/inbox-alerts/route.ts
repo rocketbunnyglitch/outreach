@@ -15,6 +15,7 @@
  * RATE_LIMIT_HOURS in lib/inbox-alerts.ts if needed.
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { runAlertEvaluator } from "@/lib/inbox-alerts";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -32,8 +33,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    const result = await runAlertEvaluator();
-    return NextResponse.json({ ok: true, ...result });
+    return await recordCronRun("inbox-alerts", async () => {
+      const result = await runAlertEvaluator();
+      return NextResponse.json({ ok: true, ...result });
+    });
   } catch (err) {
     logger.error({ err }, "inbox-alerts cron route failed");
     return NextResponse.json({ error: "inbox-alerts failed" }, { status: 500 });

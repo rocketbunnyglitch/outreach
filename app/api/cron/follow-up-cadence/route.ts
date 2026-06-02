@@ -14,6 +14,7 @@
  * call hourly if needed.
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { runFollowUpCadence } from "@/lib/follow-up-cadence";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -32,8 +33,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await runFollowUpCadence();
-    return NextResponse.json({ ok: true, ...result });
+    return await recordCronRun("follow-up-cadence", async () => {
+      const result = await runFollowUpCadence();
+      return NextResponse.json({ ok: true, ...result });
+    });
   } catch (err) {
     logger.error({ err }, "follow-up-cadence cron route failed");
     return NextResponse.json({ error: "follow-up-cadence failed" }, { status: 500 });

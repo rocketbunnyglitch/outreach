@@ -22,6 +22,7 @@
  * runs simply over-write the same fresh number. No locks needed.
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { syncAllEventbriteTicketCounts } from "@/lib/eventbrite-sync";
 import { logger } from "@/lib/logger";
 import { NextResponse } from "next/server";
@@ -41,22 +42,24 @@ export async function POST(req: Request) {
 
   const start = Date.now();
   try {
-    const summary = await syncAllEventbriteTicketCounts();
-    const ms = Date.now() - start;
-    if (summary.notConfigured) {
-      logger.info({ ms }, "eventbrite-sync skipped: token not configured");
-    } else {
-      logger.info(
-        {
-          attempted: summary.attempted,
-          succeeded: summary.succeeded,
-          failed: summary.failed,
-          ms,
-        },
-        "eventbrite-sync drain complete",
-      );
-    }
-    return NextResponse.json({ ok: true, ms, ...summary });
+    return await recordCronRun("eventbrite-sync", async () => {
+      const summary = await syncAllEventbriteTicketCounts();
+      const ms = Date.now() - start;
+      if (summary.notConfigured) {
+        logger.info({ ms }, "eventbrite-sync skipped: token not configured");
+      } else {
+        logger.info(
+          {
+            attempted: summary.attempted,
+            succeeded: summary.succeeded,
+            failed: summary.failed,
+            ms,
+          },
+          "eventbrite-sync drain complete",
+        );
+      }
+      return NextResponse.json({ ok: true, ms, ...summary });
+    });
   } catch (err) {
     logger.error({ err }, "eventbrite-sync drain failed");
     return NextResponse.json(

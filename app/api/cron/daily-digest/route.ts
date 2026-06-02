@@ -20,6 +20,7 @@
  */
 
 import { staffMembers } from "@/db/schema";
+import { recordCronRun } from "@/lib/cron-runs";
 import { generateDailyDigests, renderDigestBody } from "@/lib/daily-digest";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -40,70 +41,72 @@ export async function POST(req: Request) {
   }
 
   try {
-    const digests = await generateDailyDigests();
-    const sender = process.env.DIGEST_SENDER_FROM;
+    return await recordCronRun("daily-digest", async () => {
+      const digests = await generateDailyDigests();
+      const sender = process.env.DIGEST_SENDER_FROM;
 
-    let sent = 0;
-    let skippedAlreadySent = 0;
-    let loggedOnly = 0;
+      let sent = 0;
+      let skippedAlreadySent = 0;
+      let loggedOnly = 0;
 
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
 
-    for (const row of digests) {
-      // Per-day idempotency: if the user already has digest_sent_at
-      // >= today, skip.
-      const existing = await db
-        .select({ digestSentAt: staffMembers.digestSentAt })
-        .from(staffMembers)
-        .where(eq(staffMembers.id, row.staffId))
-        .limit(1);
-      const lastSent = existing[0]?.digestSentAt;
-      if (lastSent && lastSent >= today) {
-        skippedAlreadySent++;
-        continue;
-      }
+      for (const row of digests) {
+        // Per-day idempotency: if the user already has digest_sent_at
+        // >= today, skip.
+        const existing = await db
+          .select({ digestSentAt: staffMembers.digestSentAt })
+          .from(staffMembers)
+          .where(eq(staffMembers.id, row.staffId))
+          .limit(1);
+        const lastSent = existing[0]?.digestSentAt;
+        if (lastSent && lastSent >= today) {
+          skippedAlreadySent++;
+          continue;
+        }
 
-      const body = renderDigestBody(row);
-      const subject = `Daily inbox digest — ${todayLabel()}`;
+        const body = renderDigestBody(row);
+        const subject = `Daily inbox digest -- ${todayLabel()}`;
 
-      if (!sender) {
-        // No service-identity SMTP configured. Log the would-send so
-        // ops can grep for it; record digest_sent_at so the next cron
-        // run on the same day skips this user (same idempotency as
-        // a real send).
-        logger.info(
-          { to: row.primaryEmail, subject, bodyPreview: body.slice(0, 160) },
-          "daily digest would send (DIGEST_SENDER_FROM not configured)",
-        );
-        loggedOnly++;
-      } else {
-        // Future commit: actually deliver via an SMTP/Gmail
-        // service identity. Today, the alert system also runs in
-        // log-only mode for the same reason.
-        logger.info(
-          { to: row.primaryEmail, from: sender, subject, body },
-          "daily digest send (placeholder — wire SMTP delivery here)",
-        );
-        sent++;
-      }
+        if (!sender) {
+          // No service-identity SMTP configured. Log the would-send so
+          // ops can grep for it; record digest_sent_at so the next cron
+          // run on the same day skips this user (same idempotency as
+          // a real send).
+          logger.info(
+            { to: row.primaryEmail, subject, bodyPreview: body.slice(0, 160) },
+            "daily digest would send (DIGEST_SENDER_FROM not configured)",
+          );
+          loggedOnly++;
+        } else {
+          // Future commit: actually deliver via an SMTP/Gmail
+          // service identity. Today, the alert system also runs in
+          // log-only mode for the same reason.
+          logger.info(
+            { to: row.primaryEmail, from: sender, subject, body },
+            "daily digest send (placeholder -- wire SMTP delivery here)",
+          );
+          sent++;
+        }
 
-      // Mark sent for idempotency regardless of whether the actual
-      // delivery happened. Otherwise an env-gated downgrade would
-      // re-log the same user every time the cron fires.
-      await db.execute(sql`
+        // Mark sent for idempotency regardless of whether the actual
+        // delivery happened. Otherwise an env-gated downgrade would
+        // re-log the same user every time the cron fires.
+        await db.execute(sql`
         UPDATE staff_members
         SET digest_sent_at = NOW()
         WHERE id = ${row.staffId}
       `);
-    }
+      }
 
-    return NextResponse.json({
-      ok: true,
-      generated: digests.length,
-      sent,
-      loggedOnly,
-      skippedAlreadySent,
+      return NextResponse.json({
+        ok: true,
+        generated: digests.length,
+        sent,
+        loggedOnly,
+        skippedAlreadySent,
+      });
     });
   } catch (err) {
     logger.error({ err }, "daily-digest cron route failed");

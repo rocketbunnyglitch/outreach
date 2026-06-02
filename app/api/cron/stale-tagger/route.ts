@@ -13,6 +13,7 @@
  * Idempotent — running back-to-back yields the same final state.
  */
 
+import { recordCronRun } from "@/lib/cron-runs";
 import { logger } from "@/lib/logger";
 import { runStaleTagger } from "@/lib/stale-tagger";
 import { NextResponse } from "next/server";
@@ -31,14 +32,16 @@ export async function POST(req: Request) {
   }
 
   try {
-    // The canonical runStaleTagger evaluates all five stale rules
-    // (including Rule 5: unassigned needs_reply > 1h) in a single
-    // SQL CASE expression -- see lib/stale-tagger.ts for the full
-    // rule list. An earlier iteration had Rule 5 in a separate
-    // aux pass that re-stamped stale_since on every tick; folding
-    // it into the canonical CASE fixed that timestamp churn.
-    const result = await runStaleTagger();
-    return NextResponse.json({ ok: true, ...result });
+    return await recordCronRun("stale-tagger", async () => {
+      // The canonical runStaleTagger evaluates all five stale rules
+      // (including Rule 5: unassigned needs_reply > 1h) in a single
+      // SQL CASE expression -- see lib/stale-tagger.ts for the full
+      // rule list. An earlier iteration had Rule 5 in a separate
+      // aux pass that re-stamped stale_since on every tick; folding
+      // it into the canonical CASE fixed that timestamp churn.
+      const result = await runStaleTagger();
+      return NextResponse.json({ ok: true, ...result });
+    });
   } catch (err) {
     logger.error({ err }, "stale-tagger cron route failed");
     return NextResponse.json({ error: "stale-tagger failed" }, { status: 500 });
