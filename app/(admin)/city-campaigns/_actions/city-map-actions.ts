@@ -296,9 +296,19 @@ export async function addPlaceToCampaign(opts: {
 }): Promise<{ ok: boolean; venueId?: string; error?: string }> {
   const { staff } = await requireStaff();
 
-  // Dedup: if it already exists, just attach as cold-outreach entry
+  // Dedup: a venue is uniquely keyed on google_place_id (partial unique
+  // index venues_google_place_id_unique spans ALL rows -- archived too).
+  // The map flagging (fetchCityMapPlaces / reflagInDirectory) only counts
+  // NON-archived venues as inDirectory, so an archived venue shows up as a
+  // fresh, addable pin. If we then blind-INSERT it, we hit the unique
+  // index and 500. So:
+  //   - Look the place up INCLUDING archived rows.
+  //   - If found archived, un-archive it (re-add == restore) so the map's
+  //     "addable" state and the add behavior are coherent.
+  //   - Only insert when truly absent, and guard the insert against a
+  //     concurrent add with onConflictDoUpdate so a race can't 500.
   const existing = await db
-    .select({ id: venues.id })
+    .select({ id: venues.id, archivedAt: venues.archivedAt })
     .from(venues)
     .where(eq(venues.googlePlaceId, opts.place.placeId))
     .limit(1);
@@ -306,9 +316,25 @@ export async function addPlaceToCampaign(opts: {
   let venueId: string;
   if (existing[0]) {
     venueId = existing[0].id;
+    if (existing[0].archivedAt !== null) {
+      // Re-adding a place whose venue was archived: restore it so it
+      // becomes a live directory entry again (matches the map's view
+      // that this pin was addable / not in the directory).
+      try {
+        await withAuditContext(staff.id, async (tx) =>
+          tx
+            .update(venues)
+            .set({ archivedAt: null, updatedBy: staff.id })
+            .where(eq(venues.id, venueId)),
+        );
+      } catch (err) {
+        logger.error({ err, venueId }, "addPlaceToCampaign: un-archive failed");
+        return { ok: false, error: "Couldn't restore the archived venue." };
+      }
+    }
   } else {
     try {
-      const [created] = await withAuditContext(staff.id, async (tx) =>
+      const created = await withAuditContext(staff.id, async (tx) =>
         tx
           .insert(venues)
           .values({
@@ -322,10 +348,18 @@ export async function addPlaceToCampaign(opts: {
             createdBy: staff.id,
             updatedBy: staff.id,
           })
+          // Concurrent add of the same place_id (or an archived row we
+          // missed by a hair) resolves to an update instead of a unique
+          // violation. Un-archive in the same statement so re-add is
+          // idempotent and never 500s.
+          .onConflictDoUpdate({
+            target: venues.googlePlaceId,
+            set: { archivedAt: null, updatedBy: staff.id },
+          })
           .returning({ id: venues.id }),
       );
-      if (!created) return { ok: false, error: "Insert returned no row." };
-      venueId = created.id;
+      if (!created[0]) return { ok: false, error: "Insert returned no row." };
+      venueId = created[0].id;
     } catch (err) {
       logger.error({ err, place: opts.place }, "addPlaceToCampaign: venue insert failed");
       return { ok: false, error: "Couldn't create the venue." };
