@@ -314,10 +314,12 @@ function ThreadRow({
               Order: state pill -> SLA -> Stale -> classification
               icon. Each is gated on its own predicate so the row
               only carries the pills that apply. */}
-          {thread.state !== "needs_reply" || thread.slaBreached ? (
-            // Show "Needs Reply" only when SLA breached; otherwise it's
-            // the default state and rendering it on every row is noise.
-            // Other states (waiting, follow_up_due) always render.
+          {thread.state !== "needs_reply" ? (
+            // Only surface NON-default engine states (waiting, follow_up_due,
+            // closed_*). "Needs Reply" is the default; rendering it on every
+            // row was noise, and on SLA-breached rows it duplicated the SLA
+            // badge below (both fire off the same breach). The SLA badge now
+            // carries the urgency for needs_reply rows.
             <EngineStatusPill state={thread.state} />
           ) : null}
 
