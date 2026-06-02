@@ -14,6 +14,11 @@ export interface DomainAliasRow {
    *  during render (which can trip hydration). */
   createdAtLabel: string;
   createdByName: string | null;
+  /** Number of threads attached to this venue with at least one
+   *  inbound message from a sender on this alias's domain. A higher
+   *  number means the alias is doing real work; zero usually means
+   *  the alias was set up speculatively or proactively. */
+  matchedThreadCount: number;
 }
 
 type AddAction = (
@@ -126,6 +131,14 @@ export function DomainAliasList({
                 <p className="inline-flex items-center gap-1.5 font-medium text-sm">
                   <AtSign className="h-3 w-3 shrink-0 text-zinc-400" />
                   <span className="truncate">{a.domain}</span>
+                  {a.matchedThreadCount > 0 && (
+                    <span
+                      className="inline-flex items-center rounded-sm bg-blue-50 px-1 py-0.5 font-mono text-[9px] text-blue-700 uppercase tracking-widest dark:bg-blue-950/40 dark:text-blue-300"
+                      title={`${a.matchedThreadCount} thread${a.matchedThreadCount === 1 ? "" : "s"} on this venue have inbound mail from a sender on this domain`}
+                    >
+                      {a.matchedThreadCount} matched
+                    </span>
+                  )}
                 </p>
                 <p className="mt-0.5 text-[11px] text-zinc-400">
                   Added {a.createdAtLabel}

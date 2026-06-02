@@ -18,7 +18,7 @@ import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import { loadVenueCommunication } from "@/lib/venue-communication";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -105,9 +105,15 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   for (const [k, v] of suggestionsMap.entries()) suggestionsByNote[k] = v;
 
   // Domain aliases for cross-domain sender matching, newest first,
-  // with the adder's name. createdAt is formatted here (server-side)
-  // so the client component renders a plain string -- no client-side
-  // date/locale work that could trip hydration.
+  // with the adder's name + a per-alias count of threads matched
+  // (via inbound mail from a sender on that alias's domain that
+  // landed on this venue). The count reinforces the alias's value
+  // -- "we've seen 7 threads from this domain" is a clearer signal
+  // than just "Alice added this alias 3 weeks ago."
+  //
+  // createdAt is formatted here (server-side) so the client
+  // component renders a plain string -- no client-side date/locale
+  // work that could trip hydration.
   const domainAliasRows = await db
     .select({
       id: venueDomainAliases.id,
@@ -115,6 +121,20 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       notes: venueDomainAliases.notes,
       createdAt: venueDomainAliases.createdAt,
       createdByName: users.displayName,
+      // Threads attached to THIS venue with at least one inbound
+      // message whose from-address ends in @<this alias's domain>.
+      // LEFT JOIN through email_threads -> email_messages with a
+      // suffix LIKE on from_email_normalized so the count is
+      // proportional to the alias's actual triage value.
+      matchedThreadCount: sql<number>`(
+        SELECT COUNT(DISTINCT t.id)::int
+        FROM email_threads t
+        JOIN email_messages m ON m.thread_id = t.id
+        WHERE t.venue_id = ${id}
+          AND t.deleted_at IS NULL
+          AND m.direction = 'inbound'
+          AND m.from_email_normalized LIKE '%@' || ${venueDomainAliases.domain}
+      )`,
     })
     .from(venueDomainAliases)
     .leftJoin(users, eq(users.id, venueDomainAliases.createdBy))
@@ -130,6 +150,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       month: "short",
       day: "numeric",
     }),
+    matchedThreadCount: Number(a.matchedThreadCount ?? 0),
   }));
 
   // Confirmed/scheduled crawl history for this venue. Guarded so a query
