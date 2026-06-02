@@ -52,6 +52,7 @@ import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { reconcileGmailLabelsForThread, unreconcileGmailLabelsForThread } from "@/lib/team-labels";
 import { classifyInboundEmail } from "@/lib/triage-classifier";
+import { autoTagOrCreateVenue } from "@/lib/venue-auto-create";
 import { findVenuesByDomainAlias } from "@/lib/venue-domain-match";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 
@@ -1083,6 +1084,23 @@ async function ingestMessage(opts: {
     let venueId: string | null = null;
     if (direction === "inbound") {
       venueId = await resolveVenueFromAddress(fromHeader);
+      if (!venueId) {
+        // Smart auto-tag/create: when address matching finds nothing,
+        // derive the venue name + city from the email (code first, Haiku
+        // fallback) and CREATE the venue when confident -- so genuine
+        // venue correspondence tags itself + appears on a venue timeline
+        // without manual triage. Guarded against junk (business domains +
+        // genuine classifications + known-city match only).
+        const auto = await autoTagOrCreateVenue({
+          fromEmail: fromEmailNormalized ?? "",
+          fromName: fromNameFromHeader,
+          subject,
+          bodyText,
+          classification: classification?.classification ?? null,
+          createdByStaffId: inbox.staff_member_id ?? SYSTEM_STAFF_ID_FALLBACK,
+        });
+        venueId = auto.venueId;
+      }
     } else {
       for (const addr of [...toEmailsNormalized, ...ccEmailsNormalized]) {
         venueId = await resolveVenueFromAddress(addr);
