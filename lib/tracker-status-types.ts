@@ -14,10 +14,12 @@
  */
 
 export type CityStatusPill =
+  | "complete"
   | "outreach"
   | "need_1_venue"
   | "need_2_venues"
   | "need_3_venues"
+  | "to_be_cancelled"
   | "cancelled";
 
 export type SlotKind = "wristband" | "middle_pair" | "middle_1" | "middle_2" | "final";
@@ -95,6 +97,11 @@ export interface CrawlNeed {
 }
 
 export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {
+  // Complete = every slot across every crawl is filled by a confirmed
+  // venue of the matching role. Reads as a solid green "done" badge,
+  // distinct from the softer "outreach" green (engine still working).
+  complete:
+    "bg-emerald-500/20 text-emerald-800 ring-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200",
   outreach:
     "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
   // Need 1 → blue (mild, "just one more"). Need 2 → yellow (more
@@ -109,14 +116,22 @@ export const STATUS_PILL_TONE: Record<CityStatusPill, string> = {
     "bg-yellow-400/15 text-yellow-800 ring-yellow-400/30 dark:bg-yellow-400/15 dark:text-yellow-200",
   need_3_venues:
     "bg-orange-500/15 text-orange-800 ring-orange-500/30 dark:bg-orange-500/15 dark:text-orange-200",
+  // To-be-cancelled = the city_campaign hasn't been hard-cancelled yet
+  // but is flagged for cancellation (status='to_be_cancelled'). Amber-
+  // tinted so it reads as a warning state, NOT the terminal grey of a
+  // real cancellation.
+  to_be_cancelled:
+    "bg-amber-500/15 text-amber-800 ring-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200",
   cancelled: "bg-zinc-500/8 text-zinc-500 ring-zinc-500/15 line-through dark:text-zinc-500",
 };
 
 export const STATUS_PILL_LABEL: Record<CityStatusPill, string> = {
+  complete: "Complete",
   outreach: "Outreach",
   need_1_venue: "Need 1 venue",
   need_2_venues: "Need 2 venues",
   need_3_venues: "Need 3+ venues",
+  to_be_cancelled: "To be cancelled",
   cancelled: "Cancelled",
 };
 

@@ -81,11 +81,15 @@ interface Props {
 type SortKey = "priority" | "city" | "status" | "need" | "sales" | "assign" | "notes";
 
 const STATUS_PILL_RANK: Record<CityStatusPill, number> = {
+  // complete = fully booked, lowest urgency (sorts before outreach when
+  // sorting by status). to_be_cancelled sits just above cancelled.
+  complete: -1,
   outreach: 0,
   need_1_venue: 1,
   need_2_venues: 2,
   need_3_venues: 3,
-  cancelled: 4,
+  to_be_cancelled: 4,
+  cancelled: 5,
 };
 
 /** Columns that read most naturally ascending (text); the rest default desc. */
