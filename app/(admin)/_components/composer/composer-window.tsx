@@ -641,7 +641,11 @@ export function ComposerWindow({ instance, isMobile }: Props) {
 
   const widthClass =
     effectiveMode === "fullscreen"
-      ? "fixed inset-x-2 inset-y-4 sm:inset-x-12 sm:inset-y-12 max-w-none"
+      ? // Mobile: true full screen sized to the DYNAMIC viewport (100dvh)
+        // so the footer/Send stays on-screen even with the browser address
+        // bar showing (a plain fixed inset-y overflowed below the fold).
+        // Desktop (sm+): the floating inset-12 fullscreen window.
+        "fixed inset-0 h-[100dvh] max-h-[100dvh] max-w-none sm:inset-x-12 sm:inset-y-12 sm:h-auto sm:max-h-none"
       : effectiveMode === "inline"
         ? // Inline reply: fills the thread-pane width; height is
           // content-driven up to 60vh so a long quoted thread + edit
@@ -742,7 +746,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {loadError && (
           <p className="border-zinc-200 border-b bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
             {loadError}
@@ -913,7 +917,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           valueHtml={instance.bodyHtml}
           valueText={instance.bodyText}
           onChange={({ text, html }) => setField(instance.id, { bodyText: text, bodyHtml: html })}
-          className="flex-1"
+          // min height keeps the reply field usable when the (now scrollable)
+          // body also shows the expanded original below it.
+          className="min-h-[10rem] flex-1"
           showToolbar={toolbarOpen}
         />
 
@@ -1513,19 +1519,24 @@ function MoreMenu({
  *      not through any client-side form parsing.
  */
 function QuotedThreadBlock({ html }: { html: string }) {
-  const [expanded, setExpanded] = useState(false);
+  // Expanded by default so the original message shows below the reply for
+  // context (Gmail-mobile behavior). The operator can collapse it.
+  const [expanded, setExpanded] = useState(true);
   return (
-    <div className="border-zinc-200 border-t bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="border-zinc-200 border-t bg-zinc-50/50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/30">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        title={expanded ? "Hide quoted text" : "Show trimmed content"}
-        aria-label={expanded ? "Hide quoted text" : "Show trimmed content"}
-        className="inline-flex items-center gap-0.5 rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        title={expanded ? "Hide original message" : "Show original message"}
+        aria-label={expanded ? "Hide original message" : "Show original message"}
+        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
       >
-        <span className="h-1 w-1 rounded-full bg-current" />
-        <span className="h-1 w-1 rounded-full bg-current" />
-        <span className="h-1 w-1 rounded-full bg-current" />
+        <span className="inline-flex items-center gap-0.5">
+          <span className="h-1 w-1 rounded-full bg-current" />
+          <span className="h-1 w-1 rounded-full bg-current" />
+          <span className="h-1 w-1 rounded-full bg-current" />
+        </span>
+        {expanded ? "Hide original" : "Show original"}
       </button>
       {expanded && (
         <div
