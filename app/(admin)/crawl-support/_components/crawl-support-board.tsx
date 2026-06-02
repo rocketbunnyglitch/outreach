@@ -8,6 +8,8 @@ import {
   ISSUE_TYPE_LABEL,
   ISSUE_TYPE_ORDER,
   MATCH_LABEL,
+  READINESS_LABEL,
+  READINESS_TONE,
   RISK_LABEL,
   RISK_TONE,
   type ReverseSearchResults,
@@ -283,6 +285,17 @@ function CrawlCard({ crawl }: { crawl: SupportCrawl }) {
         >
           {RISK_LABEL[crawl.supportRisk]}
         </span>
+        {crawl.readiness.level !== "ready" && (
+          <span
+            title={crawl.readiness.reasons.map((r) => r.label).join("\n")}
+            className={cn(
+              "shrink-0 rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] ring-1 ring-inset",
+              READINESS_TONE[crawl.readiness.level],
+            )}
+          >
+            {READINESS_LABEL[crawl.readiness.level]}
+          </span>
+        )}
       </div>
     </Link>
   );
