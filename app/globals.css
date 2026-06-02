@@ -280,6 +280,20 @@ h1 {
  */
 .inbox-prose {
   line-height: 1.55;
+  /* HTML emails are authored for a LIGHT background (dark text, often no
+     bg of their own). Render the email body on a forced white card with
+     dark text REGARDLESS of the app theme -- exactly what Gmail does --
+     so a sender's light-mode HTML stays readable when the operator has
+     dark mode enabled. The .dark overrides below are neutralized to the
+     light values for the same reason. */
+  background-color: #ffffff;
+  color: rgb(24 24 27); /* zinc-900 */
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+}
+.dark .inbox-prose {
+  background-color: #ffffff;
+  color: rgb(24 24 27);
 }
 
 .inbox-prose p,
@@ -313,7 +327,8 @@ h1 {
 }
 
 .dark .inbox-prose a {
-  color: rgb(96 165 250); /* blue-400 */
+  /* Email body is forced light, so keep the light-mode link color. */
+  color: rgb(37 99 235); /* blue-600 */
 }
 
 .inbox-prose blockquote {
@@ -324,8 +339,9 @@ h1 {
 }
 
 .dark .inbox-prose blockquote {
-  border-left-color: rgb(113 113 122); /* zinc-500 — visible on the dark canvas */
-  color: rgb(161 161 170); /* zinc-400 */
+  /* Email body forced light -> keep light-mode quote colors. */
+  border-left-color: rgb(161 161 170); /* zinc-400 */
+  color: rgb(82 82 91); /* zinc-600 */
 }
 
 .inbox-prose img {
@@ -354,7 +370,8 @@ h1 {
 }
 
 .dark .inbox-prose pre {
-  background: rgb(24 24 27); /* zinc-900 */
+  /* Email body forced light -> keep the light code surface. */
+  background: rgb(244 244 245); /* zinc-100 */
 }
 
 .inbox-prose code {
@@ -365,7 +382,7 @@ h1 {
 }
 
 .dark .inbox-prose code {
-  background: rgb(24 24 27);
+  background: rgb(244 244 245); /* zinc-100 — email body is forced light */
 }
 
 /* Gmail quoted-reply styling — Gmail wraps replies in
@@ -386,8 +403,9 @@ h1 {
 }
 
 .dark .inbox-prose .gmail_quote {
-  border-left-color: rgb(113 113 122); /* zinc-500 */
-  color: rgb(161 161 170);
+  /* Email body forced light -> keep light-mode quote colors. */
+  border-left-color: rgb(161 161 170); /* zinc-400 */
+  color: rgb(82 82 91); /* zinc-600 */
 }
 
 /* =========================================================================

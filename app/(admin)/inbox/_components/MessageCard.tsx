@@ -149,7 +149,10 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
           <>
             <div
               className={cn(
-                "inbox-prose max-w-prose text-sm text-zinc-800 leading-relaxed dark:text-zinc-200",
+                // No text-color utilities here: .inbox-prose forces a light
+                // (white bg + dark text) card so HTML emails stay readable
+                // in dark mode. A dark:text-* here would be invisible on it.
+                "inbox-prose max-w-prose text-sm leading-relaxed",
                 showQuoted && "show-quoted",
               )}
               // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized server-side via DOMPurify; see lib/email-sanitize.ts
