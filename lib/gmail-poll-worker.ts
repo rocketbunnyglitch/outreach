@@ -202,6 +202,12 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
 interface InboxPollResult {
   messagesIngested: number;
   threadsCreated: number;
+  /** Total Gmail message ids the poll looked at this pass. */
+  messagesFound: number;
+  /** Messages already present (deduped) -- looked at but not written. */
+  duplicatesSkipped: number;
+  /** Per-message ingest failures that were logged + skipped. */
+  errors: number;
 }
 
 export async function pollOneInbox(
@@ -225,6 +231,19 @@ export async function pollOneInbox(
      * keep the Gmail q parameter sane).
      */
     firstPollDaysBack?: number;
+    /**
+     * Optional explicit lower bound for the first-poll backfill window
+     * (YYYY-MM-DD). When set, the Gmail query uses `after:YYYY/MM/DD`
+     * instead of `newer_than:Nd`. Takes precedence over
+     * firstPollDaysBack.
+     */
+    afterDate?: string;
+    /**
+     * Optional explicit UPPER bound (YYYY-MM-DD). When set, the Gmail
+     * query adds `before:YYYY/MM/DD`, so the operator can backfill a
+     * bounded historical window rather than everything-through-today.
+     */
+    beforeDate?: string;
   },
 ): Promise<InboxPollResult> {
   const accessToken = await refreshAccessToken(inbox.refresh_token);
@@ -399,7 +418,16 @@ export async function pollOneInbox(
   if (!inbox.last_history_id || historyExpired) {
     // `in:anywhere` would include spam/trash; we want inbox + sent.
     // Gmail's search grammar: (in:inbox OR in:sent) scoped by date.
-    const q = `(in:inbox OR in:sent) newer_than:${firstPollDays}d`;
+    // An explicit afterDate uses `after:YYYY/MM/DD` (Gmail's date
+    // grammar); otherwise fall back to the relative `newer_than:Nd`.
+    // An explicit beforeDate adds an UPPER bound so the operator can
+    // backfill a bounded window rather than everything through today.
+    const toGmailDate = (d: string) => d.replace(/-/g, "/"); // YYYY-MM-DD -> YYYY/MM/DD
+    const lowerClause = opts?.afterDate
+      ? `after:${toGmailDate(opts.afterDate)}`
+      : `newer_than:${firstPollDays}d`;
+    const upperClause = opts?.beforeDate ? ` before:${toGmailDate(opts.beforeDate)}` : "";
+    const q = `(in:inbox OR in:sent) ${lowerClause}${upperClause}`;
     type MessageRef = { id: string; threadId: string };
     const collected: string[] = [];
     let pageToken: string | null = null;
@@ -426,6 +454,9 @@ export async function pollOneInbox(
 
   let messagesIngested = 0;
   let threadsCreated = 0;
+  let duplicatesSkipped = 0;
+  let ingestErrors = 0;
+  const messagesFound = messageIds.length;
 
   for (const messageId of messageIds) {
     try {
@@ -437,8 +468,13 @@ export async function pollOneInbox(
       if (ingested) {
         messagesIngested++;
         if (ingested.threadCreated) threadsCreated++;
+      } else {
+        // ingestMessage returns null when the row already exists with a
+        // populated body -- a deduped skip, not a failure.
+        duplicatesSkipped++;
       }
     } catch (err) {
+      ingestErrors++;
       logger.warn(
         { err, messageId, inboxId: inbox.id },
         "ingest single gmail message failed; continuing",
@@ -719,7 +755,13 @@ export async function pollOneInbox(
     }
   }
 
-  return { messagesIngested, threadsCreated };
+  return {
+    messagesIngested,
+    threadsCreated,
+    messagesFound,
+    duplicatesSkipped,
+    errors: ingestErrors,
+  };
 }
 
 interface IngestResult {

@@ -22,21 +22,16 @@ import { deepResyncInbox } from "../_actions";
  * (gmail_message_id, account) so it's safe but takes minutes for
  * larger windows). On confirm, the server action runs.
  *
- * Date-range caveat surfaced in the UI: the polling worker only
- * accepts a days-back lookback, so the engine derives days-back from
- * the Start date and always ingests through "now". An End date is
- * accepted but the engine does NOT stop at it -- we warn the operator
- * when they set one. (Enforcing an upper bound would require changing
- * the worker, which is out of scope for this control.)
+ * Date range: the worker now honors an explicit window -- a Start date
+ * maps to Gmail `after:` and an optional End date to `before:`, so the
+ * operator can backfill a bounded historical span (not just
+ * everything-through-today). Start-date-only ingests through now.
  *
  * Result rendering: collapses the dropdown and shows a one-line
- * outcome string with the counts the worker exposes (messages
- * ingested + new threads) and the resolved window. NOTE: the worker's
- * result object only returns { messagesIngested, threadsCreated }; it
- * does NOT expose a messages-found / duplicates-skipped / errors /
- * rate-limited breakdown, so those can't be shown here without a
- * worker change. "Ingested" counts NEW rows written this run --
- * re-running on an already-backfilled window correctly shows 0.
+ * outcome string with the worker's counts -- new messages ingested +
+ * new threads, plus a "Scanned N, M already had, K errors" breakdown.
+ * "Ingested" counts NEW rows written this run, so re-running on an
+ * already-backfilled window correctly shows 0 ingested / all skipped.
  *
  * Auth: the server action gates on requireStaff + owner-only; this
  * component trusts the parent page to only render for the user's
@@ -58,6 +53,9 @@ export function DeepResyncButton({
         kind: "ok";
         messagesIngested: number;
         threadsCreated: number;
+        messagesFound: number;
+        duplicatesSkipped: number;
+        errors: number;
         daysBack: number;
         afterDate: string | null;
         beforeDate: string | null;
@@ -90,6 +88,9 @@ export function DeepResyncButton({
             kind: "ok",
             messagesIngested: r.data.messagesIngested,
             threadsCreated: r.data.threadsCreated,
+            messagesFound: r.data.messagesFound,
+            duplicatesSkipped: r.data.duplicatesSkipped,
+            errors: r.data.errors,
             daysBack: r.data.daysBack,
             afterDate: r.data.afterDate,
             beforeDate: r.data.beforeDate,
@@ -127,7 +128,7 @@ export function DeepResyncButton({
     }
     const windowText = beforeDate ? `from ${afterDate} to ${beforeDate}` : `since ${afterDate}`;
     const beforeWarn = beforeDate
-      ? "\n\nNote: the engine backfills by days-back from the start date and ingests through today -- the End date is NOT enforced, so messages after it will also be pulled."
+      ? `\n\nThe engine will ingest only messages dated ${afterDate} through ${beforeDate}.`
       : "";
     const msg = `Deep-resync ${inboxEmail} ${windowText}?\n\nThis clears the incremental cursor and re-fetches messages from Gmail. Existing messages are deduped, so re-ingesting is safe -- but it takes a few minutes for larger windows and uses Gmail API quota.${beforeWarn}\n\nAfter this finishes, normal polling resumes immediately.`;
     if (!window.confirm(msg)) return;
@@ -181,7 +182,7 @@ export function DeepResyncButton({
               />
             </label>
             <label className="flex flex-col gap-0.5 text-[10px] text-zinc-500">
-              End date (optional, not enforced)
+              End date (optional)
               <input
                 type="date"
                 value={beforeDate}
@@ -191,8 +192,8 @@ export function DeepResyncButton({
               />
             </label>
             <p className="text-[10px] text-zinc-400 leading-snug">
-              The engine backfills by days-back from the start date and ingests through today. An
-              end date is accepted but not enforced.
+              Leave the end date blank to ingest from the start date through today, or set it to
+              backfill a bounded historical window.
             </p>
             <button
               type="button"
@@ -211,10 +212,8 @@ export function DeepResyncButton({
             result.afterDate
               ? `since ${result.afterDate} (~${result.daysBack} day${result.daysBack === 1 ? "" : "s"})`
               : `from the last ${result.daysBack} day${result.daysBack === 1 ? "" : "s"}`
-          }. ${result.threadsCreated} new thread${result.threadsCreated === 1 ? "" : "s"}.`}
-          {result.beforeUnsupported && result.beforeDate
-            ? ` End date ${result.beforeDate} was not applied -- the engine ingests through today.`
-            : ""}
+          }${result.beforeDate ? ` through ${result.beforeDate}` : ""}. ${result.threadsCreated} new thread${result.threadsCreated === 1 ? "" : "s"}.`}
+          {` Scanned ${result.messagesFound}, ${result.duplicatesSkipped} already had${result.errors > 0 ? `, ${result.errors} error${result.errors === 1 ? "" : "s"}` : ""}.`}
         </p>
       )}
       {result?.kind === "err" && (

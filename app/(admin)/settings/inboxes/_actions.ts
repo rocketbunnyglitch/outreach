@@ -297,6 +297,9 @@ export async function deepResyncInbox(
   ActionResult<{
     messagesIngested: number;
     threadsCreated: number;
+    messagesFound: number;
+    duplicatesSkipped: number;
+    errors: number;
     daysBack: number;
     afterDate: string | null;
     beforeDate: string | null;
@@ -362,7 +365,9 @@ export async function deepResyncInbox(
       return { ok: false, error: "Days back must be between 1 and 365." };
     }
   }
-  const beforeUnsupported = beforeDate !== null;
+  // The worker now enforces a `before:` upper bound, so the End date IS
+  // honored. Kept in the return shape for the UI but always false now.
+  const beforeUnsupported = false;
 
   // Same shape as resyncInbox: ownership check + connected check.
   const rows = await db
@@ -412,7 +417,14 @@ export async function deepResyncInbox(
         email: inbox.emailAddress,
         staff_member_id: staff.id,
       },
-      { firstPollDaysBack: daysBack },
+      {
+        firstPollDaysBack: daysBack,
+        // The worker now honors an explicit date window: afterDate uses
+        // Gmail `after:` and beforeDate enforces a `before:` upper
+        // bound (no longer just a relative days-back).
+        afterDate: afterDate ?? undefined,
+        beforeDate: beforeDate ?? undefined,
+      },
     );
 
     // Bookkeeping (same as the normal resyncInbox path).
