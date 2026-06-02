@@ -72,24 +72,44 @@ export function ThreadReplyButtons({ threadId }: Props) {
     });
   }
 
-  // Keyboard bridge: 'r' from InboxKeyboardNav dispatches
-  // 'inbox-reply' with the current threadId. We listen here so the
-  // shortcut continues to work post-ReplyComposer-retirement.
+  // Event bridge — this component owns the single "open the composer"
+  // code path. Three sources dispatch into it:
+  //   - 'r' keyboard shortcut (InboxKeyboardNav) -> inbox-reply
+  //   - the desktop ThreadHeaderReply button     -> inbox-reply
+  //   - the mobile sticky ThreadReplyBar         -> inbox-reply /
+  //       inbox-reply-all / inbox-forward
+  // Routing all of them here keeps openReplyDraft + the
+  // "reuse existing draft" guard in one place.
   useEffect(() => {
-    function onReply(e: Event) {
-      const detail = (e as CustomEvent<{ threadId: string }>).detail;
-      if (detail?.threadId !== threadId) return;
-      open("reply");
+    function makeHandler(mode: "reply" | "reply_all" | "forward") {
+      return (e: Event) => {
+        const detail = (e as CustomEvent<{ threadId: string }>).detail;
+        if (detail?.threadId !== threadId) return;
+        open(mode);
+      };
     }
+    const onReply = makeHandler("reply");
+    const onReplyAll = makeHandler("reply_all");
+    const onForward = makeHandler("forward");
     document.addEventListener("inbox-reply", onReply);
-    return () => document.removeEventListener("inbox-reply", onReply);
+    document.addEventListener("inbox-reply-all", onReplyAll);
+    document.addEventListener("inbox-forward", onForward);
+    return () => {
+      document.removeEventListener("inbox-reply", onReply);
+      document.removeEventListener("inbox-reply-all", onReplyAll);
+      document.removeEventListener("inbox-forward", onForward);
+    };
     // 'open' captures threadId which is stable for the component's
     // lifetime; no dep needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
   return (
-    <div className="flex items-center gap-2 border-zinc-200 border-y bg-zinc-50/70 px-4 py-3 sm:px-6 dark:border-zinc-800 dark:bg-zinc-900/60">
+    // Desktop-only: on mobile the sticky ThreadReplyBar is the reply
+    // entry point (Gmail-mobile pattern). This row stays MOUNTED on
+    // mobile (hidden, not unmounted) so the event bridge above keeps
+    // working for the bar + keyboard shortcut.
+    <div className="hidden items-center gap-2 border-zinc-200 border-y bg-zinc-50/70 px-4 py-3 sm:px-6 lg:flex dark:border-zinc-800 dark:bg-zinc-900/60">
       <ReplyButton
         onClick={() => open("reply")}
         disabled={pending}

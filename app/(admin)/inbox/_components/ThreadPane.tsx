@@ -21,6 +21,7 @@ import { ThreadHeaderReply } from "./ThreadHeaderReply";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 import { ThreadNotesBlock } from "./ThreadNotesBlock";
+import { ThreadReplyBar } from "./ThreadReplyBar";
 import { ThreadReplyButtons } from "./ThreadReplyButtons";
 import { ThreadViewersPill } from "./ThreadViewersPill";
 
@@ -297,6 +298,15 @@ export function ThreadPane({
           currentStaffId={currentStaffId}
         />
       </div>
+
+      {/* Mobile spacer — clears the fixed ThreadReplyBar so the last
+          CRM-rail content isn't hidden behind it. lg+ has no bar. */}
+      <div className="h-24 lg:hidden" aria-hidden="true" />
+
+      {/* Mobile reply entry — sticky bottom Reply / Reply all / Forward
+          bar (Gmail-mobile pattern). Fixed-position, so its place in
+          the DOM here is incidental. */}
+      <ThreadReplyBar threadId={thread.id} />
     </div>
   );
 }
