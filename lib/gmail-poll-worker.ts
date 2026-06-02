@@ -58,6 +58,15 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 const BATCH_INBOX_LIMIT = 10;
 const PER_INBOX_MSG_LIMIT = 50;
 const FIRST_POLL_NEWER_THAN_DAYS = 7;
+// First-poll / deep-resync backfill: page through messages.list via
+// nextPageToken up to this overall cap so a fresh connection or an
+// operator-requested backfill captures historical mail (inbound AND
+// sent) instead of stopping at the single-page PER_INBOX_MSG_LIMIT.
+// The incremental cron path still uses PER_INBOX_MSG_LIMIT (no paging)
+// to stay cheap. Gmail returns up to 500 ids per page; we cap total
+// ids so a pathological multi-year archive can't blow the poll budget.
+const FIRST_POLL_PAGE_SIZE = 500;
+const FIRST_POLL_MAX_MESSAGES = 3000;
 const SYSTEM_STAFF_ID_FALLBACK = "00000000-0000-0000-0000-000000000000";
 
 interface DrainSummary {
@@ -101,6 +110,22 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
       const result = await pollOneInbox(inbox);
       summary.messagesIngested += result.messagesIngested;
       summary.threadsCreated += result.threadsCreated;
+
+      // Successful poll -> stamp last_synced_at. The email-health
+      // surface (lib/email-health.ts) derives a "stale" status from
+      // connected_accounts.last_synced_at (NOT gmail_last_polled_at,
+      // which is only the cron's internal round-robin cursor). Without
+      // this write, every healthy inbox shows a false "stale sync"
+      // because the cron never advanced the column the UI reads.
+      try {
+        await db.execute(sql`
+          UPDATE connected_accounts
+          SET last_synced_at = NOW()
+          WHERE id = ${inbox.id}
+        `);
+      } catch (err) {
+        logger.warn({ err, inboxId: inbox.id }, "failed to stamp last_synced_at");
+      }
       // Sync Gmail labels on a sub-cadence — labels.list is cheap
       // but doesn't change between most polls. Run on a ~10% rate
       // (≈ once per 10 drains per account on average), plus we always
@@ -130,13 +155,18 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
         message.includes("Token has been expired or revoked")
       ) {
         try {
+          // Blank the dead token AND flip status to 'needs_reauth' so
+          // the email-health surface (lib/email-health.ts) shows the
+          // operator that this inbox must be reconnected. That UI keys
+          // off connected_accounts.status === 'needs_reauth'; clearing
+          // the token alone left the status stale at 'connected'.
           await db
             .update(staffOutreachEmails)
-            .set({ gmailOauthRefreshToken: null })
+            .set({ gmailOauthRefreshToken: null, status: "needs_reauth" })
             .where(eq(staffOutreachEmails.id, inbox.id));
           logger.warn(
             { inboxId: inbox.id },
-            "cleared invalid Gmail refresh token; operator must reconnect",
+            "cleared invalid Gmail refresh token + set needs_reauth; operator must reconnect",
           );
         } catch (clearErr) {
           logger.error({ clearErr }, "failed to clear invalid refresh token");
@@ -198,7 +228,7 @@ export async function pollOneInbox(
   },
 ): Promise<InboxPollResult> {
   const accessToken = await refreshAccessToken(inbox.refresh_token);
-  let messageIds: string[];
+  let messageIds: string[] = [];
   let nextHistoryId: string | null = inbox.last_history_id;
   const firstPollDays = opts?.firstPollDaysBack ?? FIRST_POLL_NEWER_THAN_DAYS;
 
@@ -222,6 +252,15 @@ export async function pollOneInbox(
   const unreadAddedThreadGmailIds = new Set<string>();
   const unreadRemovedThreadGmailIds = new Set<string>();
 
+  // INBOX label changes -- operator archived (INBOX removed) or
+  // un-archived (INBOX added) a thread directly in Gmail's web UI.
+  // We mirror Gmail archive onto email_threads.archived_at + state so
+  // the engine's mailbox views match Gmail. Same delta-window
+  // collection + ambiguity handling as STARRED / UNREAD: a thread in
+  // both sets in one delta is skipped and resolved next poll.
+  const inboxAddedThreadGmailIds = new Set<string>();
+  const inboxRemovedThreadGmailIds = new Set<string>();
+
   // User-label changes on existing messages — operator labeled or
   // unlabeled a thread directly in Gmail's web UI without sending a
   // new message. Keyed by Gmail thread id; values are the sets of
@@ -244,18 +283,47 @@ export async function pollOneInbox(
     s.add(labelId);
   }
 
-  if (inbox.last_history_id) {
+  // When history.list returns 404 the startHistoryId is too old (Gmail
+  // expires history beyond ~a week or after large mailbox changes). We
+  // must null the cursor and fall back to a first-poll, otherwise the
+  // inbox is silently stuck -- every poll 404s and ingests nothing.
+  // This flag forces the first-poll branch below.
+  let historyExpired = false;
+  if (inbox.last_history_id && !historyExpired) {
     // Incremental: history.list since the last point we processed.
-    // Request three history types in one call:
-    //   messageAdded   — new mail (the original use case)
-    //   labelAdded     — labels added to existing messages
-    //   labelRemoved   — labels removed (same source for un-stars
-    //                    and operator-driven Gmail un-labels)
+    // Request history types in one call:
+    //   messageAdded   -- new mail (the original use case)
+    //   labelAdded     -- labels added to existing messages
+    //   labelRemoved   -- labels removed (same source for un-stars,
+    //                    archives, and operator-driven Gmail un-labels)
     // The Gmail API accepts a comma-separated list per the docs.
-    const historyRes = await gmailFetch(
-      `users/me/history?startHistoryId=${encodeURIComponent(inbox.last_history_id)}&historyTypes=messageAdded&historyTypes=labelAdded&historyTypes=labelRemoved&maxResults=500`,
-      accessToken,
-    );
+    let historyRes: Record<string, unknown>;
+    try {
+      historyRes = await gmailFetch(
+        `users/me/history?startHistoryId=${encodeURIComponent(inbox.last_history_id)}&historyTypes=messageAdded&historyTypes=labelAdded&historyTypes=labelRemoved&maxResults=500`,
+        accessToken,
+      );
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      // gmailFetch throws "Gmail API 404: ..." on an expired/invalid
+      // startHistoryId. Recover by clearing the cursor + first-polling
+      // this pass; the bug was leaving the inbox permanently stuck.
+      if (m.includes("Gmail API 404")) {
+        logger.warn(
+          { inboxId: inbox.id, lastHistoryId: inbox.last_history_id },
+          "gmail history.list 404 (expired startHistoryId); nulling cursor and falling back to first-poll",
+        );
+        await db.execute(sql`
+          UPDATE connected_accounts
+          SET gmail_last_history_id = NULL
+          WHERE id = ${inbox.id}
+        `);
+        historyExpired = true;
+        historyRes = {};
+      } else {
+        throw err;
+      }
+    }
     type LabelChange = {
       message: { id: string; threadId: string; labelIds?: string[] };
       labelIds?: string[];
@@ -285,6 +353,10 @@ export async function pollOneInbox(
         if (ids.includes("UNREAD")) {
           unreadAddedThreadGmailIds.add(change.message.threadId);
         }
+        // INBOX added back in Gmail -> un-archive in the engine.
+        if (ids.includes("INBOX")) {
+          inboxAddedThreadGmailIds.add(change.message.threadId);
+        }
         // User labels (anything not a system label) — collect for
         // the post-loop reconcile.
         for (const id of ids) {
@@ -301,6 +373,10 @@ export async function pollOneInbox(
         if (ids.includes("UNREAD")) {
           unreadRemovedThreadGmailIds.add(change.message.threadId);
         }
+        // INBOX removed in Gmail -> operator archived the thread.
+        if (ids.includes("INBOX")) {
+          inboxRemovedThreadGmailIds.add(change.message.threadId);
+        }
         for (const id of ids) {
           if (!GMAIL_SYSTEM_LABEL_IDS.has(id) && !id.startsWith("CATEGORY_")) {
             addToMap(userLabelsRemovedByThread, change.message.threadId, id);
@@ -310,20 +386,40 @@ export async function pollOneInbox(
     }
     messageIds = Array.from(seen).slice(0, PER_INBOX_MSG_LIMIT);
     if (historyRes.historyId) nextHistoryId = historyRes.historyId as string;
-  } else {
-    // First poll: pull recent inbox messages with newer_than filter so
-    // we don't sweep up a years-old archive. The lookback window is
-    // FIRST_POLL_NEWER_THAN_DAYS for normal first-polls; the operator
-    // deep-resync action can override via opts.firstPollDaysBack.
-    const listRes = await gmailFetch(
-      `users/me/messages?q=${encodeURIComponent(`in:inbox newer_than:${firstPollDays}d`)}&maxResults=${PER_INBOX_MSG_LIMIT}`,
-      accessToken,
-    );
-    type MessageRef = { id: string; threadId: string };
-    const list: MessageRef[] = (listRes.messages as MessageRef[]) ?? [];
-    messageIds = list.map((m) => m.id);
+  }
 
-    // Grab the profile's current historyId so we can incremental-poll next time
+  // First poll (no cursor) OR history fell back because the cursor
+  // expired (404). Backfill recent mail spanning BOTH the inbox and
+  // sent folders so the venue timeline gets historical OUTBOUND too --
+  // a fresh connection otherwise only ingests inbound. We page through
+  // nextPageToken up to FIRST_POLL_MAX_MESSAGES so a deep-resync (or a
+  // normal first-poll on a busy account) isn't truncated at one 50-id
+  // page. The incremental cron path above keeps its cheap single-page
+  // PER_INBOX_MSG_LIMIT.
+  if (!inbox.last_history_id || historyExpired) {
+    // `in:anywhere` would include spam/trash; we want inbox + sent.
+    // Gmail's search grammar: (in:inbox OR in:sent) scoped by date.
+    const q = `(in:inbox OR in:sent) newer_than:${firstPollDays}d`;
+    type MessageRef = { id: string; threadId: string };
+    const collected: string[] = [];
+    let pageToken: string | null = null;
+    do {
+      const pageParam = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+      const listRes = await gmailFetch(
+        `users/me/messages?q=${encodeURIComponent(q)}&maxResults=${FIRST_POLL_PAGE_SIZE}${pageParam}`,
+        accessToken,
+      );
+      const list: MessageRef[] = (listRes.messages as MessageRef[]) ?? [];
+      for (const m of list) {
+        if (m.id) collected.push(m.id);
+      }
+      pageToken = (listRes.nextPageToken as string | undefined) ?? null;
+    } while (pageToken && collected.length < FIRST_POLL_MAX_MESSAGES);
+    messageIds = collected.slice(0, FIRST_POLL_MAX_MESSAGES);
+
+    // Grab the profile's current historyId so we can incremental-poll
+    // next time -- this is what restores the cursor after a 404 fallback
+    // so we don't first-poll again on the next pass.
     const profileRes = await gmailFetch("users/me/profile", accessToken);
     if (profileRes.historyId) nextHistoryId = profileRes.historyId as string;
   }
@@ -501,6 +597,60 @@ export async function pollOneInbox(
         )})
         AND em.direction = 'inbound'
         AND em.read_at IS NOT NULL
+    `);
+  }
+
+  // Apply INBOX label changes harvested from history.list -> mirror
+  // Gmail archive into the engine. Same shape as the STARRED / UNREAD
+  // blocks above and scoped to THIS inbox so a cross-account gmail_
+  // thread_id collision can't cross-contaminate.
+  //
+  // INBOX removed in Gmail (operator archived the thread):
+  //   email_threads.archived_at = NOW(), state = 'archived'. Mirrors
+  //   how the engine's own archive action moves a thread out of the
+  //   active mailbox views.
+  //
+  // INBOX added back in Gmail (operator un-archived):
+  //   archived_at = NULL. We DON'T blindly flip state back -- the
+  //   thread's prior state isn't recoverable from this signal, so we
+  //   leave state as-is (the archived_at clear is enough to surface it
+  //   again in the default views, which filter on archived_at IS NULL).
+  //
+  // Ambiguous (in both sets in the same delta): skipped, resolved next
+  // poll. Idempotency guards make a no-op pass cheap.
+  const inboxAmbiguous = new Set<string>();
+  for (const id of inboxRemovedThreadGmailIds) {
+    if (inboxAddedThreadGmailIds.has(id)) inboxAmbiguous.add(id);
+  }
+  const archiveList = Array.from(inboxRemovedThreadGmailIds).filter(
+    (id) => !inboxAmbiguous.has(id),
+  );
+  const unarchiveList = Array.from(inboxAddedThreadGmailIds).filter(
+    (id) => !inboxAmbiguous.has(id),
+  );
+
+  if (archiveList.length > 0) {
+    await db.execute(sql`
+      UPDATE email_threads
+      SET archived_at = NOW(), state = 'archived', updated_at = NOW()
+      WHERE staff_outreach_email_id = ${inbox.id}
+        AND gmail_thread_id IN (${sql.join(
+          archiveList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND archived_at IS NULL
+    `);
+  }
+  if (unarchiveList.length > 0) {
+    await db.execute(sql`
+      UPDATE email_threads
+      SET archived_at = NULL, updated_at = NOW()
+      WHERE staff_outreach_email_id = ${inbox.id}
+        AND gmail_thread_id IN (${sql.join(
+          unarchiveList.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        AND archived_at IS NOT NULL
     `);
   }
 
