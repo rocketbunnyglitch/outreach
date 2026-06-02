@@ -53,6 +53,13 @@ export function InboxShell({
         "min-h-[calc(100vh-8rem)]",
         // Subtle outer card so the three panes read as one composed surface.
         "card-surface overflow-hidden p-0",
+        // MOBILE FULL-WIDTH (Gmail mobile parity): break out of the
+        // (admin) <main> padding (px-6 / sm:px-10) with negative margins
+        // and strip the rounded card chrome + side borders below lg so the
+        // inbox list AND the email/thread view are edge-to-edge. Also
+        // reclaim the top padding so the inbox starts near the header.
+        // Restored to a framed, padded card at lg+.
+        "-mx-6 -mt-6 max-lg:rounded-none max-lg:border-x-0 sm:-mx-10 sm:-mt-10 lg:mx-0 lg:mt-0",
       )}
     >
       {topRight && (

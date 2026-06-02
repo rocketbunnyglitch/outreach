@@ -41,7 +41,7 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
     return (
       <li
         className={cn(
-          "border-zinc-200/40 px-6 py-2.5 transition-colors hover:bg-zinc-50 dark:border-zinc-800/30 dark:hover:bg-zinc-900/40",
+          "border-zinc-200/40 px-4 py-2.5 transition-colors hover:bg-zinc-50 sm:px-6 dark:border-zinc-800/30 dark:hover:bg-zinc-900/40",
           !isLast && "border-b",
         )}
       >
@@ -81,7 +81,7 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
   return (
     <li
       className={cn(
-        "inbox-msg border-zinc-200/40 px-6 py-5 dark:border-zinc-800/30",
+        "inbox-msg border-zinc-200/40 px-4 py-5 sm:px-6 dark:border-zinc-800/30",
         !isLast && "border-b",
       )}
     >
