@@ -1540,7 +1540,10 @@ function QuotedThreadBlock({ html }: { html: string }) {
       </button>
       {expanded && (
         <div
-          className="mt-2 text-xs text-zinc-600 dark:text-zinc-400 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic [&_blockquote]:my-1 [&_blockquote]:border-zinc-300 [&_blockquote]:border-l [&_blockquote]:pl-2 dark:[&_blockquote]:border-zinc-700"
+          // Forced-light card so the quoted original reads on white (matching
+          // the message you're replying to) regardless of app theme, and so
+          // the original email's own HTML colors stay legible.
+          className="mt-2 rounded-md bg-white p-3 text-xs text-zinc-700 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic [&_blockquote]:my-1 [&_blockquote]:border-zinc-300 [&_blockquote]:border-l [&_blockquote]:pl-2"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-built quote markup, see comment above
           dangerouslySetInnerHTML={{ __html: html }}
         />

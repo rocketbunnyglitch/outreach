@@ -1476,6 +1476,7 @@ export async function openReplyDraft(input: {
           ccAddresses: emailMessages.ccAddresses,
           subject: emailMessages.subject,
           bodyText: emailMessages.bodyText,
+          bodyHtml: emailMessages.bodyHtml,
           sentAt: emailMessages.sentAt,
         })
         .from(emailMessages)
@@ -1495,6 +1496,7 @@ export async function openReplyDraft(input: {
           ccAddresses: emailMessages.ccAddresses,
           subject: emailMessages.subject,
           bodyText: emailMessages.bodyText,
+          bodyHtml: emailMessages.bodyHtml,
           sentAt: emailMessages.sentAt,
         })
         .from(emailMessages)
@@ -1528,6 +1530,7 @@ export async function openReplyDraft(input: {
           ccAddresses: emailMessages.ccAddresses,
           subject: emailMessages.subject,
           bodyText: emailMessages.bodyText,
+          bodyHtml: emailMessages.bodyHtml,
           sentAt: emailMessages.sentAt,
         })
         .from(emailMessages)
@@ -1595,7 +1598,12 @@ export async function openReplyDraft(input: {
     .split("\n")
     .map((line: string) => escapeHtml(line))
     .join("<br>");
-  const quotedHtml = `<div class="gmail_quote"><div class="gmail_attr">${escapeHtml(quoteHeader)}</div><blockquote class="gmail_quote_body" style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">${quotedTextBody}</blockquote></div>`;
+  // Preserve the original email's HTML formatting in the quote when we
+  // have it (sanitized server-side) -- replying was flattening rich HTML
+  // to plain text. Fall back to the escaped plain-text rendering.
+  const quotedInner =
+    (message.bodyHtml ? sanitizeEmailHtml(message.bodyHtml) : null) ?? quotedTextBody;
+  const quotedHtml = `<div class="gmail_quote"><div class="gmail_attr">${escapeHtml(quoteHeader)}</div><blockquote class="gmail_quote_body" style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">${quotedInner}</blockquote></div>`;
   // bodyText keeps the legacy quoted lines so plain-text-only mail
   // clients still see context. The composer reads bodyHtml as the
   // source of truth for the editable surface.

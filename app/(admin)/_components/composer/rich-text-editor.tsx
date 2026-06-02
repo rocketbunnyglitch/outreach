@@ -241,7 +241,10 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class: cn(
-          "min-h-[160px] flex-1 overflow-y-auto bg-transparent px-3 py-2 text-sm outline-none",
+          // White typing surface with dark text in BOTH themes (Gmail's
+          // compose is always light) so the reply matches the white email
+          // body you're reading and stays readable in dark mode.
+          "min-h-[160px] flex-1 overflow-y-auto bg-white px-3 py-2 text-sm text-zinc-900 outline-none",
         ),
       },
     },

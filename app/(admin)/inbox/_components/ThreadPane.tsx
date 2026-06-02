@@ -17,6 +17,7 @@ import { QuickReplyChips } from "./QuickReplyChips";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
+import { ThreadHeaderReply } from "./ThreadHeaderReply";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 import { ThreadNotesBlock } from "./ThreadNotesBlock";
@@ -94,6 +95,9 @@ export function ThreadPane({
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {/* Reply at the TOP of the (sticky) header so a long thread
+                doesn't force a scroll to the bottom reply bar. */}
+            <ThreadHeaderReply threadId={thread.id} />
             {/* Phase D.3 — soft-lock pill. Renders only when other
                 operators are looking at this thread right now. */}
             <ThreadViewersPill threadId={thread.id} currentStaffId={currentStaffId} />
