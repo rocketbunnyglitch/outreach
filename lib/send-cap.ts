@@ -20,7 +20,13 @@
  */
 
 import "server-only";
-import { emailMessages, emailSendEvents, staffOutreachEmails, users } from "@/db/schema";
+import {
+  type SendType,
+  emailMessages,
+  emailSendEvents,
+  staffOutreachEmails,
+  users,
+} from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, eq, gte, sql } from "drizzle-orm";
@@ -225,17 +231,31 @@ export async function recordSendEvent(opts: {
   /** Owning team — denormalized for fast analytics queries
    *  (Phase C.1). Required for new sends. */
   teamId: string;
+  /** Operational send-type taxonomy (migration 0088). Optional and
+   *  backward-compatible: when omitted, send_type mirrors `category`
+   *  (cold/warm) and the cap behaves exactly as before. Pass
+   *  'operational' for transactional/internal mail that must NOT eat
+   *  the daily cold budget -- that intent forces countedAgainstCap to
+   *  false regardless of category. countedAgainstCap remains the
+   *  authoritative cap flag for loadSendUsage. */
+  intent?: SendType;
 }): Promise<void> {
+  // send_type defaults to the cap category so existing callers (which
+  // don't pass intent) record 'cold'/'warm' exactly as before.
+  const sendType: SendType = opts.intent ?? opts.category;
+  // Cold sends count against the cap; warm sends do not. Operational
+  // mail never counts against the cold budget regardless of category.
+  // Bypassed cold sends are still marked counted=true so the operator
+  // UI shows a true picture of inbox usage today.
+  const countedAgainstCap = sendType !== "operational" && opts.category === "cold";
   await db.insert(emailSendEvents).values({
     connectedAccountId: opts.connectedAccountId,
     threadId: opts.threadId,
     sentByUserId: opts.sentByUserId,
     recipientEmail: opts.recipientEmail,
     category: opts.category,
-    // Cold sends count against the cap; warm sends do not. Bypassed
-    // sends are still marked counted=true so the operator UI shows
-    // a true picture of inbox usage today.
-    countedAgainstCap: opts.category === "cold",
+    sendType,
+    countedAgainstCap,
     capBypassed: Boolean(opts.capBypassed),
     templateId: opts.templateId ?? null,
     teamId: opts.teamId,

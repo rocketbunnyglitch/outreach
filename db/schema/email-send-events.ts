@@ -23,6 +23,15 @@ export const emailSendEvents = pgTable(
      *  these two values; a later migration may expand to the full
      *  spec set (follow_up / operational / internal). */
     category: text("category").notNull(),
+    /** Operational send-type taxonomy (migration 0088). Distinct from
+     *  `category` (cold/warm cap classification): send_type records the
+     *  operational intent of the mail -- 'cold' | 'warm' | 'operational'
+     *  -- so operational mail (e.g. transactional/internal) can be
+     *  excluded from the 30/day cold budget while still being audited.
+     *  Defaults to 'cold' for backward compatibility; existing rows are
+     *  backfilled from `category`. countedAgainstCap remains the
+     *  authoritative cap flag. */
+    sendType: text("send_type").notNull().default("cold"),
     countedAgainstCap: boolean("counted_against_cap").notNull(),
     /** True when an admin pushed the send through despite the cap. */
     capBypassed: boolean("cap_bypassed").notNull().default(false),
@@ -50,3 +59,8 @@ export type EmailSendEvent = typeof emailSendEvents.$inferSelect;
 export type NewEmailSendEvent = typeof emailSendEvents.$inferInsert;
 
 export type SendCategory = "cold" | "warm";
+
+/** Operational send-type taxonomy (migration 0088). 'cold' and 'warm'
+ *  mirror the cap classification; 'operational' marks mail that must
+ *  NOT consume the daily cold budget (countedAgainstCap=false). */
+export type SendType = "cold" | "warm" | "operational";
