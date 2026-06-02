@@ -28,6 +28,7 @@ import "server-only";
 
 import { emailThreadMentions, emailThreads, staffMembers, userPreferences } from "@/db/schema";
 import { db } from "@/lib/db";
+import { signUnsubToken } from "@/lib/digest-unsub-token";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 export interface DigestRow {
@@ -222,13 +223,16 @@ export function renderDigestBody(row: DigestRow): string {
 
   lines.push("Open the inbox: https://outreach.barcrawlconnect.com/inbox");
   lines.push("");
-  // Self-service opt-out link. Operators receiving this in their
-  // inbox have no other path to disable the digest -- they'd have
-  // to log in and find /me/preferences. Surfacing the URL here is
-  // standard practice (and the right thing to do; a daily email
-  // with no unsubscribe path is the kind of thing operators
-  // remember when they're filing a complaint).
-  lines.push("Stop these emails: https://outreach.barcrawlconnect.com/me/preferences");
+  // Self-service opt-out. The token-signed URL goes straight to the
+  // unsubscribe endpoint -- no login wall, no toggle to find. The
+  // token is HMAC-signed against NEXTAUTH_SECRET so it can't be
+  // forged; expires after 90 days (lib/digest-unsub-token.ts) so
+  // leaked screenshots eventually become inert. Operators who
+  // re-enable just toggle on /me/preferences.
+  const token = signUnsubToken(row.staffId);
+  lines.push(
+    `Stop these emails: https://outreach.barcrawlconnect.com/api/digest/unsub?token=${token}`,
+  );
   return lines.join("\n");
 }
 
