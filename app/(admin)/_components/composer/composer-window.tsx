@@ -746,7 +746,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-white text-zinc-900">
         {loadError && (
           <p className="border-zinc-200 border-b bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
             {loadError}
@@ -1523,13 +1523,13 @@ function QuotedThreadBlock({ html }: { html: string }) {
   // context (Gmail-mobile behavior). The operator can collapse it.
   const [expanded, setExpanded] = useState(true);
   return (
-    <div className="border-zinc-200 border-t bg-zinc-50/50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/30">
+    <div className="border-zinc-200 border-t bg-white px-3 py-2">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         title={expanded ? "Hide original message" : "Show original message"}
         aria-label={expanded ? "Hide original message" : "Show original message"}
-        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
       >
         <span className="inline-flex items-center gap-0.5">
           <span className="h-1 w-1 rounded-full bg-current" />

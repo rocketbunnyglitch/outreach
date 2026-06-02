@@ -90,14 +90,14 @@ export function ThreadPane({
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
+            {/* Reply lives on the LEFT so the floating account-switcher
+                avatar (top-right of the shell) can't block it on mobile. */}
+            <ThreadHeaderReply threadId={thread.id} />
             <h1 className="min-w-0 truncate font-semibold text-base tracking-tight sm:text-lg">
               {thread.subject ?? "(no subject)"}
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {/* Reply at the TOP of the (sticky) header so a long thread
-                doesn't force a scroll to the bottom reply bar. */}
-            <ThreadHeaderReply threadId={thread.id} />
             {/* Phase D.3 — soft-lock pill. Renders only when other
                 operators are looking at this thread right now. */}
             <ThreadViewersPill threadId={thread.id} currentStaffId={currentStaffId} />
@@ -224,17 +224,16 @@ export function ThreadPane({
           stale; the summary itself materializes on the next view. */}
       {thread.aiSummary && <ThreadSummaryBlock summary={thread.aiSummary} />}
 
-      {/* Messages — long threads collapse older messages by default.
-          When there are 3+ messages, all but the most recent render
-          as a one-line summary; click to expand. Newest message is
-          always shown expanded. Matches Gmail's conversation view. */}
+      {/* Messages — NEWEST FIRST (top), like the rest of the app's
+          newest-on-top expectation: the loader returns oldest->newest, so
+          we reverse for display. The newest stays expanded; older messages
+          collapse to a one-line summary when there are 3+. */}
       <ol className="flex flex-col">
-        {messages.map((m, i) => {
-          const isNewest = i === messages.length - 1;
-          // Auto-collapse: only when there are 3+ messages, and only
-          // for messages that aren't the newest one. Single-message
-          // and two-message threads stay fully expanded — collapsing
-          // them just hides useful context.
+        {[...messages].reverse().map((m, i) => {
+          // After reverse, the newest message is first (index 0).
+          const isNewest = i === 0;
+          // Auto-collapse older messages only when there are 3+; single-
+          // and two-message threads stay fully expanded.
           const defaultCollapsed = messages.length >= 3 && !isNewest;
           return (
             <MessageCard
