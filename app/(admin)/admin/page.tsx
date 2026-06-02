@@ -19,10 +19,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getUnclassifiedCount } from "./_actions-classifier";
+import { getEmptyBodyCount } from "./_actions-empty-body-backfill";
 import { getUntaggedVenueCount } from "./_actions-venue-tag";
 import { CampaignImportPanel } from "./_components/campaign-import-panel";
 import { ClassifierBackfillPanel } from "./_components/classifier-backfill-panel";
 import { CsvImportWidget } from "./_components/csv-import-widget";
+import { EmptyBodyBackfillPanel } from "./_components/empty-body-backfill-panel";
 import { VenueTagBackfillPanel } from "./_components/venue-tag-backfill-panel";
 
 export const metadata = { title: "Admin" };
@@ -140,6 +142,11 @@ async function renderAdminPage() {
     // Counts venues with empty venueType arrays so the operator
     // knows the size of the backlog before clicking.
     getUntaggedVenueCount(),
+    // Snapshot for the empty-body backfill panel (38b15f6 follow-up).
+    // Counts inbound messages whose body fields are empty (the
+    // pre-fix Triple Seat / Eventbrite / etc. bug). Panel hides
+    // itself entirely when this is 0.
+    getEmptyBodyCount(),
   ]);
 
   const campaignRows = results[0].status === "fulfilled" ? results[0].value : [];
@@ -159,6 +166,10 @@ async function renderAdminPage() {
   const untaggedVenueCount = safeNumber(
     results[5] as PromiseSettledResult<number>,
     "untagged venue count",
+  );
+  const emptyBodyCount = safeNumber(
+    results[6] as PromiseSettledResult<number>,
+    "empty-body inbound count",
   );
 
   const activeCampaigns = campaignRows.filter((c) => !c.archivedAt);
@@ -451,6 +462,11 @@ async function renderAdminPage() {
         </header>
         <VenueTagBackfillPanel initialUntaggedCount={untaggedVenueCount} />
       </section>
+
+      {/* Empty-body backfill (38b15f6 hot-fix follow-up). Panel
+          renders only when there are messages to repair -- a healthy
+          team post-fix sees nothing here. */}
+      <EmptyBodyBackfillPanel initialEmptyCount={emptyBodyCount} />
 
       {/* Halloween 2025 import (Phase 3). Reads data/halloween_2025.json
       {/* ----------------------------------------------------------------

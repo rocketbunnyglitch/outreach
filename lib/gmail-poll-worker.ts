@@ -1305,6 +1305,16 @@ async function gmailFetch(endpoint: string, accessToken: string): Promise<Record
   return (await res.json()) as Record<string, unknown>;
 }
 
+// Backfill-only exports. lib/empty-body-backfill.ts uses these to
+// re-extract message bodies for the empty-body bug repair without
+// duplicating the MIME-walk / attachment-fetch logic. Keeping the
+// internal originals private (so callers can't accidentally bypass
+// the live ingest pipeline) but giving the backfill an explicit
+// hook with a distinct name documents the dependency.
+export { gmailFetch as gmailFetchForBackfill };
+export { extractHtml as extractHtmlForBackfill };
+export { extractPlainText as extractPlainTextForBackfill };
+
 // =========================================================================
 // Auto-suppression on inbound STOP/unsubscribe
 // =========================================================================
