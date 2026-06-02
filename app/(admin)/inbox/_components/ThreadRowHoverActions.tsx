@@ -55,7 +55,7 @@ export function ThreadRowHoverActions({ threadId, isTrashView, snoozeUntil }: Pr
 
   return (
     <div
-      className="hidden shrink-0 items-center gap-0.5 group-hover/row:flex"
+      className="hidden shrink-0 items-center gap-0.5 [@media(hover:hover)]:group-hover/row:flex"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         // Don't propagate keypresses to the row Link either.

@@ -222,7 +222,7 @@ function ThreadRow({
               dateTime={thread.lastMessageAt.toISOString()}
               suppressHydrationWarning
               className={cn(
-                "block text-[11px] tabular-nums group-hover/row:hidden",
+                "block text-[11px] tabular-nums [@media(hover:hover)]:group-hover/row:hidden",
                 isUnread ? "font-semibold text-zinc-700 dark:text-zinc-300" : "text-zinc-500",
               )}
             >
@@ -264,7 +264,7 @@ function ThreadRow({
               visible. `contents` lets these flow into the same flex-wrap
               when shown. (On touch, where there's no hover, the row stays
               minimal; full metadata is on the thread.) */}
-          <span className="hidden group-hover/row:contents">
+          <span className="hidden [@media(hover:hover)]:group-hover/row:contents">
             {/* Classification chip */}
             {thread.classification !== "unclassified" && (
               <Chip
