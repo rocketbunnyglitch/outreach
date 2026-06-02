@@ -28,14 +28,14 @@ export const CLIENT_DIAG_SCRIPT = `
     var RELOAD_KEY = 'perse:chunk-reload-at';
     var COOLDOWN = 15000;
     var CHUNK_RE = /ChunkLoadError|Loading chunk|Loading CSS chunk|dynamically imported module|Importing a module script failed/i;
-    var HYDR_RE = /Minified React error #(?:418|419|421|422|423|424|425)\b|Hydration failed|error while hydrating|hydration mismatch/i;
+    var HYDR_RE = /Minified React error #(?:418|419|421|422|423|424|425)\\b|Hydration failed|error while hydrating|hydration mismatch/i;
     // Streaming-completion crash: when React's inline Suspense-reveal runtime
     // ($RC/$RS/$RB/$RT) can't find a boundary's placeholder node it throws
     // "Cannot read properties of null (reading 'parentNode')" — a fatal
     // stream/DOM desync (seen after messy deploys / stale chunks) that froze
     // the page. The message alone is generic, so we key on the $R* frame in
     // the STACK (React-internal, unambiguous) plus the parentNode-null symptom.
-    var STREAM_RE = /\bat \$R[BCST]\b|\$R[BCST]\s*\(|reading 'parentNode'/;
+    var STREAM_RE = /\\bat \\$R[BCST]\\b|\\$R[BCST]\\s*\\(|reading 'parentNode'/;
     var sent = 0;
     function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_RE.test(s) || STREAM_RE.test(s); }
     function maybeReload(s) {
