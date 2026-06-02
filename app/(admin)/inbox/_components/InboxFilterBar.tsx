@@ -45,6 +45,10 @@ interface Props {
    *  Surfaces as a small "(N)" badge on the Unassigned chip when > 0
    *  so operators see the pile size before clicking. */
   unassignedCount?: number;
+  /** Count of threads assigned to the current operator in the
+   *  current scope. Surfaces as a small "(N)" badge on the
+   *  "Assigned to me" chip when > 0. */
+  assignedToMeCount?: number;
   activeAliasId?: string;
   initialSearch?: string;
   /** Saved searches for the current operator (Phase B.2). */
@@ -58,6 +62,7 @@ export function InboxFilterBar({
   mineInbox,
   unassignedOnly,
   unassignedCount = 0,
+  assignedToMeCount = 0,
   activeAliasId,
   initialSearch,
   savedSearches = [],
@@ -191,10 +196,19 @@ export function InboxFilterBar({
               : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
           )}
           aria-pressed={mineAssigned}
-          title="Threads assigned to me"
+          title={
+            assignedToMeCount > 0
+              ? `${assignedToMeCount} thread${assignedToMeCount === 1 ? "" : "s"} assigned to you in the current scope`
+              : "Threads assigned to me"
+          }
         >
           <User className="h-3 w-3" />
           Assigned to me
+          {assignedToMeCount > 0 && (
+            <span className="font-mono text-[10px] tabular-nums opacity-70">
+              ({assignedToMeCount.toLocaleString("en-US")})
+            </span>
+          )}
         </button>
 
         {/* Unassigned-only filter. Mutually exclusive with "Assigned
@@ -225,7 +239,7 @@ export function InboxFilterBar({
           <UserX className="h-3 w-3" />
           Unassigned
           {unassignedCount > 0 && (
-            <span className="font-mono text-[10px] opacity-70 tabular-nums">
+            <span className="font-mono text-[10px] tabular-nums opacity-70">
               ({unassignedCount.toLocaleString("en-US")})
             </span>
           )}
