@@ -69,14 +69,14 @@ export function SendMenu({
     : "Send";
 
   return (
-    <div ref={wrapperRef} className="relative inline-flex">
+    <div ref={wrapperRef} className="relative inline-flex shrink-0">
       <button
         type="button"
         onClick={onSendNow}
         disabled={disabled || pending}
-        className="inline-flex items-center gap-1.5 rounded-l-md bg-zinc-900 px-3 py-1.5 font-medium text-white text-xs hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-l-md bg-zinc-900 px-3 py-1.5 font-medium text-white text-xs hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
       >
-        <Send className="h-3 w-3" />
+        <Send className="h-3.5 w-3.5 shrink-0" />
         {pending ? "Sending…" : primaryLabel}
       </button>
       <button
@@ -84,9 +84,9 @@ export function SendMenu({
         onClick={() => setOpen((v) => !v)}
         disabled={disabled || pending}
         aria-label="Send options"
-        className="inline-flex items-center rounded-r-md border border-l border-l-white/20 bg-zinc-900 px-1.5 py-1.5 text-white hover:bg-zinc-800 disabled:opacity-50 dark:border-l-zinc-300 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+        className="inline-flex shrink-0 items-center rounded-r-md border border-l border-l-white/20 bg-zinc-900 px-1.5 py-1.5 text-white hover:bg-zinc-800 disabled:opacity-50 dark:border-l-zinc-300 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
       >
-        <ChevronDown className="h-3 w-3" />
+        <ChevronDown className="h-3 w-3 shrink-0" />
       </button>
       {open && (
         <div className="absolute bottom-full left-0 mb-1 w-56 rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-700 dark:bg-zinc-900">

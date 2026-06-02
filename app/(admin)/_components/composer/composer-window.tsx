@@ -963,7 +963,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
 
       {/* Footer */}
       <footer className="flex items-center justify-between gap-2 border-zinc-200 border-t bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center gap-1">
+        {/* min-w-0 + flex-wrap so on a narrow (mobile) footer the tool
+            icons wrap to a second row instead of compressing the Send
+            split-button into a deformed shape. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <SendMenu
             disabled={!!sendError && !undoActive}
             pending={sending || undoActive}
