@@ -2,7 +2,7 @@ import { parseAccountIds } from "@/lib/account-filter";
 import { enrichNextActionAsync } from "@/lib/ai-next-action";
 import { generateQuickRepliesAsync, isEligibleForQuickReplies } from "@/lib/ai-quick-replies";
 import { summarizeThreadAsync } from "@/lib/ai-summarize";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { suggestCampaignsForThread } from "@/lib/campaign-matcher";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadAppliedGmailLabelsForThread } from "@/lib/gmail-thread-labels";
@@ -146,7 +146,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       loadVisibleAccounts({
         currentUserId: currentStaff.id,
         currentTeamId: currentStaff.teamId,
-        canSeeAllTeamAccounts: currentStaff.role === "admin",
+        canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "admin"),
       }),
       getUserPreferences(currentStaff.id),
     ]);
@@ -335,7 +335,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
               <div className="flex-1">
                 <InboxScopeBar
                   currentUserId={currentStaff.id}
-                  isAdmin={currentStaff.role === "admin"}
+                  isAdmin={hasMinimumRole(currentStaff, "admin")}
                   mentionCount={mentionCount}
                 />
               </div>
@@ -397,7 +397,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
             allTeamLabels={teamLabelsAll}
             appliedGmailLabels={appliedGmailLabels}
             campaignSuggestions={campaignSuggestions}
-            isAdmin={currentStaff.role === "admin"}
+            isAdmin={hasMinimumRole(currentStaff, "admin")}
             currentStaffId={currentStaff.id}
           />
         }

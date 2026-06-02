@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { loadCitySheet } from "@/lib/city-sheet-data";
 import { loadCityVenues } from "@/lib/city-venues-data";
 import { db } from "@/lib/db";
@@ -273,7 +273,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         entries={coldOutreach}
         staff={sheetData?.staff ?? []}
         currentStaffId={currentStaff.id}
-        currentStaffIsAdmin={currentStaff.role === "admin"}
+        currentStaffIsAdmin={hasMinimumRole(currentStaff, "admin")}
         escalationTargets={escalationTargets}
         googleMapsApiKey={
           process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
@@ -289,7 +289,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         entries={coldOutreach}
         staff={sheetData?.staff ?? []}
         currentStaffId={currentStaff.id}
-        currentStaffIsAdmin={currentStaff.role === "admin"}
+        currentStaffIsAdmin={hasMinimumRole(currentStaff, "admin")}
         escalationTargets={escalationTargets}
         googleMapsApiKey={
           process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? undefined
@@ -309,7 +309,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
         rows={cityVenues.rows}
         totalInCity={cityVenues.totalInCity}
         capped={cityVenues.capped}
-        currentStaffIsAdmin={currentStaff.role === "admin"}
+        currentStaffIsAdmin={hasMinimumRole(currentStaff, "admin")}
       />
 
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}
@@ -347,7 +347,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           <CityCampaignForm
             initial={cc.cc}
             staff={staff}
-            isAdmin={currentStaff.role === "admin"}
+            isAdmin={hasMinimumRole(currentStaff, "admin")}
             action={boundUpdate}
           />
         </div>

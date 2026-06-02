@@ -1,5 +1,5 @@
 import { parseAccountIds } from "@/lib/account-filter";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import {
   FOLDER_LABELS,
@@ -229,7 +229,7 @@ export default async function InboxPage({ searchParams }: Props) {
       // Admin / lead see every team account. Staff see only their
       // own. Future: a finer-grained "team accounts I have access
       // to" model will go here.
-      canSeeAllTeamAccounts: currentStaff.role === "admin",
+      canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "admin"),
     }),
     getUserPreferences(currentStaff.id),
     loadSavedSearches(currentStaff.id),
@@ -305,7 +305,7 @@ export default async function InboxPage({ searchParams }: Props) {
               <div className="flex-1">
                 <InboxScopeBar
                   currentUserId={currentStaff.id}
-                  isAdmin={currentStaff.role === "admin"}
+                  isAdmin={hasMinimumRole(currentStaff, "admin")}
                   mentionCount={mentionCount}
                 />
               </div>

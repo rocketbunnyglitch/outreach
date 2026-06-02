@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { staffMembers, tasks } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { db } from "@/lib/db";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -64,7 +64,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   // their direct reports' (manager_id = me) + unassigned backlog. Assigning is
   // NOT restricted — anyone can be assigned a task.
   const { staff: currentStaff } = await requireStaff();
-  const isAdmin = currentStaff.role === "admin";
+  const isAdmin = hasMinimumRole(currentStaff, "admin");
 
   let reportIds: string[] = [];
   if (!isAdmin) {
