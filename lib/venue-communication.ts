@@ -38,7 +38,14 @@
  * venue_id_inferred column on email_threads written by the poller.
  */
 
-import { connectedAccounts, emailMessages, emailThreads, staffMembers, venues } from "@/db/schema";
+import {
+  connectedAccounts,
+  emailMessages,
+  emailThreads,
+  staffMembers,
+  venueDomainAliases,
+  venues,
+} from "@/db/schema";
 import { db } from "@/lib/db";
 import { aliasedTable, and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
@@ -274,9 +281,53 @@ export async function loadVenueCommunication(
   }
 
   // ----------------------------------------------------------------
+  // 4b. Domain-ALIAS threads: sender domain is in this venue's curated
+  //     venue_domain_aliases (parent-group / management-company domains
+  //     an operator mapped to the venue). The poll worker matches these
+  //     at INGEST (Tier 2.5), but a thread that arrived BEFORE the alias
+  //     was added has venue_id = null and would otherwise be invisible
+  //     here -- so the timeline reader honors aliases retroactively. Same
+  //     free-domain skip + dedup as domain_match; labeled "domain_match"
+  //     (a suggestion) by the source fallback below.
+  // ----------------------------------------------------------------
+  const aliasMatchIds = new Set<string>();
+  {
+    const aliasRows = await db
+      .select({ domain: venueDomainAliases.domain })
+      .from(venueDomainAliases)
+      .where(eq(venueDomainAliases.venueId, venueId));
+    const aliasDomains = aliasRows
+      .map((r) => r.domain.toLowerCase())
+      .filter((d) => d.length > 0 && !FREE_EMAIL_DOMAINS.has(d));
+    if (aliasDomains.length > 0) {
+      const matchedRows = await db
+        .selectDistinct({ threadId: emailMessages.threadId })
+        .from(emailMessages)
+        .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+        .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+        .where(
+          and(
+            eq(connectedAccounts.teamId, teamId),
+            isNull(emailThreads.deletedAt),
+            sql`split_part(${emailMessages.fromEmailNormalized}, '@', 2) = ANY(${aliasDomains})`,
+          ),
+        );
+      for (const r of matchedRows) {
+        if (
+          !directIdSet.has(r.threadId) &&
+          !emailMatchIds.has(r.threadId) &&
+          !domainMatchIds.has(r.threadId)
+        ) {
+          aliasMatchIds.add(r.threadId);
+        }
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------
   // 5. Single hydration query for every matched id.
   // ----------------------------------------------------------------
-  const allIds = [...directIdSet, ...emailMatchIds, ...domainMatchIds];
+  const allIds = [...directIdSet, ...emailMatchIds, ...domainMatchIds, ...aliasMatchIds];
   if (allIds.length === 0) {
     return {
       threads: [],
