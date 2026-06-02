@@ -146,8 +146,13 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       loadVisibleAccounts({
         currentUserId: currentStaff.id,
         currentTeamId: currentStaff.teamId,
-        canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "admin"),
-        // SEND authority: admin override only (owned-or-admin).
+        // VISIBILITY: admin + lead see every team account (matches
+        // the inbox LIST page gate -- list and detail must agree on
+        // which team accounts are visible for a given role). Staff
+        // see only their own.
+        canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "lead"),
+        // SEND authority is narrower than visibility: admin override
+        // only (owned-or-admin). Lead visibility != send.
         isAdmin: hasMinimumRole(currentStaff, "admin"),
       }),
       getUserPreferences(currentStaff.id),
