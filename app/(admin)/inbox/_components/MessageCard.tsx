@@ -16,7 +16,6 @@
 
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail } from "@/lib/inbox-data";
-import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -52,12 +51,12 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
           aria-label={`Expand message from ${message.fromName ?? message.fromAddress}`}
           className="flex w-full items-baseline justify-between gap-3 text-left"
         >
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            {isInbound ? (
-              <ArrowLeft className="h-3 w-3 shrink-0 text-emerald-500" />
-            ) : (
-              <ArrowRight className="h-3 w-3 shrink-0 text-blue-500" />
-            )}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <SenderAvatar
+              name={message.fromName ?? message.fromAddress}
+              inbound={isInbound}
+              size="sm"
+            />
             <span className="shrink-0 font-medium text-sm">
               {message.fromName ?? message.fromAddress}
             </span>
@@ -86,7 +85,7 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
       )}
     >
       <header
-        className="flex cursor-pointer items-start justify-between gap-3"
+        className="flex cursor-pointer items-start gap-3"
         onClick={() => {
           // Only allow collapsing if this isn't the newest message
           // (the latest always stays expanded).
@@ -102,34 +101,36 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
         role={isLast ? undefined : "button"}
         tabIndex={isLast ? undefined : 0}
       >
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-sm">
-            {isInbound ? (
-              <ArrowLeft className="h-3.5 w-3.5 text-emerald-500" />
-            ) : (
-              <ArrowRight className="h-3.5 w-3.5 text-blue-500" />
-            )}
-            <span className="font-medium">{message.fromName ?? message.fromAddress}</span>
-            {message.fromName && (
-              <span className="text-xs text-zinc-500">&lt;{message.fromAddress}&gt;</span>
-            )}
-          </p>
-          {message.toAddresses.length > 0 && (
-            <p className="mt-0.5 text-xs text-zinc-500">
-              to {message.toAddresses.join(", ")}
-              {message.ccAddresses.length > 0 && (
-                <span> · cc {message.ccAddresses.join(", ")}</span>
+        <SenderAvatar
+          name={message.fromName ?? message.fromAddress}
+          inbound={isInbound}
+          size="md"
+        />
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm">
+              <span className="font-medium">{message.fromName ?? message.fromAddress}</span>
+              {message.fromName && (
+                <span className="ml-1 text-xs text-zinc-500">&lt;{message.fromAddress}&gt;</span>
               )}
             </p>
-          )}
+            {message.toAddresses.length > 0 && (
+              <p className="mt-0.5 text-xs text-zinc-500">
+                to {message.toAddresses.join(", ")}
+                {message.ccAddresses.length > 0 && (
+                  <span> · cc {message.ccAddresses.join(", ")}</span>
+                )}
+              </p>
+            )}
+          </div>
+          <time
+            dateTime={message.sentAt.toISOString()}
+            suppressHydrationWarning
+            className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
+          >
+            {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
+          </time>
         </div>
-        <time
-          dateTime={message.sentAt.toISOString()}
-          suppressHydrationWarning
-          className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
-        >
-          {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
-        </time>
       </header>
 
       <div className="mt-3">
@@ -141,12 +142,14 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
         */}
         {message.bodySafeHtml ? (
           <div
-            className="inbox-prose max-w-prose text-sm text-zinc-800 dark:text-zinc-200"
+            className="inbox-prose max-w-prose text-sm text-zinc-800 leading-relaxed dark:text-zinc-200"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized server-side via DOMPurify; see lib/email-sanitize.ts
             dangerouslySetInnerHTML={{ __html: message.bodySafeHtml }}
           />
         ) : message.bodyText ? (
-          <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-800 dark:text-zinc-200">
+          // Cap the measure (max-w-prose) like the HTML branch so plain-text
+          // emails don't stretch the full pane width -- Gmail caps line length.
+          <pre className="max-w-prose whitespace-pre-wrap font-sans text-sm text-zinc-800 leading-relaxed dark:text-zinc-200">
             {message.bodyText}
           </pre>
         ) : (
@@ -160,6 +163,37 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
         </p>
       )}
     </li>
+  );
+}
+
+/**
+ * SenderAvatar — circular initial that anchors each message, Gmail-style.
+ * Color encodes direction (emerald=inbound, blue=outbound), replacing the
+ * old direction arrow.
+ */
+function SenderAvatar({
+  name,
+  inbound,
+  size,
+}: {
+  name: string;
+  inbound: boolean;
+  size: "sm" | "md";
+}) {
+  const dim = size === "md" ? "h-8 w-8 text-xs" : "h-5 w-5 text-[10px]";
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full font-medium",
+        dim,
+        inbound
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+          : "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300",
+      )}
+    >
+      {name.trim().charAt(0).toUpperCase() || "?"}
+    </span>
   );
 }
 
