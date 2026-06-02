@@ -47,6 +47,51 @@ export interface TeamLabelSummary {
   color: string | null;
 }
 
+/**
+ * Map a Tailwind color slug (the value stored in team_labels.color)
+ * to a Gmail-supported palette pair. A Gmail label color must be a
+ * real { backgroundColor, textColor } hex pair drawn from Gmail's
+ * fixed palette (GMAIL_LABEL_COLOR_PAIRS) -- passing a raw slug like
+ * "emerald" is rejected by the Gmail API, which is why label colors
+ * never mirrored. Unknown / null slugs return undefined so the Gmail
+ * label is created with no color (neutral), matching the UI default.
+ *
+ * No migration: we keep the slug in the column and derive the hex
+ * pair here at write time.
+ */
+function gmailColorForSlug(
+  slug: string | null | undefined,
+): { backgroundColor: string; textColor: string } | undefined {
+  if (!slug) return undefined;
+  const map: Record<string, { backgroundColor: string; textColor: string }> = {
+    // Greens
+    emerald: { backgroundColor: "#16a766", textColor: "#ffffff" },
+    green: { backgroundColor: "#16a766", textColor: "#ffffff" },
+    teal: { backgroundColor: "#43d692", textColor: "#ffffff" },
+    // Blues
+    blue: { backgroundColor: "#3c78d8", textColor: "#ffffff" },
+    sky: { backgroundColor: "#4a86e8", textColor: "#ffffff" },
+    indigo: { backgroundColor: "#3c78d8", textColor: "#ffffff" },
+    // Purples
+    purple: { backgroundColor: "#8e63ce", textColor: "#ffffff" },
+    violet: { backgroundColor: "#8e63ce", textColor: "#ffffff" },
+    fuchsia: { backgroundColor: "#b694e8", textColor: "#ffffff" },
+    // Reds
+    red: { backgroundColor: "#cc3a21", textColor: "#ffffff" },
+    rose: { backgroundColor: "#e66550", textColor: "#ffffff" },
+    pink: { backgroundColor: "#e66550", textColor: "#ffffff" },
+    // Oranges / Yellows
+    orange: { backgroundColor: "#ffad47", textColor: "#ffffff" },
+    amber: { backgroundColor: "#ffad47", textColor: "#ffffff" },
+    yellow: { backgroundColor: "#fbe983", textColor: "#684e07" },
+    // Neutrals
+    zinc: { backgroundColor: "#666666", textColor: "#ffffff" },
+    gray: { backgroundColor: "#666666", textColor: "#ffffff" },
+    slate: { backgroundColor: "#999999", textColor: "#ffffff" },
+  };
+  return map[slug.toLowerCase()];
+}
+
 export interface ThreadLabelRow extends TeamLabelSummary {
   appliedAt: Date;
   appliedVia: "manual" | "gmail" | "inherit";
@@ -123,12 +168,26 @@ export async function createTeamLabel(opts: {
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.teamId, opts.teamId));
 
+  const gmailColor = gmailColorForSlug(opts.color);
+
   for (const acct of accounts) {
-    if (acct.status === "disconnected" || !acct.token) continue;
+    // Only "connected" accounts hold a usable token. needs_reauth /
+    // disconnected / anything else means the refresh token is dead --
+    // attempting a Gmail write would just throw on token refresh, so
+    // skip it and let the link get created lazily after reauth.
+    if (acct.status !== "connected" || !acct.token) {
+      logger.info(
+        { teamLabelId: labelRow.id, connectedAccountId: acct.id, status: acct.status },
+        "createTeamLabel: skipping gmail label create for non-sendable account",
+      );
+      continue;
+    }
     try {
       const result = await createGmailLabel({
         encryptedRefreshToken: acct.token,
         name,
+        backgroundColor: gmailColor?.backgroundColor ?? null,
+        textColor: gmailColor?.textColor ?? null,
       });
       await db
         .insert(teamLabelGmailLinks)
@@ -201,9 +260,9 @@ export async function ensureGmailLinkForAccount(opts: {
     .limit(1);
   if (existing[0]) return existing[0].gmailLabelId;
 
-  // Need to create. Fetch the team_label name + account refresh token.
+  // Need to create. Fetch the team_label name + color + account token.
   const labelRow = await db
-    .select({ name: teamLabels.name })
+    .select({ name: teamLabels.name, color: teamLabels.color })
     .from(teamLabels)
     .where(eq(teamLabels.id, opts.teamLabelId))
     .limit(1);
@@ -220,13 +279,21 @@ export async function ensureGmailLinkForAccount(opts: {
       .where(eq(staffOutreachEmails.id, opts.connectedAccountId))
       .limit(1);
     if (!acct[0]) throw new Error("connected_account not found");
-    if (acct[0].status === "disconnected" || !acct[0].token) {
-      throw new Error("connected_account is disconnected");
+    // Only a "connected" account has a live token. needs_reauth and
+    // disconnected both mean the token is unusable for a Gmail write.
+    if (acct[0].status !== "connected" || !acct[0].token) {
+      throw new Error("connected_account is not sendable");
     }
     token = acct[0].token;
   }
 
-  const result = await createGmailLabel({ encryptedRefreshToken: token, name: labelRow[0].name });
+  const gmailColor = gmailColorForSlug(labelRow[0].color);
+  const result = await createGmailLabel({
+    encryptedRefreshToken: token,
+    name: labelRow[0].name,
+    backgroundColor: gmailColor?.backgroundColor ?? null,
+    textColor: gmailColor?.textColor ?? null,
+  });
   await db
     .insert(teamLabelGmailLinks)
     .values({
@@ -438,10 +505,14 @@ async function pushLabelChangeToGmail(opts: {
       .where(eq(staffOutreachEmails.id, thread.staffOutreachEmailId))
       .limit(1);
     const account = acct[0];
-    if (!account || account.status === "disconnected" || !account.token) {
+    // Only "connected" accounts hold a live token. needs_reauth /
+    // disconnected accounts can't take a Gmail write -- skip the push
+    // rather than throw on a dead token; the DB row is the source of
+    // truth and the next poll reconciles once the account is reauthed.
+    if (!account || account.status !== "connected" || !account.token) {
       logger.warn(
-        { threadId: opts.threadId },
-        "pushLabelChangeToGmail: connected_account disconnected, skipping gmail push",
+        { threadId: opts.threadId, status: account?.status },
+        "pushLabelChangeToGmail: connected_account not sendable, skipping gmail push",
       );
       return;
     }
