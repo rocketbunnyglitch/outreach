@@ -1073,10 +1073,25 @@ async function ingestMessage(opts: {
     // (Previous behaviour silently swallowed every email whose sender
     // domain didn't match a venue. Migration 0046 + schema relax
     // make this safe.)
-    const venueId = await resolveVenueFromAddress(fromHeader);
+    // Resolve the venue from the SENDER for inbound mail, or from the
+    // RECIPIENT(s) for outbound mail. An outbound message's From is our
+    // own connected inbox, which never matches a venue -- so a reply a
+    // staffer sent directly from Gmail (creating a thread the app hasn't
+    // seen yet) would otherwise ingest UNATTACHED. Matching the recipients
+    // tags it to the venue so that Gmail-sent correspondence still shows
+    // on the venue communication timeline + threads into the app inbox.
+    let venueId: string | null = null;
+    if (direction === "inbound") {
+      venueId = await resolveVenueFromAddress(fromHeader);
+    } else {
+      for (const addr of [...toEmailsNormalized, ...ccEmailsNormalized]) {
+        venueId = await resolveVenueFromAddress(addr);
+        if (venueId) break;
+      }
+    }
     if (!venueId) {
       logger.info(
-        { fromHeader, gmailThreadId },
+        { fromHeader, direction, gmailThreadId },
         "gmail message ingest: no venue match, ingesting as unassigned",
       );
     }
