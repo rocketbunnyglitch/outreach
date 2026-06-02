@@ -40,9 +40,31 @@
 
 import { connectedAccounts, emailMessages, emailThreads, staffMembers, venues } from "@/db/schema";
 import { db } from "@/lib/db";
-import { aliasedTable, and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { aliasedTable, and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 export type VenueCommunicationSource = "venue_id" | "email_match" | "domain_match";
+
+/**
+ * Free / consumer email providers. A venue whose website host happens
+ * to be one of these (or whose stored email is on one of these) must
+ * NOT trigger the domain_match branch: split_part(from,'@',2) =
+ * 'gmail.com' would otherwise pull in every unrelated thread from any
+ * Gmail sender. For free-provider domains we require an exact address
+ * match (email_match) instead.
+ */
+const FREE_EMAIL_DOMAINS = new Set<string>([
+  "gmail.com",
+  "yahoo.com",
+  "hotmail.com",
+  "outlook.com",
+  "icloud.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "gmx.com",
+  "live.com",
+  "msn.com",
+]);
 
 export interface VenueCommunicationThread {
   threadId: string;
@@ -140,7 +162,13 @@ export async function loadVenueCommunication(
     .select({ id: emailThreads.id })
     .from(emailThreads)
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
-    .where(and(eq(emailThreads.venueId, venueId), eq(connectedAccounts.teamId, teamId)));
+    .where(
+      and(
+        eq(emailThreads.venueId, venueId),
+        eq(connectedAccounts.teamId, teamId),
+        isNull(emailThreads.deletedAt),
+      ),
+    );
   const directIdSet = new Set(directIds.map((r) => r.id));
 
   // ----------------------------------------------------------------
@@ -171,10 +199,12 @@ export async function loadVenueCommunication(
       .where(
         and(
           eq(connectedAccounts.teamId, teamId),
+          isNull(emailThreads.deletedAt),
           or(
             sql`${emailMessages.fromEmailNormalized} = ANY(${emailList})`,
             sql`${emailMessages.toEmailsNormalized} && ${emailList}::text[]`,
             sql`${emailMessages.ccEmailsNormalized} && ${emailList}::text[]`,
+            sql`${emailMessages.bccEmailsNormalized} && ${emailList}::text[]`,
           ),
         ),
       );
@@ -195,7 +225,10 @@ export async function loadVenueCommunication(
   //    half, indexable.
   // ----------------------------------------------------------------
   const domainMatchIds = new Set<string>();
-  if (venueDomain) {
+  // Skip domain_match entirely for free / consumer providers -- matching
+  // every Gmail/Yahoo/etc sender by domain would flood the timeline with
+  // unrelated threads. Those venues rely on exact-address email_match.
+  if (venueDomain && !FREE_EMAIL_DOMAINS.has(venueDomain)) {
     const matchedRows = await db
       .selectDistinct({ threadId: emailMessages.threadId })
       .from(emailMessages)
@@ -204,6 +237,7 @@ export async function loadVenueCommunication(
       .where(
         and(
           eq(connectedAccounts.teamId, teamId),
+          isNull(emailThreads.deletedAt),
           sql`split_part(${emailMessages.fromEmailNormalized}, '@', 2) = ${venueDomain}`,
         ),
       );
@@ -253,7 +287,7 @@ export async function loadVenueCommunication(
     .from(emailThreads)
     .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
     .leftJoin(accountOwners, eq(accountOwners.id, connectedAccounts.ownerUserId))
-    .where(inArray(emailThreads.id, allIds))
+    .where(and(inArray(emailThreads.id, allIds), isNull(emailThreads.deletedAt)))
     .orderBy(desc(emailThreads.lastMessageAt));
 
   const threads: VenueCommunicationThread[] = rows.map((r) => ({
