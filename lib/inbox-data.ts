@@ -494,9 +494,16 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         // specific cityCampaignId filter (URL ?campaign=<id>), that
         // narrower constraint takes precedence — we skip this filter
         // in that case to avoid redundant SQL.
+        // Includes unattributed threads (city_campaign_id IS NULL) so
+        // freshly-arrived inbound not yet linked to a city campaign is
+        // NOT hidden by campaign scope. Without OR-NULL, selecting a
+        // campaign made every unmatched inbound vanish from the inbox.
         filter.campaignId && !filter.cityCampaignId
-          ? sql`${emailThreads.cityCampaignId} IN (
-              SELECT id FROM city_campaigns WHERE campaign_id = ${filter.campaignId}
+          ? sql`(
+              ${emailThreads.cityCampaignId} IN (
+                SELECT id FROM city_campaigns WHERE campaign_id = ${filter.campaignId}
+              )
+              OR ${emailThreads.cityCampaignId} IS NULL
             )`
           : undefined,
         filter.outreachBrandId
@@ -790,7 +797,7 @@ export async function fetchFolderCounts(opts: {
   // when no campaignId is set so the default counts span every
   // campaign on the team.
   const campaignFilter = opts.campaignId
-    ? sql`AND et.city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId})`
+    ? sql`AND (et.city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId}) OR et.city_campaign_id IS NULL)`
     : sql``;
   const result = await db.execute<{
     inbox: number;
@@ -827,7 +834,7 @@ export async function fetchFolderCounts(opts: {
         AND team_id = ${opts.currentTeamId}
         ${
           opts.campaignId
-            ? sql`AND city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId})`
+            ? sql`AND (city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId}) OR city_campaign_id IS NULL)`
             : sql``
         }
     )
@@ -1025,7 +1032,10 @@ export interface InboxThreadDetail {
   }>;
 }
 
-export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDetail | null> {
+export async function fetchThreadDetail(
+  threadId: string,
+  currentTeamId: string,
+): Promise<InboxThreadDetail | null> {
   const threadRow = await db
     .select({
       id: emailThreads.id,
@@ -1080,7 +1090,11 @@ export async function fetchThreadDetail(threadId: string): Promise<InboxThreadDe
     .leftJoin(staffMembers, eq(staffMembers.id, emailThreads.assignedStaffId))
     .leftJoin(cityCampaigns, eq(cityCampaigns.id, emailThreads.cityCampaignId))
     .leftJoin(events, eq(events.id, emailThreads.eventId))
-    .where(eq(emailThreads.id, threadId))
+    // Team-scope guard: inner-join the connected account and require
+    // it be on the operator's team, so a thread id from another team
+    // returns null (cross-team IDOR via the /inbox/[threadId] route).
+    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+    .where(and(eq(emailThreads.id, threadId), eq(connectedAccounts.teamId, currentTeamId)))
     .limit(1)
     .then((r) => r[0]);
 

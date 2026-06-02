@@ -107,7 +107,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
 
   const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts, userPrefs] =
     await Promise.all([
-      fetchThreadDetail(threadId),
+      fetchThreadDetail(threadId, currentStaff.teamId),
       fetchInboxThreads({
         folder,
         currentTeamId: currentStaff.teamId,
