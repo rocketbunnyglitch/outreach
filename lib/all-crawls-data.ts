@@ -125,8 +125,24 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
       COALESCE(sa.confirmed_wristband, 0) AS confirmed_wristband,
       COALESCE(sa.confirmed_middle, 0) + COALESCE(gmc.shared_middle_confirmed, 0) AS confirmed_middle,
       COALESCE(sa.confirmed_final, 0) AS confirmed_final,
-      COALESCE(sa.total_slots, 0) AS total_slots,
-      COALESCE(sa.open_slots, 0) AS open_slots,
+      -- total/open are the REQUIRED slot mix per crawl format, NOT a raw
+      -- count of attached venue_events. Previously an empty crawl counted
+      -- 0 total + 0 open, so it looked "complete" instead of "needs all
+      -- its slots". Required counts (required_*_count) already encode the
+      -- format (day_party has required_final_count = 0), matching
+      -- city-progress.ts. Confirmed is capped per role so over-filling one
+      -- role can't drive open_slots negative or mask another empty role.
+      (e.required_wristband_count + e.required_middle_count + e.required_final_count)::int AS total_slots,
+      GREATEST(
+        0,
+        (e.required_wristband_count + e.required_middle_count + e.required_final_count)
+          - LEAST(COALESCE(sa.confirmed_wristband, 0), e.required_wristband_count)
+          - LEAST(
+              COALESCE(sa.confirmed_middle, 0) + COALESCE(gmc.shared_middle_confirmed, 0),
+              e.required_middle_count
+            )
+          - LEAST(COALESCE(sa.confirmed_final, 0), e.required_final_count)
+      )::int AS open_slots,
       cc.status::text AS city_campaign_status
     FROM events e
     JOIN city_campaigns cc ON cc.id = e.city_campaign_id
