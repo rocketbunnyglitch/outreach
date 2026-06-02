@@ -64,7 +64,7 @@
  */
 
 import "dotenv/config";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
@@ -643,12 +643,39 @@ function readinessValues(
   return rows;
 }
 
+/**
+ * Read the authoritative deployed commit + build time from
+ * .next/.deployed-commit, which deploy.sh stamps with the real commit
+ * on every deploy. Used for backup provenance because the standalone
+ * (tsx) cron context does not get the build-baked BUILD_* env the Next
+ * server has -- it would otherwise report stale .env values. Returns
+ * null when the file is absent (e.g. dev), so the caller falls back to
+ * getVersion().
+ */
+function deployedBuildInfo(): { commit: string; builtAt: string } | null {
+  try {
+    const p = join(process.cwd(), ".next", ".deployed-commit");
+    if (!existsSync(p)) return null;
+    const commit = readFileSync(p, "utf8").trim().slice(0, 12);
+    if (!commit) return null;
+    return { commit, builtAt: statSync(p).mtime.toISOString() };
+  } catch {
+    return null;
+  }
+}
+
 function metadataValues(
   campaign: CampaignRow,
   cityCount: number,
   eventCount: number,
 ): (string | number)[][] {
   const v = getVersion();
+  // getVersion() reads BUILD_* from process.env. The Next build bakes the
+  // real values in, but this standalone script (run via tsx by the cron)
+  // only sees whatever BUILD_* sit in .env -- which can be stale. The
+  // deploy stamps the authoritative commit into .next/.deployed-commit, so
+  // prefer that for the disaster-recovery provenance (commit + build time).
+  const deployed = deployedBuildInfo();
   return [
     ["Field", "Value"],
     ["WARNING", "Backup export only -- do not edit here. Edits are overwritten nightly."],
@@ -661,8 +688,8 @@ function metadataValues(
     ["Campaign revenue goal (USD)", dollars(campaign.revenue_goal_cents)],
     ["Exported at (UTC)", new Date().toISOString()],
     ["App version", v.version],
-    ["App commit", v.commit],
-    ["Built at", v.builtAt],
+    ["App commit", deployed?.commit ?? v.commit],
+    ["Built at", deployed?.builtAt ?? v.builtAt],
     ["Environment", process.env.NODE_ENV ?? "unknown"],
     ["Host", hostname()],
     ["Note", "No secrets, OAuth tokens, or credentials are ever exported here."],

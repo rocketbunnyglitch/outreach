@@ -105,7 +105,7 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
       await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
       alert("Debug bundle copied. Paste it to support / Claude with your question.");
     } catch {
-      alert("Couldn't copy to clipboard. Thread id: " + threadId);
+      alert(`Couldn't copy to clipboard. Thread id: ${threadId}`);
     }
   }
 
