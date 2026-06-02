@@ -116,6 +116,87 @@ export async function getAdminOrNull(): Promise<AuthContext | null> {
 }
 
 /**
+ * Role hierarchy (highest -> lowest):
+ *
+ *   admin    -- can do anything, including destructive bulk operations.
+ *   lead     -- can manage shared resources (labels, suppression,
+ *               cadence templates) but not user provisioning or
+ *               cross-team analytics.
+ *   outreach -- the default; can work threads, send mail, manage
+ *               their own assignments + connections.
+ *   readonly -- can view everything they would normally see but
+ *               cannot mutate (no send, no assign, no label).
+ *
+ * STAFF_ROLE_RANK assigns a numeric tier so we can compare roles
+ * with > / >= rather than chained equality. Higher = more
+ * privileged. The numbers themselves are arbitrary; only the
+ * order matters.
+ *
+ * The hierarchy is FLAT in the schema (db/schema/enums.ts) -- this
+ * helper is the ONLY canonical place that knows "lead is between
+ * admin and outreach." Call sites should use the helpers below,
+ * never compare rank numbers directly, so the order can change
+ * here in one place if the spec adds a new tier.
+ */
+export type StaffRole = StaffMember["role"];
+
+const STAFF_ROLE_RANK: Record<StaffRole, number> = {
+  admin: 40,
+  lead: 30,
+  outreach: 20,
+  readonly: 10,
+};
+
+/**
+ * Pure predicate: does `staff` have AT LEAST the privilege level
+ * of `minRole`? Useful in JSX (`{hasMinimumRole(staff, "lead") &&
+ * <ManageLabelsButton />}`) and in server-side branching where
+ * throwing on insufficient role would be wrong (e.g. one of
+ * several conditional fetches).
+ */
+export function hasMinimumRole(staff: StaffMember, minRole: StaffRole): boolean {
+  return STAFF_ROLE_RANK[staff.role] >= STAFF_ROLE_RANK[minRole];
+}
+
+/**
+ * Like requireStaff, but additionally enforces role >= `minRole`.
+ *
+ * Behaves like requireAdmin for under-privileged callers: returns a
+ * Next 404 (via notFound()) rather than a 403 so we don't leak the
+ * existence of higher-tier routes to lower-tier staff. The route
+ * just "doesn't exist" from their perspective.
+ *
+ * Examples:
+ *   - requireMinimumRole("admin")   -- equivalent to requireAdmin
+ *   - requireMinimumRole("lead")    -- admin OR lead
+ *   - requireMinimumRole("outreach") -- everyone except readonly
+ *
+ * Use this for surfaces a lead should be able to touch (label
+ * management, cadence templates, suppression list) but not the
+ * destructive admin-only ones (purge a city, hard-delete a venue).
+ */
+export async function requireMinimumRole(minRole: StaffRole): Promise<AuthContext> {
+  const ctx = await requireStaff();
+  if (!hasMinimumRole(ctx.staff, minRole)) {
+    const { notFound } = await import("next/navigation");
+    notFound();
+  }
+  return ctx;
+}
+
+/**
+ * Pure read variant of requireMinimumRole: returns null when the
+ * caller doesn't meet the bar. Mirrors getAdminOrNull's shape so
+ * shared nav / sidebar components can conditionally render rows
+ * without forcing a redirect.
+ */
+export async function getMinimumRoleOrNull(minRole: StaffRole): Promise<AuthContext | null> {
+  const ctx = await getCurrentStaff();
+  if (!ctx || !hasMinimumRole(ctx.staff, minRole)) return null;
+  return ctx;
+}
+
+/**
  * Superuser tier — strictly above `admin`. Reserved for irreversible
  * destructive operations (permanent hard-delete of cities, venues, etc.)
  * that even a normal admin shouldn't be able to do. Driven by env so we

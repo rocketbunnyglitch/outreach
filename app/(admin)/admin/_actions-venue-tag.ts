@@ -16,7 +16,7 @@
  */
 
 import { backfillVenueTypes } from "@/lib/ai-venue-type-tag";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
@@ -37,7 +37,7 @@ export async function backfillVenueTypesForAdmin(input?: {
   }>
 > {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") {
+  if (!hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "Admin role required." };
   }
 
@@ -74,7 +74,7 @@ export async function backfillVenueTypesForAdmin(input?: {
  */
 export async function getUntaggedVenueCount(): Promise<number> {
   const { staff } = await requireStaff();
-  if (staff.role !== "admin") return 0;
+  if (!hasMinimumRole(staff, "admin")) return 0;
   const { db } = await import("@/lib/db");
   const { venues } = await import("@/db/schema");
   const { sql } = await import("drizzle-orm");
