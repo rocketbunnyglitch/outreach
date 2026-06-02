@@ -38,7 +38,7 @@ import {
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, desc, eq, gte, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 /** Normalise an email address for comparison: lowercase + trim. */
 export function normaliseEmail(raw: string): string {
@@ -572,7 +572,13 @@ async function findDuplicateOutreach(opts: {
     ? await db
         .select({ id: users.id, displayName: users.displayName })
         .from(users)
-        .where(sql`${users.id} = ANY(${ownerIds})`)
+        // Use drizzle inArray, NOT sql`= ANY(${ownerIds})`. Interpolating a
+        // JS array into `= ANY(${...})` makes the pg driver serialize it as
+        // a bare scalar, so a single-owner list (the common case) threw
+        // 22P02 "malformed array literal" and 500'd EVERY send that hit a
+        // duplicate-thread owner. See lib/tracker-status.ts for the same
+        // documented footgun.
+        .where(inArray(users.id, ownerIds))
     : [];
   const ownerMap = new Map(owners.map((o) => [o.id, o.displayName]));
 

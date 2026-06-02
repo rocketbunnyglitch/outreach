@@ -233,7 +233,12 @@ export async function loadVenueCommunication(
           eq(connectedAccounts.teamId, teamId),
           isNull(emailThreads.deletedAt),
           or(
-            sql`${emailMessages.fromEmailNormalized} = ANY(${emailList})`,
+            // inArray, NOT sql`= ANY(${emailList})` — the latter mis-binds
+            // the JS array as a scalar (22P02 malformed array literal) and
+            // this query is .catch(()=>null)'d, so it silently dropped the
+            // venue timeline. The && overlap lines below correctly cast via
+            // ${emailList}::text[]; this scalar-column match needs inArray.
+            inArray(emailMessages.fromEmailNormalized, emailList),
             sql`${emailMessages.toEmailsNormalized} && ${emailList}::text[]`,
             sql`${emailMessages.ccEmailsNormalized} && ${emailList}::text[]`,
             sql`${emailMessages.bccEmailsNormalized} && ${emailList}::text[]`,
@@ -309,7 +314,14 @@ export async function loadVenueCommunication(
           and(
             eq(connectedAccounts.teamId, teamId),
             isNull(emailThreads.deletedAt),
-            sql`split_part(${emailMessages.fromEmailNormalized}, '@', 2) = ANY(${aliasDomains})`,
+            // IN (...) with sql.join, NOT `= ANY(${aliasDomains})`: the LHS
+            // is an expression (split_part) so inArray can't be used, and
+            // interpolating the JS array into = ANY mis-binds it as a scalar
+            // (22P02). aliasDomains is guarded non-empty above.
+            sql`split_part(${emailMessages.fromEmailNormalized}, '@', 2) IN (${sql.join(
+              aliasDomains.map((d) => sql`${d}`),
+              sql`, `,
+            )})`,
           ),
         );
       for (const r of matchedRows) {
