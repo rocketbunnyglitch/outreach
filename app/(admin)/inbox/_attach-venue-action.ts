@@ -20,13 +20,20 @@
  *     email_threads.venue_id. revalidatePath so the page updates.
  */
 
-import { cities, emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
+import {
+  cities,
+  emailMessages,
+  emailThreads,
+  staffOutreachEmails,
+  venueDomainAliases,
+  venues,
+} from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { extractEmailAddress } from "@/lib/email-address";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { and, asc, eq, ilike, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,6 +43,11 @@ export interface VenueSearchResult {
   name: string;
   cityName: string | null;
   address: string | null;
+  /** When the row matched on a domain alias (not a name match), this
+   *  carries the matching alias domain so the dropdown can show e.g.
+   *  "Lavelle (matches alias: taohospitalitygroup.com)". Null when
+   *  the row matched on venue name. */
+  aliasMatch: string | null;
 }
 
 /**
@@ -43,27 +55,81 @@ export interface VenueSearchResult {
  * filter by team (venues aren't team-scoped in the current schema)
  * but we DO require an authenticated session.
  *
- * Caps at 10 results — the dropdown is meant for narrowing, not
- * browsing. Operators should type at least 2 chars.
+ * Matches in TWO axes (UNION):
+ *   1. venues.name ILIKE %q% -- the obvious name match.
+ *   2. venue_domain_aliases.domain ILIKE %q% -- so an operator
+ *      looking at mike@taohospitalitygroup.com can type "tao" or
+ *      "taohospitality" and find Lavelle (alias domain), even
+ *      though Lavelle has no "tao" in its name.
+ *
+ * Name matches rank first (most common case + most predictable);
+ * alias matches follow. Within each axis, ordered by venue name
+ * ascending. The combined result is DISTINCT ON venue id so a
+ * venue that matches both axes (rare: name AND alias both contain
+ * the query) appears once.
+ *
+ * Caps at 10 results -- the dropdown is meant for narrowing, not
+ * browsing.
  */
 export async function searchVenuesForThread(query: string): Promise<VenueSearchResult[]> {
   await requireStaff();
   const q = query.trim();
   if (q.length < 2) return [];
 
+  // Single query with a LEFT JOIN on aliases. We surface the
+  // matched alias domain when the alias side fired the match.
+  // Drizzle doesn't model "DISTINCT ON" well, so we just emit
+  // every match and dedupe in JS afterwards -- the cap is 10
+  // pre-dedupe (raised to 20 to leave headroom for collisions)
+  // so the cost of dedupe in JS is negligible.
   const rows = await db
     .select({
       id: venues.id,
       name: venues.name,
       cityName: cities.name,
       address: venues.address,
+      // The aliased domain when this row's match came via the
+      // alias side. Null when matched via the name side.
+      aliasDomain: sql<
+        string | null
+      >`CASE WHEN ${venueDomainAliases.domain} IS NOT NULL AND ${venueDomainAliases.domain} ILIKE ${`%${q}%`} THEN ${venueDomainAliases.domain} ELSE NULL END`.as(
+        "alias_domain",
+      ),
+      // Rank: 0 = name match, 1 = alias-only match. Used by ORDER BY
+      // so name matches surface first.
+      matchRank: sql<number>`CASE WHEN ${venues.name} ILIKE ${`%${q}%`} THEN 0 ELSE 1 END`.as(
+        "match_rank",
+      ),
     })
     .from(venues)
     .leftJoin(cities, eq(cities.id, venues.cityId))
-    .where(and(isNull(venues.archivedAt), ilike(venues.name, `%${q}%`)))
-    .orderBy(asc(venues.name))
-    .limit(10);
-  return rows;
+    .leftJoin(venueDomainAliases, eq(venueDomainAliases.venueId, venues.id))
+    .where(
+      and(
+        isNull(venues.archivedAt),
+        or(ilike(venues.name, `%${q}%`), ilike(venueDomainAliases.domain, `%${q}%`)),
+      ),
+    )
+    .orderBy(asc(sql`match_rank`), asc(venues.name), desc(venueDomainAliases.createdAt))
+    .limit(20);
+
+  // Dedupe on venue id, keeping the first occurrence (name match
+  // wins over alias match thanks to the ORDER BY).
+  const seen = new Set<string>();
+  const out: VenueSearchResult[] = [];
+  for (const r of rows) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push({
+      id: r.id,
+      name: r.name,
+      cityName: r.cityName,
+      address: r.address,
+      aliasMatch: r.aliasDomain,
+    });
+    if (out.length >= 10) break;
+  }
+  return out;
 }
 
 /**

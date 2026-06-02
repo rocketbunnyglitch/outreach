@@ -174,6 +174,11 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
                         {[v.cityName, v.address].filter(Boolean).join(" · ")}
                       </span>
                     )}
+                    {v.aliasMatch && (
+                      <span className="truncate text-[10px] text-blue-600 dark:text-blue-400">
+                        matches alias: {v.aliasMatch}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
