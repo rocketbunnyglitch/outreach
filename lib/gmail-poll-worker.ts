@@ -1024,10 +1024,22 @@ async function ingestMessage(opts: {
   let threadId: string;
   let threadCreated = false;
 
+  // ACCOUNT-SCOPED lookup: a Gmail thread id is only unique WITHIN a
+  // connected account, not globally. Two connected accounts can each
+  // see the same Gmail thread id (e.g. both were on the same external
+  // conversation), so matching on gmail_thread_id ALONE would cross-
+  // wire account B's inbound message onto account A's local thread.
+  // Scope by staff_outreach_email_id (= this inbox's connected account)
+  // to match the email_threads_thread_staff_unique index.
   const existingThread = await db
     .select({ id: emailThreads.id, venueId: emailThreads.venueId })
     .from(emailThreads)
-    .where(eq(emailThreads.gmailThreadId, gmailThreadId))
+    .where(
+      and(
+        eq(emailThreads.gmailThreadId, gmailThreadId),
+        eq(emailThreads.staffOutreachEmailId, inbox.id),
+      ),
+    )
     .limit(1);
 
   if (existingThread.length > 0 && existingThread[0]) {
