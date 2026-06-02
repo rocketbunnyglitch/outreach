@@ -67,15 +67,16 @@ const HIGH_INTENT_WAITING_HOURS = 24;
  * surface it as stale so a team lead can assign it before the
  * generic 4-hour Rule 1 catches it later.
  *
- * Folded into the canonical CASE here (after originally living in
- * lib/stale-rules-aux.ts) so stale_since stays stable across cron
- * ticks. The aux-pass approach in that module had a known
+ * This rule was previously implemented as a separate aux pass
+ * that ran after the canonical tagger, which had a known
  * timestamp-churn bug: the main tagger would clear is_stale on
- * each tick (the thread doesn't yet meet Rule 1 at 1h-4h), then
+ * each tick (the thread didn't yet meet Rule 1 at 1h-4h), then
  * the aux pass would re-flag it with stale_since = NOW(), so the
  * "stale for X minutes" counter in the UI reset every cron tick.
- * Now that this rule lives in the same CASE as the others, the
- * preserved-stale_since branch in the UPDATE works correctly.
+ * Folding it into the canonical CASE here so it's evaluated in
+ * the same UPDATE pass as the other rules; the preserved-
+ * stale_since branch (CASE WHEN is_stale THEN stale_since ELSE
+ * NOW() END) works correctly across rule transitions.
  */
 const UNASSIGNED_INBOUND_HOURS = 1;
 

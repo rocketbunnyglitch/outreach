@@ -31,13 +31,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    // The canonical runStaleTagger now covers Rule 5 (unassigned
-    // needs_reply > 1h) -- it used to live in
-    // lib/stale-rules-aux.ts as a separate pass invoked here, but
-    // the aux-pass approach had a known timestamp-churn bug
-    // (stale_since reset on every tick). Folding it into the
-    // canonical CASE fixes that. See lib/stale-tagger.ts for the
-    // full rule list.
+    // The canonical runStaleTagger evaluates all five stale rules
+    // (including Rule 5: unassigned needs_reply > 1h) in a single
+    // SQL CASE expression -- see lib/stale-tagger.ts for the full
+    // rule list. An earlier iteration had Rule 5 in a separate
+    // aux pass that re-stamped stale_since on every tick; folding
+    // it into the canonical CASE fixed that timestamp churn.
     const result = await runStaleTagger();
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
