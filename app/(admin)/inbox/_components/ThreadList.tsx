@@ -258,48 +258,52 @@ function ThreadRow({
         )}
 
         <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-7">
-          {/* Classification chip */}
-          {thread.classification !== "unclassified" && (
-            <Chip
-              tone={
-                CLASSIFICATION_TONE[thread.classification] ?? "text-zinc-500 dark:text-zinc-400"
-              }
-              icon={CLASSIFICATION_ICON[thread.classification]}
-            >
-              {thread.classification.replace("_", " ")}
-            </Chip>
-          )}
+          {/* Low-signal metadata (classification, venue, city, campaign,
+              owner mailbox) is revealed on ROW HOVER to keep the resting
+              row clean -- the alert badges + labels below stay always
+              visible. `contents` lets these flow into the same flex-wrap
+              when shown. (On touch, where there's no hover, the row stays
+              minimal; full metadata is on the thread.) */}
+          <span className="hidden group-hover/row:contents">
+            {/* Classification chip */}
+            {thread.classification !== "unclassified" && (
+              <Chip
+                tone={
+                  CLASSIFICATION_TONE[thread.classification] ?? "text-zinc-500 dark:text-zinc-400"
+                }
+                icon={CLASSIFICATION_ICON[thread.classification]}
+              >
+                {thread.classification.replace("_", " ")}
+              </Chip>
+            )}
 
-          {/* Venue chip — only when matched to a venue AND the venue name
-              isn't already the sender (avoids redundant chips). */}
-          {thread.venueName && thread.venueName !== thread.lastSenderName && (
-            <Chip tone="text-zinc-500">{thread.venueName}</Chip>
-          )}
+            {/* Venue chip — only when matched to a venue AND the venue name
+                isn't already the sender (avoids redundant chips). */}
+            {thread.venueName && thread.venueName !== thread.lastSenderName && (
+              <Chip tone="text-zinc-500">{thread.venueName}</Chip>
+            )}
 
-          {/* City + brand */}
-          {thread.cityName && <Chip tone="text-zinc-500">{thread.cityName}</Chip>}
+            {/* City + brand */}
+            {thread.cityName && <Chip tone="text-zinc-500">{thread.cityName}</Chip>}
 
-          {/* Campaign + daypart */}
-          {thread.campaignName && (
-            <Chip tone="text-zinc-500">
-              {thread.campaignName}
-              {thread.eventDayPart && ` · ${formatDayPart(thread.eventDayPart)}`}
-              {thread.eventCrawlNumber ? ` #${thread.eventCrawlNumber}` : ""}
-            </Chip>
-          )}
+            {/* Campaign + daypart */}
+            {thread.campaignName && (
+              <Chip tone="text-zinc-500">
+                {thread.campaignName}
+                {thread.eventDayPart && ` · ${formatDayPart(thread.eventDayPart)}`}
+                {thread.eventCrawlNumber ? ` #${thread.eventCrawlNumber}` : ""}
+              </Chip>
+            )}
 
-          {/* Account owner + Gmail address — surfaced as a small
-              "sender mailbox" chip so operators can see which
-              connected account this thread flows through without
-              opening the thread. Matches the Gmail-parity spec
-              requirement to show: staff owner + connected email
-              chip. The owner glyph is a Mail icon for clarity. */}
-          {thread.accountOwnerName && (
-            <Chip tone="text-zinc-500">
-              <Mail className="mr-0.5 inline h-2.5 w-2.5" />
-              {thread.accountOwnerName} · {thread.accountEmail}
-            </Chip>
-          )}
+            {/* Account owner + Gmail address — which connected account this
+                thread flows through. Repetitive at rest, so hover-only. */}
+            {thread.accountOwnerName && (
+              <Chip tone="text-zinc-500">
+                <Mail className="mr-0.5 inline h-2.5 w-2.5" />
+                {thread.accountOwnerName} · {thread.accountEmail}
+              </Chip>
+            )}
+          </span>
 
           {/* =====================================================
               ENGINE STATUS PILLS
@@ -364,7 +368,7 @@ function ThreadRow({
               clicks Assign on the thread, the badge disappears. */}
           {thread.state === "needs_reply" && thread.assignedStaffId === null && (
             <span
-              className="inline-flex items-center gap-1 rounded-sm bg-zinc-100 px-1.5 py-0.5 font-mono text-[9px] text-zinc-700 uppercase tracking-widest dark:bg-zinc-800 dark:text-zinc-300"
+              className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
               title="No operator assigned. Click Assign on the thread to claim it."
             >
               <UserX className="h-2.5 w-2.5" />

@@ -377,6 +377,12 @@ h1 {
   padding-left: 1em;
   margin-top: 1em;
   color: rgb(82 82 91);
+  /* Folded by default (Gmail-style); MessageCard's toggle adds
+     .show-quoted to the prose wrapper to reveal it. */
+  display: none;
+}
+.inbox-prose.show-quoted .gmail_quote {
+  display: block;
 }
 
 .dark .inbox-prose .gmail_quote {

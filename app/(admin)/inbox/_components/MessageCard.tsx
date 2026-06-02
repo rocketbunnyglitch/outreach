@@ -34,6 +34,11 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const isInbound = message.direction === "inbound";
+  // Quoted-reply history (Gmail wraps it in .gmail_quote) is folded by
+  // default behind a toggle so the new content reads first, like Gmail's
+  // "..." control. globals.css hides .gmail_quote unless .show-quoted is set.
+  const hasQuotedText = !!message.bodySafeHtml && message.bodySafeHtml.includes("gmail_quote");
+  const [showQuoted, setShowQuoted] = useState(false);
 
   if (collapsed) {
     // One-line summary row. Click anywhere to expand.
@@ -141,11 +146,26 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
             3. "(empty body)" — both null.
         */}
         {message.bodySafeHtml ? (
-          <div
-            className="inbox-prose max-w-prose text-sm text-zinc-800 leading-relaxed dark:text-zinc-200"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized server-side via DOMPurify; see lib/email-sanitize.ts
-            dangerouslySetInnerHTML={{ __html: message.bodySafeHtml }}
-          />
+          <>
+            <div
+              className={cn(
+                "inbox-prose max-w-prose text-sm text-zinc-800 leading-relaxed dark:text-zinc-200",
+                showQuoted && "show-quoted",
+              )}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized server-side via DOMPurify; see lib/email-sanitize.ts
+              dangerouslySetInnerHTML={{ __html: message.bodySafeHtml }}
+            />
+            {hasQuotedText && (
+              <button
+                type="button"
+                onClick={() => setShowQuoted((v) => !v)}
+                title={showQuoted ? "Hide quoted text" : "Show quoted text"}
+                className="mt-1 inline-flex items-center rounded border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900/50 dark:hover:bg-zinc-800"
+              >
+                {showQuoted ? "Hide quoted text" : "..."}
+              </button>
+            )}
+          </>
         ) : message.bodyText ? (
           // Cap the measure (max-w-prose) like the HTML branch so plain-text
           // emails don't stretch the full pane width -- Gmail caps line length.
