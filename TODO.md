@@ -2,7 +2,19 @@
 
 > Running list of small tasks, bugs, and follow-ups too minor for a separate issue. When the list exceeds ~20 items, or an item exceeds half a day of work, it graduates to a GitHub issue. Clean regularly.
 
-Last updated: end of Phase 1.
+Last updated: June 2026.
+
+> NOTE: The Phase 0-1 era items below are historical and mostly superseded
+> (the app is in production). The live backlog now lives in the June 2026
+> hardening audit + docs/QA_MATRIX.md. Open code follow-ups at time of
+> writing: all-crawls total_slots should count required slots per crawl
+> format (lib/all-crawls-data.ts); wire domain-alias matching into the venue
+> timeline reader (lib/venue-communication.ts); auto-populate timezone/coords
+> on CSV city import; add normalized name+address dedupe to the Maps venue
+> add; remove dead sendThreadReply; expand automated tests. Items requiring
+> live accounts (Gmail backfill/labels/stars, Sheets export, Maps paste-add)
+> are tracked in docs/QA_MATRIX.md and must be human-verified before the
+> 9/10 gate.
 
 ---
 

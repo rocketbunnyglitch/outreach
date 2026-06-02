@@ -4,7 +4,7 @@ A multi-brand CRM, outreach automation platform, and operations management syste
 
 ## Status
 
-**Phase 0** — infrastructure prep, repository scaffold complete. Next.js app boots locally with a working health endpoint and version footer. Server-side setup pending SSH access.
+**Production-hardening (June 2026).** Deployed and running in production (pm2 on the VPS, nightly Google Sheets backup armed). The Gmail inbox/CRM, campaign/city/crawl scheduling, venue directory, and Sheets export are all live. A June 2026 hardening audit scored both the inbox and non-inbox layers at ~7/10 against a 9/10 production gate; remaining work and known limitations are tracked in `ROADMAP.md` and `docs/QA_MATRIX.md`. Live QA on real Gmail/Sheets/Maps accounts is required before declaring the gate met.
 
 See `ROADMAP.md` for the full phase plan and current progress.
 
@@ -35,7 +35,7 @@ docker --version # for local Postgres + Redis
 cp .env.example .env       # default values work with docker compose
 docker compose up -d       # starts Postgres + PostGIS + Redis
 pnpm install
-pnpm db:migrate            # runs Drizzle migrations (empty in Phase 0)
+pnpm db:migrate            # runs Drizzle migrations (90+ SQL migrations in db/migrations)
 pnpm dev                   # http://localhost:3001
 ```
 
@@ -46,15 +46,14 @@ Visit `http://localhost:3001` for the hello-world page and `http://localhost:300
 ZIP-based deploys to the existing Ubuntu server, modeled on the referral engine's deploy pattern (DECISIONS.md#003).
 
 ```bash
-# Build a release
-pnpm build
-# (zip the standalone output + needed files — script in Phase 0 wrap-up)
-
-# On the server
-bash scripts/update-from-zip.sh /tmp/crawl-engine-X.Y.Z.zip
+# Deploy (production runs git-based, not zip)
+# On the VPS: pulls main, npm ci, applies new SQL migrations, builds,
+# staggered zero-downtime pm2 reload, then a health check.
+bash /root/deploy.sh
+# Rollback: bash /root/deploy.sh --rollback
 ```
 
-The deploy script handles snapshotting, rsync, migrations, build, PM2 restart, and health verification with three-tier exit codes.
+The deploy script handles fetch/rebase, migrations, build, staggered PM2 reload, and health verification (it self-syncs from scripts/deploy.sh in the repo).
 
 ## License
 
@@ -62,4 +61,4 @@ Proprietary. Internal use only.
 
 ## Version
 
-Current production version: `v0.1.0-pre` (Phase 0)
+Current production version: `v0.1.0-pre` (deployed; see `/api/health` for the running commit). Hardening pass in progress toward the 9/10 production gate.

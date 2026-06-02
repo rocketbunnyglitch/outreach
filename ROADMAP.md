@@ -2,7 +2,14 @@
 
 > Current build phase, what's done, what's next. Mirrors Section 11 of the canonical spec. Updated weekly during active build.
 
-Last updated: Phase 0 scaffold.
+Last updated: June 2026 - production-hardening pass.
+
+> CURRENT STATE: The app is deployed and in production use (Gmail inbox/CRM,
+> campaign/city/crawl scheduling, venue directory, nightly Google Sheets
+> backup). A June 2026 audit scored the inbox and non-inbox layers at ~7/10
+> against a 9/10 production gate. The phase tables below are historical and
+> may lag the code; treat docs/QA_MATRIX.md plus the audit backlog as the
+> source of truth for what still needs work and live QA.
 
 ---
 
