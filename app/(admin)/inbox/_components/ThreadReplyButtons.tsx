@@ -89,29 +89,26 @@ export function ThreadReplyButtons({ threadId }: Props) {
   }, [threadId]);
 
   return (
-    <div className="flex items-center gap-2 border-zinc-200/80 border-y bg-zinc-50/60 px-6 py-3 dark:border-zinc-800/60 dark:bg-zinc-900/40">
+    <div className="flex items-center gap-2 border-zinc-200 border-y bg-zinc-50/70 px-4 py-3 sm:px-6 dark:border-zinc-800 dark:bg-zinc-900/60">
       <ReplyButton
         onClick={() => open("reply")}
         disabled={pending}
-        icon={<Reply className="h-3 w-3" />}
+        icon={<Reply className="h-4 w-4" />}
         label="Reply"
         primary
       />
       <ReplyButton
         onClick={() => open("reply_all")}
         disabled={pending}
-        icon={<ReplyAll className="h-3 w-3" />}
+        icon={<ReplyAll className="h-4 w-4" />}
         label="Reply all"
       />
       <ReplyButton
         onClick={() => open("forward")}
         disabled={pending}
-        icon={<Forward className="h-3 w-3" />}
+        icon={<Forward className="h-4 w-4" />}
         label="Forward"
       />
-      <span className="ml-auto inline-flex items-center gap-1 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
-        Opens inline · pop out for full window
-      </span>
     </div>
   );
 }
@@ -137,7 +134,7 @@ function ReplyButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 font-medium text-xs disabled:opacity-50 ${cls}`}
+      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 font-medium text-sm disabled:opacity-50 ${cls}`}
     >
       {icon}
       {label}
