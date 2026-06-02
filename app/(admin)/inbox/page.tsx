@@ -27,6 +27,7 @@ import { InboxPresenceBar } from "./_components/InboxPresenceBar";
 import { InboxRailTrigger } from "./_components/InboxRail";
 import { InboxScopeBar } from "./_components/InboxScopeBar";
 import { InboxShell } from "./_components/InboxShell";
+import { InboxVisibilityToggle, type VisibilityScope } from "./_components/InboxVisibilityToggle";
 import { ThreadListWithBulk } from "./_components/ThreadListWithBulk";
 import { UserPreferencesHydrator } from "./_components/UserPreferencesHydrator";
 import { InboxKeyboardNav } from "./_components/inbox-keyboard-nav";
@@ -162,6 +163,11 @@ export default async function InboxPage({ searchParams }: Props) {
   // the broad filter when the narrow one is also set (see
   // lib/inbox-data.ts).
   const allCampaignsExplicit = params.allCampaigns === "1";
+  // Visibility scope for the top toggle. mine = own accounts only (the
+  // `mine` filter restricts to ownerUserId = me, so ?accounts= can't widen
+  // it); team = all team accounts, all campaigns; campaign = team accounts
+  // scoped to the active campaign. Send authority is unaffected (own-only).
+  const visScope: VisibilityScope = mine ? "mine" : allCampaignsExplicit ? "team" : "campaign";
   // Hoist the full campaign context so we can use it for BOTH the
   // scope filter AND the visible banner below. When the operator
   // narrowed via ?campaign= or opted out via ?allCampaigns=1, we
@@ -228,11 +234,11 @@ export default async function InboxPage({ searchParams }: Props) {
     loadVisibleAccounts({
       currentUserId: currentStaff.id,
       currentTeamId: currentStaff.teamId,
-      // Admin + lead see every team account (the team-wide account
-      // view the spec requires for leads). Staff see only their own.
-      // Future: a finer-grained "team accounts I have access to"
-      // model will go here.
-      canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "lead"),
+      // Visibility follows the top scope toggle, not role: in team /
+      // campaign mode every operator can SEE the team's accounts (to
+      // avoid duplicate outreach); in "mine" mode the switcher shows
+      // only their own. SEND authority stays role/ownership-gated below.
+      canSeeAllTeamAccounts: visScope !== "mine",
       // SEND authority is narrower than visibility: only admins get
       // the cross-inbox send override (lead visibility != send).
       isAdmin: hasMinimumRole(currentStaff, "admin"),
@@ -273,6 +279,8 @@ export default async function InboxPage({ searchParams }: Props) {
   return (
     <>
       <UserPreferencesHydrator userId={currentStaff.id} />
+      {/* Visibility scope toggle, pinned above the inbox shell. */}
+      <InboxVisibilityToggle scope={visScope} />
       <InboxShell
         hasThreadSelected={false}
         topRight={
