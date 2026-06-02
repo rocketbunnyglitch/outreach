@@ -10,6 +10,14 @@
  *     server HTML didn't match the client tree, so React bails and never
  *     hydrates — the page paints but is dead to clicks. Often intermittent
  *     (timing/extension/DOM-race), so a single fresh reload recovers.
+ *  3. Stale Server Actions after a deploy ("Failed to find Server Action
+ *     \"x\". This request might be from an older or newer deployment."). A
+ *     tab loaded before a deploy holds the OLD action IDs; the new server
+ *     rejects them, so the click silently does nothing — operators reported
+ *     "I click and nothing happens." Unlike a server-side render throw (whose
+ *     message Next omits in prod), this error is raised by the CLIENT action
+ *     runtime, so its text is intact and matchable. A one-time reload pulls
+ *     the current bundle with valid action IDs.
  *
  * The root document is served no-store, so a plain reload pulls the current
  * build's HTML + matching chunks and re-runs hydration cleanly. We reload
@@ -31,6 +39,13 @@ const CHUNK_ERROR_RE =
 const HYDRATION_ERROR_RE =
   /Minified React error #(?:418|419|421|422|423|424|425)\b|Hydration failed|error while hydrating|hydration mismatch|Text content does ?n['’]?t match|\bat \$R[BCST]\b|\$R[BCST]\s*\(|reading 'parentNode'/i;
 
+// Deployment-skew Server Action failure. Raised client-side by Next's
+// action runtime when a tab holds action IDs from a previous build, so the
+// message survives prod minification (unlike server render throws). One
+// reload pulls the matching bundle.
+const STALE_ACTION_RE =
+  /Failed to find Server Action|action.*from a (?:different|older|newer) deployment|Server Action.*(?:older|newer) deployment/i;
+
 function matches(value: unknown, re: RegExp): boolean {
   if (!value) return false;
   if (typeof value === "string") return re.test(value);
@@ -47,15 +62,24 @@ export function looksLikeHydrationError(value: unknown): boolean {
   return matches(value, HYDRATION_ERROR_RE);
 }
 
+export function looksLikeStaleServerAction(value: unknown): boolean {
+  return matches(value, STALE_ACTION_RE);
+}
+
 /**
- * If `value` is a recoverable client failure (stale chunk OR hydration
- * mismatch), trigger a one-time reload to pull the current build and re-run
- * hydration; return true. Returns false (no reload) otherwise, or while the
- * cooldown is still active.
+ * If `value` is a recoverable client failure (stale chunk, hydration
+ * mismatch, OR a deployment-skew Server Action), trigger a one-time reload
+ * to pull the current build and re-run hydration; return true. Returns false
+ * (no reload) otherwise, or while the cooldown is still active.
  */
 export function maybeReloadForChunkError(value: unknown): boolean {
   if (typeof window === "undefined") return false;
-  if (!looksLikeChunkError(value) && !looksLikeHydrationError(value)) return false;
+  if (
+    !looksLikeChunkError(value) &&
+    !looksLikeHydrationError(value) &&
+    !looksLikeStaleServerAction(value)
+  )
+    return false;
   try {
     const last = Number(window.sessionStorage.getItem(COOLDOWN_KEY) ?? "0");
     if (Number.isFinite(last) && Date.now() - last < COOLDOWN_MS) return false;
