@@ -16,7 +16,7 @@
  */
 
 import { Star } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { setThreadStar } from "../_actions";
 
 interface Props {
@@ -33,10 +33,7 @@ export function StarToggle({ threadId, initialStarred, size = "sm", label }: Pro
   const [pending, startTx] = useTransition();
   const sizeClass = size === "md" ? "h-4 w-4" : "h-3.5 w-3.5";
 
-  function handleClick(e: React.MouseEvent) {
-    // Star clicks shouldn't navigate the wrapping row link.
-    e.preventDefault();
-    e.stopPropagation();
+  const toggle = useCallback(() => {
     if (pending) return;
     const next = !starred;
     setStarred(next); // optimistic
@@ -50,7 +47,39 @@ export function StarToggle({ threadId, initialStarred, size = "sm", label }: Pro
         setStarred(!next);
       }
     });
+  }, [pending, starred, threadId]);
+
+  function handleClick(e: React.MouseEvent) {
+    // Star clicks shouldn't navigate the wrapping row link.
+    e.preventDefault();
+    e.stopPropagation();
+    toggle();
   }
+
+  // Keyboard-binding bridge: InboxKeyboardNav dispatches
+  // `inbox-toggle-star` when the operator presses `s`. We mount
+  // listeners on every visible StarToggle so the active thread's
+  // toggle handles its own event. The threadId in detail.threadId
+  // gates per-instance so the list view's many StarToggles don't
+  // all fire when only one thread is active.
+  //
+  // Only the "md" sized toggle (the header one in ThreadPane)
+  // responds, not the per-row "sm" toggles in the list. Otherwise
+  // pressing `s` while viewing a thread would also toggle the same
+  // thread's row star in the list pane (which the list-row toggle
+  // is mounted from). Both fire; both are idempotent; but it would
+  // double the server roundtrip. Restricting to "md" guarantees
+  // single-fire from the thread-pane header.
+  useEffect(() => {
+    if (size !== "md") return;
+    function onToggleStar(e: Event) {
+      const detail = (e as CustomEvent<{ threadId: string }>).detail;
+      if (detail?.threadId !== threadId) return;
+      toggle();
+    }
+    document.addEventListener("inbox-toggle-star", onToggleStar);
+    return () => document.removeEventListener("inbox-toggle-star", onToggleStar);
+  }, [size, threadId, toggle]);
 
   return (
     <button

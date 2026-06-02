@@ -52,9 +52,9 @@ export function InboxKeyboardNav({ threadIds, activeThreadId, preservedQuery }: 
   useInboxShortcuts({
     next: () => navigate(1),
     prev: () => navigate(-1),
-    // 'r' / 'e' only do anything on the detail view (we need a
-    // thread to reply to / archive). On the list view they're
-    // no-ops by design — the operator picks a thread first.
+    // 'r' / 'e' / 'a' / 's' only do anything on the detail view (we
+    // need a thread to act on). On the list view they're no-ops by
+    // design -- the operator picks a thread first.
     reply: activeThreadId
       ? () =>
           document.dispatchEvent(
@@ -72,6 +72,20 @@ export function InboxKeyboardNav({ threadIds, activeThreadId, preservedQuery }: 
           document.dispatchEvent(
             new CustomEvent("inbox-assign", { detail: { threadId: activeThreadId } }),
           )
+      : undefined,
+    star: activeThreadId
+      ? () =>
+          document.dispatchEvent(
+            new CustomEvent("inbox-toggle-star", { detail: { threadId: activeThreadId } }),
+          )
+      : undefined,
+    // 'u' is the inverse: only works on the detail view (where you'd
+    // want to go back). On the list view it's already a no-op.
+    back: activeThreadId
+      ? () => {
+          const qs = preservedQuery ? `?${preservedQuery}` : "";
+          router.push(`/inbox${qs}`);
+        }
       : undefined,
     showHelp: () => setShowHelp(true),
   });

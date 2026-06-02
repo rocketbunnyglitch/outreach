@@ -40,6 +40,10 @@ export interface ShortcutMap {
   archive?: () => void;
   /** Focus the assignment picker. */
   assign?: () => void;
+  /** Toggle star on the current thread. */
+  star?: () => void;
+  /** Back to the inbox list view (Gmail's `u`). */
+  back?: () => void;
   /** Focus the search input (typically the command palette trigger). */
   search?: () => void;
   /** Show the shortcuts help dialog. */
@@ -97,6 +101,18 @@ export function useInboxShortcuts(map: ShortcutMap) {
             map.assign();
           }
           break;
+        case "s":
+          if (map.star) {
+            e.preventDefault();
+            map.star();
+          }
+          break;
+        case "u":
+          if (map.back) {
+            e.preventDefault();
+            map.back();
+          }
+          break;
         case "/":
           if (map.search) {
             e.preventDefault();
@@ -128,6 +144,8 @@ export const SHORTCUT_HELP: Array<{ keys: string; label: string }> = [
   { keys: "r", label: "Reply" },
   { keys: "e", label: "Archive" },
   { keys: "a", label: "Assign" },
+  { keys: "s", label: "Star / unstar" },
+  { keys: "u", label: "Back to inbox" },
   { keys: "/", label: "Search" },
   { keys: "?", label: "Show shortcuts" },
   { keys: "⌘+Enter", label: "Send reply (when composer is open)" },
