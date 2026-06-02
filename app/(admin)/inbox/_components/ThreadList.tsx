@@ -154,59 +154,76 @@ function ThreadRow({
       <Link
         href={href}
         className={cn(
-          "inbox-row group/row block border-zinc-200/60 border-b px-4 py-3.5 transition-colors sm:py-3",
+          // Row padding is density-driven via .inbox-row in globals.css
+          // (compact / default / comfortable). Keep horizontal padding here.
+          "inbox-row group/row block border-zinc-200/60 border-b px-3 transition-colors",
           "dark:border-zinc-800/40",
-          // Active (currently-open thread) wins over selection wins
-          // over unread highlight wins over default.
+          // Active (currently-open thread) > selection > unread > read.
+          // Gmail conveys unread with a white (vs greyed) row + bold text +
+          // a blue dot, not a colored left bar. Selection is blue (palette:
+          // blue=info); indigo is not a reserved color.
           isActive
             ? "bg-zinc-100 dark:bg-zinc-900"
             : isSelected
-              ? "bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50"
+              ? "bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50"
               : isUnread
-                ? "bg-white font-semibold hover:bg-zinc-50 dark:bg-zinc-900/70 dark:hover:bg-zinc-900"
-                : "bg-zinc-50/40 hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900/50",
-          // Unread threads get a slightly heavier left border accent
-          isUnread && "border-l-2 border-l-indigo-500",
+                ? "bg-white hover:bg-zinc-50 dark:bg-zinc-900/60 dark:hover:bg-zinc-900"
+                : "bg-zinc-50/40 hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900/40",
         )}
       >
-        <div className="flex items-baseline justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {/* Line 1: [checkbox + star gutter] [unread dot] sender ... timestamp/actions */}
+        <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1">
             {onToggleSelect && (
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => onToggleSelect(thread.id)}
-                onClick={(e) => {
-                  // preventDefault cancels the surrounding <Link> anchor's
-                  // navigation (a click on a control nested in an <a href>
-                  // still activates the anchor; stopPropagation alone does
-                  // NOT cancel that). Without this, selecting a row bounced
-                  // into the thread and wiped the selection -- the reported
-                  // "select-all does not work" bug. Matches the StarToggle /
-                  // ThreadRowHoverActions pattern in the same row.
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                onKeyDown={(e) => e.stopPropagation()}
-                aria-label={`Select thread from ${thread.lastSenderName ?? thread.venueName ?? "unknown"}`}
-                className="h-3.5 w-3.5 shrink-0 cursor-pointer"
-              />
+              // -m-1.5 padding gives a >=40px touch target on mobile without
+              // enlarging the desktop glyph; sm:m-0 restores tight desktop.
+              <label className="-m-1.5 flex cursor-pointer items-center p-1.5 sm:m-0 sm:p-0">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => onToggleSelect(thread.id)}
+                  onClick={(e) => {
+                    // preventDefault cancels the surrounding <Link> anchor's
+                    // navigation (a click on a control nested in an <a href>
+                    // still activates the anchor; stopPropagation alone does
+                    // NOT cancel that). This is the select-all bug fix.
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  aria-label={`Select thread from ${thread.lastSenderName ?? thread.venueName ?? "unknown"}`}
+                  className="h-4 w-4 shrink-0 cursor-pointer"
+                />
+              </label>
             )}
             <StarToggle threadId={thread.id} initialStarred={thread.isStarred} size="sm" />
-            <p
-              className={cn(
-                "min-w-0 flex-1 truncate text-sm",
-                isUnread ? "font-semibold" : "font-medium",
-              )}
-            >
-              {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
-            </p>
           </div>
-          <div className="shrink-0">
+          {isUnread && (
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 shrink-0 rounded-full bg-blue-600 dark:bg-blue-500"
+            />
+          )}
+          <p
+            className={cn(
+              "min-w-0 flex-1 truncate text-[13px]",
+              isUnread
+                ? "font-semibold text-zinc-900 dark:text-zinc-100"
+                : "font-normal text-zinc-700 dark:text-zinc-300",
+            )}
+          >
+            {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
+          </p>
+          {/* Fixed-width right gutter so the timestamp -> hover-actions swap
+              doesn't shift line 1. */}
+          <div className="flex shrink-0 justify-end" style={{ minWidth: "5.5rem" }}>
             <time
               dateTime={thread.lastMessageAt.toISOString()}
               suppressHydrationWarning
-              className="block font-mono text-[10px] text-zinc-500 tabular-nums group-hover/row:hidden"
+              className={cn(
+                "block text-[11px] tabular-nums group-hover/row:hidden",
+                isUnread ? "font-semibold text-zinc-700 dark:text-zinc-300" : "text-zinc-500",
+              )}
             >
               {timeMounted
                 ? formatTime(thread.lastMessageAt)
@@ -220,22 +237,26 @@ function ThreadRow({
           </div>
         </div>
 
-        {thread.subject && (
-          <p
-            className={cn(
-              "mt-0.5 truncate text-xs",
-              isUnread ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600 dark:text-zinc-400",
+        {/* Line 2: subject + muted snippet on one truncating line (Gmail). */}
+        {(thread.subject || thread.snippet) && (
+          <p className="mt-0.5 truncate pl-7 text-xs leading-5">
+            {thread.subject && (
+              <span
+                className={cn(
+                  isUnread
+                    ? "font-semibold text-zinc-800 dark:text-zinc-200"
+                    : "text-zinc-600 dark:text-zinc-400",
+                )}
+              >
+                {thread.subject}
+              </span>
             )}
-          >
-            {thread.subject}
+            {thread.subject && thread.snippet && <span className="text-zinc-400"> - </span>}
+            {thread.snippet && <span className="text-zinc-500">{thread.snippet}</span>}
           </p>
         )}
 
-        {thread.snippet && (
-          <p className="mt-1 line-clamp-1 text-xs text-zinc-500">{thread.snippet}</p>
-        )}
-
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-7">
           {/* Classification chip */}
           {thread.classification !== "unclassified" && (
             <Chip
@@ -424,9 +445,10 @@ function Chip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px]",
-        "uppercase tracking-wider",
-        "dark:bg-zinc-900",
+        // Quiet, Gmail-like chip: rounded-full, normal-case, subtle bg.
+        // (Was font-mono uppercase tracking-wider, which read like log output.)
+        "inline-flex items-center gap-1 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[11px]",
+        "dark:bg-zinc-800/70",
         tone,
       )}
     >
