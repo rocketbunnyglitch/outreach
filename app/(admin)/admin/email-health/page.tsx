@@ -108,6 +108,7 @@ export default async function EmailHealthPage() {
                 <th className="px-3 py-2 text-left font-medium">Account</th>
                 <th className="px-3 py-2 text-left font-medium">Status</th>
                 <th className="px-3 py-2 text-right font-medium">Cap today</th>
+                <th className="px-3 py-2 text-right font-medium">Remaining</th>
                 <th className="px-3 py-2 text-right font-medium">Sent 7d</th>
                 <th className="px-3 py-2 text-right font-medium">Replies 7d</th>
                 <th className="px-3 py-2 text-right font-medium">Stale</th>
@@ -201,6 +202,18 @@ function AccountRow({ account: a }: { account: AccountHealthRow }) {
             />
           </div>
         </div>
+      </td>
+      <td
+        className={cn(
+          "px-3 py-2 text-right font-mono text-xs",
+          a.remaining === 0
+            ? "text-rose-700 dark:text-rose-300"
+            : a.remaining <= a.coldSendCap * 0.2
+              ? "text-amber-700 dark:text-amber-300"
+              : "text-zinc-700 dark:text-zinc-300",
+        )}
+      >
+        {a.remaining}
       </td>
       <td className="px-3 py-2 text-right font-mono text-xs text-zinc-700 dark:text-zinc-300">
         {a.sendsLast7d}

@@ -41,6 +41,10 @@ export interface AccountHealthRow {
   rawStatus: string;
   coldSendCap: number;
   coldSendsToday: number;
+  /** Remaining cold sends before the daily cap is hit. Clamped at 0
+   *  so an over-cap account (manual sends, cap lowered) never reads
+   *  negative. */
+  remaining: number;
   sendsLast7d: number;
   inboundLast7d: number;
   staleThreads: number;
@@ -194,6 +198,7 @@ export async function loadEmailHealthDashboard(teamId: string): Promise<EmailHea
         rawStatus: a.rawStatus,
         coldSendCap: a.coldSendCap,
         coldSendsToday,
+        remaining: Math.max(0, a.coldSendCap - coldSendsToday),
         sendsLast7d,
         inboundLast7d,
         staleThreads,
