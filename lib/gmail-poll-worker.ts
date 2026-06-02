@@ -674,9 +674,13 @@ async function ingestMessage(opts: {
   //     all keep working.
   //   - Plain-text-only senders: leave bodyHtml null so the
   //     render path uses the <pre> plain-text branch.
-  const rawHtml = extractHtml(msg.payload as GmailPayload | undefined);
+  const rawHtml = await extractHtml(
+    msg.payload as GmailPayload | undefined,
+    messageId,
+    accessToken,
+  );
   // Defensive cap on stored HTML size. Most legitimate emails are
-  // under 100 KB of HTML — even with rich signatures + embedded
+  // under 100 KB of HTML -- even with rich signatures + embedded
   // tables it's rare to exceed 500 KB. We cap at 2 MB to defeat
   // pathological payloads (embedded data: URIs, malformed
   // generated HTML from old WordPerfect exports, etc) without
@@ -688,7 +692,11 @@ async function ingestMessage(opts: {
     rawHtml && Buffer.byteLength(rawHtml, "utf8") > HTML_MAX_BYTES
       ? rawHtml.slice(0, HTML_MAX_BYTES) // crude char-truncate; fine since the sanitizer will drop unterminated tags
       : rawHtml;
-  const rawText = extractPlainText(msg.payload as GmailPayload | undefined);
+  const rawText = await extractPlainText(
+    msg.payload as GmailPayload | undefined,
+    messageId,
+    accessToken,
+  );
   const bodyText =
     rawText.length > 0
       ? rawText
@@ -1020,26 +1028,99 @@ const GMAIL_SYSTEM_LABEL_IDS = new Set([
 
 interface GmailPayload {
   mimeType?: string;
-  body?: { data?: string };
+  body?: {
+    /** Inline base64url-encoded body. Present for small payloads. */
+    data?: string;
+    /** Set instead of `data` for parts whose body exceeds Gmail's
+     *  inline-size threshold (typically ~5MB, though Gmail doesn't
+     *  document the exact cutoff). Must be fetched separately via
+     *  users.messages.attachments.get to retrieve the actual bytes.
+     *  This is what trips up HTML emails from notification platforms
+     *  (Triple Seat, Eventbrite, etc.) whose markup is large enough
+     *  to land beyond the inline threshold. */
+    attachmentId?: string;
+    /** Byte size of the decoded body. Gmail provides this even when
+     *  the data lives behind attachmentId. Used here for logging /
+     *  defensive caps; not strictly required for extraction. */
+    size?: number;
+  };
   parts?: GmailPayload[];
 }
 
-function extractPlainText(payload: GmailPayload | undefined): string {
+/**
+ * Resolve a part's body bytes -- inline `data` when present, otherwise
+ * a follow-up fetch of the attachment. Returns "" when neither is
+ * available (e.g. the part is a multipart container with no body).
+ *
+ * Background: Gmail's messages.get response inlines small bodies but
+ * shifts larger ones (the docs say "approximately 5MB", real-world
+ * threshold appears to be lower) into a separately-fetchable
+ * attachment. Notification platforms like Triple Seat and Eventbrite
+ * commonly send HTML bodies that cross this line because of their
+ * heavy embedded styling. Without the attachment fetch, the engine
+ * stored bodyText="" and bodyHtml=null, surfacing as "(empty body)"
+ * in the inbox UI.
+ *
+ * The attachment endpoint:
+ *   GET users/me/messages/{messageId}/attachments/{attachmentId}
+ * returns { data: base64url, size: number }.
+ *
+ * Best-effort: a failed attachment fetch logs + returns "" so the
+ * thread still ingests (headers, dates, classification, etc. don't
+ * depend on the body). The operator sees an empty body which is no
+ * worse than the bug we're fixing.
+ */
+async function fetchPartBody(
+  part: GmailPayload,
+  messageId: string,
+  accessToken: string,
+): Promise<string> {
+  if (part.body?.data) {
+    return base64UrlDecode(part.body.data);
+  }
+  if (part.body?.attachmentId) {
+    try {
+      const res = await gmailFetch(
+        `users/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(
+          part.body.attachmentId,
+        )}`,
+        accessToken,
+      );
+      const data = (res as { data?: string }).data;
+      if (data) return base64UrlDecode(data);
+    } catch (err) {
+      logger.warn(
+        { err, messageId, mimeType: part.mimeType },
+        "failed to fetch attachment body; rendering will show empty",
+      );
+    }
+  }
+  return "";
+}
+
+async function extractPlainText(
+  payload: GmailPayload | undefined,
+  messageId: string,
+  accessToken: string,
+): Promise<string> {
   if (!payload) return "";
 
   // Walk the MIME tree looking for the first text/plain part.
-  function walk(part: GmailPayload): string | null {
-    if (part.mimeType === "text/plain" && part.body?.data) {
-      return base64UrlDecode(part.body.data);
+  // Note: now async because fetchPartBody may need to follow an
+  // attachmentId.
+  async function walk(part: GmailPayload): Promise<string | null> {
+    if (part.mimeType === "text/plain" && (part.body?.data || part.body?.attachmentId)) {
+      const decoded = await fetchPartBody(part, messageId, accessToken);
+      return decoded;
     }
     for (const child of part.parts ?? []) {
-      const found = walk(child);
+      const found = await walk(child);
       if (found) return found;
     }
     return null;
   }
 
-  return walk(payload) ?? "";
+  return (await walk(payload)) ?? "";
 }
 
 /**
@@ -1087,15 +1168,22 @@ function extractPlainText(payload: GmailPayload | undefined): string {
  * is out of scope for this commit (would need email_attachments
  * ingest first).
  */
-function extractHtml(payload: GmailPayload | undefined): string | null {
+async function extractHtml(
+  payload: GmailPayload | undefined,
+  messageId: string,
+  accessToken: string,
+): Promise<string | null> {
   if (!payload) return null;
 
-  function walk(part: GmailPayload): string | null {
-    if (part.mimeType === "text/html" && part.body?.data) {
-      return base64UrlDecode(part.body.data);
+  async function walk(part: GmailPayload): Promise<string | null> {
+    if (part.mimeType === "text/html" && (part.body?.data || part.body?.attachmentId)) {
+      const decoded = await fetchPartBody(part, messageId, accessToken);
+      // Treat empty-string as null so the caller's "html only when
+      // we actually have something" branch behaves correctly.
+      return decoded.length > 0 ? decoded : null;
     }
     for (const child of part.parts ?? []) {
-      const found = walk(child);
+      const found = await walk(child);
       if (found) return found;
     }
     return null;
