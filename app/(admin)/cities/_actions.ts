@@ -10,7 +10,7 @@ import {
   cityCreateSchema,
   cityUpdateSchema,
 } from "@/lib/validation/cities";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
@@ -134,10 +134,53 @@ export async function updateCity(
   }
 }
 
-export async function archiveCity(id: string): Promise<void> {
+/**
+ * Validate the reason supplied for a dangerous override. Returns the
+ * trimmed/clamped reason, or null when it's missing/too short. Shared by
+ * the city-archive overrides so the rule (>= 3 chars, <= 500) lives once.
+ */
+function normalizeOverrideReason(reason?: string): string | null {
+  const trimmed = (reason ?? "").trim();
+  if (trimmed.length < 3) return null;
+  return trimmed.slice(0, 500);
+}
+
+/**
+ * Archive a city. This is a DANGEROUS override: archiving a city affects
+ * every campaign + venue that touched it, so it is gated two ways:
+ *
+ *   1. Role gate -- requires at least `lead` (admin OR lead). There is no
+ *      "manager" tier in STAFF_ROLE_RANK (lib/auth.ts); `lead` is the
+ *      manager-equivalent tier between admin and outreach.
+ *   2. Required reason -- persisted to cities.override_reason in the SAME
+ *      update so the audit trigger captures it (audit_log.new_values) and the
+ *      /audit viewer shows "override_reason" with the text.
+ *
+ * `reason` is typed optional so the existing zero-arg form binding keeps
+ * compiling, but it is enforced at runtime: a missing/blank reason throws
+ * before any mutation. UI surfaces calling this MUST collect a reason.
+ */
+export async function archiveCity(id: string, reason?: string): Promise<void> {
   const { staff } = await requireStaff();
+  if (!hasMinimumRole(staff, "lead")) {
+    throw new Error("Archiving a city requires lead or admin role.");
+  }
+  const overrideReason = normalizeOverrideReason(reason);
+  if (!overrideReason) {
+    throw new Error("A reason (at least 3 characters) is required to archive a city.");
+  }
   await withAuditContext(staff.id, async (tx) =>
-    tx.update(cities).set({ archivedAt: new Date(), updatedBy: staff.id }).where(eq(cities.id, id)),
+    // override_reason written via raw SQL -- the Drizzle `cities` model
+    // (db/schema/cities.ts) is owned by another surface. Column exists per
+    // migration 0087; the audit trigger reads it off the row either way.
+    tx.execute(sql`
+      UPDATE cities
+      SET archived_at = NOW(),
+          override_reason = ${overrideReason},
+          updated_by = ${staff.id}::uuid,
+          updated_at = NOW()
+      WHERE id = ${id}
+    `),
   );
   revalidatePath("/cities");
   revalidatePath("/admin/archived-cities");
@@ -147,16 +190,32 @@ export async function archiveCity(id: string): Promise<void> {
 /**
  * Same as archiveCity but returns a result instead of redirecting.
  * Used by callers (e.g. the per-row action on /cities) that don't
- * want to be pulled to /cities (they're already there).
+ * want to be pulled to /cities (they're already there). Same lead+ role
+ * gate and required reason as archiveCity, surfaced as a result error
+ * rather than a thrown exception.
  */
-export async function archiveCityNoRedirect(id: string): Promise<{ ok: boolean; error?: string }> {
+export async function archiveCityNoRedirect(
+  id: string,
+  reason?: string,
+): Promise<{ ok: boolean; error?: string }> {
   const { staff } = await requireStaff();
+  if (!hasMinimumRole(staff, "lead")) {
+    return { ok: false, error: "Archiving a city requires lead or admin role." };
+  }
+  const overrideReason = normalizeOverrideReason(reason);
+  if (!overrideReason) {
+    return { ok: false, error: "A reason (at least 3 characters) is required to archive a city." };
+  }
   try {
     await withAuditContext(staff.id, async (tx) =>
-      tx
-        .update(cities)
-        .set({ archivedAt: new Date(), updatedBy: staff.id })
-        .where(eq(cities.id, id)),
+      tx.execute(sql`
+        UPDATE cities
+        SET archived_at = NOW(),
+            override_reason = ${overrideReason},
+            updated_by = ${staff.id}::uuid,
+            updated_at = NOW()
+        WHERE id = ${id}
+      `),
     );
     revalidatePath("/cities");
     revalidatePath("/admin/archived-cities");

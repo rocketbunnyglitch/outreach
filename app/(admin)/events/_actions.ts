@@ -5,7 +5,7 @@
  */
 
 import { events } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
@@ -135,15 +135,52 @@ export async function updateEvent(
   }
 }
 
-export async function archiveEvent(id: string): Promise<void> {
+/**
+ * Cancel a crawl (events.status -> 'cancelled'). This is a DANGEROUS override:
+ * it pulls a live/planned crawl off the board, so it is gated two ways:
+ *
+ *   1. Role gate -- requires at least `lead` (admin OR lead). There is no
+ *      "manager" tier in STAFF_ROLE_RANK (lib/auth.ts); `lead` is the
+ *      manager-equivalent tier between admin and outreach.
+ *   2. Required reason -- the caller MUST supply a non-empty justification.
+ *      It is persisted to events.override_reason in the SAME update, so the
+ *      audit trigger captures it in audit_log.new_values and the /audit
+ *      viewer shows "override_reason" as a changed field with the text.
+ *
+ * `reason` is typed optional so existing zero-arg form bindings keep
+ * compiling, but it is enforced at runtime: a missing/blank reason throws
+ * before any mutation. UI surfaces that call this MUST collect a reason.
+ */
+export async function archiveEvent(id: string, reason?: string): Promise<void> {
   const { staff } = await requireStaff();
+  if (!hasMinimumRole(staff, "lead")) {
+    throw new Error("Cancelling a crawl requires lead or admin role.");
+  }
+  const trimmed = (reason ?? "").trim();
+  if (trimmed.length < 3) {
+    throw new Error("A reason (at least 3 characters) is required to cancel a crawl.");
+  }
+  const overrideReason = trimmed.slice(0, 500);
+
   const [row] = await db
     .select({ cityCampaignId: events.cityCampaignId })
     .from(events)
     .where(eq(events.id, id))
     .limit(1);
   await withAuditContext(staff.id, async (tx) =>
-    tx.update(events).set({ status: "cancelled", updatedBy: staff.id }).where(eq(events.id, id)),
+    // override_reason is written via raw SQL: the Drizzle model for `events`
+    // (db/schema/events.ts) is owned by another surface and not part of this
+    // change. The column exists (migration 0087) and the audit trigger reads
+    // it off the row regardless of how it was written. NOW()/updated_by mirror
+    // what the touch trigger + Drizzle path would set.
+    tx.execute(sql`
+      UPDATE events
+      SET status = 'cancelled'::event_status,
+          override_reason = ${overrideReason},
+          updated_by = ${staff.id}::uuid,
+          updated_at = NOW()
+      WHERE id = ${id}
+    `),
   );
   if (row?.cityCampaignId) revalidatePath(`/city-campaigns/${row.cityCampaignId}`);
   redirect(row?.cityCampaignId ? `/city-campaigns/${row.cityCampaignId}` : "/campaigns");
