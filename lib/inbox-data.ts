@@ -1425,6 +1425,14 @@ export async function fetchDraftList(opts: {
   currentUserId: string;
   currentTeamId: string;
   mode: "drafts" | "scheduled";
+  /** Optional campaign-level scope from the global switcher. When set,
+   *  restricts the list to drafts on city_campaigns belonging to this
+   *  campaign (OR unattributed drafts with city_campaign_id IS NULL) --
+   *  the same predicate the draft_counts CTE in fetchFolderCounts uses,
+   *  so the Drafts/Scheduled list matches its left-rail count under the
+   *  same default scope. Skipped when undefined so drafts span every
+   *  campaign on the team. */
+  campaignId?: string;
 }): Promise<DraftListRow[]> {
   const rows = await db
     .select({
@@ -1448,6 +1456,19 @@ export async function fetchDraftList(opts: {
         opts.mode === "scheduled"
           ? sql`${emailDrafts.scheduledFor} IS NOT NULL`
           : isNull(emailDrafts.scheduledFor),
+        // Campaign default-scope filter -- mirrors the draft_counts CTE
+        // in fetchFolderCounts so the list and its count stay
+        // consistent. Includes unattributed drafts (city_campaign_id IS
+        // NULL) so a freshly-composed draft not yet linked to a city
+        // campaign is not hidden by campaign scope.
+        opts.campaignId
+          ? sql`(
+              ${emailDrafts.cityCampaignId} IN (
+                SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId}
+              )
+              OR ${emailDrafts.cityCampaignId} IS NULL
+            )`
+          : undefined,
       ),
     )
     .orderBy(

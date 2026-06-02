@@ -221,26 +221,34 @@ export default async function InboxPage({ searchParams }: Props) {
           currentUserId: currentStaff.id,
           currentTeamId: currentStaff.teamId,
           mode: folder === "scheduled" ? "scheduled" : "drafts",
+          campaignId: scopeCampaignId,
         })
       : Promise.resolve([]),
     loadVisibleAccounts({
       currentUserId: currentStaff.id,
       currentTeamId: currentStaff.teamId,
-      // Admin / lead see every team account. Staff see only their
-      // own. Future: a finer-grained "team accounts I have access
-      // to" model will go here.
-      canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "admin"),
+      // Admin + lead see every team account (the team-wide account
+      // view the spec requires for leads). Staff see only their own.
+      // Future: a finer-grained "team accounts I have access to"
+      // model will go here.
+      canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "lead"),
     }),
     getUserPreferences(currentStaff.id),
     loadSavedSearches(currentStaff.id),
     countUnacknowledgedMentions(currentStaff.id),
   ]);
 
-  // AccountSwitcher seed selection: prefer the per-campaign
-  // server-side entry when present. The "_default" key is used when
-  // viewing the no-campaign / all-campaigns mode. Null = let the
-  // component fall back through URL > localStorage > all-selected.
-  const accountFilterCampaignKey = params.campaign ?? "_default";
+  // AccountSwitcher per-campaign key. Use the SAME resolved campaign
+  // context the thread list is scoped by -- the narrow ?campaign=
+  // city_campaign id when set, otherwise the global switcher's
+  // campaign (scopeCampaignId). Keying only on params.campaign lost
+  // the global campaign context: an operator scoped to Halloween via
+  // the top-nav switcher (no ?campaign= in the URL) fell back to the
+  // "_default" bucket, so their per-campaign account selection never
+  // persisted. The "_default" key is the true no-campaign /
+  // all-campaigns mode. Null = let the component fall back through
+  // URL > localStorage > all-selected.
+  const accountFilterCampaignKey = params.campaign ?? scopeCampaignId ?? "_default";
   const initialAccountSelection = userPrefs?.inboxAccountFilters[accountFilterCampaignKey] ?? null;
 
   const preservedQuery = new URLSearchParams();
@@ -269,7 +277,7 @@ export default async function InboxPage({ searchParams }: Props) {
             currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
               .trim()
               .charAt(0)}
-            currentCampaignId={params.campaign ?? null}
+            currentCampaignId={params.campaign ?? scopeCampaignId ?? null}
             initialSelection={initialAccountSelection}
           />
         }
