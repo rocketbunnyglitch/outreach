@@ -22,6 +22,7 @@
 
 import {
   Ban,
+  ClipboardCopy,
   ExternalLink,
   Loader2,
   Mail,
@@ -81,6 +82,31 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
     // shaping that isn't necessarily stable across Gmail versions.
     const url = `https://mail.google.com/mail/u/0/#all/${gmailThreadId}`;
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleCopyDebug() {
+    setOpen(false);
+    // "Copy for Claude" debug bundle for this thread. Gives support a
+    // paste-ready blob keyed on the identifiers needed to grep server
+    // logs + cross-reference Gmail: the engine thread id and the Gmail
+    // thread id, plus the route + a timestamp. Venue/campaign/account
+    // are derivable server-side from the thread id, so they are left
+    // out to keep this menu self-contained.
+    const bundle = {
+      kind: "outreach-thread-debug",
+      capturedAt: new Date().toISOString(),
+      url: typeof window !== "undefined" ? window.location.href : null,
+      threadId,
+      gmailThreadId,
+      gmailDeepLink: `https://mail.google.com/mail/u/0/#all/${gmailThreadId}`,
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+      alert("Debug bundle copied. Paste it to support / Claude with your question.");
+    } catch {
+      alert("Couldn't copy to clipboard. Thread id: " + threadId);
+    }
   }
 
   function handlePrint() {
@@ -181,6 +207,11 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
             onClick={handleOpenInGmail}
           />
           <MenuItem icon={<Printer className="h-3 w-3" />} label="Print" onClick={handlePrint} />
+          <MenuItem
+            icon={<ClipboardCopy className="h-3 w-3" />}
+            label="Copy debug bundle"
+            onClick={handleCopyDebug}
+          />
           <div className="my-1 border-zinc-200/70 border-t dark:border-zinc-800" />
           <MenuItem
             icon={<ShieldAlert className="h-3 w-3" />}
