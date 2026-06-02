@@ -44,6 +44,152 @@ export interface SupportCrawl {
   hosts: Array<{ type: "internal" | "external"; name: string; slot: number }>;
   /** Derived event-night readiness risk. */
   supportRisk: SupportRisk;
+  /** True when at least one confirmed venue has a night-of contact name + phone. */
+  hasNightOfContact: boolean;
+  /** True when at least one confirmed venue has agreed-hours text recorded. */
+  hasProposedHours: boolean;
+  /** True when middle venue(s) confirmed (event needs at least one). */
+  middleConfirmed: boolean;
+  /** True when the final venue is confirmed (standard crawls only). */
+  finalConfirmed: boolean;
+  /** Whether this crawl format expects a final venue (day_party crawls do not). */
+  expectsFinal: boolean;
+  /** Derived event-night readiness verdict + per-field reasons. */
+  readiness: Readiness;
+}
+
+// =========================================================================
+// Event-day readiness verdict -- a stricter, per-field complement to
+// supportRisk. supportRisk is a single low/medium/high heat number; readiness
+// answers "is this crawl actually ready to run tonight, and if not, WHY".
+// =========================================================================
+
+export type ReadinessLevel = "ready" | "needs_review" | "not_ready";
+
+export interface ReadinessReason {
+  /** Stable key for the checked field. */
+  field:
+    | "wristband_venue"
+    | "middle_venue"
+    | "final_venue"
+    | "wristband_shipping"
+    | "night_of_contact"
+    | "proposed_hours"
+    | "host"
+    | "times";
+  /** Human-readable label for the gap. */
+  label: string;
+  /** "blocker" forces not_ready; "warning" downgrades to needs_review. */
+  severity: "blocker" | "warning";
+}
+
+export interface Readiness {
+  level: ReadinessLevel;
+  reasons: ReadinessReason[];
+}
+
+export const READINESS_LABEL: Record<ReadinessLevel, string> = {
+  ready: "Ready",
+  needs_review: "Needs Review",
+  not_ready: "Not Ready",
+};
+
+export const READINESS_TONE: Record<ReadinessLevel, string> = {
+  ready: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300",
+  needs_review: "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
+  not_ready: "bg-red-500/15 text-red-700 ring-red-500/30 dark:text-red-300",
+};
+
+/**
+ * Compute an event-day readiness verdict with per-field reasons.
+ *
+ * Blockers (=> NOT READY): no confirmed wristband venue, no confirmed middle
+ * venue, no confirmed final venue (standard crawls only), or missing
+ * start/end times.
+ *
+ * Warnings (=> NEEDS REVIEW when no blocker present): wristbands not yet
+ * shipped/delivered, no night-of venue contact recorded, no proposed/agreed
+ * hours recorded, or no host assigned.
+ *
+ * Past/scheduled-far-out crawls (completed / scheduled status) are reported as
+ * READY with no reasons -- readiness only bites in the live-support window.
+ * Pure + client-safe so the support UI and tests can call it directly.
+ */
+export function computeReadiness(c: {
+  status: CrawlSupportStatus;
+  timesMissing: boolean;
+  wristbandVenue: string | null;
+  middleConfirmed: boolean;
+  finalVenue: string | null;
+  expectsFinal: boolean;
+  wristbandStatus: SupportCrawl["wristbandStatus"];
+  hosts: Array<{ type: "internal" | "external"; name: string; slot: number }>;
+  hasNightOfContact: boolean;
+  hasProposedHours: boolean;
+}): Readiness {
+  if (c.status === "completed" || c.status === "scheduled") {
+    return { level: "ready", reasons: [] };
+  }
+
+  const reasons: ReadinessReason[] = [];
+
+  if (c.timesMissing) {
+    reasons.push({ field: "times", label: "Start/end times not synced", severity: "blocker" });
+  }
+  if (!c.wristbandVenue) {
+    reasons.push({
+      field: "wristband_venue",
+      label: "No confirmed wristband venue",
+      severity: "blocker",
+    });
+  }
+  if (!c.middleConfirmed) {
+    reasons.push({
+      field: "middle_venue",
+      label: "No confirmed middle venue",
+      severity: "blocker",
+    });
+  }
+  if (c.expectsFinal && !c.finalVenue) {
+    reasons.push({
+      field: "final_venue",
+      label: "No confirmed final venue",
+      severity: "blocker",
+    });
+  }
+
+  if (c.wristbandStatus !== "shipped" && c.wristbandStatus !== "delivered") {
+    reasons.push({
+      field: "wristband_shipping",
+      label: "Wristbands not shipped/delivered",
+      severity: "warning",
+    });
+  }
+  if (!c.hasNightOfContact) {
+    reasons.push({
+      field: "night_of_contact",
+      label: "No night-of venue contact recorded",
+      severity: "warning",
+    });
+  }
+  if (!c.hasProposedHours) {
+    reasons.push({
+      field: "proposed_hours",
+      label: "No agreed/proposed hours recorded",
+      severity: "warning",
+    });
+  }
+  if (c.hosts.length === 0) {
+    reasons.push({ field: "host", label: "No host assigned", severity: "warning" });
+  }
+
+  const hasBlocker = reasons.some((r) => r.severity === "blocker");
+  const level: ReadinessLevel = hasBlocker
+    ? "not_ready"
+    : reasons.length > 0
+      ? "needs_review"
+      : "ready";
+  return { level, reasons };
 }
 
 export type SupportRisk = "low" | "medium" | "high";

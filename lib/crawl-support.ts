@@ -46,6 +46,7 @@ import {
   type SupportIssue,
   bucketFor,
   computeCrawlStatus,
+  computeReadiness,
   computeSupportRisk,
 } from "./crawl-support-types";
 
@@ -95,6 +96,7 @@ export async function loadCrawlSupport(opts?: {
       startsAt: events.startsAt,
       endsAt: events.endsAt,
       ticketSalesCount: events.ticketSalesCount,
+      requiredFinalCount: events.requiredFinalCount,
       cityName: cities.name,
       timezone: cities.timezone,
       campaignName: campaigns.name,
@@ -120,6 +122,12 @@ export async function loadCrawlSupport(opts?: {
     middleVenues: string[];
     finalVenue: string | null;
     wristbandStatus: SupportCrawl["wristbandStatus"];
+    /** At least one CONFIRMED middle-role venue exists for the event. */
+    middleConfirmed: boolean;
+    /** A confirmed venue has both night-of contact name + phone recorded. */
+    hasNightOfContact: boolean;
+    /** A confirmed venue has agreed/proposed hours text recorded. */
+    hasProposedHours: boolean;
   };
   const roleByEvent = new Map<string, RoleAgg>();
   const hostsByEvent = new Map<string, SupportCrawl["hosts"]>();
@@ -133,6 +141,9 @@ export async function loadCrawlSupport(opts?: {
         status: venueEvents.status,
         venueName: venues.name,
         wristbandStatus: wristbands.status,
+        agreedHoursText: venueEvents.agreedHoursText,
+        nightOfContactName: venueEvents.nightOfContactName,
+        nightOfContactPhoneE164: venueEvents.nightOfContactPhoneE164,
       })
       .from(venueEvents)
       .innerJoin(venues, eq(venues.id, venueEvents.venueId))
@@ -142,15 +153,30 @@ export async function loadCrawlSupport(opts?: {
     for (const v of veRows) {
       let agg = roleByEvent.get(v.eventId);
       if (!agg) {
-        agg = { wristbandVenue: null, middleVenues: [], finalVenue: null, wristbandStatus: null };
+        agg = {
+          wristbandVenue: null,
+          middleVenues: [],
+          finalVenue: null,
+          wristbandStatus: null,
+          middleConfirmed: false,
+          hasNightOfContact: false,
+          hasProposedHours: false,
+        };
         roleByEvent.set(v.eventId, agg);
       }
       // Wristband shipping status rides on the wristband-role venue_event.
       if (v.role === "wristband" && v.wristbandStatus) agg.wristbandStatus = v.wristbandStatus;
       if (!CONFIRMED.includes(v.status)) continue;
+      // Per-field readiness signals are only meaningful on confirmed venues.
+      if (v.nightOfContactName?.trim() && v.nightOfContactPhoneE164?.trim()) {
+        agg.hasNightOfContact = true;
+      }
+      if (v.agreedHoursText?.trim()) agg.hasProposedHours = true;
       if (v.role === "wristband") agg.wristbandVenue ??= v.venueName;
-      else if (v.role === "middle") agg.middleVenues.push(v.venueName);
-      else if (v.role === "final" || v.role === "alt_final") agg.finalVenue ??= v.venueName;
+      else if (v.role === "middle") {
+        agg.middleVenues.push(v.venueName);
+        agg.middleConfirmed = true;
+      } else if (v.role === "final" || v.role === "alt_final") agg.finalVenue ??= v.venueName;
     }
 
     const hostRows = await db
@@ -198,6 +224,13 @@ export async function loadCrawlSupport(opts?: {
     const middleVenues = role?.middleVenues ?? [];
     const finalVenue = role?.finalVenue ?? null;
     const wristbandStatus = role?.wristbandStatus ?? null;
+    const middleConfirmed = role?.middleConfirmed ?? false;
+    const hasNightOfContact = role?.hasNightOfContact ?? false;
+    const hasProposedHours = role?.hasProposedHours ?? false;
+    // Day-party crawls carry required_final_count = 0 and have no final venue;
+    // standard crawls (count >= 1) expect a confirmed final venue.
+    const expectsFinal = (r.requiredFinalCount ?? 1) > 0;
+    const finalConfirmed = finalVenue !== null;
     return {
       eventId: r.eventId,
       campaignName: r.campaignName,
@@ -226,6 +259,23 @@ export async function loadCrawlSupport(opts?: {
         finalVenue,
         hosts,
         wristbandStatus,
+      }),
+      hasNightOfContact,
+      hasProposedHours,
+      middleConfirmed,
+      finalConfirmed,
+      expectsFinal,
+      readiness: computeReadiness({
+        status,
+        timesMissing,
+        wristbandVenue,
+        middleConfirmed,
+        finalVenue,
+        expectsFinal,
+        wristbandStatus,
+        hosts,
+        hasNightOfContact,
+        hasProposedHours,
       }),
     };
   });
