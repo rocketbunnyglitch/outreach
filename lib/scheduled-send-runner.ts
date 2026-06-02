@@ -26,7 +26,7 @@ import "server-only";
  *   - The retry is bounded by the user's send cap (no runaway)
  */
 
-import { emailDrafts, users } from "@/db/schema";
+import { type EmailDraftAttachment, emailDrafts, users } from "@/db/schema";
 import { composeAndSendImpl } from "@/lib/compose-send-impl";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -78,8 +78,8 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       failed += 1;
       continue;
     }
-    const to = (draft.toAddresses ?? [])[0];
-    if (!to) {
+    const toAddresses = (draft.toAddresses ?? []).filter((s) => s && s.trim().length > 0);
+    if (toAddresses.length === 0) {
       logger.info(
         { draftId: draft.id, owner: owner.id },
         "scheduled draft has no recipient; skipping",
@@ -88,10 +88,19 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       continue;
     }
 
-    // Construct the FormData composeAndSend expects.
+    // Construct the FormData composeAndSend expects. This MUST mirror
+    // the interactive path in app/(admin)/_actions/email-drafts.ts
+    // (sendDraftAsUser) field-for-field. Previously the cron forwarded
+    // only the first To recipient and dropped cc/bcc, attachments,
+    // reply/thread context, quoted HTML, pending labels, and the
+    // template id -- so scheduled replies lost threading + attachments
+    // and were misclassified as cold. Keep these two builders in sync.
     const fd = new FormData();
     fd.set("fromAccountId", draft.connectedAccountId);
-    fd.set("to", to);
+    // Pass ALL To recipients as a comma-separated list -- composeAndSendImpl
+    // parses CSV. Forwarding only the first recipient silently dropped
+    // any additional To addresses on the draft.
+    fd.set("to", toAddresses.join(","));
     if (draft.ccAddresses && draft.ccAddresses.length > 0) {
       fd.set("cc", draft.ccAddresses.join(","));
     }
@@ -100,10 +109,43 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     }
     fd.set("subject", draft.subject);
     fd.set("body", draft.bodyText);
-    if (draft.bodyHtml) fd.set("bodyHtml", draft.bodyHtml);
+    // Concatenate the operator's edited bodyHtml with the read-only
+    // quoted original (if any) so the recipient receives the full
+    // thread. Mirrors sendDraftAsUser.
+    if (draft.bodyHtml || draft.quotedHtml) {
+      const bodyPart = draft.bodyHtml ?? "";
+      const quotePart = draft.quotedHtml ? `<br><br>${draft.quotedHtml}` : "";
+      fd.set("bodyHtml", bodyPart + quotePart);
+    }
     if (draft.venueId) fd.set("venueId", draft.venueId);
-    // Scheduled sends never bypass the cap — if the owner's daily
-    // window is full, the draft retries on the next tick.
+    // Reply/forward context -- composeAndSendImpl branches on these to
+    // attach the new message to the existing Gmail thread (keeps
+    // threading + ensures the send classifies as warm) instead of
+    // opening a fresh thread.
+    if (draft.replyToThreadId) fd.set("replyToThreadId", draft.replyToThreadId);
+    if (draft.replyToMessageId) fd.set("replyToMessageId", draft.replyToMessageId);
+    if (draft.mode) fd.set("composeMode", draft.mode);
+    // Attachments -- forward only entries with a storage_key (memory-only
+    // chips can't be resolved server-side); passed as JSON for
+    // compose-send-impl to fetch bytes for the multipart build.
+    const attachmentsToSend =
+      (draft.attachments as EmailDraftAttachment[] | null)?.filter((a) => a.storage_key) ?? [];
+    if (attachmentsToSend.length > 0) {
+      fd.set("attachments", JSON.stringify(attachmentsToSend));
+    }
+    // Pending labels -- applied to the resulting thread after the Gmail
+    // send completes (handled inside compose-send-impl).
+    const pendingLabelIds = (draft.pendingLabelIds ?? []) as string[];
+    if (pendingLabelIds.length > 0) {
+      fd.set("labelIds", pendingLabelIds.join(","));
+    }
+    // Template attribution -- recorded on email_send_events for
+    // per-template analytics. Null when composed freeform.
+    if (draft.templateId) fd.set("templateId", draft.templateId);
+    // Scheduled sends never bypass the cap -- if the owner's daily
+    // window is full, the draft retries on the next tick. (No
+    // bypassCap / ackDuplicates fields: the cron can't acknowledge
+    // interactive warnings, so a flagged draft simply retries.)
 
     try {
       const result = await composeAndSendImpl(owner, fd);
