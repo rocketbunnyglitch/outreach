@@ -317,14 +317,14 @@ h1 {
 }
 
 .inbox-prose blockquote {
-  border-left: 2px solid rgb(228 228 231); /* zinc-200 */
-  padding-left: 0.75em;
+  border-left: 4px solid rgb(161 161 170); /* zinc-400 — clearly visible quote bar */
+  padding-left: 1em;
   margin-left: 0.25em;
   color: rgb(82 82 91); /* zinc-600 */
 }
 
 .dark .inbox-prose blockquote {
-  border-left-color: rgb(63 63 70); /* zinc-700 */
+  border-left-color: rgb(113 113 122); /* zinc-500 — visible on the dark canvas */
   color: rgb(161 161 170); /* zinc-400 */
 }
 
@@ -373,14 +373,14 @@ h1 {
    a blockquote so the boundary between the new content and the quoted
    thread is visually obvious. */
 .inbox-prose .gmail_quote {
-  border-left: 2px solid rgb(228 228 231);
-  padding-left: 0.75em;
+  border-left: 4px solid rgb(161 161 170); /* zinc-400 — match the thicker quote bar */
+  padding-left: 1em;
   margin-top: 1em;
   color: rgb(82 82 91);
 }
 
 .dark .inbox-prose .gmail_quote {
-  border-left-color: rgb(63 63 70);
+  border-left-color: rgb(113 113 122); /* zinc-500 */
   color: rgb(161 161 170);
 }
 
