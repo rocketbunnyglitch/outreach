@@ -21,15 +21,19 @@ import {
 } from "@/components/ui/data-table";
 import { cn } from "@/lib/cn";
 import { Wifi } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 export function InboxPresenceBar({ currentStaffId }: { currentStaffId: string }) {
-  const router = useRouter();
-
+  // Passive indicator only. This bar must NOT call router.refresh() on
+  // realtime events: it subscribes to the hot realtime:email_threads
+  // firehose (poll-worker label sync + other operators emit a steady
+  // stream), and an unthrottled refresh-per-event drove a self-sustaining
+  // router.refresh() loop on /inbox (every refresh re-mounted this bar,
+  // re-subscribed, and re-fired presence). InboxLiveRefresh already owns
+  // the Gmail-style "N new -> click to refresh" affordance; here we only
+  // surface lastEvent text + the live/offline pill.
   const realtime = useRealtimeChannel({
     channel: "realtime:email_threads",
     currentStaffId,
-    onEvent: () => router.refresh(),
   });
 
   const presence = usePresenceHeartbeat({
