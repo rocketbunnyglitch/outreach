@@ -27,7 +27,7 @@ import {
   type VenueImportSummary,
   venueCsvRowSchema,
 } from "@/lib/validation/csv-import";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { type ParseResult, parse } from "papaparse";
 
@@ -156,9 +156,13 @@ export async function importVenuesCsv(
 
   // Second pass: resolve cities.
   const cityIndex = await buildCityIndex(validRows.map((v) => v.row));
-  const insertable: {
+
+  // Resolve each row to a cityId first, so we know which cities to load
+  // the existing-venue dedupe index for.
+  const resolved: {
     rowIndex: number;
-    values: typeof venues.$inferInsert;
+    cityId: string;
+    row: VenueCsvRow;
   }[] = [];
   for (const { row, rowIndex } of validRows) {
     const nameKey = row.city.toLowerCase().trim();
@@ -180,10 +184,74 @@ export async function importVenuesCsv(
       });
       continue;
     }
+    resolved.push({ rowIndex, cityId: lookup.id, row });
+  }
+
+  // Dedupe index: load existing venues for every city referenced by this
+  // import and key them by (city_id, lower(name)), exact phone, and
+  // lower(email). A re-import of the same sheet then SKIPS rows that
+  // already exist instead of inserting duplicate venues. Archived venues
+  // are excluded so an import can resurface a previously-archived venue.
+  const dedupeKey = (cityId: string, name: string) => `${cityId}|${name.trim().toLowerCase()}`;
+  const existingByName = new Set<string>();
+  const existingByPhone = new Set<string>();
+  const existingByEmail = new Set<string>();
+  const cityIds = Array.from(new Set(resolved.map((r) => r.cityId)));
+  if (cityIds.length > 0) {
+    const existingVenues = await db
+      .select({
+        cityId: venues.cityId,
+        name: venues.name,
+        phoneE164: venues.phoneE164,
+        email: venues.email,
+      })
+      .from(venues)
+      .where(and(inArray(venues.cityId, cityIds), isNull(venues.archivedAt)));
+    for (const v of existingVenues) {
+      existingByName.add(dedupeKey(v.cityId, v.name));
+      if (v.phoneE164) existingByPhone.add(v.phoneE164.trim());
+      if (v.email) existingByEmail.add(v.email.trim().toLowerCase());
+    }
+  }
+
+  // Intra-file dedupe: a sheet that lists the same venue twice should
+  // insert it once. Track keys we've already accepted in this batch.
+  const seenName = new Set<string>();
+  const seenPhone = new Set<string>();
+  const seenEmail = new Set<string>();
+
+  const insertable: {
+    rowIndex: number;
+    values: typeof venues.$inferInsert;
+  }[] = [];
+  for (const { rowIndex, cityId, row } of resolved) {
+    const nameDk = dedupeKey(cityId, row.name);
+    const phoneDk = row.phone?.trim() || null;
+    const emailDk = row.email?.trim().toLowerCase() || null;
+
+    const dupReason =
+      existingByName.has(nameDk) || seenName.has(nameDk)
+        ? `A venue named "${row.name}" already exists in this city.`
+        : phoneDk && (existingByPhone.has(phoneDk) || seenPhone.has(phoneDk))
+          ? `A venue with phone ${row.phone} already exists.`
+          : emailDk && (existingByEmail.has(emailDk) || seenEmail.has(emailDk))
+            ? `A venue with email ${row.email} already exists.`
+            : null;
+    if (dupReason) {
+      results.push({ rowIndex, status: "skipped", message: dupReason });
+      continue;
+    }
+
+    // Reserve this row's keys so a later identical row in the same file
+    // is skipped too.
+    seenName.add(nameDk);
+    if (phoneDk) seenPhone.add(phoneDk);
+    if (emailDk) seenEmail.add(emailDk);
+
     insertable.push({
       rowIndex,
       values: {
-        cityId: lookup.id,
+        cityId,
         name: row.name,
         address: row.address,
         phoneE164: row.phone,
