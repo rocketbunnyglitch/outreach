@@ -1,0 +1,31 @@
+-- =========================================================================
+-- 0089_email_threads_match_source.sql
+--
+-- Persist the venue-match classification on the thread row.
+--
+-- loadVenueCommunication (lib/venue-communication.ts) computes a per-thread
+-- match signal -- "venue_id" (direct), "email_match", or "domain_match" --
+-- on EVERY render by re-running the cross-match queries. The result is never
+-- stored, so the classification (and its confidence) is recomputed from
+-- scratch each page load and cannot be read by other surfaces.
+--
+-- These two nullable columns let a future poller write (lib/gmail-poll-
+-- worker.ts -- out of scope here) persist the resolved source + confidence
+-- once, so the timeline loader can read it back instead of recomputing.
+--
+--   match_source     text   one of 'venue_id' | 'email_match' | 'domain_match'
+--                           (mirrors VenueCommunicationSource). NULL = not yet
+--                           persisted; the loader falls back to the computed
+--                           value.
+--   match_confidence text   free-form confidence label (e.g. 'high' for the
+--                           direct venue_id case, 'low' for domain_match).
+--                           text keeps it open for a future taxonomy without
+--                           a follow-up migration.
+--
+-- Both nullable, no default: existing rows stay NULL and the loader's
+-- computed fallback continues to drive the UI unchanged. Idempotent via
+-- ADD COLUMN IF NOT EXISTS.
+-- =========================================================================
+
+ALTER TABLE email_threads ADD COLUMN IF NOT EXISTS match_source text;
+ALTER TABLE email_threads ADD COLUMN IF NOT EXISTS match_confidence text;

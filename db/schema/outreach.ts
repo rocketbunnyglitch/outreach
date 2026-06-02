@@ -311,6 +311,21 @@ export const emailThreads = pgTable(
      *  don't disturb the audit lineage. Added in migration 0057. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
 
+    /** Persisted venue-match classification. loadVenueCommunication
+     *  (lib/venue-communication.ts) otherwise recomputes the match
+     *  signal on every render. These columns let a future poller write
+     *  (lib/gmail-poll-worker.ts) persist the resolved value once so the
+     *  timeline loader can read it back instead of recomputing.
+     *
+     *  match_source: one of "venue_id" | "email_match" | "domain_match"
+     *  (mirrors VenueCommunicationSource). NULL = not yet persisted; the
+     *  loader falls back to the computed value.
+     *  match_confidence: free-form confidence label (e.g. "high" for the
+     *  direct venue_id case, "low" for domain_match).
+     *  Added in migration 0089. */
+    matchSource: text("match_source"),
+    matchConfidence: text("match_confidence"),
+
     ...auditColumns,
     ...archivedAt,
     ...versionColumn,

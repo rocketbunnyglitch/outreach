@@ -44,6 +44,25 @@ import { aliasedTable, and, desc, eq, inArray, isNull, or, sql } from "drizzle-o
 
 export type VenueCommunicationSource = "venue_id" | "email_match" | "domain_match";
 
+const VENUE_COMMUNICATION_SOURCES = new Set<VenueCommunicationSource>([
+  "venue_id",
+  "email_match",
+  "domain_match",
+]);
+
+/**
+ * Narrow a persisted match_source value (free-form text column) to a
+ * known VenueCommunicationSource, or null if it is absent / unrecognized
+ * so the caller can fall back to the value computed from the match
+ * buckets in this loader.
+ */
+function persistedSource(value: string | null): VenueCommunicationSource | null {
+  if (value && VENUE_COMMUNICATION_SOURCES.has(value as VenueCommunicationSource)) {
+    return value as VenueCommunicationSource;
+  }
+  return null;
+}
+
 /**
  * Free / consumer email providers. A venue whose website host happens
  * to be one of these (or whose stored email is on one of these) must
@@ -82,8 +101,14 @@ export interface VenueCommunicationThread {
   messageCount: number;
   /** True when at least one message has read_at = NULL. */
   hasUnread: boolean;
-  /** Match signal — drives badge + tooltip in the UI. */
+  /** Match signal -- drives badge + tooltip in the UI. Reads the
+   *  persisted email_threads.match_source when present (migration
+   *  0089), else falls back to the value computed from the match
+   *  buckets in this loader. */
   source: VenueCommunicationSource;
+  /** Persisted confidence label (email_threads.match_confidence),
+   *  null when not yet written by the poller. Read-only passthrough. */
+  matchConfidence: string | null;
 }
 
 export interface VenueCommunicationSummary {
@@ -279,6 +304,8 @@ export async function loadVenueCommunication(
       classification: emailThreads.classification,
       direction: emailThreads.direction,
       unreadCount: emailThreads.unreadCount,
+      matchSource: emailThreads.matchSource,
+      matchConfidence: emailThreads.matchConfidence,
       accountEmail: connectedAccounts.emailAddress,
       ownerUserId: connectedAccounts.ownerUserId,
       ownerName: accountOwners.displayName,
@@ -302,11 +329,20 @@ export async function loadVenueCommunication(
     ownerName: r.ownerName,
     messageCount: r.messageCount,
     hasUnread: r.unreadCount > 0,
-    source: directIdSet.has(r.threadId)
-      ? "venue_id"
-      : emailMatchIds.has(r.threadId)
-        ? "email_match"
-        : "domain_match",
+    // Read the persisted classification when present (migration 0089),
+    // else fall back to the value computed from the match buckets. The
+    // poller write that populates these columns lives in
+    // lib/gmail-poll-worker.ts (out of scope); until it lands the
+    // column is NULL for every row and the computed fallback drives the
+    // UI exactly as before.
+    source:
+      persistedSource(r.matchSource) ??
+      (directIdSet.has(r.threadId)
+        ? "venue_id"
+        : emailMatchIds.has(r.threadId)
+          ? "email_match"
+          : "domain_match"),
+    matchConfidence: r.matchConfidence,
   }));
 
   // ----------------------------------------------------------------
