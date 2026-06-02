@@ -295,12 +295,25 @@ function RoleCell({
   suffix = "",
 }: {
   name: string | null;
-  status: "confirmed" | "missing" | "pending";
+  status: "confirmed" | "partial" | "missing" | "pending";
   suffix?: string;
 }) {
   if (status === "missing") {
     return (
       <span className="font-mono text-[10px] text-rose-500 uppercase tracking-widest">missing</span>
+    );
+  }
+  if (status === "partial") {
+    // Some but not all required middles secured -- orange, between
+    // amber "pending" and rose "missing".
+    return (
+      <span className="text-zinc-500">
+        {name ?? "-"}
+        {suffix}
+        <span className="ml-1 font-mono text-[10px] text-orange-500 uppercase tracking-widest">
+          partial
+        </span>
+      </span>
     );
   }
   if (status === "pending") {

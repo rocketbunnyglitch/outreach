@@ -40,6 +40,18 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
+/**
+ * Venue_event statuses that count as a slot actually being SECURED.
+ * "confirmed" is the canonical one, but a signed contract or a
+ * scheduled date are equally (or more) committed -- treating them as
+ * unfilled would under-report readiness. Mirrors the set the city
+ * sheet uses.
+ */
+const CONFIRMED_STATUSES = new Set(["confirmed", "scheduled", "contract_signed"]);
+function isConfirmedStatus(s: string | null | undefined): boolean {
+  return s != null && CONFIRMED_STATUSES.has(s);
+}
+
 export type CrawlStatus =
   | "complete"
   | "need_final"
@@ -68,7 +80,7 @@ export interface CrawlMatrixRow {
   middleGroupName: string | null;
   middleGroupId: string | null;
   middleVenueCount: number;
-  middleStatus: "confirmed" | "missing" | "pending";
+  middleStatus: "confirmed" | "partial" | "missing" | "pending";
   /** Final venue name (confirmed only), or null. */
   finalVenueName: string | null;
   finalStatus: "confirmed" | "missing" | "pending";
@@ -106,6 +118,10 @@ export async function buildCrawlMatrix(opts: {
       ticketSalesCount: events.ticketSalesCount,
       middleGroupId: events.middleVenueGroupId,
       middleGroupName: middleVenueGroups.name,
+      requiredMiddleCount: events.requiredMiddleCount,
+      requiredFinalCount: events.requiredFinalCount,
+      requiredWristbandCount: events.requiredWristbandCount,
+      crawlFormat: events.crawlFormat,
     })
     .from(events)
     .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
@@ -147,7 +163,7 @@ export async function buildCrawlMatrix(opts: {
       : await db
           .select({
             groupId: middleVenueGroupMembers.middleVenueGroupId,
-            count: sql<number>`count(*) filter (where status = 'confirmed')::int`,
+            count: sql<number>`count(*) filter (where status IN ('confirmed','scheduled','contract_signed'))::int`,
           })
           .from(middleVenueGroupMembers)
           .where(inArray(middleVenueGroupMembers.middleVenueGroupId, middleGroupIds))
@@ -238,48 +254,60 @@ export async function buildCrawlMatrix(opts: {
 
     const wristbandStatus: CrawlMatrixRow["wristbandStatus"] = !wristband
       ? "missing"
-      : wristband.status === "confirmed"
+      : isConfirmedStatus(wristband.status)
         ? "confirmed"
         : "pending";
+
+    // day_party crawls have no final venue -- they end at the party.
+    // Excluding final from the required set stops them from being
+    // permanently stuck at "need_final" / never reaching complete.
+    const requiresFinal = er.crawlFormat !== "day_party";
 
     const finalStatus: CrawlMatrixRow["finalStatus"] = !final
       ? "missing"
-      : final.status === "confirmed"
+      : isConfirmedStatus(final.status)
         ? "confirmed"
         : "pending";
 
-    // Middle status: prefer group (Halloween model). Fall back to inline.
+    // Middle status against the crawl's REQUIRED middle count (not a
+    // shallow count > 0). 1-of-2 required middles is Partial, not
+    // Complete. Prefer the attached group; fall back to inline middles.
+    const requiredMiddles = er.requiredMiddleCount ?? 2;
     let middleStatus: CrawlMatrixRow["middleStatus"] = "missing";
     let middleVenueCount = 0;
-    if (er.middleGroupId) {
-      const count = memberCountMap.get(er.middleGroupId) ?? 0;
-      middleVenueCount = count;
-      middleStatus = count > 0 ? "confirmed" : "pending";
-    } else if (inlineMiddles.length > 0) {
-      const confirmedCount = inlineMiddles.filter((v) => v.status === "confirmed").length;
+    {
+      const confirmedCount = er.middleGroupId
+        ? (memberCountMap.get(er.middleGroupId) ?? 0)
+        : inlineMiddles.filter((v) => isConfirmedStatus(v.status)).length;
       middleVenueCount = confirmedCount;
-      middleStatus = confirmedCount > 0 ? "confirmed" : "pending";
+      middleStatus =
+        confirmedCount >= requiredMiddles
+          ? "confirmed"
+          : confirmedCount > 0
+            ? "partial"
+            : "missing";
     }
 
     const stale = !ccWithRecentOutreach.has(er.cityCampaignId);
 
-    // Roll-up status
+    // Roll-up status. Final only counts toward completeness when the
+    // format requires one. Middle "partial" still reads as need_middle.
     let status: CrawlStatus = "outreach";
     const allConfirmed =
       wristbandStatus === "confirmed" &&
       middleStatus === "confirmed" &&
-      finalStatus === "confirmed";
+      (!requiresFinal || finalStatus === "confirmed");
 
     if (allConfirmed) {
       status = "complete";
     } else if (
       er.ticketSalesCount > 0 &&
-      (wristbandStatus === "missing" || finalStatus === "missing")
+      (wristbandStatus === "missing" || (requiresFinal && finalStatus === "missing"))
     ) {
       status = "at_risk";
-    } else if (finalStatus === "missing") {
+    } else if (requiresFinal && finalStatus === "missing") {
       status = "need_final";
-    } else if (middleStatus === "missing") {
+    } else if (middleStatus === "missing" || middleStatus === "partial") {
       status = "need_middle";
     } else if (wristbandStatus === "missing") {
       status = "need_wristband";
