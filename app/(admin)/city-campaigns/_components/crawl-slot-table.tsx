@@ -19,6 +19,7 @@ import {
   MessageSquare,
   Pencil,
   Plus,
+  Repeat2,
   Trash2,
   X,
 } from "lucide-react";
@@ -532,6 +533,27 @@ function slotPillTone(slot: SlotRow): string {
 }
 
 /**
+ * Reuse chip -- shown when this slot's venue is ALSO used elsewhere in the
+ * same city_campaign (another crawl and/or another role). Cross-crawl
+ * reuse is legitimate in real Halloween ops, so this is informational
+ * (sky-tinted, not a warning red). The full list of other usages is in
+ * the tooltip.
+ */
+function ReuseChip({ reuse }: { reuse: SlotRow["reuse"] }) {
+  if (!reuse || reuse.length === 0) return null;
+  const detail = reuse.map((r) => `${ROLE_LABEL[r.role]} in ${r.crawlLabel}`).join(", ");
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded bg-sky-500/15 px-1 py-0.5 font-mono text-[9px] text-sky-700 uppercase tracking-[0.08em] dark:bg-sky-500/15 dark:text-sky-300"
+      title={`Also used as ${detail} (same city campaign)`}
+    >
+      <Repeat2 className="h-2.5 w-2.5" aria-hidden />
+      {reuse.length}x<span className="sr-only">Also used as {detail}</span>
+    </span>
+  );
+}
+
+/**
  * Single crawl's slot table.
  *
  * Layout — 9 columns, spreadsheet feel:
@@ -937,15 +959,18 @@ function SlotTableRow({
           pending && "opacity-60",
         )}
       >
-        {/* Header: slot chip + status + clear button */}
+        {/* Header: slot chip + reuse chip + status + clear button */}
         <div className="flex items-start justify-between gap-2">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
-              slotPillTone(slot),
-            )}
-          >
-            {slotLabel}
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
+                slotPillTone(slot),
+              )}
+            >
+              {slotLabel}
+            </span>
+            <ReuseChip reuse={slot.reuse} />
           </span>
           <div className="flex items-center gap-2">
             <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
@@ -1099,15 +1124,18 @@ function SlotTableRow({
           pending && "opacity-60",
         )}
       >
-        {/* Slot label — color chip */}
+        {/* Slot label color chip + reuse chip */}
         <td className="px-3 py-2 align-middle">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
-              slotPillTone(slot),
-            )}
-          >
-            {slotLabel}
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-0.5 font-medium font-mono text-[10px] uppercase tracking-[0.08em]",
+                slotPillTone(slot),
+              )}
+            >
+              {slotLabel}
+            </span>
+            <ReuseChip reuse={slot.reuse} />
           </span>
         </td>
 
@@ -1532,6 +1560,7 @@ function emptySlot(role: "middle" | "alt_final", slotPosition: number): SlotRow 
     nightOfContactName: null,
     scheduledByStaffId: null,
     scheduledByStaffName: null,
+    reuse: [],
   };
 }
 

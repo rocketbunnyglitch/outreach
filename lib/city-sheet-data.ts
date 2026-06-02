@@ -46,6 +46,7 @@ import type {
   CrawlCard,
   CrawlHostRef,
   GroupMemberRow,
+  SlotReuseRef,
   SlotRole,
   SlotRow,
 } from "./city-sheet-shared";
@@ -299,6 +300,40 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
     .where(eq(staffMembers.status, "active"))
     .orderBy(asc(staffMembers.displayName));
 
+  // Per-venue reuse rollup across this city_campaign. Map venue_id ->
+  // every (eventId, role) it's used in. A slot then surfaces the OTHER
+  // usages (different crawl and/or role) as a "reuse" chip so the
+  // operator can see a venue doing double duty. Cross-crawl reuse is
+  // legitimate in real Halloween ops, so this is purely informational.
+  const eventLabelById = new Map<string, string>();
+  for (const ev of eventRows) {
+    eventLabelById.set(
+      ev.id,
+      ev.crawlName ?? `${capitalize(String(ev.dayPart ?? ""))} crawl ${ev.crawlNumber ?? "?"}`,
+    );
+  }
+  type VenueUsage = { eventId: string; role: SlotRole };
+  const usagesByVenueId = new Map<string, VenueUsage[]>();
+  for (const v of veRows) {
+    const list = usagesByVenueId.get(v.venueId) ?? [];
+    list.push({ eventId: v.eventId, role: v.role as SlotRole });
+    usagesByVenueId.set(v.venueId, list);
+  }
+  // venue_event id -> the OTHER usages of its venue (excludes this row).
+  const reuseByVenueEventId = new Map<string, SlotReuseRef[]>();
+  for (const v of veRows) {
+    const others = (usagesByVenueId.get(v.venueId) ?? []).filter((u) => u.eventId !== v.eventId);
+    if (others.length === 0) continue;
+    reuseByVenueEventId.set(
+      v.id,
+      others.map((u) => ({
+        eventId: u.eventId,
+        crawlLabel: eventLabelById.get(u.eventId) ?? "another crawl",
+        role: u.role,
+      })),
+    );
+  }
+
   // Compose crawls with default 4 slots (wristband, middle 1, middle 2, final)
   // plus any extra middles or alt_finals already filled.
   //
@@ -353,10 +388,15 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
     // the middles").
     const orderedDefaults: SlotRow[] = defaultSlots.map((d) => {
       const filled = ves.find((v) => v.role === d.role && (v.slotPosition ?? 1) === d.slotPosition);
-      return slotRowFrom(filled, d.role, d.slotPosition);
+      return slotRowFrom(
+        filled,
+        d.role,
+        d.slotPosition,
+        filled ? (reuseByVenueEventId.get(filled.id) ?? []) : [],
+      );
     });
     const orderedExtras: SlotRow[] = extras.map((v) =>
-      slotRowFrom(v, v.role as SlotRole, v.slotPosition ?? 1),
+      slotRowFrom(v, v.role as SlotRole, v.slotPosition ?? 1, reuseByVenueEventId.get(v.id) ?? []),
     );
     const slots: SlotRow[] = [...orderedDefaults, ...orderedExtras].sort(
       (a, b) =>
@@ -442,7 +482,12 @@ type VenueEventRow = {
   staffName: string | null;
 };
 
-function slotRowFrom(ve: VenueEventRow | undefined, role: SlotRole, position: number): SlotRow {
+function slotRowFrom(
+  ve: VenueEventRow | undefined,
+  role: SlotRole,
+  position: number,
+  reuse: SlotReuseRef[] = [],
+): SlotRow {
   if (!ve) {
     return {
       venueEventId: null,
@@ -459,6 +504,7 @@ function slotRowFrom(ve: VenueEventRow | undefined, role: SlotRole, position: nu
       nightOfContactName: null,
       scheduledByStaffId: null,
       scheduledByStaffName: null,
+      reuse: [],
     };
   }
   return {
@@ -476,6 +522,7 @@ function slotRowFrom(ve: VenueEventRow | undefined, role: SlotRole, position: nu
     nightOfContactName: ve.nightOfContactName,
     scheduledByStaffId: ve.ourContactStaffId,
     scheduledByStaffName: ve.staffName,
+    reuse,
   };
 }
 

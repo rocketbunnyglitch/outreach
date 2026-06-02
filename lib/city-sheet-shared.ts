@@ -37,6 +37,23 @@ export interface SlotRow {
   nightOfContactName: string | null;
   scheduledByStaffId: string | null;
   scheduledByStaffName: string | null;
+  /**
+   * OTHER usages of this slot's venue within the SAME city_campaign --
+   * the same venue working a different crawl and/or a different role.
+   * Empty when the venue is only used here (or the slot is empty). Drives
+   * a "reuse" chip so the operator sees at a glance that a venue is doing
+   * double duty (e.g. middle in Fri #1, wristband in Sat #2). Cross-crawl
+   * reuse is legitimate in real Halloween ops -- this is informational,
+   * not a warning.
+   */
+  reuse: SlotReuseRef[];
+}
+
+export interface SlotReuseRef {
+  eventId: string;
+  /** Display label for the other crawl, e.g. "Saturday crawl 2". */
+  crawlLabel: string;
+  role: SlotRole;
 }
 
 export interface GroupMemberRow {
