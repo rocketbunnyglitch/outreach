@@ -24,7 +24,7 @@
 import type { DraftListRow } from "@/lib/inbox-data";
 import { AlarmClock, Inbox as InboxIcon, Loader2, Mail, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { bulkDeleteDrafts, deleteDraft } from "../../_actions/email-drafts";
 
 interface Props {
@@ -38,6 +38,11 @@ export function DraftList({ drafts, mode, folderLabel }: Props) {
   const [pending, startTx] = useTransition();
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Mount gate: formatRelative/formatScheduled read Date.now() (relative
+  // buckets) during render -> SSR/client divergence -> #418. Render a
+  // deterministic UTC stamp until mount, then the relative label.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   function resumeDraft(id: string) {
     setResumingId(id);
@@ -201,11 +206,14 @@ export function DraftList({ drafts, mode, folderLabel }: Props) {
                     </p>
                     <time
                       dateTime={(d.scheduledFor ?? d.updatedAt).toISOString()}
+                      suppressHydrationWarning
                       className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
                     >
-                      {mode === "scheduled" && d.scheduledFor
-                        ? formatScheduled(d.scheduledFor)
-                        : formatRelative(d.updatedAt)}
+                      {mounted
+                        ? mode === "scheduled" && d.scheduledFor
+                          ? formatScheduled(d.scheduledFor)
+                          : formatRelative(d.updatedAt)
+                        : (d.scheduledFor ?? d.updatedAt).toISOString().slice(0, 10)}
                     </time>
                   </div>
                   <p

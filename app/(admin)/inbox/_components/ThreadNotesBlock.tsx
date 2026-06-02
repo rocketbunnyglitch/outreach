@@ -37,6 +37,10 @@ export function ThreadNotesBlock({ threadId, notes, currentStaffId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // Mount gate: formatRelative reads Date.now() during render -> SSR vs
+  // client divergence -> #418. Show a stable date until mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Auto-grow the textarea up to ~120px tall.
   useEffect(() => {
@@ -138,7 +142,9 @@ export function ThreadNotesBlock({ threadId, notes, currentStaffId }: Props) {
                 <div className="mt-1 flex items-center gap-2 font-mono text-[9px] text-zinc-500">
                   <span>{n.authorName ?? "Unknown"}</span>
                   <span>·</span>
-                  <span>{formatRelative(n.createdAt)}</span>
+                  <span suppressHydrationWarning>
+                    {mounted ? formatRelative(n.createdAt) : n.createdAt.toISOString().slice(0, 10)}
+                  </span>
                   {n.mentionedNames.length > 0 && (
                     <>
                       <span>·</span>

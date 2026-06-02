@@ -142,6 +142,13 @@ function ThreadRow({
   }, [thread.id]);
   const isUnread = thread.unreadCount > 0 && !locallyRead;
 
+  // Mount gate for the row timestamp. formatTime reads the wall clock
+  // (relative buckets) + locale/timezone, which diverges between SSR and
+  // client hydration -> #418 freeze. Render a deterministic UTC stamp
+  // until mount, then the operator's local relative/short time.
+  const [timeMounted, setTimeMounted] = useState(false);
+  useEffect(() => setTimeMounted(true), []);
+
   return (
     <li>
       <Link
@@ -198,9 +205,12 @@ function ThreadRow({
           <div className="shrink-0">
             <time
               dateTime={thread.lastMessageAt.toISOString()}
+              suppressHydrationWarning
               className="block font-mono text-[10px] text-zinc-500 tabular-nums group-hover/row:hidden"
             >
-              {formatTime(thread.lastMessageAt)}
+              {timeMounted
+                ? formatTime(thread.lastMessageAt)
+                : thread.lastMessageAt.toISOString().slice(11, 16)}
             </time>
             <ThreadRowHoverActions
               threadId={thread.id}
@@ -479,18 +489,21 @@ function EngineStatusPill({ state }: { state: string }) {
   );
 }
 
+// Only ever called client-side after mount (see timeMounted gate at the
+// call site). Locale pinned to en-US so the only runtime variance is the
+// operator's timezone, which is correct post-mount.
 function formatTime(date: Date): string {
   const now = Date.now();
   const diffMs = now - date.getTime();
   const diffHours = diffMs / 3_600_000;
   if (diffHours < 24) {
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   }
   const diffDays = diffHours / 24;
   if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: "short" });
+    return date.toLocaleDateString("en-US", { weekday: "short" });
   }
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function formatDayPart(dp: string): string {

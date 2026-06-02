@@ -17,7 +17,7 @@
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail } from "@/lib/inbox-data";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface Props {
   message: InboxThreadDetail["messages"][number];
@@ -27,6 +27,13 @@ interface Props {
 
 export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  // Mount gate for the human-readable timestamp. Rendering a
+  // locale/timezone-formatted date during SSR + first client pass
+  // diverges (server TZ vs browser TZ) -> React #418 hydration bail ->
+  // frozen thread on some profiles. We render a deterministic UTC stamp
+  // until mount, then swap to the operator's local-formatted time.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const isInbound = message.direction === "inbound";
 
   if (collapsed) {
@@ -60,9 +67,10 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
           </div>
           <time
             dateTime={message.sentAt.toISOString()}
+            suppressHydrationWarning
             className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
           >
-            {formatTime(message.sentAt)}
+            {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
           </time>
         </button>
       </li>
@@ -117,14 +125,10 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
         </div>
         <time
           dateTime={message.sentAt.toISOString()}
+          suppressHydrationWarning
           className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
         >
-          {message.sentAt.toLocaleString([], {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
+          {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
         </time>
       </header>
 
@@ -168,10 +172,18 @@ function firstLine(s: string | null): string {
 }
 
 function formatTime(d: Date): string {
-  return d.toLocaleString([], {
+  // Locale pinned to en-US (not []) so the only remaining variance is the
+  // runtime timezone -- and this only ever runs client-side after mount.
+  return d.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+// Deterministic UTC stamp for the server + pre-mount render so SSR and the
+// first client pass match (no #418 bail). Swapped for formatTime on mount.
+function isoStamp(d: Date): string {
+  return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }

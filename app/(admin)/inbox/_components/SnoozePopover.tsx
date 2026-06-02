@@ -29,7 +29,14 @@ export function SnoozePopover({ threadId, currentSnoozeUntil, onClose, onSnoozed
   const [pending, startTx] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [showCustom, setShowCustom] = useState(false);
-  const [custom, setCustom] = useState(defaultCustom());
+  // Initialize empty, fill in a mount effect: defaultCustom() -> tomorrow9am()
+  // constructs a new Date(), and reading the wall clock in a useState
+  // initializer is the banned #418 pattern. The submit guard already
+  // handles an empty value (NaN check), so an empty initial is safe.
+  const [custom, setCustom] = useState("");
+  useEffect(() => {
+    setCustom(defaultCustom());
+  }, []);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

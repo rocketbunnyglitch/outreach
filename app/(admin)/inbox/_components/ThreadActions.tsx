@@ -46,6 +46,12 @@ export function ThreadActions({
   const router = useRouter();
   // Only mark-as-read once per mount to avoid noise from re-renders
   const markedRef = useRef(false);
+  // Mount gate for the snooze title timestamp: new Date(...).toLocaleString
+  // renders in the runtime timezone, so SSR (server TZ) and client (browser
+  // TZ) titles diverge -> attribute hydration mismatch. Emit a stable label
+  // until mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (markedRef.current) return;
@@ -184,7 +190,9 @@ export function ThreadActions({
           disabled={pending}
           title={
             snoozeUntil
-              ? `Snoozed until ${new Date(snoozeUntil).toLocaleString("en-US")}`
+              ? mounted
+                ? `Snoozed until ${new Date(snoozeUntil).toLocaleString("en-US")}`
+                : "Snoozed"
               : "Snooze this thread"
           }
         >
