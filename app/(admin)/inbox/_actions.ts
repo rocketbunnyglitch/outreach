@@ -1229,6 +1229,30 @@ export async function bulkUpdateThreads(
   try {
     await db.update(emailThreads).set(patch).where(inArray(emailThreads.id, okIds));
 
+    // Per-message read_at parity with markThreadRead. Setting just
+    // email_threads.unread_count=0 (the patch above) cleared the
+    // unread badge in the UI but left email_messages.read_at NULL
+    // on the underlying inbound messages. Anything downstream that
+    // reads from email_messages.read_at (per-message receipts,
+    // future read-time analytics) would then see "never read" rows
+    // for threads the operator HAS marked read. Mirror the per-
+    // thread action's behavior here so single-thread and bulk
+    // mark-read produce identical row state.
+    //
+    // Symmetric: bulk mark_unread doesn't reset read_at because the
+    // per-thread markThreadUnread doesn't either -- read_at is a
+    // first-time-read timestamp, not a recurring state. Toggling
+    // unread on after read doesn't un-read history.
+    if (act === "mark_read") {
+      await db.execute(sql`
+        UPDATE email_messages
+        SET read_at = NOW()
+        WHERE thread_id = ANY(${okIds}::uuid[])
+          AND direction = 'inbound'
+          AND read_at IS NULL
+      `);
+    }
+
     // Gmail mirror for every action that maps to a Gmail label
     // change. Without this the engine + Gmail drift: operator
     // archives in the engine, Gmail still shows the thread in

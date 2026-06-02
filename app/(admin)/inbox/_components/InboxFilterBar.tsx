@@ -24,6 +24,7 @@ import { Inbox, Search, User, UserX, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { InboxDensityToggle } from "./InboxDensityToggle";
+import { MarkFolderReadButton } from "./MarkFolderReadButton";
 import { SavedSearchesDropdown } from "./SavedSearchesDropdown";
 
 interface AliasOption {
@@ -49,6 +50,11 @@ interface Props {
    *  current scope. Surfaces as a small "(N)" badge on the
    *  "Assigned to me" chip when > 0. */
   assignedToMeCount?: number;
+  /** IDs of threads in the visible list whose unread_count > 0.
+   *  Passed through to MarkFolderReadButton so it can bulk-mark
+   *  them read without re-querying. Empty list -> the button
+   *  hides itself. */
+  unreadThreadIds?: string[];
   activeAliasId?: string;
   initialSearch?: string;
   /** Saved searches for the current operator (Phase B.2). */
@@ -63,6 +69,7 @@ export function InboxFilterBar({
   unassignedOnly,
   unassignedCount = 0,
   assignedToMeCount = 0,
+  unreadThreadIds = [],
   activeAliasId,
   initialSearch,
   savedSearches = [],
@@ -274,6 +281,7 @@ export function InboxFilterBar({
         >
           search
         </button>
+        <MarkFolderReadButton unreadThreadIds={unreadThreadIds} />
         <InboxDensityToggle />
       </div>
     </form>
