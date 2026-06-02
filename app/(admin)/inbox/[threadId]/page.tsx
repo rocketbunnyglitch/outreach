@@ -147,6 +147,8 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         currentUserId: currentStaff.id,
         currentTeamId: currentStaff.teamId,
         canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "admin"),
+        // SEND authority: admin override only (owned-or-admin).
+        isAdmin: hasMinimumRole(currentStaff, "admin"),
       }),
       getUserPreferences(currentStaff.id),
     ]);

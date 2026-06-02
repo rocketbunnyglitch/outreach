@@ -232,6 +232,9 @@ export default async function InboxPage({ searchParams }: Props) {
       // Future: a finer-grained "team accounts I have access to"
       // model will go here.
       canSeeAllTeamAccounts: hasMinimumRole(currentStaff, "lead"),
+      // SEND authority is narrower than visibility: only admins get
+      // the cross-inbox send override (lead visibility != send).
+      isAdmin: hasMinimumRole(currentStaff, "admin"),
     }),
     getUserPreferences(currentStaff.id),
     loadSavedSearches(currentStaff.id),

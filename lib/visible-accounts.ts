@@ -18,6 +18,23 @@ import "server-only";
  * visibility is intentionally broader than send-from authority so
  * staff can collaborate on a campaign by seeing each others' threads
  * without being able to send from another operator's inbox.
+ *
+ * VIEW vs SEND -- two distinct concepts, surfaced together:
+ *   - VISIBLE: which inboxes the operator may VIEW (this loader's
+ *     filter + the per-row presence). Team/campaign-scoped per role:
+ *     admin/lead see the whole team; staff see only their own.
+ *   - SENDABLE: whether the operator may SEND FROM a visible inbox.
+ *     Encoded per row as `isSendable` and is strictly narrower:
+ *     sendable = owned by the operator OR the operator is an admin
+ *     (admin override). This mirrors the canonical server gate in
+ *     lib/compose-send-impl.ts and app/(admin)/inbox/_actions.ts
+ *     (inbox.ownerUserId === me || hasMinimumRole(me, "admin")).
+ *     The flag is advisory for the UI only -- the server gate is the
+ *     authority -- but it lets a switcher/From picker grey out or
+ *     label teammate inboxes as "view only" without re-deriving the
+ *     rule. NOTE: the compose From picker uses listSendableInboxes in
+ *     app/(admin)/_actions/compose-and-send.ts, NOT this loader; this
+ *     loader feeds the VIEW-oriented AccountSwitcher.
  */
 
 import { connectedAccounts, emailThreads, users } from "@/db/schema";
@@ -36,6 +53,13 @@ export interface VisibleAccount {
    *  Send From gate ultimately enforces this; we surface it here so
    *  the UI can show a "Draft for owner" hint on others' accounts. */
   isMine: boolean;
+  /** True when the operator may SEND FROM this inbox: owned by the
+   *  operator OR the operator is an admin (admin override). Strictly
+   *  narrower than visibility -- a teammate's inbox is visible but
+   *  not sendable for a non-admin. Advisory for the UI (grey out /
+   *  label "view only"); the server gate in lib/compose-send-impl.ts
+   *  + app/(admin)/inbox/_actions.ts remains the authority. */
+  isSendable: boolean;
   health: AccountHealth;
   /** Cold sends used today (operator's tz). null when the cap
    *  loader didn't return a number — render as "—" in the UI. */
@@ -53,6 +77,12 @@ interface Opts {
   /** Admin / lead see every team account. Staff see only their own
    *  accounts in the dropdown by default. */
   canSeeAllTeamAccounts: boolean;
+  /** Admin override for SEND authority. When true, every returned
+   *  account is marked isSendable (an admin may send from any team
+   *  inbox); otherwise only the operator's own accounts are sendable.
+   *  Mirrors hasMinimumRole(staff, "admin") at the call site. Defaults
+   *  to false when omitted (treat the operator as non-admin). */
+  isAdmin?: boolean;
 }
 
 export async function loadVisibleAccounts(opts: Opts): Promise<VisibleAccount[]> {
@@ -145,12 +175,16 @@ export async function loadVisibleAccounts(opts: Opts): Promise<VisibleAccount[]>
           return "disconnected";
       }
     })();
+    const isMine = r.ownerUserId === opts.currentUserId;
     return {
       id: r.id,
       emailAddress: r.emailAddress,
       ownerUserId: r.ownerUserId,
       ownerName: r.ownerName,
-      isMine: r.ownerUserId === opts.currentUserId,
+      isMine,
+      // SEND authority: owned by me OR admin override. Narrower than
+      // visibility; mirrors the server-side send-ownership gate.
+      isSendable: isMine || opts.isAdmin === true,
       health,
       coldSendsUsed: usageByAccount.get(r.id) ?? 0,
       coldSendCap: r.cap ?? 30,
