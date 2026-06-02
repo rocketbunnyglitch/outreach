@@ -44,6 +44,7 @@ import {
   Minus,
   MoreHorizontal,
   PenLine,
+  SendHorizontal,
   Smile,
   Trash2,
   X,
@@ -683,6 +684,21 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           <DraftStatusBadge instance={instance} />
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {/* Mobile: Send lives in the TOP bar (Gmail-style paper-airplane)
+              so it's always reachable -- the footer SendMenu can be a long
+              scroll away on a small screen. Fires the same queued send. */}
+          {isMobile && (
+            <button
+              type="button"
+              onClick={handleSendNow}
+              disabled={(!!sendError && !undoActive) || sending || undoActive}
+              title="Send"
+              aria-label="Send"
+              className="mr-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              <SendHorizontal className="h-4 w-4" />
+            </button>
+          )}
           {effectiveMode === "inline" ? (
             // Inline-mode popout: move the same draft to the docked
             // bottom-right composer without losing typed content,
