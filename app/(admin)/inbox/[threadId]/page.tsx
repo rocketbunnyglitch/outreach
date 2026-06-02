@@ -350,6 +350,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
               mineAssigned={mineAssigned}
               mineInbox={mine}
               unassignedOnly={search.unassigned === "1"}
+              unassignedCount={counts.unassigned}
               activeAliasId={search.alias}
               initialSearch={search.q}
               savedSearches={savedSearches}

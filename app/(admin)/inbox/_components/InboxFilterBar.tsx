@@ -41,6 +41,10 @@ interface Props {
   mineInbox: boolean;
   /** "Unassigned only" filter (?unassigned=1). */
   unassignedOnly: boolean;
+  /** Count of unassigned needs_reply threads in the current scope.
+   *  Surfaces as a small "(N)" badge on the Unassigned chip when > 0
+   *  so operators see the pile size before clicking. */
+  unassignedCount?: number;
   activeAliasId?: string;
   initialSearch?: string;
   /** Saved searches for the current operator (Phase B.2). */
@@ -53,6 +57,7 @@ export function InboxFilterBar({
   mineAssigned,
   mineInbox,
   unassignedOnly,
+  unassignedCount = 0,
   activeAliasId,
   initialSearch,
   savedSearches = [],
@@ -197,7 +202,10 @@ export function InboxFilterBar({
             clears that filter via setUnassignedOnly. Zinc-tinted to
             mirror the per-row Unassigned pill so the connection is
             visual: this toggle scopes the list to JUST the rows
-            with that pill. */}
+            with that pill. The trailing (N) is the pile size in
+            the current scope -- helps operators decide whether to
+            click in. Hidden at 0 so a clean inbox doesn't show a
+            "(0)" badge. */}
         <button
           type="button"
           onClick={() => setUnassignedOnly(!unassignedOnly)}
@@ -208,10 +216,19 @@ export function InboxFilterBar({
               : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
           )}
           aria-pressed={unassignedOnly}
-          title="Threads with no operator assigned"
+          title={
+            unassignedCount > 0
+              ? `${unassignedCount} unassigned thread${unassignedCount === 1 ? "" : "s"} in the current scope`
+              : "Threads with no operator assigned"
+          }
         >
           <UserX className="h-3 w-3" />
           Unassigned
+          {unassignedCount > 0 && (
+            <span className="font-mono text-[10px] opacity-70 tabular-nums">
+              ({unassignedCount.toLocaleString("en-US")})
+            </span>
+          )}
         </button>
 
         {aliases.length > 1 && (

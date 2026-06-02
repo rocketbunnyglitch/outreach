@@ -768,7 +768,7 @@ export async function fetchFolderCounts(opts: {
    *  belonging to this campaign — so left-rail counts match what
    *  the thread list will actually show with the same default scope. */
   campaignId?: string;
-}): Promise<Record<InboxFolder, number>> {
+}): Promise<Record<InboxFolder, number> & { unassigned: number }> {
   // Pull one count per logical predicate. Rather than one big GROUP BY
   // (which doesn't compose with the new direction / starred / snooze
   // predicates), run a single aggregate query that returns each count
@@ -806,6 +806,7 @@ export async function fetchFolderCounts(opts: {
     closed: number;
     drafts: number;
     scheduled: number;
+    unassigned: number;
   }>(sql`
     WITH scoped AS (
       SELECT et.*
@@ -876,6 +877,16 @@ export async function fetchFolderCounts(opts: {
           AND (snooze_until IS NULL OR snooze_until <= now())
           AND state IN ('closed_won','closed_lost','closed_dnc')
       )::int AS closed,
+      -- Unassigned: needs_reply threads with no operator assignee.
+      -- Mirror of the per-row "Unassigned" pill predicate so the
+      -- FilterBar chip's count matches what the list would show
+      -- with ?unassigned=1.
+      COUNT(*) FILTER (
+        WHERE deleted_at IS NULL
+          AND (snooze_until IS NULL OR snooze_until <= now())
+          AND state = 'needs_reply'
+          AND assigned_staff_id IS NULL
+      )::int AS unassigned,
       (SELECT drafts FROM draft_counts) AS drafts,
       (SELECT scheduled FROM draft_counts) AS scheduled
     FROM scoped
@@ -900,6 +911,7 @@ export async function fetchFolderCounts(opts: {
     waiting: Number(r.waiting ?? 0),
     follow_up: Number(r.follow_up ?? 0),
     closed: Number(r.closed ?? 0),
+    unassigned: Number(r.unassigned ?? 0),
   };
 }
 
