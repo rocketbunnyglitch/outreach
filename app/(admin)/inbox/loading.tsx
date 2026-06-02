@@ -3,7 +3,7 @@
  * so the page swap is layout-stable during navigation.
  */
 
-import { Skeleton, SkeletonRow } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function InboxLoading() {
   return (
@@ -35,11 +35,24 @@ export default function InboxLoading() {
         <div className="flex flex-col gap-2 border-zinc-200/80 border-b bg-zinc-50/40 px-3 py-2.5 dark:border-zinc-800/60">
           <Skeleton className="h-7 w-full" />
         </div>
-        {Array.from({ length: 10 }).map((_, i) => (
-          <SkeletonRow
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div
             // biome-ignore lint/suspicious/noArrayIndexKey: stable list
             key={i}
-          />
+            className="border-zinc-200/60 border-b px-3 py-2.5 dark:border-zinc-800/40"
+          >
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-4 w-4 rounded" />
+              <Skeleton className="h-3 w-28" />
+              <Skeleton className="ml-auto h-2.5 w-10" />
+            </div>
+            <Skeleton className="mt-1.5 h-2.5 w-3/4" />
+            <div className="mt-1.5 flex gap-1.5 pl-7">
+              <Skeleton className="h-4 w-16 rounded-full" />
+              <Skeleton className="h-4 w-12 rounded-full" />
+            </div>
+          </div>
         ))}
       </section>
 

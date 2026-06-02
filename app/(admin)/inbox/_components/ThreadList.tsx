@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   HelpCircle,
-  Inbox as InboxIcon,
   Mail,
   PhoneCall,
   ShieldOff,
@@ -58,10 +57,12 @@ export function ThreadList({
 }) {
   if (threads.length === 0) {
     return (
-      <div className="p-6 text-center">
-        <InboxIcon className="mx-auto h-7 w-7 text-zinc-400" />
-        <h3 className="mt-3 font-semibold text-lg tracking-tight">{folderLabel}</h3>
-        <p className="mt-1 text-xs text-zinc-500">Nothing here.</p>
+      <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+        <CheckCircle2 className="h-10 w-10 text-emerald-500/80" />
+        <h3 className="mt-3 font-semibold text-base tracking-tight">You're all caught up</h3>
+        <p className="mt-1 max-w-xs text-sm text-zinc-500">
+          Nothing in {folderLabel}. New mail and replies land here as they arrive.
+        </p>
       </div>
     );
   }
