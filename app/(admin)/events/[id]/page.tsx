@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   events,
   campaigns,
@@ -9,12 +8,14 @@ import {
   venueEvents,
   venues,
 } from "@/db/schema";
+import { getMinimumRoleOrNull } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { archiveEvent, updateEvent } from "../_actions";
+import { ArchiveWithReason } from "../_components/archive-with-reason";
 import { EventForm } from "../_components/event-form";
 import { VenueEventsSection } from "../_components/venue-events-section";
 import { addVenueToEvent, removeVenueFromEvent, updateVenueEvent } from "../_venue-event-actions";
@@ -79,13 +80,19 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     .where(eq(staffMembers.status, "active"))
     .orderBy(asc(staffMembers.displayName));
 
+  // Cancelling a crawl is a lead+ override. Gate the UI with the same role
+  // check the action enforces server-side so lower roles see a disabled
+  // control with a hint instead of hitting a thrown error.
+  const canArchive = (await getMinimumRoleOrNull("lead")) !== null;
+
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
     return updateEvent(id, prev, fd);
   }
-  async function boundArchive() {
+  async function boundArchive(fd: FormData) {
     "use server";
-    await archiveEvent(id);
+    const reason = (fd.get("reason") as string | null) ?? "";
+    await archiveEvent(id, reason);
   }
 
   return (
@@ -163,21 +170,16 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         removeAction={removeVenueFromEvent}
       />
 
-      <form
+      <ArchiveWithReason
         action={boundArchive}
-        className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
-      >
-        <div>
-          <p className="font-medium text-rose-900 text-sm dark:text-rose-200">Cancel this event</p>
-          <p className="mt-1 text-rose-800 text-xs dark:text-rose-300">
-            Marks status as cancelled. Venue links remain but no further outreach should fire for
-            this event.
-          </p>
-        </div>
-        <Button type="submit" variant="destructive">
-          Cancel event
-        </Button>
-      </form>
+        title="Cancel this event"
+        description="Marks status as cancelled. Venue links remain but no further outreach should fire for this event."
+        triggerLabel="Cancel event"
+        confirmLabel="Cancel event"
+        reasonPlaceholder="Why is this crawl being cancelled?"
+        canArchive={canArchive}
+        disabledHint="Cancelling a crawl requires lead or admin role."
+      />
     </div>
   );
 }

@@ -1,6 +1,5 @@
-import { Button } from "@/components/ui/button";
 import { cities, countries } from "@/db/schema";
-import { getSuperUserOrNull } from "@/lib/auth";
+import { getMinimumRoleOrNull, getSuperUserOrNull } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -8,6 +7,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { HardDeleteButton } from "../../_components/hard-delete-button";
 import { archiveCity, hardDeleteCity, updateCity } from "../_actions";
+import { ArchiveWithReason } from "../_components/archive-with-reason";
 import { CityForm } from "../_components/city-form";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function EditCityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [city, countriesList, superUser] = await Promise.all([
+  const [city, countriesList, superUser, leadOrAbove] = await Promise.all([
     db
       .select()
       .from(cities)
@@ -24,16 +24,22 @@ export default async function EditCityPage({ params }: { params: Promise<{ id: s
       .then((r) => r[0]),
     db.select().from(countries).orderBy(asc(countries.name)),
     getSuperUserOrNull(),
+    // Archiving a city is a lead+ override; gate the UI with the same bar
+    // the action enforces server-side.
+    getMinimumRoleOrNull("lead"),
   ]);
   if (!city) notFound();
+
+  const canArchive = leadOrAbove !== null;
 
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
     return updateCity(id, prev, fd);
   }
-  async function boundArchive() {
+  async function boundArchive(fd: FormData) {
     "use server";
-    await archiveCity(id);
+    const reason = (fd.get("reason") as string | null) ?? "";
+    await archiveCity(id, reason);
   }
 
   return (
@@ -61,20 +67,16 @@ export default async function EditCityPage({ params }: { params: Promise<{ id: s
         action={boundUpdate}
       />
 
-      <form
+      <ArchiveWithReason
         action={boundArchive}
-        className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
-      >
-        <div>
-          <p className="font-medium text-rose-900 text-sm dark:text-rose-200">Archive this city</p>
-          <p className="mt-1 text-rose-800 text-xs dark:text-rose-300">
-            Venues in this city remain queryable; the city stops appearing in pickers and lists.
-          </p>
-        </div>
-        <Button type="submit" variant="destructive">
-          Archive
-        </Button>
-      </form>
+        title="Archive this city"
+        description="Venues in this city remain queryable; the city stops appearing in pickers and lists."
+        triggerLabel="Archive"
+        confirmLabel="Archive city"
+        reasonPlaceholder="Why is this city being archived?"
+        canArchive={canArchive}
+        disabledHint="Archiving a city requires lead or admin role."
+      />
 
       {superUser ? (
         <HardDeleteButton
