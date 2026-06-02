@@ -746,7 +746,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-white text-zinc-900">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-white text-zinc-900">
         {loadError && (
           <p className="border-zinc-200 border-b bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
             {loadError}
@@ -754,7 +754,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         )}
 
         {/* From */}
-        <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+        <div className="flex items-center gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
           <span className="w-12 shrink-0 text-zinc-500">From</span>
           {inboxes === null ? (
             <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
@@ -805,7 +805,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
 
         {/* To row with CC/BCC reveal */}
-        <div className="flex items-start gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+        <div className="flex items-start gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
           <span className="w-12 shrink-0 pt-0.5 text-zinc-500">To</span>
           <RecipientChips
             value={toList}
@@ -837,7 +837,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         </div>
 
         {instance.showCc && (
-          <div className="flex items-start gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+          <div className="flex items-start gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
             <span className="w-12 shrink-0 pt-0.5 text-zinc-500">Cc</span>
             <RecipientChips
               value={ccList}
@@ -849,7 +849,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         )}
 
         {instance.showBcc && (
-          <div className="flex items-start gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+          <div className="flex items-start gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
             <span className="w-12 shrink-0 pt-0.5 text-zinc-500">Bcc</span>
             <RecipientChips
               value={bccList}
@@ -862,7 +862,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
 
         {/* Template */}
         {templates && templates.length > 0 && (
-          <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+          <div className="flex items-center gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
             <span className="w-12 shrink-0 text-zinc-500">Template</span>
             <select
               value={instance.templateId ?? ""}
@@ -889,7 +889,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         )}
 
         {/* Subject */}
-        <div className="flex items-center gap-2 border-zinc-200 border-b px-3 py-1.5 text-xs dark:border-zinc-800">
+        <div className="flex items-center gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
           <input
             type="text"
             value={instance.subject}
@@ -1543,7 +1543,7 @@ function QuotedThreadBlock({ html }: { html: string }) {
           // Forced-light card so the quoted original reads on white (matching
           // the message you're replying to) regardless of app theme, and so
           // the original email's own HTML colors stay legible.
-          className="mt-2 rounded-md bg-white p-3 text-xs text-zinc-700 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic [&_blockquote]:my-1 [&_blockquote]:border-zinc-300 [&_blockquote]:border-l [&_blockquote]:pl-2"
+          className="mt-2 max-w-full overflow-x-auto break-words rounded-md bg-white p-3 text-xs text-zinc-700 [&_.gmail_attr]:mb-1 [&_.gmail_attr]:text-zinc-500 [&_.gmail_attr]:italic [&_blockquote]:my-1 [&_blockquote]:border-zinc-300 [&_blockquote]:border-l [&_blockquote]:pl-2 [&_img]:max-w-full [&_table]:max-w-full"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-built quote markup, see comment above
           dangerouslySetInnerHTML={{ __html: html }}
         />

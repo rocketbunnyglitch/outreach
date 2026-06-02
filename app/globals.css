@@ -290,10 +290,26 @@ h1 {
   color: rgb(24 24 27); /* zinc-900 */
   border-radius: 0.5rem;
   padding: 0.875rem 1rem;
+  /* Contain wide HTML emails (fixed-width tables, wide images, long
+     unbreakable URLs) so they NEVER widen the message/composer past the
+     viewport -- overflow scrolls INSIDE this card instead, which also
+     keeps the reply composer's footer/Send reachable on mobile. */
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .dark .inbox-prose {
   background-color: #ffffff;
   color: rgb(24 24 27);
+}
+/* Force media + tables to the card width even when the email sets fixed
+   inline widths (width="600" / style="width:600px"). */
+.inbox-prose img,
+.inbox-prose video,
+.inbox-prose table {
+  max-width: 100% !important;
+  height: auto;
 }
 
 .inbox-prose p,

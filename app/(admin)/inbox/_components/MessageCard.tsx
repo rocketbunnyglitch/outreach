@@ -85,7 +85,7 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
   return (
     <li
       className={cn(
-        "inbox-msg border-zinc-200/40 px-4 py-5 sm:px-6 dark:border-zinc-800/30",
+        "inbox-msg min-w-0 overflow-hidden border-zinc-200/40 px-4 py-5 sm:px-6 dark:border-zinc-800/30",
         !isLast && "border-b",
       )}
     >
