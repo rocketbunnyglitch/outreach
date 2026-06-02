@@ -27,8 +27,11 @@
  *                           details for the night)
  *   - "Warm Leads"          cold_outreach rows flagged is_warm
  *   - "Cold Outreach"       cold_outreach rows not flagged warm
- *   - "Event-Day Readiness" per crawl, the confirmation-cadence
- *                           checkpoints (2wk / 1wk / 3day / floor)
+ *   - "Event-Day Readiness" ONE ROW PER CRAWL (even crawls with no
+ *                           assigned venues): required-slot coverage
+ *                           derived from required_*_count, plus a
+ *                           Ready/Needs Review/Not Ready verdict and
+ *                           a blocker summary
  *   - "Metadata"            export timestamp, version/commit, env,
  *                           and a do-not-edit warning. NO secrets.
  *
@@ -146,16 +149,19 @@ const COLD_HEADER = [
 
 const READINESS_HEADER = [
   "City",
-  "Crawl",
-  "Date",
-  "Slot",
-  "Venue",
-  "Venue status",
-  "Confirmed",
-  "2-week email",
-  "1-week email",
-  "3-day call",
-  "Floor-staff call",
+  "Day/daypart",
+  "Crawl number",
+  "Ticket sales (count)",
+  "Assigned staff",
+  "Readiness",
+  "Missing wristband",
+  "Missing middle 1",
+  "Missing middle 2",
+  "Missing final",
+  "Night-of contact missing",
+  "Proposed hours missing",
+  "Phone missing/unverified",
+  "Readiness blocker summary",
 ];
 
 // db.execute<T>() requires T extends Record<string, unknown>. The
@@ -221,11 +227,8 @@ interface VenueEventRow {
   drink_specials: string | null;
   night_of_contact_name: string | null;
   night_of_contact_phone: string | null;
-  confirmed_at: string | null;
-  two_week_email_sent_at: string | null;
-  one_week_email_sent_at: string | null;
-  three_day_call_completed_at: string | null;
-  floor_staff_call_completed_at: string | null;
+  our_contact_staff_name: string | null;
+  venue_phone_verified_at: string | null;
   [key: string]: unknown;
 }
 
@@ -292,6 +295,18 @@ function slotLabel(role: string, slotPosition: number | null): string {
   }
 }
 
+/**
+ * Venue_event statuses that count as a slot actually being SECURED.
+ * Mirrors lib/crawl-matrix.ts CONFIRMED_STATUSES (and the set the
+ * Campaign Cities + Crawl Schedule derivation already trust): a signed
+ * contract or a scheduled date are as committed as 'confirmed', so
+ * treating them as unfilled would under-report readiness.
+ */
+const CONFIRMED_STATUSES = new Set(["confirmed", "scheduled", "contract_signed"]);
+function isConfirmedStatus(s: string | null | undefined): boolean {
+  return s != null && CONFIRMED_STATUSES.has(s);
+}
+
 function dollars(cents: string | number | null | undefined): string {
   if (cents == null) return "";
   const n = typeof cents === "string" ? Number(cents) : cents;
@@ -303,11 +318,6 @@ function isoOrEmpty(d: string | Date | null | undefined): string {
   if (!d) return "";
   if (d instanceof Date) return d.toISOString().slice(0, 10);
   return String(d).slice(0, 10);
-}
-
-/** "yes" / "" -- a checkmark column that stays ASCII + CSV-safe. */
-function doneFlag(ts: string | null | undefined): string {
-  return ts ? "yes" : "";
 }
 
 /** Google Sheets requires tab names <=100 chars, no [ ] * ? / \ : */
@@ -419,15 +429,13 @@ async function fetchVenueEvents(campaignId: string): Promise<VenueEventRow[]> {
            ve.drink_specials             AS drink_specials,
            ve.night_of_contact_name      AS night_of_contact_name,
            ve.night_of_contact_phone_e164 AS night_of_contact_phone,
-           ve.confirmed_at::text         AS confirmed_at,
-           ve.two_week_email_sent_at::text  AS two_week_email_sent_at,
-           ve.one_week_email_sent_at::text  AS one_week_email_sent_at,
-           ve.three_day_call_completed_at::text AS three_day_call_completed_at,
-           ve.floor_staff_call_completed_at::text AS floor_staff_call_completed_at
+           su.display_name               AS our_contact_staff_name,
+           v.verified_from_google_at::text AS venue_phone_verified_at
       FROM venue_events ve
       JOIN events e ON e.id = ve.event_id
       JOIN city_campaigns cc ON cc.id = e.city_campaign_id
       JOIN venues v ON v.id = ve.venue_id
+ LEFT JOIN users su ON su.id = ve.our_contact_staff_id
      WHERE cc.campaign_id = ${campaignId}::uuid
        AND e.archived_at IS NULL
   ORDER BY ve.event_id, ve.role, ve.slot_position
@@ -617,29 +625,143 @@ function coldValues(cold: ColdRow[], wantWarm: boolean): (string | number)[][] {
   return rows;
 }
 
+/**
+ * Event-Day Readiness: ONE ROW PER CRAWL (event), derived the same way
+ * the Crawl Schedule tab derives required slots -- from
+ * required_*_count + crawl_format -- so a crawl with NO assigned
+ * venues still shows up (as Not Ready with every required slot flagged
+ * missing) instead of vanishing.
+ *
+ * A required slot is "missing" when no CONFIRMED venue_event
+ * (isConfirmedStatus: confirmed/scheduled/contract_signed) matches that
+ * role + slot_position. day_party crawls require no Final slot, so a
+ * day_party never flags a missing final (reuses requiredSlotsForEvent,
+ * which already drops the final for day_party).
+ *
+ * Readiness:
+ *   Not Ready    -- any REQUIRED slot is unconfirmed, OR night-of
+ *                   contact is missing on the confirmed slots.
+ *   Needs Review -- all required slots confirmed, but a minor blocker
+ *                   (proposed hours missing, or a venue phone that is
+ *                   missing/unverified).
+ *   Ready        -- all required slots confirmed + a night-of contact +
+ *                   proposed hours present, and no phone gap.
+ *
+ * Blocker summary is the comma-joined human list of every gap, so the
+ * operator can act straight from the sheet even if Postgres is gone.
+ */
 function readinessValues(
   events: EventRow[],
   veByEvent: Map<string, VenueEventRow[]>,
 ): (string | number)[][] {
   const rows: (string | number)[][] = [READINESS_HEADER];
+
   for (const e of events) {
-    const label = crawlLabel(e);
-    for (const ve of veByEvent.get(e.event_id) ?? []) {
-      rows.push([
-        e.city_name,
-        label,
-        isoOrEmpty(e.event_date),
-        slotLabel(ve.role, ve.slot_position),
-        ve.venue_name ?? "",
-        ve.status,
-        doneFlag(ve.confirmed_at),
-        doneFlag(ve.two_week_email_sent_at),
-        doneFlag(ve.one_week_email_sent_at),
-        doneFlag(ve.three_day_call_completed_at),
-        doneFlag(ve.floor_staff_call_completed_at),
-      ]);
+    const ves = veByEvent.get(e.event_id) ?? [];
+
+    // Index ONLY confirmed venue_events by role#position. Wristband /
+    // final carry slot_position null -> treat as 1, matching the
+    // Crawl Schedule tab's filled-slot indexing.
+    const confirmed = new Map<string, VenueEventRow>();
+    for (const ve of ves) {
+      if (!isConfirmedStatus(ve.status)) continue;
+      const pos = ve.slot_position ?? 1;
+      const key = `${ve.role}#${pos}`;
+      if (!confirmed.has(key)) confirmed.set(key, ve);
     }
+
+    // Required slots (same derivation as scheduleValues).
+    const required = requiredSlotsForEvent(e);
+    const requires = (role: string, position: number): boolean =>
+      required.some((s) => s.role === role && s.position === position);
+    const slotMissing = (role: string, position: number): boolean =>
+      requires(role, position) && !confirmed.has(`${role}#${position}`);
+
+    const missingWristband = slotMissing("wristband", 1);
+    const missingMiddle1 = slotMissing("middle", 1);
+    const missingMiddle2 = slotMissing("middle", 2);
+    const missingFinal = slotMissing("final", 1);
+    const anyRequiredSlotMissing = required.some((s) => slotMissing(s.role, s.position));
+
+    // Contact / hours / phone are judged across the CONFIRMED slots
+    // (an unconfirmed slot's contact info is not yet operative).
+    const confirmedVes = [...confirmed.values()];
+    const hasConfirmed = confirmedVes.length > 0;
+    const hasContact =
+      hasConfirmed && confirmedVes.some((ve) => (ve.night_of_contact_name ?? "").trim() !== "");
+    const hasHours =
+      hasConfirmed &&
+      confirmedVes.some(
+        (ve) => (ve.agreed_hours_text ?? "").trim() !== "" || ve.slot_start_time != null,
+      );
+    // Phone gap: at least one confirmed venue has no E.164 phone, or a
+    // venue that has never been Google-verified (phone is unconfirmed).
+    const phoneGap =
+      hasConfirmed &&
+      confirmedVes.some(
+        (ve) => (ve.venue_phone ?? "").trim() === "" || ve.venue_phone_verified_at == null,
+      );
+
+    // A crawl with no required slots at all (e.g. all required counts
+    // zero) cannot be "missing" a slot, but still needs contact/hours.
+    const contactMissing = !hasContact;
+    const hoursMissing = !hasHours;
+
+    const blockers: string[] = [];
+    if (missingWristband) blockers.push("wristband");
+    if (missingMiddle1) blockers.push("middle 1");
+    if (missingMiddle2) blockers.push("middle 2");
+    if (missingFinal) blockers.push("final");
+    // Surface any other required slot gaps the four fixed columns do
+    // not cover (e.g. a 3rd wristband or 3rd middle) in the summary.
+    for (const s of required) {
+      if (!slotMissing(s.role, s.position)) continue;
+      if (s.role === "wristband" && s.position === 1) continue;
+      if (s.role === "middle" && (s.position === 1 || s.position === 2)) continue;
+      if (s.role === "final" && s.position === 1) continue;
+      blockers.push(slotLabel(s.role, s.position).toLowerCase());
+    }
+    if (contactMissing) blockers.push("night-of contact");
+    if (hoursMissing) blockers.push("proposed hours");
+    if (phoneGap) blockers.push("phone missing/unverified");
+
+    // Not Ready: a required slot is unconfirmed, or the night-of
+    // contact is missing (you cannot run the night without a contact).
+    // Needs Review: slots all present but a minor gap (hours / phone).
+    // Ready: everything required confirmed + contact + hours, no phone gap.
+    let readiness: string;
+    if (anyRequiredSlotMissing || contactMissing) {
+      readiness = "Not Ready";
+    } else if (hoursMissing || phoneGap) {
+      readiness = "Needs Review";
+    } else {
+      readiness = "Ready";
+    }
+
+    const day = e.day_part ? (DAY_PART_LABEL[e.day_part] ?? "Crawl") : "Crawl";
+    const crawlNumber = e.crawl_number ?? e.slot_number;
+    const staff = [
+      ...new Set(ves.map((ve) => (ve.our_contact_staff_name ?? "").trim()).filter((n) => n !== "")),
+    ].join(", ");
+
+    rows.push([
+      e.city_name,
+      day,
+      crawlNumber,
+      e.ticket_sales_count,
+      staff,
+      readiness,
+      missingWristband ? "yes" : "no",
+      missingMiddle1 ? "yes" : "no",
+      missingMiddle2 ? "yes" : "no",
+      missingFinal ? "yes" : "no",
+      contactMissing ? "yes" : "no",
+      hoursMissing ? "yes" : "no",
+      phoneGap ? "yes" : "no",
+      blockers.join(", "),
+    ]);
   }
+
   return rows;
 }
 
