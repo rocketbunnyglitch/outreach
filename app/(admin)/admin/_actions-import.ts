@@ -241,19 +241,35 @@ export async function commitCsvImport(
           // Insert via raw SQL because events has fields the operator
           // hasn't supplied yet (event_date, name) — we set sensible
           // defaults so the row is valid.
+          // slot_number must be DISTINCT per (city_campaign, event_date):
+          // events_city_campaign_date_slot_unique enforces it. Every row
+          // here seeds event_date=CURRENT_DATE (placeholder until the
+          // operator sets the real date), so without a distinct
+          // slot_number the 2nd crawl for a city -- and crawls across
+          // dayparts that share a crawl_number -- collide and the whole
+          // import fails. Derive the next free slot_number as
+          // MAX(existing for this city_campaign+date)+1; rows inserted
+          // earlier in THIS transaction are visible to the subquery, so
+          // sequential crawls get 1, 2, 3...
           await tx.execute(sql`
             INSERT INTO events (
-              id, city_campaign_id, day_part, crawl_number,
-              event_date, name, status, eventbrite_event_id,
+              id, city_campaign_id, day_part, crawl_number, slot_number,
+              event_date, crawl_name, status, eventbrite_event_id,
               created_at, updated_at, created_by, updated_by, version
             ) VALUES (
               gen_random_uuid(),
               ${cityCampaignId},
               ${cr.day}::day_part,
               ${cr.crawlNumber},
+              COALESCE(
+                (SELECT MAX(slot_number) FROM events
+                  WHERE city_campaign_id = ${cityCampaignId}
+                    AND event_date = CURRENT_DATE),
+                0
+              ) + 1,
               CURRENT_DATE,
               ${`${capitalize(cr.day)} crawl ${cr.crawlNumber}`},
-              'planning',
+              'planned',
               ${cr.eventbriteEventId},
               NOW(), NOW(), ${staff.id}, ${staff.id}, 1
             )
