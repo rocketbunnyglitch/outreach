@@ -69,13 +69,20 @@ export async function sendThreadReply(
   formData: FormData,
 ): Promise<ActionResult<{ messageId: string; threadId: string }>> {
   const { staff } = await requireStaff();
+  // Readonly role can view threads but never send.
+  if (!hasMinimumRole(staff, "outreach")) {
+    return { ok: false, error: "Read-only access -- you can view mail but cannot send it." };
+  }
   const parsed = replySchema.safeParse(formToObject(formData));
   if (!parsed.success) {
     return { ok: false, error: "Reply text is required." };
   }
   const { threadId, body } = parsed.data;
 
-  // Load the thread + the most recent inbound message (we'll reply to it)
+  // Load the thread + the most recent inbound message (we'll reply to
+  // it). TEAM-SCOPED: inner-join the connected account and require it
+  // be on the operator's team so a thread id from another team can't
+  // be replied to (cross-team IDOR + impersonation).
   const threadRow = await db
     .select({
       thread: emailThreads,
@@ -88,11 +95,12 @@ export async function sendThreadReply(
       )`,
     })
     .from(emailThreads)
-    .where(eq(emailThreads.id, threadId))
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(and(eq(emailThreads.id, threadId), eq(staffOutreachEmails.teamId, staff.teamId)))
     .limit(1);
 
   const row = threadRow[0];
-  if (!row) return { ok: false, error: "Thread not found." };
+  if (!row) return { ok: false, error: "Thread not found or not on your team." };
 
   // Resolve the inbox + refresh token to send from.
   const inbox = await db
@@ -100,12 +108,26 @@ export async function sendThreadReply(
       id: staffOutreachEmails.id,
       email: staffOutreachEmails.emailAddress,
       token: staffOutreachEmails.gmailOauthRefreshToken,
+      ownerUserId: staffOutreachEmails.ownerUserId,
     })
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.id, row.thread.staffOutreachEmailId))
     .limit(1);
 
   const senderInbox = inbox[0];
+  // Send-ownership gate: only the inbox owner (or an admin) may reply
+  // from it. View access to a team thread does not grant the right to
+  // reply under the owner's identity.
+  if (
+    senderInbox?.ownerUserId &&
+    senderInbox.ownerUserId !== staff.id &&
+    !hasMinimumRole(staff, "admin")
+  ) {
+    return {
+      ok: false,
+      error: "You can view this thread but can't reply from its inbox (not yours).",
+    };
+  }
   if (!senderInbox || !senderInbox.token) {
     return {
       ok: false,
@@ -355,6 +377,16 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
   if (!parsed.success) return { ok: false, error: "Invalid thread id." };
 
   try {
+    // Team-scope guard: the thread's connected account must be on the
+    // operator's team (cross-team IDOR + cross-team Gmail mutation).
+    const [owned] = await db
+      .select({ id: emailThreads.id })
+      .from(emailThreads)
+      .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+      .where(and(eq(emailThreads.id, threadId), eq(staffOutreachEmails.teamId, staff.teamId)))
+      .limit(1);
+    if (!owned) return { ok: false, error: "Thread not on your team." };
+
     await db
       .update(emailThreads)
       .set({ unreadCount: 0, updatedBy: staff.id })
@@ -411,10 +443,29 @@ export async function markThreadUnread(threadId: string): Promise<ActionResult<{
   const { staff } = await requireStaff();
   if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
   try {
+    // Team-scope guard (cross-team IDOR + cross-team Gmail mutation).
+    const [owned] = await db
+      .select({ id: emailThreads.id })
+      .from(emailThreads)
+      .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+      .where(and(eq(emailThreads.id, threadId), eq(staffOutreachEmails.teamId, staff.teamId)))
+      .limit(1);
+    if (!owned) return { ok: false, error: "Thread not on your team." };
+
     await db
       .update(emailThreads)
       .set({ unreadCount: 1, updatedBy: staff.id })
       .where(eq(emailThreads.id, threadId));
+
+    // Mirror to Gmail by ADDING the UNREAD system label, the inverse
+    // of markThreadRead. Without this, marking unread in the engine
+    // left Gmail read -- one-way sync. Best-effort; logs on failure.
+    await mirrorGmailLabels({
+      threadId,
+      addLabelIds: ["UNREAD"],
+      context: "markThreadUnread",
+    });
+
     revalidatePath(`/inbox/${threadId}`);
     revalidatePath("/inbox");
     publishRealtime({
