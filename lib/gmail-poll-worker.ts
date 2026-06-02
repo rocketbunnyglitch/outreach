@@ -588,9 +588,21 @@ async function ingestMessage(opts: {
   const { messageId, accessToken, inbox } = opts;
 
   // Cheap dedup: if email_messages already has this gmail_message_id +
-  // inbox combo, skip the API call entirely.
+  // inbox combo, AND the existing row has a populated body, skip the
+  // API call entirely. The body check is the post-empty-body-fix
+  // (38b15f6) repair path: an existing row that was ingested before
+  // the attachment-aware extractor landed will have body_text='' and
+  // body_html IS NULL. We let those rows fall through to the full
+  // fetch path below so deep-resync (or a fresh poll on a related
+  // message that revives the conversation) re-extracts the body and
+  // updates the row in place. The UPDATE at the end of this function
+  // covers the "row exists; new body" case.
   const existing = await db
-    .select({ id: emailMessages.id })
+    .select({
+      id: emailMessages.id,
+      bodyText: emailMessages.bodyText,
+      bodyHtml: emailMessages.bodyHtml,
+    })
     .from(emailMessages)
     .where(
       and(
@@ -599,7 +611,12 @@ async function ingestMessage(opts: {
       ),
     )
     .limit(1);
-  if (existing.length > 0) return null;
+  const existingRow = existing[0];
+  const isEmptyBodyRepair =
+    existingRow &&
+    (existingRow.bodyText === null || existingRow.bodyText === "") &&
+    existingRow.bodyHtml === null;
+  if (existingRow && !isEmptyBodyRepair) return null;
 
   // Fetch full message
   const msg = await gmailFetch(
@@ -713,6 +730,40 @@ async function ingestMessage(opts: {
             .trim()
         : "";
   const bodyHtml = cappedHtml; // null when sender sent text-only
+
+  // Empty-body repair path: when we entered this function for an
+  // existing row whose body was empty (the 38b15f6 pre-fix bug),
+  // skip the insert + thread-rollup work and just UPDATE the body
+  // columns on the existing row. Returns the existing message id so
+  // the caller's "ingested N messages" count still reflects work
+  // done. The thread's rollups (snippet, classification, message_
+  // count, etc.) are already populated from the original insert --
+  // we're just patching the body that got dropped.
+  if (existingRow && isEmptyBodyRepair) {
+    if (bodyText.length === 0 && !bodyHtml) {
+      // Re-fetch still empty -- genuinely contentless email, or a
+      // message whose attachment URL is now stale. Leave the row
+      // alone so we don't churn it; next ingest pass would do the
+      // same thing.
+      return null;
+    }
+    await db
+      .update(emailMessages)
+      .set({ bodyText, bodyHtml })
+      .where(eq(emailMessages.id, existingRow.id));
+    // Also refresh the thread snippet if it's empty (likely was the
+    // body's first line and got dropped along with the body).
+    if (snippet) {
+      await db.execute(sql`
+        UPDATE email_threads
+        SET snippet = ${snippet}
+        WHERE id = (SELECT thread_id FROM email_messages WHERE id = ${existingRow.id})
+          AND (snippet IS NULL OR snippet = '')
+      `);
+    }
+    logger.info({ messageId, accountId: inbox.id }, "empty-body repaired via re-ingest");
+    return { threadCreated: false };
+  }
 
   // Rule-based triage classification — only for inbound messages.
   // Outbound replies don't get classified (the operator wrote them, no
