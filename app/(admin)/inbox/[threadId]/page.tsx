@@ -339,7 +339,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         middle={
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-2">
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <InboxScopeBar
                   currentUserId={currentStaff.id}
                   isAdmin={hasMinimumRole(currentStaff, "admin")}

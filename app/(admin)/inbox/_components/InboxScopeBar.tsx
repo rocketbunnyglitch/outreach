@@ -102,7 +102,7 @@ export function InboxScopeBar({ currentUserId, isAdmin, mentionCount = 0 }: Prop
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1 overflow-x-auto border-zinc-200/80 border-b px-3 py-1.5",
+        "inbox-swipe-x flex shrink-0 items-center gap-1 border-zinc-200/80 border-b px-3 py-1.5",
         "dark:border-zinc-800/60",
       )}
     >

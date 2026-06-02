@@ -279,10 +279,12 @@ export default async function InboxPage({ searchParams }: Props) {
   return (
     <>
       <UserPreferencesHydrator userId={currentStaff.id} />
-      {/* Visibility scope toggle, pinned above the inbox shell. */}
-      <InboxVisibilityToggle scope={visScope} />
+      {/* topBar = the visibility scope toggle, rendered as the inbox's
+          full-width top bar INSIDE the card so the near-full-screen
+          negative margins can't clip it. */}
       <InboxShell
         hasThreadSelected={false}
+        topBar={<InboxVisibilityToggle scope={visScope} />}
         topRight={
           <AccountSwitcher
             accounts={visibleAccounts}

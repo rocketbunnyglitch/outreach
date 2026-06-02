@@ -32,6 +32,7 @@ export function InboxShell({
   middle,
   right,
   topRight,
+  topBar,
   hasThreadSelected = false,
 }: {
   left: React.ReactNode;
@@ -41,6 +42,12 @@ export function InboxShell({
    *  shell so it floats above the right pane. Used by the Gmail-style
    *  AccountSwitcher dropdown. */
   topRight?: React.ReactNode;
+  /** Optional full-width header row rendered INSIDE the clawed-back card,
+   *  spanning above the three panes. The inbox visibility toggle lives
+   *  here so it reads as "the very top of the inbox" without fighting the
+   *  card's negative margins. Rendered only when provided (the thread
+   *  detail page omits it). */
+  topBar?: React.ReactNode;
   /** Drives mobile pane swap (Phase F). True when the operator is
    *  inside a thread; false on the list view. Desktop (lg+)
    *  ignores this entirely — all three panes always show. */
@@ -49,7 +56,9 @@ export function InboxShell({
   return (
     <div
       className={cn(
-        "relative flex animate-[fade-in_300ms_ease-out] flex-col lg:flex-row",
+        // Outer is always a column: optional topBar stacks above the
+        // pane body. The body itself is the column/row pane layout.
+        "relative flex animate-[fade-in_300ms_ease-out] flex-col",
         // Near-full-screen height: mobile leaves room for the header;
         // desktop fills almost the whole viewport so it reads like Gmail's
         // app surface rather than a small centered card.
@@ -70,32 +79,39 @@ export function InboxShell({
       {topRight && (
         <div className="absolute top-3 right-4 z-20 lg:top-4 lg:right-5">{topRight}</div>
       )}
-      {/* Left pane — folder list. Static aside on desktop; on mobile it
-          becomes an off-canvas drawer (opened by InboxRailTrigger in the
-          list header) so the settings gear, folders, and Compose are
-          reachable on a phone. */}
-      <InboxRail>{left}</InboxRail>
-      {/* Middle pane — thread list. Mobile: full width when no
-          thread is selected; hidden when a thread is open. */}
-      <section
-        className={cn(
-          "shrink-0 overflow-y-auto border-zinc-200/80 lg:w-[380px] lg:border-r",
-          "dark:border-zinc-800/60",
-          hasThreadSelected ? "hidden lg:block" : "flex-1 lg:flex-none",
-        )}
-      >
-        {middle}
-      </section>
-      {/* Right pane — thread detail. Mobile: full width when a
-          thread is selected; hidden when on the list view. */}
-      <section
-        className={cn(
-          "overflow-y-auto",
-          hasThreadSelected ? "flex-1" : "hidden lg:block lg:flex-1",
-        )}
-      >
-        {right}
-      </section>
+      {/* Full-width header row (inbox visibility toggle). Padded on the
+          right so it never sits under the floating AccountSwitcher
+          avatar. */}
+      {topBar && <div className="shrink-0 pr-14 lg:pr-16">{topBar}</div>}
+      {/* Pane body — column on mobile, three columns on lg+. */}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Left pane — folder list. Static aside on desktop; on mobile it
+            becomes an off-canvas drawer (opened by InboxRailTrigger in the
+            list header) so the settings gear, folders, and Compose are
+            reachable on a phone. */}
+        <InboxRail>{left}</InboxRail>
+        {/* Middle pane — thread list. Mobile: full width when no
+            thread is selected; hidden when a thread is open. */}
+        <section
+          className={cn(
+            "shrink-0 overflow-y-auto border-zinc-200/80 lg:w-[380px] lg:border-r",
+            "dark:border-zinc-800/60",
+            hasThreadSelected ? "hidden lg:block" : "flex-1 lg:flex-none",
+          )}
+        >
+          {middle}
+        </section>
+        {/* Right pane — thread detail. Mobile: full width when a
+            thread is selected; hidden when on the list view. */}
+        <section
+          className={cn(
+            "overflow-y-auto",
+            hasThreadSelected ? "flex-1" : "hidden lg:block lg:flex-1",
+          )}
+        >
+          {right}
+        </section>
+      </div>
     </div>
   );
 }

@@ -425,6 +425,30 @@ h1 {
 }
 
 /* =========================================================================
+   Inbox swipe strips — the scope-preset bar and the filter-toggle row hold
+   more pills than fit the 380px middle pane (and a phone). Instead of a hard
+   clip + a chunky horizontal scrollbar (which read as "buttons cut off"),
+   present them as clean Gmail-style horizontally-scrollable strips: hide the
+   scrollbar and soften the right edge with a mask fade so a trailing pill
+   reads as "swipe for more" rather than broken. Scrolls via touch / trackpad
+   / shift-wheel.
+   ========================================================================= */
+.inbox-swipe-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+  -webkit-overflow-scrolling: touch;
+  /* Fade only the right edge — at rest (scrollLeft 0) the left edge is the
+     true start, so fading it would dim the active pill. The mask affects
+     paint only; faded pills stay fully clickable. */
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+}
+.inbox-swipe-x::-webkit-scrollbar {
+  display: none; /* Chrome / Safari */
+}
+
+/* =========================================================================
    Inbox density preferences — set via the InboxDensityToggle popover.
    The toggle writes data-inbox-density on <html>. Three values:
      comfortable, default, compact.

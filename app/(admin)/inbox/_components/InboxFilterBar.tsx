@@ -170,9 +170,11 @@ export function InboxFilterBar({
       <ParsedOperatorChips raw={search} />
 
       {/* Row 2: mine-assigned + mine-inbox toggles + alias select.
-          Scrolls horizontally on mobile to avoid wrapping when the
-          alias picker label is long. */}
-      <div className="flex items-center gap-2 overflow-x-auto">
+          WRAPS rather than horizontally scrolls — a scroll strip here
+          hard-clipped the trailing toggle (read as "cut off") and an
+          overflow container would also clip the density popover + alias
+          dropdown. Wrapping keeps every control visible at any width. */}
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setMineInbox(!mineInbox)}
