@@ -188,6 +188,16 @@ export function ComposerWindow({ instance, isMobile }: Props) {
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSaveRef = useRef(true);
+  // Latest save inputs captured in a ref so triggerAutosave can stay
+  // referentially STABLE. Previously triggerAutosave closed over the whole
+  // `instance`, so each successful save -> setStatus(..., "saved") -> new
+  // instance identity -> new triggerAutosave -> the autosave effect (which
+  // lists triggerAutosave as a dep) re-fired -> another save: upsertDraft
+  // looped every ~2s forever, hammering the server and dropping clicks
+  // across the page (the "gear needs multiple taps" symptom). Reading from
+  // a ref means status/lastSavedAt updates no longer change the callback.
+  const saveInputsRef = useRef({ instance, toList, ccList, bccList });
+  saveInputsRef.current = { instance, toList, ccList, bccList };
 
   // -------------------------------------------------------------
   // Load From / templates / render context once per composer.
@@ -228,42 +238,45 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const triggerAutosave = useCallback(() => {
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(async () => {
-      const hasContent = instance.to.trim() || instance.subject.trim() || instance.bodyText.trim();
+      // Read the latest content from the ref, not a captured closure, so
+      // this callback stays stable and save-completion does not re-arm it.
+      const { instance: inst, toList: to, ccList: cc, bccList: bcc } = saveInputsRef.current;
+      const hasContent = inst.to.trim() || inst.subject.trim() || inst.bodyText.trim();
       if (!hasContent && isFirstSaveRef.current) return;
       isFirstSaveRef.current = false;
 
-      setStatus(instance.id, "saving");
+      setStatus(inst.id, "saving");
       const result = await upsertDraft({
-        id: instance.id,
-        connectedAccountId: instance.fromAccountId || null,
-        toAddresses: toList,
-        ccAddresses: ccList,
-        bccAddresses: bccList,
-        subject: instance.subject,
-        bodyText: instance.bodyText,
-        bodyHtml: instance.bodyHtml,
-        venueId: instance.venueId,
-        cityCampaignId: instance.cityCampaignId,
-        templateId: instance.templateId,
-        attachments: instance.attachments.map((a) => ({
+        id: inst.id,
+        connectedAccountId: inst.fromAccountId || null,
+        toAddresses: to,
+        ccAddresses: cc,
+        bccAddresses: bcc,
+        subject: inst.subject,
+        bodyText: inst.bodyText,
+        bodyHtml: inst.bodyHtml,
+        venueId: inst.venueId,
+        cityCampaignId: inst.cityCampaignId,
+        templateId: inst.templateId,
+        attachments: inst.attachments.map((a) => ({
           name: a.name,
           size: a.size,
           mime: a.mime,
           storage_key: a.storage_key,
         })),
-        scheduledFor: instance.scheduledFor,
-        mode: instance.composeMode,
-        replyToThreadId: instance.replyToThreadId,
-        replyToMessageId: instance.replyToMessageId,
-        pendingLabelIds: instance.pendingLabelIds,
+        scheduledFor: inst.scheduledFor,
+        mode: inst.composeMode,
+        replyToThreadId: inst.replyToThreadId,
+        replyToMessageId: inst.replyToMessageId,
+        pendingLabelIds: inst.pendingLabelIds,
       });
       if (result.ok) {
-        setStatus(instance.id, "saved", result.data.updatedAt);
+        setStatus(inst.id, "saved", result.data.updatedAt);
       } else {
-        setStatus(instance.id, "save_failed");
+        setStatus(inst.id, "save_failed");
       }
     }, AUTOSAVE_DEBOUNCE_MS);
-  }, [instance, toList, ccList, bccList, setStatus]);
+  }, [setStatus]);
 
   useEffect(() => {
     triggerAutosave();
