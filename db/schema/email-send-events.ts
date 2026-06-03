@@ -53,6 +53,10 @@ export const emailSendEvents = pgTable(
      *  analytics queries can scope directly without a join.
      *  Migration 0071. */
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    /** Reason an admin gave to override the cadence floor / hard cap for this
+     *  send (Phase 1.9). NULL = the send was within the floors. See migration
+     *  0099. */
+    cadenceOverrideReason: text("cadence_override_reason"),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

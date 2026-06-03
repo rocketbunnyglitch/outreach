@@ -274,6 +274,16 @@ export type ComposeResult =
        *  a "Bypass cap" button (admins only). */
       capBlocked?: boolean;
       usage?: SendUsage;
+      /** Set when the cadence floor / hard cap blocked the send (Phase 1.9).
+       *  Admins can retry with a cadenceOverrideReason; non-admins are
+       *  hard-blocked. The composer UI surfaces this in Phase 2.10. */
+      cadenceBlocked?: boolean;
+      cadence?: {
+        reason: string | null;
+        earliestAllowedAt: string | null;
+        totalTouchCount: number;
+        hardCapReached: boolean;
+      };
       /** Set when a hard block (suppression or DNC) blocked the send.
        *  No bypass — operator must fix the underlying state
        *  (un-suppress / clear DNC) before retrying. */

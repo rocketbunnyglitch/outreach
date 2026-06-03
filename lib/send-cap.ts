@@ -247,6 +247,9 @@ export async function recordSendEvent(opts: {
    *  false regardless of category. countedAgainstCap remains the
    *  authoritative cap flag for loadSendUsage. */
   intent?: SendType;
+  /** Reason an admin gave to override the cadence floor for this send
+   *  (Phase 1.9). NULL/omitted = the send was within the floors. */
+  cadenceOverrideReason?: string | null;
 }): Promise<void> {
   // send_type defaults to the cap category so existing callers (which
   // don't pass intent) record 'cold'/'warm' exactly as before.
@@ -272,5 +275,6 @@ export async function recordSendEvent(opts: {
     capBypassed: Boolean(opts.capBypassed),
     templateId: opts.templateId ?? null,
     teamId: opts.teamId,
+    cadenceOverrideReason: opts.cadenceOverrideReason ?? null,
   });
 }

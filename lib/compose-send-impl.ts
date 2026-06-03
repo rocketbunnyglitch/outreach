@@ -20,9 +20,17 @@ import "server-only";
  * imports via the "server-only" sentinel.
  */
 
-import { connectedAccounts, emailMessages, emailThreads } from "@/db/schema";
+import {
+  campaigns,
+  cityCampaigns,
+  connectedAccounts,
+  emailMessages,
+  emailThreads,
+} from "@/db/schema";
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
 import { type StaffRole, hasMinimumRole } from "@/lib/auth";
+import { checkCadenceFloors } from "@/lib/cadence-engine";
+import { decideCadenceGate } from "@/lib/cadence-gate";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
@@ -345,6 +353,66 @@ export async function composeAndSendImpl(
   const sendCategory = preflight.ok ? preflight.category : preflight.category;
   const capBypassed = !preflight.ok && bypassCap;
 
+  // -------------------------------------------------------------------
+  // Cadence floor enforcement (Phase 1.9). [ReferenceDoc Section 6]
+  //
+  // Best-effort + fail-open: only enforced when we can derive the campaign +
+  // brand from the city-campaign attribution. The floor reads
+  // venue_campaign_touch_log, which is empty until the cadence cutover
+  // (1.10/1.11) starts populating it, so this is effectively dormant until
+  // then -- additive and safe. Non-admins are hard-blocked at the floor;
+  // admins can push through with a reason, which is logged on the send event.
+  // -------------------------------------------------------------------
+  const cityCampaignIdRaw = String(formData.get("cityCampaignId") ?? "").trim();
+  const cityCampaignId =
+    cityCampaignIdRaw && UUID_RE.test(cityCampaignIdRaw) ? cityCampaignIdRaw : null;
+  const cadenceOverrideReasonRaw = String(formData.get("cadenceOverrideReason") ?? "").trim();
+  let cadenceOverrideToLog: string | null = null;
+  if (venueId && cityCampaignId) {
+    const [cc] = await db
+      .select({
+        campaignId: cityCampaigns.campaignId,
+        outreachBrandId: campaigns.outreachBrandId,
+      })
+      .from(cityCampaigns)
+      .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+      .where(eq(cityCampaigns.id, cityCampaignId))
+      .limit(1);
+    if (cc?.campaignId) {
+      const floor = await checkCadenceFloors({
+        venueId,
+        campaignId: cc.campaignId,
+        sendingAliasId: fromAccountId,
+        sendingOutreachBrandId: cc.outreachBrandId ?? "",
+      });
+      const gate = decideCadenceGate({
+        floor,
+        isAdmin: hasMinimumRole(staff, "admin"),
+        overrideReason: cadenceOverrideReasonRaw || null,
+      });
+      if (gate.blocked) {
+        return {
+          ok: false,
+          error: gate.errorMessage ?? "This venue is at its cadence floor.",
+          cadenceBlocked: true,
+          cadence: {
+            reason: floor.reason ?? null,
+            earliestAllowedAt: floor.earliestAllowedAt?.toISOString() ?? null,
+            totalTouchCount: floor.totalTouchCount,
+            hardCapReached: floor.hardCapReached,
+          },
+        };
+      }
+      if (gate.overrideApplied) {
+        cadenceOverrideToLog = gate.overrideReasonToLog ?? null;
+        logger.warn(
+          { fromAccountId, userId: staff.id, venueId, campaignId: cc.campaignId },
+          "composeAndSend: admin overrode cadence floor",
+        );
+      }
+    }
+  }
+
   // Build the outbound HTML body.
   //
   // Source priority:
@@ -664,6 +732,7 @@ export async function composeAndSendImpl(
       capBypassed,
       templateId,
       teamId: staff.teamId,
+      cadenceOverrideReason: cadenceOverrideToLog,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");

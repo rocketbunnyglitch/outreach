@@ -343,7 +343,7 @@ export async function bulkDeleteDrafts(ids: string[]): Promise<ActionResult<{ de
  */
 export async function sendDraft(
   draftId: string,
-  opts: { bypassCap?: boolean; ackDuplicates?: boolean } = {},
+  opts: { bypassCap?: boolean; ackDuplicates?: boolean; cadenceOverrideReason?: string } = {},
 ): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
@@ -355,6 +355,15 @@ export async function sendDraft(
     wrongAccountBlocked?: boolean;
     threadAccountEmail?: string;
     chosenAccountEmail?: string;
+    /** Set when the cadence floor blocked the send (Phase 1.9). Admins
+     *  retry with cadenceOverrideReason; non-admins are blocked. */
+    cadenceBlocked?: boolean;
+    cadence?: {
+      reason: string | null;
+      earliestAllowedAt: string | null;
+      totalTouchCount: number;
+      hardCapReached: boolean;
+    };
   }
 > {
   const { staff } = await requireStaff();
@@ -366,6 +375,7 @@ export async function sendDraft(
     ownerUserId: staff.id,
     bypassCap: opts.bypassCap,
     ackDuplicates: opts.ackDuplicates,
+    cadenceOverrideReason: opts.cadenceOverrideReason,
   });
 }
 
@@ -381,6 +391,7 @@ async function sendDraftAsUser(input: {
   ownerUserId: string;
   bypassCap?: boolean;
   ackDuplicates?: boolean;
+  cadenceOverrideReason?: string;
 }): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
@@ -389,6 +400,13 @@ async function sendDraftAsUser(input: {
     wrongAccountBlocked?: boolean;
     threadAccountEmail?: string;
     chosenAccountEmail?: string;
+    cadenceBlocked?: boolean;
+    cadence?: {
+      reason: string | null;
+      earliestAllowedAt: string | null;
+      totalTouchCount: number;
+      hardCapReached: boolean;
+    };
   }
 > {
   const [draft] = await db
@@ -436,6 +454,9 @@ async function sendDraftAsUser(input: {
     fd.set("bodyHtml", bodyPart + quotePart);
   }
   if (draft.venueId) fd.set("venueId", draft.venueId);
+  // City-campaign attribution - composeAndSendImpl derives the campaign +
+  // brand from it to enforce the cadence floor (Phase 1.9).
+  if (draft.cityCampaignId) fd.set("cityCampaignId", draft.cityCampaignId);
   // Reply/forward context — composeAndSendImpl branches on these to
   // attach the new message to the existing Gmail thread instead of
   // creating a fresh thread.
@@ -463,6 +484,11 @@ async function sendDraftAsUser(input: {
   // Admin-bypass marker — composeAndSend re-checks the operator's
   // role server-side; we just surface the form-field convention here.
   if (input.bypassCap) fd.set("bypassCap", "1");
+  // Admin cadence-floor override reason (Phase 1.9). Present only when an
+  // admin chose to send despite the floor; logged on the send event.
+  if (input.cadenceOverrideReason) {
+    fd.set("cadenceOverrideReason", input.cadenceOverrideReason);
+  }
   // Pre-send safety warnings are surfaced to the client (decline,
   // cross-staff, duplicate). When the operator chooses "Send
   // anyway" in the confirm dialog, the client re-calls sendDraft
@@ -488,6 +514,8 @@ async function sendDraftAsUser(input: {
       wrongAccountBlocked: "wrongAccountBlocked" in result ? result.wrongAccountBlocked : undefined,
       threadAccountEmail: "threadAccountEmail" in result ? result.threadAccountEmail : undefined,
       chosenAccountEmail: "chosenAccountEmail" in result ? result.chosenAccountEmail : undefined,
+      cadenceBlocked: "cadenceBlocked" in result ? result.cadenceBlocked : undefined,
+      cadence: "cadence" in result ? result.cadence : undefined,
     };
   }
 
