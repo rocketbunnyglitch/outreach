@@ -59,6 +59,10 @@ export interface ComposerInstance {
   cityCampaignId: string | null;
   /** Picked template id (drives merge + AI+template mode). */
   templateId: string | null;
+  /** Template the engine auto-picked when this composer opened (Phase 1.5).
+   *  Stays fixed even if the operator swaps templateId, so the draft records
+   *  the original engine suggestion for override tracking. */
+  enginePickedTemplateId: string | null;
   attachments: ComposerAttachment[];
   /** ISO string of scheduled send time; null = send now. */
   scheduledFor: string | null;
@@ -222,6 +226,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       venueId: input.venueId ?? null,
       cityCampaignId: input.cityCampaignId ?? null,
       templateId: input.templateId ?? null,
+      enginePickedTemplateId: null,
       attachments: [],
       scheduledFor: null,
       draftStatus: "idle",
@@ -351,6 +356,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               venueId: row.venueId,
               cityCampaignId: row.cityCampaignId,
               templateId: row.templateId,
+              enginePickedTemplateId: row.enginePickedTemplateId,
               attachments: (row.attachments ?? []).map((a, i) => ({
                 id: `${row.id}-att-${i}`,
                 name: a.name,

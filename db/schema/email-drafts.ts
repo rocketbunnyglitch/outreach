@@ -35,6 +35,13 @@ export const emailDrafts = pgTable(
     venueId: uuid("venue_id"),
     cityCampaignId: uuid("city_campaign_id"),
     templateId: uuid("template_id"),
+    /** Template the engine auto-picked when this composer opened (Phase
+     *  1.5). Distinct from template_id (the template currently loaded,
+     *  which the operator may have swapped). Comparing the two yields the
+     *  "operator overrode the engine" signal for misclassification review.
+     *  ON DELETE SET NULL so a removed template never blocks a draft. See
+     *  migration 0093. */
+    enginePickedTemplateId: uuid("engine_picked_template_id"),
     attachments: jsonb("attachments").notNull().default([]),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),

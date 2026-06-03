@@ -48,6 +48,7 @@ export function useDraftHydration() {
           venueId: r.venueId,
           cityCampaignId: r.cityCampaignId,
           templateId: r.templateId,
+          enginePickedTemplateId: r.enginePickedTemplateId,
           attachments: (r.attachments ?? []).map((a, i) => ({
             id: `${r.id}-att-${i}`,
             name: a.name,

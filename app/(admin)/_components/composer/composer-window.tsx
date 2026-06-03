@@ -57,6 +57,7 @@ import {
   listComposeContext,
 } from "../../_actions/compose-and-send";
 import { deleteDraft, sendDraft, upsertDraft } from "../../_actions/email-drafts";
+import { type EnginePickResult, pickTemplateForComposer } from "../../_actions/engine-pick";
 import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
@@ -120,6 +121,17 @@ function escapeHtml(s: string): string {
 }
 
 /**
+ * Strip the engine reason down to its human description for the banner: the
+ * scorer's reason reads "T1: cold, first touch, Prio 1 (match score 50)" but
+ * the banner already shows the code separately and the raw score is noise.
+ */
+function cleanReason(code: string, reason: string): string {
+  let r = reason.startsWith(`${code}:`) ? reason.slice(code.length + 1) : reason;
+  r = r.replace(/\s*\(match score \d+\)\s*$/, "");
+  return r.trim();
+}
+
+/**
  * Strip a previously-auto-appended signature block from HTML. The
  * composer wraps auto-appended signatures in a
  * <div data-composer-signature="true">...</div> element which the
@@ -143,6 +155,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [inboxes, setInboxes] = useState<ConnectedAccountOption[] | null>(null);
   const [templates, setTemplates] = useState<ComposeTemplate[] | null>(null);
   const [renderContext, setRenderContext] = useState<ComposeRenderContext>({});
+  // Engine template auto-pick (Phase 1.5). enginePick holds the pick +
+  // alternatives for the banner; enginePickOpen toggles the alternatives
+  // list; enginePickDismissed hides the banner after "Use blank instead".
+  // The ref guards the one-shot auto-load so it never re-fires on re-render.
+  const [enginePick, setEnginePick] = useState<EnginePickResult | null>(null);
+  const [enginePickOpen, setEnginePickOpen] = useState(false);
+  const [enginePickDismissed, setEnginePickDismissed] = useState(false);
+  const enginePickRanRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
@@ -247,6 +267,81 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   }, [instance.venueId]);
 
   // -------------------------------------------------------------
+  // Engine template auto-pick (Phase 1.5).
+  //
+  // Once templates have loaded, ask the engine which template fits this
+  // composer's context (cold-outreach venue + city-campaign, or a reply
+  // thread) and pre-load it. The operator can keep it, swap to an
+  // alternative, or use a blank draft. We only auto-pick a FRESH, empty
+  // draft the operator has not already templated, so restored drafts and
+  // in-progress writing are never clobbered. One-shot via the ref guard.
+  //
+  // [ReferenceDoc Section 7 + 8.7] engine picks, operator overrides.
+  // -------------------------------------------------------------
+  useEffect(() => {
+    if (enginePickRanRef.current) return;
+    if (!templates || templates.length === 0) return;
+    if (instance.templateId || instance.enginePickedTemplateId) return;
+    if (instance.bodyText.trim()) return;
+    const hasColdAttribution = Boolean(instance.venueId && instance.cityCampaignId);
+    const hasReplyAttribution = instance.composeMode !== "new" && Boolean(instance.replyToThreadId);
+    if (!hasColdAttribution && !hasReplyAttribution) return;
+
+    enginePickRanRef.current = true;
+    let cancelled = false;
+    pickTemplateForComposer({
+      venueId: instance.venueId,
+      cityCampaignId: instance.cityCampaignId,
+      threadId: instance.replyToThreadId,
+    })
+      .then((res) => {
+        if (cancelled || !res.ok) return;
+        const pick = res.data.pick;
+        if (!pick) return;
+        // Defensive: only adopt the pick if its template is in the loaded
+        // list (so applyTemplate can resolve subject/body for it).
+        if (!templates.some((t) => t.id === pick.templateId)) return;
+        setEnginePick(res.data);
+        void applyTemplate(pick.templateId, templates, renderContext, (patch) =>
+          setField(instance.id, {
+            ...patch,
+            templateId: pick.templateId,
+            enginePickedTemplateId: pick.templateId,
+          }),
+        );
+      })
+      .catch(() => {
+        /* engine pick is best-effort; composer opens blank on failure */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates, renderContext]);
+
+  // Swap the loaded template to one of the engine's alternatives. The
+  // recorded enginePickedTemplateId stays the engine's ORIGINAL pick so the
+  // draft preserves the override signal; only the loaded templateId changes.
+  const handleSwapToAlternative = useCallback(
+    (templateId: string) => {
+      if (!templates) return;
+      setEnginePickOpen(false);
+      void applyTemplate(templateId, templates, renderContext, (patch) =>
+        setField(instance.id, { ...patch, templateId }),
+      );
+    },
+    [templates, renderContext, instance.id, setField],
+  );
+
+  // "Use blank instead" clears the engine-loaded template + content and
+  // hide the banner. enginePickedTemplateId is kept as the override record.
+  const handleUseBlank = useCallback(() => {
+    setEnginePickDismissed(true);
+    setEnginePickOpen(false);
+    setField(instance.id, { templateId: null, subject: "", bodyText: "", bodyHtml: null });
+  }, [instance.id, setField]);
+
+  // -------------------------------------------------------------
   // Debounced autosave.
   // -------------------------------------------------------------
   const triggerAutosave = useCallback(() => {
@@ -272,6 +367,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         venueId: inst.venueId,
         cityCampaignId: inst.cityCampaignId,
         templateId: inst.templateId,
+        enginePickedTemplateId: inst.enginePickedTemplateId,
         attachments: inst.attachments.map((a) => ({
           name: a.name,
           size: a.size,
@@ -395,6 +491,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         venueId: opts.testOnly ? null : instance.venueId,
         cityCampaignId: opts.testOnly ? null : instance.cityCampaignId,
         templateId: instance.templateId,
+        enginePickedTemplateId: opts.testOnly ? null : instance.enginePickedTemplateId,
         attachments: instance.attachments,
         scheduledFor: null,
         mode: opts.testOnly ? "new" : instance.composeMode,
@@ -519,6 +616,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       venueId: instance.venueId,
       cityCampaignId: instance.cityCampaignId,
       templateId: instance.templateId,
+      enginePickedTemplateId: instance.enginePickedTemplateId,
       attachments: instance.attachments,
       scheduledFor: instance.scheduledFor,
       mode: instance.composeMode,
@@ -940,6 +1038,60 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             onApply={(s) => setField(instance.id, { subject: s })}
           />
         </div>
+
+        {/* Engine template auto-pick banner (Phase 1.5). Shows what the
+            engine pre-loaded, with the option to swap to an alternative or
+            start from a blank draft. [ReferenceDoc Section 7 + 8.7] */}
+        {enginePick?.pick && !enginePickDismissed && (
+          <div className="border-zinc-200 border-b bg-indigo-50 px-4 py-2 text-xs dark:border-zinc-800 dark:bg-indigo-950">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-indigo-900 dark:text-indigo-200">
+                <span aria-hidden="true">{"\u{1F916}"} </span>
+                Engine picked: <span className="font-semibold">{enginePick.pick.templateCode}</span>{" "}
+                <span className="text-indigo-700 dark:text-indigo-300">
+                  ({cleanReason(enginePick.pick.templateCode, enginePick.pick.reason)})
+                </span>
+              </span>
+              {enginePick.alternatives.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setEnginePickOpen((o) => !o)}
+                  className="font-medium text-indigo-700 underline underline-offset-2 dark:text-indigo-300"
+                >
+                  {enginePickOpen ? "Hide alternatives" : "See alternatives"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleUseBlank}
+                className="font-medium text-indigo-700 underline underline-offset-2 dark:text-indigo-300"
+              >
+                Use blank instead
+              </button>
+            </div>
+            {enginePickOpen && enginePick.alternatives.length > 0 && (
+              <ul className="mt-1.5 flex flex-col gap-1">
+                {enginePick.alternatives.map((alt) => (
+                  <li key={alt.templateId}>
+                    <button
+                      type="button"
+                      onClick={() => handleSwapToAlternative(alt.templateId)}
+                      className="text-left text-indigo-800 hover:underline dark:text-indigo-200"
+                    >
+                      <span className="font-semibold">{alt.templateCode}</span>
+                      {(() => {
+                        const desc = cleanReason(alt.templateCode, alt.reason);
+                        return desc ? (
+                          <span className="text-indigo-600 dark:text-indigo-400">{` ${desc}`}</span>
+                        ) : null;
+                      })()}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Body — rich text */}
         <RichTextEditor

@@ -48,6 +48,10 @@ export interface UpsertDraftInput {
   venueId?: string | null;
   cityCampaignId?: string | null;
   templateId?: string | null;
+  /** Template the engine auto-picked when the composer opened (Phase 1.5).
+   *  Set once on auto-load; left untouched when the operator swaps the
+   *  loaded template, so it preserves the original engine suggestion. */
+  enginePickedTemplateId?: string | null;
   attachments?: EmailDraftAttachment[];
   scheduledFor?: string | null; // ISO string
   /** Compose intent — "new" | "reply" | "reply_all" | "forward". */
@@ -116,6 +120,7 @@ export async function upsertDraft(
           venueId: input.venueId ?? null,
           cityCampaignId: input.cityCampaignId ?? null,
           templateId: input.templateId ?? null,
+          enginePickedTemplateId: input.enginePickedTemplateId ?? null,
           attachments: input.attachments ?? [],
           scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : null,
           mode: input.mode ?? null,
@@ -149,6 +154,9 @@ export async function upsertDraft(
   if (input.venueId !== undefined) patch.venueId = input.venueId;
   if (input.cityCampaignId !== undefined) patch.cityCampaignId = input.cityCampaignId;
   if (input.templateId !== undefined) patch.templateId = input.templateId;
+  if (input.enginePickedTemplateId !== undefined) {
+    patch.enginePickedTemplateId = input.enginePickedTemplateId;
+  }
   if (input.attachments !== undefined) patch.attachments = input.attachments;
   if (input.scheduledFor !== undefined) {
     patch.scheduledFor = input.scheduledFor ? new Date(input.scheduledFor) : null;
@@ -190,6 +198,7 @@ export async function listMyDrafts(): Promise<
     venueId: string | null;
     cityCampaignId: string | null;
     templateId: string | null;
+    enginePickedTemplateId: string | null;
     attachments: EmailDraftAttachment[];
     scheduledFor: string | null;
     updatedAt: string;
@@ -218,6 +227,7 @@ export async function listMyDrafts(): Promise<
     venueId: r.venueId,
     cityCampaignId: r.cityCampaignId,
     templateId: r.templateId,
+    enginePickedTemplateId: r.enginePickedTemplateId,
     attachments: (r.attachments as EmailDraftAttachment[]) ?? [],
     scheduledFor: r.scheduledFor ? r.scheduledFor.toISOString() : null,
     updatedAt: r.updatedAt.toISOString(),
