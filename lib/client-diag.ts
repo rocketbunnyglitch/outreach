@@ -80,6 +80,55 @@ export const CLIENT_DIAG_SCRIPT = `
         }
       } catch (e) {}
     }
+    // On a hydration mismatch (#418) the live DOM is already auto-corrected
+    // by the parser, so it can't reveal the original invalid nesting. Re-fetch
+    // the RAW server HTML (browser's own session) and scan the text for the
+    // classic markup-mismatch patterns — a <p> containing block elements, or
+    // nested <a>/<button>. The next freeze then names the offending tags.
+    var nestingReported = false;
+    function scanRawHtml(html) {
+      var hits = [];
+      var blocks = ['<div', '<ul', '<ol', '<table', '<section', '<article', '<header', '<footer', '<h1', '<h2', '<h3', '<h4', '<form', '<hr', '<pre', '<blockquote', '<li', '<p '];
+      var idx = 0, guard = 0;
+      while (guard++ < 6000) {
+        var p = html.indexOf('<p', idx);
+        if (p < 0) break;
+        var c = html.charAt(p + 2);
+        if (c !== ' ' && c !== '>') { idx = p + 2; continue; }
+        var end = html.indexOf('</p>', p);
+        if (end < 0) { idx = p + 2; continue; }
+        var inner = html.slice(p + 2, end);
+        for (var b = 0; b < blocks.length; b++) {
+          if (inner.indexOf(blocks[b]) >= 0) { hits.push('p>' + blocks[b].slice(1).replace(' ', '') + '@' + p); break; }
+        }
+        idx = end + 4;
+        if (hits.length >= 8) break;
+      }
+      var ia = 0, ag = 0;
+      while (ag++ < 6000 && hits.length < 16) {
+        var a = html.indexOf('<a ', ia);
+        if (a < 0) break;
+        var ae = html.indexOf('</a>', a);
+        if (ae < 0) { ia = a + 3; continue; }
+        var ainner = html.slice(a + 3, ae);
+        if (ainner.indexOf('<a ') >= 0) hits.push('a>a@' + a);
+        else if (ainner.indexOf('<button') >= 0) hits.push('a>button@' + a);
+        ia = ae + 4;
+      }
+      return hits;
+    }
+    function reportNesting(trigger) {
+      if (nestingReported) return;
+      nestingReported = true;
+      try {
+        fetch(location.href, { credentials: 'include' })
+          .then(function (r) { return r.text(); })
+          .then(function (html) {
+            send({ reason: 'nesting-scan', trigger: trigger, href: location.href, htmlLen: html.length, hits: scanRawHtml(html), ts: new Date().toISOString() });
+          })
+          .catch(function () {});
+      } catch (e) {}
+    }
     window.addEventListener('error', function (e) {
       var stack = e.error && e.error.stack ? String(e.error.stack) : '';
       var msg = (e.message || '') + ' ' + (e.error && e.error.message ? e.error.message : '');
@@ -95,6 +144,7 @@ export const CLIENT_DIAG_SCRIPT = `
       }
       // Include the stack — the $R* streaming-runtime frame lives there, not
       // in the message.
+      if (HYDR_RE.test(msg) || HYDR_RE.test(stack)) reportNesting('418');
       maybeReload(msg + ' ' + stack);
     });
     window.addEventListener('unhandledrejection', function (e) {
@@ -109,7 +159,9 @@ export const CLIENT_DIAG_SCRIPT = `
     setTimeout(function () {
       if (!window.__perseHydrated) {
         if (sent < 1) send(snap('no-hydrate-6s'));
-        // App painted SSR HTML but never hydrated -> frozen. One-time reload.
+        // Capture the raw markup so we can find the mismatch that blocked
+        // hydration, then one-time reload.
+        reportNesting('no-hydrate');
         maybeReload('Hydration failed');
       }
     }, 6000);
