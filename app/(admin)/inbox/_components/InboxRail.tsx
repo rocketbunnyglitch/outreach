@@ -39,7 +39,16 @@ export function InboxRailTrigger() {
   );
 }
 
-export function InboxRail({ children }: { children: React.ReactNode }) {
+export function InboxRail({
+  children,
+  collapsed = false,
+}: {
+  children: React.ReactNode;
+  /** Desktop-only: when true the static left pane is hidden (the operator
+   *  collapsed it via InboxShell's toggle). Mobile drawer is unaffected —
+   *  the hamburger still opens it. */
+  collapsed?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -78,8 +87,12 @@ export function InboxRail({ children }: { children: React.ReactNode }) {
           open
             ? "fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] overflow-y-auto bg-white p-3 shadow-2xl dark:bg-zinc-950"
             : "hidden",
-          // Desktop: always a static left pane regardless of `open`.
-          "lg:static lg:inset-auto lg:z-auto lg:block lg:w-[220px] lg:max-w-none lg:overflow-visible lg:border-r lg:bg-transparent lg:p-3 lg:shadow-none",
+          // Desktop: static left pane regardless of `open` — UNLESS the
+          // operator collapsed it, in which case it's hidden on lg+ and
+          // InboxShell shows a slim expander instead.
+          collapsed
+            ? "lg:hidden"
+            : "lg:static lg:inset-auto lg:z-auto lg:block lg:w-[220px] lg:max-w-none lg:overflow-visible lg:border-r lg:bg-transparent lg:p-3 lg:shadow-none",
         )}
       >
         {/* Mobile-only close affordance inside the drawer. */}
