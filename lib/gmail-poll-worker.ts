@@ -1149,6 +1149,14 @@ async function ingestMessage(opts: {
             snippet,
             messageCount: 0,
             unreadCount: direction === "inbound" ? 1 : 0,
+            // lastMessageAt drives BOTH the inbox sort order and the time
+            // shown on each row. It MUST be the email's real received time
+            // (Gmail internalDate via receivedAt), NOT the schema default
+            // (now() = ingest time) — otherwise backfilled months-old mail
+            // stamps as "just now," scrambling the order and burying new
+            // mail. This was the "all emails show the pull time / can't see
+            // recent Primary" bug.
+            lastMessageAt: new Date(receivedAt),
             lastInboundAt: direction === "inbound" ? new Date(receivedAt) : null,
             lastOutboundAt: direction === "outbound" ? new Date(receivedAt) : null,
             lastSenderName: extractSenderName(fromHeader),
@@ -1238,6 +1246,10 @@ async function ingestMessage(opts: {
       message_count = message_count + 1,
       ${direction === "inbound" ? sql`unread_count = unread_count + 1,` : sql``}
       ${direction === "inbound" ? sql`last_inbound_at = ${receivedAt},` : sql`last_outbound_at = ${receivedAt},`}
+      -- Keep the thread at its NEWEST message's real received time (Gmail
+      -- internalDate). GREATEST guards against out-of-order backfill
+      -- ingesting an older message after a newer one.
+      last_message_at = GREATEST(last_message_at, ${receivedAt}::timestamptz),
       ${
         autoUpgradeClassification
           ? sql`classification = CASE
