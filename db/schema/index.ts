@@ -79,3 +79,4 @@ export * from "./audit";
 export * from "./cron-runs";
 export * from "./reference-docs";
 export * from "./venue-campaign-touch-log";
+export * from "./engine-role-assignments";

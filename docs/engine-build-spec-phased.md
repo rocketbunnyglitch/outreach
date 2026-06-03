@@ -16,7 +16,7 @@
 
 ### Migration numbering (0093-0096 are TAKEN)
 Shipped: 0093 email_drafts.engine_picked_template_id, 0094 cadence_rewrite, 0095 campaign_email_brand, 0096 external_host_brief_fields. The spec hardcoded numbers are renumbered +2 (already corrected inline below):
-1.9 -> 0097, 1.12 -> 0098, 1.13 -> 0099, 1.14 -> 0100, 3.8 -> 0101, 3.13 -> 0102, 4.6 -> 0103. Any new migration uses the next free number; never reuse <= 0096.
+1.9 -> 0098, 1.12 -> 0099, 1.13 -> 0100, 1.14 -> 0101, 3.8 -> 0102, 3.13 -> 0103, 4.6 -> 0104 (0097 was taken 2026-06-03 by engine_role_assignments for the Admin Roles tab). Any new migration uses the next FREE number; the per-phase numbers are nominal; never reuse <= 0097.
 
 ### Engine is Anthropic-only + FTS
 No OpenAI, no embeddings, no pgvector (apt-installed but unused). Classifier + AI helpers use `lib/ai.ts` (`claude-haiku-4-5`). Retrieval = curated map + Postgres FTS via `retrieveRelevantSections`. Strike OpenAI/pgvector from any phase pre-flight.
