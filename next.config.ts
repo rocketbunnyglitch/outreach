@@ -18,6 +18,17 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+  // Deployment-skew protection. Tags every static-asset + RSC/Server-Action
+  // request with this build's id (the git SHA, already exported as
+  // BUILD_COMMIT by scripts/deploy.sh). When a tab opened on an OLD build
+  // makes a request after a deploy, Next detects the id mismatch and does a
+  // clean hard navigation to the current build instead of failing with
+  // "Failed to find Server Action" / a half-hydrated freeze. This is the
+  // durable cure for the recurring "it froze / nothing happens after a
+  // deploy" reports (the client-side chunk-reload guard is the backstop).
+  // Baked at build time; falls back to undefined locally (no skew there).
+  deploymentId: process.env.NEXT_DEPLOYMENT_ID ?? process.env.BUILD_COMMIT ?? undefined,
+
   // Server Action request-body limit. Default is 1 MB. The Halloween
   // 2025 review-queue action receives the full dry-run ImportReport
   // (derived from the ~2 MB data/halloween_2025.json) as its argument,
