@@ -474,6 +474,83 @@ Thanks,
 {{company_name}}`,
     trigger: { channel: "post_event" },
   },
+  {
+    code: "H0a",
+    name: "H0a - External host hiring confirmation",
+    subject: "Hired for the {{city}} Halloween crawl ({{event_date}}) - confirming details",
+    body: `Hey {{host_name}},
+
+Confirming you're hired for the {{city}} Halloween crawl on {{event_date}}. Shift is approximately {{shift_start_time}} to {{shift_end_time}}.
+
+Pay rate: {{pay_rate}}
+Payment will be sent within 3 days after the event via {{payment_method}}.
+
+Your host manager for this night is {{host_manager_name}} - their cell is {{host_manager_phone}}. They'll be your primary contact for anything that comes up, whether it's a scheduling conflict, a question, or an issue. Reach out to them directly.
+
+We'll send over the wristband venue address, the full lineup, and the wristband image about a week before the event. So just hold the date for us!
+
+If anything changes on your end before then, please let us know as soon as possible so we can find a backup.
+
+Thanks for working with us!
+{{your_name}}
+{{company_name}}`,
+    trigger: { channel: "host_brief", stage: "hire_time" },
+  },
+  {
+    code: "H0b",
+    name: "H0b - External host operational briefing (week-of)",
+    subject: "{{city}} Halloween crawl ({{event_date}}) - briefing",
+    body: `Hey {{host_name}},
+
+The {{city}} Halloween crawl is this {{event_day_name}}. Here's everything you need:
+
+WHERE TO GO
+{{wristband_venue_name}}
+{{wristband_venue_address}}
+Arrival time: {{host_arrival_time}}
+
+VENUE CONTACT
+{{venue_manager_name}}, {{venue_manager_phone}}
+Please say hi when you arrive so they know who you are.
+
+THE LINEUP
+{{full_lineup_with_times_and_addresses}}
+
+WHAT YOU'RE DOING
+
+- Scan guest tickets at the door (we'll send login details separately).
+- Hand out wristbands to ticketed guests.
+- Greet guests, direct them to scan the crawl map QR code.
+- About 1 hour before the crawl starts, visit each participating venue to introduce yourself and confirm their door staff knows the crawl is happening tonight.
+
+Attached: wristband image (so you know what you're handing out).
+
+If anything goes wrong, contact your host manager {{host_manager_name}} at {{host_manager_phone}}. They're your direct line for any issues that come up.
+
+Thanks!
+{{your_name}}
+{{company_name}}`,
+    trigger: { channel: "host_brief", stage: "week_of" },
+  },
+  {
+    code: "V1",
+    name: "V1 - Internal-host venue confirmation (week-of)",
+    subject: "Quick confirm for the {{city}} Halloween crawl this {{event_day_name}}",
+    body: `Hey {{contact_first_name}},
+
+Just a quick week-of confirmation - we're set for {{event_date}} at {{venue_name}}, with your team handing out wristbands during the {{wristband_window}} window.
+
+Just need a "yes, staff is ready" back from you so I know we're all set.
+
+Wristbands should have arrived by now - let me know if you haven't received them.
+
+If anything's changed, give me a heads-up so we can sort it out.
+
+Thanks!
+{{your_name}}
+{{company_name}}`,
+    trigger: { channel: "venue_confirm_internal", stage: "week_of" },
+  },
 ];
 
 function argValue(args: string[], flag: string): string | undefined {

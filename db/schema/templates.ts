@@ -32,7 +32,15 @@ import { emailTemplateStage } from "./enums";
  * a PickContext against these fields. [ReferenceDoc Section 7]
  */
 export interface TriggerContext {
-  channel?: "cold" | "warm" | "post_confirm" | "lifecycle" | "cancellation" | "post_event";
+  channel?:
+    | "cold"
+    | "warm"
+    | "post_confirm"
+    | "lifecycle"
+    | "cancellation"
+    | "post_event"
+    | "host_brief"
+    | "venue_confirm_internal";
   stage?:
     | "first_touch"
     | "follow_up"
