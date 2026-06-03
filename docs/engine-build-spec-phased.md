@@ -119,8 +119,8 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 1.7 — Migration: cadence_state enum + venue_campaign_touch_log (f4a4244)
 - [x] 1.8 — `lib/cadence-engine.ts` (replace `follow-up-cadence.ts`) (d2a4873)
 - [x] 1.9 — Cadence floor enforcement in send pipeline (8df514f)
-- [ ] 1.10 — Daily cadence cron rewrite
-- [ ] 1.11 — Migrate existing threads to new cadence_state
+- [x] 1.10 — Daily cadence cron rewrite (32dadf7)
+- [x] 1.11 — Migrate existing threads to new cadence_state (a06eaf8)
 - [ ] 1.12 — Reply classification enum: add `stalled_warm`, `cancelled_by_them`
 - [ ] 1.13 — Classifier prompt updated to use Reference Doc retrieval
 - [ ] 1.14 — 90% confidence threshold logic + needs-attention flagging
