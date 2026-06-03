@@ -60,7 +60,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 0.3 — Doc loader script (parse + tag + persist; full-text not embeddings) (1d72974, refactor e0beaf5)
 - [x] 0.4 — AI retrieval helper (`lib/reference-retrieval.ts`) (3709236)
 - [x] 0.5 — Operator-facing reference viewer page (ef134aa)
-- [ ] 0.6 — CI sync workflow + doc-change detection
+- [x] 0.6 — CI sync workflow + doc-change detection (96754fe; CI adapted to deploy.sh load, prod DB is localhost-only)
 
 ### Phase 1 — Templates, cadence, turnout (foundation)
 
