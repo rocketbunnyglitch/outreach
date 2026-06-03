@@ -219,3 +219,54 @@ export async function setInboxBrand(
     return { ok: false, error: "Could not update brand." };
   }
 }
+
+/**
+ * setInboxAlias(formData)
+ *   Set the sender persona ("Dan", "Chris") an inbox uses for this campaign.
+ *   Drives the {{your_name}} merge field + the From display name on send.
+ *   Upserts the campaign_connected_accounts row (so setting an alias also
+ *   assigns the inbox to the campaign); an empty value clears it back to the
+ *   sending user's display name.
+ */
+export async function setInboxAlias(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ inboxId: string; campaignId: string; aliasName: string | null }>> {
+  const ctx = await requireAdmin();
+  const inboxId = String(formData.get("inboxId") ?? "");
+  const campaignId = String(formData.get("campaignId") ?? "");
+  const aliasName = String(formData.get("aliasName") ?? "").trim() || null;
+  if (!UUID_RE.test(inboxId) || !UUID_RE.test(campaignId)) {
+    return { ok: false, error: "Invalid ids." };
+  }
+  if (aliasName !== null && aliasName.length > 120) {
+    return { ok: false, error: "Alias is too long." };
+  }
+
+  const inboxRow = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(staffOutreachEmails)
+    .where(eq(staffOutreachEmails.id, inboxId))
+    .limit(1);
+  if (!inboxRow[0] || inboxRow[0].teamId !== ctx.staff.teamId) {
+    return { ok: false, error: "Inbox not found on your team." };
+  }
+
+  try {
+    await db
+      .insert(campaignConnectedAccounts)
+      .values({ campaignId, connectedAccountId: inboxId, assignedBy: ctx.staff.id, aliasName })
+      .onConflictDoUpdate({
+        target: [
+          campaignConnectedAccounts.campaignId,
+          campaignConnectedAccounts.connectedAccountId,
+        ],
+        set: { aliasName },
+      });
+    revalidatePath("/campaign-info");
+    return { ok: true, data: { inboxId, campaignId, aliasName } };
+  } catch (err) {
+    logger.error({ err, inboxId, campaignId }, "setInboxAlias failed");
+    return { ok: false, error: "Could not update alias." };
+  }
+}

@@ -30,6 +30,9 @@ export interface CampaignInboxRow {
    *  {{company_name}} merge field. NULL = falls back to the template's brand. */
   outreachBrandId: string | null;
   outreachBrandName: string | null;
+  /** Sender persona for this email + campaign (drives {{your_name}} + the From
+   *  display name). NULL = falls back to the sending user's display name. */
+  aliasName: string | null;
 }
 
 export interface TeamMemberOption {
@@ -85,6 +88,7 @@ export async function loadCampaignInfo(opts: {
         .select({
           connectedAccountId: campaignConnectedAccounts.connectedAccountId,
           outreachBrandId: campaignConnectedAccounts.outreachBrandId,
+          aliasName: campaignConnectedAccounts.aliasName,
         })
         .from(campaignConnectedAccounts)
         .where(
@@ -99,7 +103,11 @@ export async function loadCampaignInfo(opts: {
     : [];
   const assigned = new Set(assignmentRows.map((r) => r.connectedAccountId));
   const brandByAccount = new Map<string, string | null>();
-  for (const a of assignmentRows) brandByAccount.set(a.connectedAccountId, a.outreachBrandId);
+  const aliasByAccount = new Map<string, string | null>();
+  for (const a of assignmentRows) {
+    brandByAccount.set(a.connectedAccountId, a.outreachBrandId);
+    aliasByAccount.set(a.connectedAccountId, a.aliasName);
+  }
 
   // Outreach brand catalogue for the per-inbox dropdown.
   const brands = await db
@@ -120,6 +128,7 @@ export async function loadCampaignInfo(opts: {
       assignedToCampaign: assigned.has(r.id),
       outreachBrandId: brandId,
       outreachBrandName: brandId ? (brandName.get(brandId) ?? null) : null,
+      aliasName: aliasByAccount.get(r.id) ?? null,
     };
   });
 

@@ -21,6 +21,7 @@ import "server-only";
  */
 
 import {
+  campaignConnectedAccounts,
   campaigns,
   cityCampaigns,
   connectedAccounts,
@@ -413,6 +414,31 @@ export async function composeAndSendImpl(
     }
   }
 
+  // Sender alias (persona): the From display name the recipient sees. Resolved
+  // from the sending email's per-campaign alias (campaign_connected_accounts),
+  // so e.g. the user Bryle sending from a "Dan" inbox shows as "Dan". NULL =
+  // fall back to the bare email address (Gmail's account name).
+  let fromAliasName: string | null = null;
+  if (cityCampaignId) {
+    const [a] = await db
+      .select({ aliasName: campaignConnectedAccounts.aliasName })
+      .from(cityCampaigns)
+      .innerJoin(
+        campaignConnectedAccounts,
+        and(
+          eq(campaignConnectedAccounts.campaignId, cityCampaigns.campaignId),
+          eq(campaignConnectedAccounts.connectedAccountId, fromAccountId),
+        ),
+      )
+      .where(eq(cityCampaigns.id, cityCampaignId))
+      .limit(1);
+    fromAliasName = a?.aliasName ?? null;
+  }
+  // RFC 5322 From with a display name: quote + escape the persona.
+  const fromHeader = fromAliasName
+    ? `"${fromAliasName.replace(/([\\"])/g, "\\$1")}" <${inbox.email}>`
+    : inbox.email;
+
   // Build the outbound HTML body.
   //
   // Source priority:
@@ -565,7 +591,7 @@ export async function composeAndSendImpl(
   try {
     sent = await sendGmailMessage({
       encryptedRefreshToken: inbox.token,
-      from: inbox.email,
+      from: fromHeader,
       to: toList,
       cc: ccList.length > 0 ? ccList : undefined,
       bcc: bccList.length > 0 ? bccList : undefined,

@@ -254,12 +254,16 @@ export async function listComposeContext(
     campaignId = cc?.campaignId ?? null;
   }
 
+  // Default the sending email to the composer's default From (first inbox) so
+  // {{your_name}} (alias) + {{company_name}} (brand) resolve on first load,
+  // before the operator has explicitly picked a From.
+  const sendingAccountId = opts.sendingAccountId ?? inboxes[0]?.id ?? null;
   const renderContext = await buildFlatMergeContext({
     venueId: opts.venueId ?? null,
     campaignId,
     cityCampaignId: opts.cityCampaignId ?? null,
     staffId: staff.id,
-    sendingAccountId: opts.sendingAccountId ?? null,
+    sendingAccountId,
   });
 
   return { inboxes, labels, templates: templateRows, renderContext };

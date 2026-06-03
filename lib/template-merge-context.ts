@@ -450,13 +450,21 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
   return fields;
 }
 
-/** company_name = the sending email's per-campaign brand, else the campaign's. */
+/**
+ * Resolve the sending email's per-campaign brand ({{company_name}}) and alias
+ * persona ({{your_name}}). The sending email's assignment (campaign_connected_
+ * accounts) wins; company_name falls back to the campaign's brand and your_name
+ * falls back to the sending user's display name (already set from staff).
+ */
 async function resolveCompanyName(fields: MergeFields, input: MergeContextInput): Promise<void> {
   if (input.sendingAccountId && input.campaignId) {
     const [row] = await db
-      .select({ brand: outreachBrands.displayName })
+      .select({
+        brand: outreachBrands.displayName,
+        aliasName: campaignConnectedAccounts.aliasName,
+      })
       .from(campaignConnectedAccounts)
-      .innerJoin(outreachBrands, eq(outreachBrands.id, campaignConnectedAccounts.outreachBrandId))
+      .leftJoin(outreachBrands, eq(outreachBrands.id, campaignConnectedAccounts.outreachBrandId))
       .where(
         and(
           eq(campaignConnectedAccounts.campaignId, input.campaignId),
@@ -464,6 +472,8 @@ async function resolveCompanyName(fields: MergeFields, input: MergeContextInput)
         ),
       )
       .limit(1);
+    // The alias persona overrides the sender's real name in {{your_name}}.
+    if (row?.aliasName) fields.your_name = row.aliasName;
     if (row?.brand) {
       fields.company_name = row.brand;
       return;

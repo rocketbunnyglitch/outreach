@@ -17,7 +17,12 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
-import { setInboxBrand, setInboxCampaignAssignment, setInboxOwner } from "../_actions";
+import {
+  setInboxAlias,
+  setInboxBrand,
+  setInboxCampaignAssignment,
+  setInboxOwner,
+} from "../_actions";
 
 interface InboxRow {
   id: string;
@@ -28,6 +33,7 @@ interface InboxRow {
   assignedToCampaign: boolean;
   outreachBrandId: string | null;
   outreachBrandName: string | null;
+  aliasName: string | null;
 }
 
 interface TeamMember {
@@ -67,6 +73,7 @@ export function CampaignInfoTable({
             <th className="px-4 py-2.5">Owner</th>
             <th className="px-4 py-2.5">Assigned to campaign</th>
             <th className="px-4 py-2.5">Brand (company name)</th>
+            <th className="px-4 py-2.5">Alias (sender name)</th>
           </tr>
         </thead>
         <tbody>
@@ -196,6 +203,29 @@ function Row({
     });
   }
 
+  function saveAlias(aliasName: string) {
+    const trimmed = aliasName.trim();
+    if (trimmed === (row.aliasName ?? "")) return; // no change
+    const previous = row;
+    onUpdate({ ...row, aliasName: trimmed || null, assignedToCampaign: true });
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("inboxId", row.id);
+      fd.set("campaignId", campaignId);
+      fd.set("aliasName", trimmed);
+      const result = await setInboxAlias(null, fd);
+      if (!result.ok) {
+        onUpdate(previous);
+        onError(result.error);
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change alias.",
+          code: result.code,
+        });
+      }
+    });
+  }
+
   return (
     <tr>
       <td className="px-4 py-2.5 font-mono text-xs">{row.emailAddress}</td>
@@ -293,6 +323,26 @@ function Row({
           <span className="text-sm">{row.outreachBrandName}</span>
         ) : (
           <span className="text-xs text-zinc-500">Template default</span>
+        )}
+      </td>
+      <td className="px-4 py-2.5">
+        {isAdmin ? (
+          <input
+            type="text"
+            defaultValue={row.aliasName ?? ""}
+            onBlur={(e) => saveAlias(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            disabled={isPending}
+            placeholder="Sender's name"
+            aria-label={`Sender alias for ${row.emailAddress}`}
+            className="w-32 rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
+          />
+        ) : row.aliasName ? (
+          <span className="text-sm">{row.aliasName}</span>
+        ) : (
+          <span className="text-xs text-zinc-500">User's name</span>
         )}
       </td>
     </tr>
