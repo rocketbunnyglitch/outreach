@@ -21,6 +21,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "reference-docs:load": "tsx scripts/load-reference-doc.ts",
     "backup:sheets": "tsx scripts/backup-to-sheets.ts",
     "prepare": "husky"
   },
