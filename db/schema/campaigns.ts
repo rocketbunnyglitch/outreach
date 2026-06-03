@@ -77,6 +77,13 @@ export const campaigns = pgTable(
      */
     targetTicketSalesCount: integer("target_ticket_sales_count"),
 
+    // Gmail label the engine auto-applies to threads it sends for this
+    // campaign, mirrored to Gmail so engine + manual sends are tagged
+    // identically (e.g. "halloween 2026"). NULL = no auto-tagging.
+    // Set on /campaign-info. The city name is applied as a second label
+    // when the send is attributed to a city.
+    outreachGmailLabel: text("outreach_gmail_label"),
+
     ...archivedAt,
     ...auditColumns,
     ...versionColumn,

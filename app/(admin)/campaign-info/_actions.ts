@@ -270,3 +270,42 @@ export async function setInboxAlias(
     return { ok: false, error: "Could not update alias." };
   }
 }
+
+/**
+ * setCampaignGmailLabel(formData)
+ *   Set the Gmail label the engine auto-applies to threads it sends for this
+ *   campaign (campaigns.outreach_gmail_label). Mirrored to Gmail on send so
+ *   engine + manual sends are tagged identically (e.g. "halloween 2026"). An
+ *   empty value clears auto-tagging. Campaign-level (not per-inbox).
+ */
+export async function setCampaignGmailLabel(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ campaignId: string; label: string | null }>> {
+  const ctx = await requireAdmin();
+  const campaignId = String(formData.get("campaignId") ?? "");
+  const label = String(formData.get("label") ?? "").trim() || null;
+  if (!UUID_RE.test(campaignId)) return { ok: false, error: "Invalid campaign." };
+  if (label !== null && label.length > 200) return { ok: false, error: "Label is too long." };
+
+  const campaignRow = await db
+    .select({ id: campaigns.id })
+    .from(campaigns)
+    .where(eq(campaigns.id, campaignId))
+    .limit(1);
+  if (!campaignRow[0]) return { ok: false, error: "Campaign not found." };
+
+  try {
+    await withAuditContext(ctx.staff.id, (tx) =>
+      tx
+        .update(campaigns)
+        .set({ outreachGmailLabel: label, updatedBy: ctx.staff.id })
+        .where(eq(campaigns.id, campaignId)),
+    );
+    revalidatePath("/campaign-info");
+    return { ok: true, data: { campaignId, label } };
+  } catch (err) {
+    logger.error({ err, campaignId }, "setCampaignGmailLabel failed");
+    return { ok: false, error: "Could not update label." };
+  }
+}

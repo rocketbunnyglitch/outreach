@@ -23,6 +23,7 @@ import "server-only";
 import {
   campaignConnectedAccounts,
   campaigns,
+  cities,
   cityCampaigns,
   connectedAccounts,
   emailMessages,
@@ -43,7 +44,7 @@ import {
   describeBlock,
   runSendSafetyForRecipients,
 } from "@/lib/send-safety";
-import { applyLabelToThread } from "@/lib/team-labels";
+import { applyLabelToThread, ensureTeamLabel } from "@/lib/team-labels";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -374,19 +375,28 @@ export async function composeAndSendImpl(
   // after a successful send -- Phase 1.11).
   let sendCampaignId: string | null = null;
   let sendOutreachBrandId: string | null = null;
+  // Gmail auto-tag inputs: the campaign's configured label + the attributed
+  // city's name. Applied to the thread after a successful campaign send.
+  let sendCampaignGmailLabel: string | null = null;
+  let sendCityName: string | null = null;
   if (venueId && cityCampaignId) {
     const [cc] = await db
       .select({
         campaignId: cityCampaigns.campaignId,
         outreachBrandId: campaigns.outreachBrandId,
+        gmailLabel: campaigns.outreachGmailLabel,
+        cityName: cities.name,
       })
       .from(cityCampaigns)
       .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+      .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
       .where(eq(cityCampaigns.id, cityCampaignId))
       .limit(1);
     if (cc?.campaignId) {
       sendCampaignId = cc.campaignId;
       sendOutreachBrandId = cc.outreachBrandId ?? null;
+      sendCampaignGmailLabel = cc.gmailLabel ?? null;
+      sendCityName = cc.cityName ?? null;
       const floor = await checkCadenceFloors({
         venueId,
         campaignId: cc.campaignId,
@@ -631,6 +641,13 @@ export async function composeAndSendImpl(
   //   - new thread: INSERT a new email_threads row (existing path).
   const now = new Date();
   let threadId: string;
+  // Cadence linkage (Phase 1.11 cutover completion): attribute the thread to
+  // this send's city-campaign + brand so the cadence engine (planNextTouch /
+  // recordTouch / the cadence-advance cron) can act on it. Without this the
+  // engine is inert, since every cadence path keys off email_threads.city_campaign_id.
+  // Only fills when the send is campaign-attributed; a reply COALESCEs so an
+  // existing attribution is never overwritten. [ReferenceDoc Section 6]
+  const cadenceLinked = Boolean(cityCampaignId && sendCampaignId);
   try {
     if (existingEngineThreadId) {
       threadId = existingEngineThreadId;
@@ -656,6 +673,14 @@ export async function composeAndSendImpl(
           staleReason: null,
           followUpStage: 0,
           followUpNextDueAt: null,
+          // Link to this send's campaign/brand if the thread was not already
+          // attributed (never clobber an existing attribution).
+          ...(cadenceLinked
+            ? {
+                cityCampaignId: sql`coalesce(${emailThreads.cityCampaignId}, ${cityCampaignId}::uuid)`,
+                outreachBrandId: sql`coalesce(${emailThreads.outreachBrandId}, ${sendOutreachBrandId}::uuid)`,
+              }
+            : {}),
           updatedBy: staff.id,
         })
         .where(eq(emailThreads.id, threadId));
@@ -676,6 +701,15 @@ export async function composeAndSendImpl(
           lastOutboundAt: now,
           lastSenderName: inbox.email,
           lastMessageAt: now,
+          // Cadence: a campaign-attributed first send seeds the cold sequence
+          // (recordTouch below advances it to cold_sent_touch_1 + sets next-due).
+          ...(cadenceLinked
+            ? {
+                cityCampaignId,
+                outreachBrandId: sendOutreachBrandId,
+                cadenceState: "cold_pending_touch_1" as const,
+              }
+            : {}),
           createdBy: staff.id,
           updatedBy: staff.id,
         })
@@ -737,6 +771,29 @@ export async function composeAndSendImpl(
           { err, threadId, labelId },
           "composeAndSend: applyLabelToThread failed after send",
         );
+      }
+    }
+
+    // Auto-tag campaign-attributed sends with the campaign's configured Gmail
+    // label + the city name, so engine sends are labelled identically to how
+    // staff manually tag the campaign's mail. ensureTeamLabel reuses an
+    // existing label of the same name (no duplicates). Each is independent +
+    // best-effort: a Gmail-side failure never blocks the send.
+    if (cadenceLinked) {
+      const autoLabelNames = [sendCampaignGmailLabel, sendCityName]
+        .map((s) => s?.trim())
+        .filter((s): s is string => Boolean(s));
+      for (const name of autoLabelNames) {
+        try {
+          const { id: teamLabelId } = await ensureTeamLabel({
+            teamId: staff.teamId,
+            name,
+            createdBy: staff.id,
+          });
+          await applyLabelToThread({ threadId, teamLabelId, appliedBy: staff.id, via: "manual" });
+        } catch (err) {
+          logger.warn({ err, threadId, name }, "composeAndSend: auto-label failed after send");
+        }
       }
     }
   } catch (err) {

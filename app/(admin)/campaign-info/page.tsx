@@ -15,6 +15,7 @@ import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { loadCampaignInfo } from "@/lib/campaign-info-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { Mail } from "lucide-react";
+import { CampaignGmailLabelField } from "./_components/campaign-gmail-label-field";
 import { CampaignInfoTable } from "./_components/campaign-info-table";
 
 export const metadata = { title: "Campaign Info" };
@@ -62,6 +63,11 @@ export default async function CampaignInfoPage() {
               : "Read-only — only admins can edit assignments."}
           </p>
         </div>
+        <CampaignGmailLabelField
+          campaignId={campaignCtx.campaign.id}
+          initialLabel={data.campaignGmailLabel}
+          isAdmin={isAdmin}
+        />
       </header>
 
       {data.inboxes.length === 0 ? (

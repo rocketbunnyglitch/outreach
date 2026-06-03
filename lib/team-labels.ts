@@ -209,6 +209,29 @@ export async function createTeamLabel(opts: {
 }
 
 /**
+ * Find a team_label by (team, name), creating it if absent. Used to
+ * auto-apply campaign / city labels on engine sends without duplicating a
+ * label the operator may have created by hand: the (team_id, name) unique
+ * index is the dedupe key, so a name that already exists is reused rather
+ * than re-created. Returns the team_label id either way.
+ */
+export async function ensureTeamLabel(opts: {
+  teamId: string;
+  name: string;
+  createdBy: string;
+}): Promise<{ id: string }> {
+  const name = opts.name.trim();
+  if (!name) throw new Error("Label name is required");
+  const [existing] = await db
+    .select({ id: teamLabels.id })
+    .from(teamLabels)
+    .where(and(eq(teamLabels.teamId, opts.teamId), eq(teamLabels.name, name)))
+    .limit(1);
+  if (existing) return { id: existing.id };
+  return createTeamLabel({ teamId: opts.teamId, name, createdBy: opts.createdBy });
+}
+
+/**
  * Rename a team_label. Does NOT rename the Gmail-side labels — that
  * would require a labels.update call per account and increase the
  * cost of every rename. Gmail labels are renamed lazily on next sync,

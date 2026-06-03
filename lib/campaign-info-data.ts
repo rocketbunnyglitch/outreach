@@ -13,7 +13,13 @@
  */
 
 import "server-only";
-import { campaignConnectedAccounts, outreachBrands, staffOutreachEmails, users } from "@/db/schema";
+import {
+  campaignConnectedAccounts,
+  campaigns,
+  outreachBrands,
+  staffOutreachEmails,
+  users,
+} from "@/db/schema";
 import { db } from "@/lib/db";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
@@ -51,6 +57,9 @@ export interface CampaignInfoData {
   teamMembers: TeamMemberOption[];
   /** Outreach brands available to assign per inbox. */
   brands: BrandOption[];
+  /** Gmail label the engine auto-applies to this campaign's sends, mirrored to
+   *  Gmail. NULL = no auto-tagging configured. */
+  campaignGmailLabel: string | null;
 }
 
 export async function loadCampaignInfo(opts: {
@@ -139,5 +148,17 @@ export async function loadCampaignInfo(opts: {
     .where(and(eq(users.teamId, opts.teamId), eq(users.status, "active")))
     .orderBy(asc(users.displayName));
 
-  return { inboxes, teamMembers, brands };
+  // Campaign-level Gmail auto-tag label.
+  const [campaignRow] = await db
+    .select({ gmailLabel: campaigns.outreachGmailLabel })
+    .from(campaigns)
+    .where(eq(campaigns.id, opts.campaignId))
+    .limit(1);
+
+  return {
+    inboxes,
+    teamMembers,
+    brands,
+    campaignGmailLabel: campaignRow?.gmailLabel ?? null,
+  };
 }
