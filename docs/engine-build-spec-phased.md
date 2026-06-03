@@ -118,7 +118,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 1.6 — `lib/turnout-quote.ts` helper (4a13322)
 - [x] 1.7 — Migration: cadence_state enum + venue_campaign_touch_log (f4a4244)
 - [x] 1.8 — `lib/cadence-engine.ts` (replace `follow-up-cadence.ts`) (d2a4873)
-- [ ] 1.9 — Cadence floor enforcement in send pipeline
+- [x] 1.9 — Cadence floor enforcement in send pipeline (8df514f)
 - [ ] 1.10 — Daily cadence cron rewrite
 - [ ] 1.11 — Migrate existing threads to new cadence_state
 - [ ] 1.12 — Reply classification enum: add `stalled_warm`, `cancelled_by_them`
