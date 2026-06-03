@@ -23,6 +23,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "reference-docs:load": "tsx scripts/load-reference-doc.ts",
     "reference-docs:check": "tsx scripts/check-reference-doc-drift.ts",
+    "campaigns:seed-halloween-2026": "tsx scripts/seed-halloween-2026-templates.ts",
     "backup:sheets": "tsx scripts/backup-to-sheets.ts",
     "prepare": "husky"
   },

@@ -42,7 +42,10 @@ export interface TriggerContext {
     | "info_sheets"
     | "pre_event"
     | "day_before"
-    | "day_of";
+    | "day_of"
+    | "insert_block"
+    | "hire_time"
+    | "week_of";
   event_type?: "night" | "day_party" | "any";
   ask_size?: "big_open" | "small_specific";
   priority?: number[];
