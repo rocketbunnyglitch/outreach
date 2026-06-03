@@ -70,7 +70,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 1.4 — `lib/template-picker.ts` with `pickTemplate(ctx)` (504a179)
 - [x] 1.5 — Composer integration of `pickTemplate` (c882307)
 - [x] 1.6 — `lib/turnout-quote.ts` helper (4a13322)
-- [ ] 1.7 — Migration: cadence_state enum + venue_campaign_touch_log
+- [x] 1.7 — Migration: cadence_state enum + venue_campaign_touch_log (f4a4244)
 - [ ] 1.8 — `lib/cadence-engine.ts` (replace `follow-up-cadence.ts`)
 - [ ] 1.9 — Cadence floor enforcement in send pipeline
 - [ ] 1.10 — Daily cadence cron rewrite
