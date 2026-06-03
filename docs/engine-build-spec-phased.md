@@ -65,7 +65,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 ### Phase 1 — Templates, cadence, turnout (foundation)
 
 - [x] 1.1 — Migration: campaign-scoped templates schema (6bb0f4d)
-- [ ] 1.2 — Seed T1-T17 templates for Halloween 2026
+- [x] 1.2 — Seed T1-T17 templates for Halloween 2026 (0b84d74; 19 codes incl A/B/far/near/wristband/other)
 - [ ] 1.3 — Seed H0a, H0b, V1 host/venue templates
 - [ ] 1.4 — `lib/template-picker.ts` with `pickTemplate(ctx)`
 - [ ] 1.5 — Composer integration of `pickTemplate`
