@@ -116,7 +116,7 @@ export function ThreadListWithBulk({
 
   return (
     <>
-      <div className="sticky top-0 z-10 flex items-center gap-1.5 border-zinc-200/80 border-b bg-white/95 px-3 py-1.5 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-950/80">
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 border-zinc-200/80 border-b bg-white px-3 py-1.5 dark:border-zinc-800/60 dark:bg-zinc-950">
         <label className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-900">
           <input
             type="checkbox"

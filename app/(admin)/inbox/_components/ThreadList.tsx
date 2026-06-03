@@ -154,6 +154,13 @@ function ThreadRow({
     <li>
       <Link
         href={href}
+        // prefetch={false}: each thread route is force-dynamic and runs ~15
+        // DB queries + fires AI on render. With the default (hover/viewport)
+        // prefetch, sweeping the mouse down a 200-row list fired a storm of
+        // heavy RSC prefetches -> main-thread + network jank that showed up
+        // as drastic hover/mouse lag on weaker machines. The thread still
+        // loads on click; we just don't speculatively fetch every row.
+        prefetch={false}
         className={cn(
           // Row padding is density-driven via .inbox-row in globals.css
           // (compact / default / comfortable). Keep horizontal padding here.
