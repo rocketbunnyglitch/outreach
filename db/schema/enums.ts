@@ -340,6 +340,8 @@ export const cadenceState = pgEnum("cadence_state", [
   "lifecycle_active",
 ]);
 
+export type CadenceState = (typeof cadenceState.enumValues)[number];
+
 // Payment rails for paying hosts (internal staff + external contractors).
 export const paymentMethod = pgEnum("payment_method", [
   "venmo",
