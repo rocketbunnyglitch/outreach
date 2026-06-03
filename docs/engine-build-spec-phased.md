@@ -56,7 +56,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 ### Phase 0 — Reference doc integration (foundation)
 
 - [x] 0.1 — Doc formatting + repo placement (e7945e8)
-- [ ] 0.2 — Reference docs schema migration
+- [x] 0.2 — Reference docs schema migration (fb6c18e)
 - [ ] 0.3 — Doc loader script (parse + embed + persist)
 - [ ] 0.4 — AI retrieval helper (`lib/reference-retrieval.ts`)
 - [ ] 0.5 — Operator-facing reference viewer page
