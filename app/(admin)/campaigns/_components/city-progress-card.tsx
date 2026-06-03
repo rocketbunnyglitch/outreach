@@ -262,6 +262,7 @@ function formatCrawlLabel(
     weekday: "short",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
   const suffix = crawlNumber && crawlNumber > 1 ? ` · #${crawlNumber}` : "";
   const dpHint = dayPart && dayPart !== "other" ? ` · ${dayPart.replace("_", " ")}` : "";

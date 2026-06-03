@@ -53,10 +53,15 @@ export function PendingExternalHostsSection({
   }
 
   function fmtDate(iso: string): string {
-    const d = new Date(`${iso}T00:00:00`);
+    const d = new Date(`${iso}T00:00:00Z`);
     return Number.isNaN(d.getTime())
       ? iso
-      : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      : d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        });
   }
 
   return (

@@ -219,7 +219,7 @@ function EntryRow({ entry }: { entry: OutreachLogEntry }) {
         )}
         {entry.notes && <p className="text-xs text-zinc-500">{entry.notes}</p>}
         <p className="font-mono text-[10px] text-zinc-400 uppercase tracking-wider">
-          {date.toLocaleString("en-US")}
+          {date.toLocaleString("en-US", { timeZone: "America/Toronto" })}
           {entry.staffName && ` · ${entry.staffName}`}
         </p>
       </div>

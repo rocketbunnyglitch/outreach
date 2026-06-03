@@ -119,7 +119,9 @@ function SuppressionRow({ row, onError }: { row: Row; onError: (msg: string | nu
         )}
       </td>
       <td className="px-4 py-2.5 text-xs text-zinc-500">
-        {row.createdAt instanceof Date ? row.createdAt.toLocaleDateString("en-US") : ""}
+        {row.createdAt instanceof Date
+          ? row.createdAt.toLocaleDateString("en-US", { timeZone: "America/Toronto" })
+          : ""}
         {row.createdByName ? ` · ${row.createdByName}` : ""}
       </td>
       <td className="px-4 py-2.5">

@@ -156,10 +156,10 @@ function DayColumn({
       {/* Header */}
       <header className="border-zinc-200 border-b px-2 py-1.5 dark:border-zinc-800/60">
         <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-          {day.toLocaleDateString("en-US", { weekday: "short" })}
+          {day.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}
         </p>
         <p className={cn("font-semibold text-sm tabular-nums", isToday && "text-blue-500")}>
-          {day.getDate()}
+          {day.getUTCDate()}
         </p>
       </header>
 
@@ -200,6 +200,7 @@ function CalendarChip({ item }: { item: CalendarItem }) {
   const time = item.dueAt.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "America/Toronto",
   });
 
   // Determine the link target — venue > city_campaign > task
@@ -283,6 +284,7 @@ function AgendaView({
                     weekday: "long",
                     month: "long",
                     day: "numeric",
+                    timeZone: "UTC",
                   })}
                   {isToday && (
                     <span className="ml-2 font-mono text-[10px] text-blue-500 uppercase tracking-widest">

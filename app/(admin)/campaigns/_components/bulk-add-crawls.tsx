@@ -411,6 +411,7 @@ function eventDateLabel(yyyymmdd: string, _result: { added: number }): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 

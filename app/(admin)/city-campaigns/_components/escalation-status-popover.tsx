@@ -144,5 +144,5 @@ function formatRelative(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return then.toLocaleDateString("en-US");
+  return then.toLocaleDateString("en-US", { timeZone: "America/Toronto" });
 }

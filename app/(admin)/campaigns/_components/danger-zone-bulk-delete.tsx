@@ -348,12 +348,13 @@ function DeleteDatePanel({ campaignId }: { campaignId: string }) {
 
 function prettyDate(yyyymmdd: string): string {
   if (!yyyymmdd) return "—";
-  const d = new Date(`${yyyymmdd}T00:00:00`);
+  const d = new Date(`${yyyymmdd}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return yyyymmdd;
   return d.toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   });
 }

@@ -54,10 +54,11 @@ export function TargetDateKpi({
   const canEdit = isAdmin && !!campaignId;
 
   // The target date itself is timezone-naive (YYYY-MM-DD) and clock-
-  // independent, so it renders identically on the server and client —
-  // safe to compute during render. We treat it as the operator's local
-  // date by appending T00:00:00 (no Z) so JS uses local tz.
-  const target = endDate ? new Date(`${endDate}T00:00:00`) : null;
+  // independent. To render identically on the server (UTC) and client
+  // (local tz) we anchor it to UTC midnight (append Z) and read/format
+  // its parts in UTC below — otherwise toLocaleDateString()/getDate()
+  // resolve in the runtime tz and trip a #418 text mismatch.
+  const target = endDate ? new Date(`${endDate}T00:00:00Z`) : null;
 
   // "Days left" depends on the WALL CLOCK, which differs between the
   // server (UTC) and the viewer's browser (local tz). Computing it
@@ -72,7 +73,9 @@ export function TargetDateKpi({
   useEffect(() => {
     setNow(new Date());
   }, []);
-  const todayStart = now ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : null;
+  const todayStart = now
+    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    : null;
   const daysLeft =
     target && todayStart
       ? Math.ceil((target.getTime() - todayStart.getTime()) / (24 * 60 * 60 * 1000))
@@ -398,8 +401,8 @@ function formatDate(d: Date): string {
   // Pin the locale to "en-US" so the server (Node ICU default) and the
   // client (browser locale) format the month identically — a bare
   // `undefined` locale can diverge and trip the same #418 text mismatch.
-  const month = d.toLocaleDateString("en-US", { month: "long" }).toUpperCase();
-  const day = d.getDate();
+  const month = d.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }).toUpperCase();
+  const day = d.getUTCDate();
   const suffix = ordinal(day);
   return `${month} ${day}${suffix}`;
 }

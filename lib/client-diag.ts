@@ -117,17 +117,28 @@ export const CLIENT_DIAG_SCRIPT = `
       }
       return hits;
     }
-    function reportNesting(trigger) {
-      if (nestingReported) return;
+    function reportNesting(trigger, thenReload) {
+      // thenReload: when true, run the one-time self-heal reload only AFTER the
+      // nesting-scan beacon has been sent. The no-hydrate path used to call
+      // maybeReload() synchronously right after this, which navigated away and
+      // aborted the in-flight fetch — so the scan beacon never landed and we
+      // never learned the cause. Sequence it instead.
+      if (nestingReported) {
+        if (thenReload) maybeReload('Hydration failed');
+        return;
+      }
       nestingReported = true;
+      function done() { if (thenReload) maybeReload('Hydration failed'); }
       try {
         fetch(location.href, { credentials: 'include' })
           .then(function (r) { return r.text(); })
           .then(function (html) {
             send({ reason: 'nesting-scan', trigger: trigger, href: location.href, htmlLen: html.length, hits: scanRawHtml(html), ts: new Date().toISOString() });
+            // Give sendBeacon a tick to flush before the reload navigates away.
+            setTimeout(done, 600);
           })
-          .catch(function () {});
-      } catch (e) {}
+          .catch(done);
+      } catch (e) { done(); }
     }
     window.addEventListener('error', function (e) {
       var stack = e.error && e.error.stack ? String(e.error.stack) : '';
@@ -160,9 +171,9 @@ export const CLIENT_DIAG_SCRIPT = `
       if (!window.__perseHydrated) {
         if (sent < 1) send(snap('no-hydrate-6s'));
         // Capture the raw markup so we can find the mismatch that blocked
-        // hydration, then one-time reload.
-        reportNesting('no-hydrate');
-        maybeReload('Hydration failed');
+        // hydration, THEN one-time reload (reload is sequenced after the
+        // nesting-scan beacon sends — see reportNesting's thenReload arg).
+        reportNesting('no-hydrate', true);
       }
     }, 6000);
   } catch (e) {}

@@ -479,7 +479,11 @@ function formatNoteTime(d: Date): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "America/Toronto",
+  });
 }
 
 const ROLE_LABEL: Record<SlotRole, string> = {

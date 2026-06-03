@@ -1239,6 +1239,7 @@ function DraftStatusBadge({ instance }: { instance: ComposerInstance }) {
               {new Date(instance.lastSavedAt).toLocaleTimeString("en-US", {
                 hour: "2-digit",
                 minute: "2-digit",
+                timeZone: "America/Toronto",
               })}
             </span>
           )}
