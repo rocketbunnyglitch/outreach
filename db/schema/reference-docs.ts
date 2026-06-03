@@ -1,47 +1,21 @@
 /**
  * reference_docs + reference_doc_sections -- storage for canonical reference
- * documents and their parsed, embedded sections. The loader script
+ * documents and their parsed sections. The loader script
  * (scripts/load-reference-doc.ts, Phase 0.3) writes here; the AI retrieval
  * helper (lib/reference-retrieval.ts, Phase 0.4) reads from here.
  *
  * See db/migrations/0091_reference_docs.sql for column semantics + indexes.
  * The schema here mirrors the migration; if you change one update both.
  *
- * The pgvector ivfflat (embedding) and GIN (tags) indexes are defined in the
- * migration only -- drizzle-kit cannot express them, and this repo applies
- * hand-written SQL migrations rather than generating them.
+ * Retrieval is curated-first with Postgres full-text search (the generated
+ * search_tsv column) as the free-text fallback. The engine is Anthropic-only
+ * with no embeddings provider, so there is intentionally no vector column.
+ * search_tsv is a generated column the ORM never writes, so it is not modeled
+ * here; full-text queries use raw SQL against it.
  */
 
-import {
-  customType,
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { campaigns } from "./campaigns";
-
-// pgvector column type. drizzle-orm 0.36 has no native vector type, so we map a
-// number[] to Postgres vector(N). Used only for ORM typing + queries; the
-// column DDL lives in the migration.
-const vector = customType<{
-  data: number[];
-  driverData: string;
-  config: { dimensions: number };
-}>({
-  dataType(config) {
-    return `vector(${config?.dimensions ?? 1536})`;
-  },
-  toDriver(value: number[]): string {
-    return `[${value.join(",")}]`;
-  },
-  fromDriver(value: string): number[] {
-    return value.slice(1, -1).split(",").map(Number);
-  },
-});
 
 export const referenceDocs = pgTable(
   "reference_docs",
@@ -81,7 +55,6 @@ export const referenceDocSections = pgTable(
     sectionLevel: integer("section_level").notNull(),
     parentSectionCode: text("parent_section_code"),
     sectionOrder: integer("section_order").notNull(),
-    embedding: vector("embedding", { dimensions: 1536 }),
     tags: text("tags").array().notNull().default([]),
   },
   (table) => ({
