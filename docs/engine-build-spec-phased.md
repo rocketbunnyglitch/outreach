@@ -18,8 +18,8 @@
 Shipped: 0093 email_drafts.engine_picked_template_id, 0094 cadence_rewrite, 0095 campaign_email_brand, 0096 external_host_brief_fields. The spec hardcoded numbers are renumbered +2 (already corrected inline below):
 1.9 -> 0098, 1.12 -> 0099, 1.13 -> 0100, 1.14 -> 0101, 3.8 -> 0102, 3.13 -> 0103, 4.6 -> 0104 (0097 was taken 2026-06-03 by engine_role_assignments for the Admin Roles tab). Any new migration uses the next FREE number; the per-phase numbers are nominal; never reuse <= 0097.
 
-### Engine is Anthropic-only + FTS
-No OpenAI, no embeddings, no pgvector (apt-installed but unused). Classifier + AI helpers use `lib/ai.ts` (`claude-haiku-4-5`). Retrieval = curated map + Postgres FTS via `retrieveRelevantSections`. Strike OpenAI/pgvector from any phase pre-flight.
+### AI stack: Anthropic for generation, OpenAI for embeddings
+Generation/classification = Anthropic `lib/ai.ts` + `lib/ai-classify.ts` (`claude-haiku-4-5`). Reference-doc retrieval (`retrieveRelevantSections`) is curated map -> SEMANTIC (OpenAI text-embedding-3-small via `lib/embeddings.ts`, pgvector `reference_doc_sections.embedding`, migration 0098) -> Postgres FTS fallback. (Embeddings enabled 2026-06-03 after an OpenAI key was provided -- this REVERSES the earlier no-embeddings note. The classifier prompt phases (1.13) can rely on semantic retrieval.) Embeddings degrade cleanly to FTS when unconfigured.
 
 ### Real file paths (the spec says "or equivalent" -- use these)
 - Send pipeline: `lib/compose-send-impl.ts` (`composeAndSendImpl`); server wrapper `app/(admin)/_actions/compose-and-send.ts`; drafts `app/(admin)/_actions/email-drafts.ts`.
@@ -2544,8 +2544,8 @@ The full map of which Reference Doc sections each AI task pulls. Maintained in `
 4. `venue_domain_aliases` (migration 0084) inspected — verify if it's already the relationship flag table.
 5. Bryle's user_id confirmed (referenced by lifecycle scheduler as default owner).
 6. Brandon's user_id + role confirmed (referenced by host payment confirmations).
-7. ANTHROPIC engine: `ANTHROPIC_API_KEY` is set and AI features (`lib/ai.ts`, `lib/ai-classify.ts`, model `claude-haiku-4-5`) work. The engine is Anthropic-only; there is NO OpenAI/embeddings dependency.
-8. Retrieval is the curated section map + Postgres full-text search (FTS), NOT embeddings. Phase 0.x shipped with FTS; pgvector was apt-installed but is UNUSED. Ignore embedding/pgvector language in Phase 0.2/0.3 -- it is the original plan, not what was built.
+7. `ANTHROPIC_API_KEY` is set (generation/classification, `claude-haiku-4-5`) AND `OPENAI_API_KEY` is set (embeddings, text-embedding-3-small). Both wired as of 2026-06-03.
+8. pgvector IS enabled (extension created in prod; `reference_doc_sections.embedding vector(1536)`, migration 0098). Retrieval = curated map -> semantic (cosine) -> FTS fallback. The loader (`scripts/load-reference-doc.ts`) embeds on load + backfills.
 
 ---
 
