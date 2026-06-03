@@ -78,3 +78,4 @@ export * from "./places-enrichment-cache";
 export * from "./audit";
 export * from "./cron-runs";
 export * from "./reference-docs";
+export * from "./venue-campaign-touch-log";

@@ -29,6 +29,7 @@ import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { outreachBrands } from "./brands";
 import { cityCampaigns } from "./city-campaigns";
 import {
+  cadenceState,
   outreachChannel,
   outreachOutcome,
   replyCategory,
@@ -325,6 +326,18 @@ export const emailThreads = pgTable(
      *  Added in migration 0089. */
     matchSource: text("match_source"),
     matchConfidence: text("match_confidence"),
+
+    /**
+     * Cadence engine state machine (Phase 1.7). NULL for threads created
+     * before the cadence rewrite / not yet migrated (see Phase 1.11).
+     * cadenceNextDueAt is when the next touch or nudge falls due; the daily
+     * cadence cron scans on it. The supporting indexes (incl. the partial
+     * `email_threads_cadence_due_idx WHERE cadence_state IS NOT NULL`) live in
+     * migration 0094 -- drizzle-kit cannot express partial indexes and this
+     * repo hand-writes migrations. [ReferenceDoc Section 6]
+     */
+    cadenceState: cadenceState("cadence_state"),
+    cadenceNextDueAt: timestamp("cadence_next_due_at", { withTimezone: true }),
 
     ...auditColumns,
     ...archivedAt,

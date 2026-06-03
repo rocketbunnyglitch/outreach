@@ -309,6 +309,37 @@ export const replyClassification = pgEnum("reply_classification", [
 
 export const messageKind = pgEnum("message_kind", ["email", "sms", "viber", "line", "manual_note"]);
 
+/**
+ * cadence_state - the per-thread state machine driving the new cadence engine
+ * (Phase 1.7). Cold sequence: pending/sent for touches 1-3, then exhausted +
+ * ready for cross-domain handoff. Warm sequence: pending-response then up to
+ * three nudges. Terminal/exceptional states cover stalled-warm, declined,
+ * opt-out, cancelled-by-them, confirmed, and lifecycle-active. See migration
+ * 0094. [ReferenceDoc Section 6]
+ */
+export const cadenceState = pgEnum("cadence_state", [
+  "cold_pending_touch_1",
+  "cold_sent_touch_1",
+  "cold_pending_touch_2",
+  "cold_sent_touch_2",
+  "cold_pending_touch_3",
+  "cold_sent_touch_3",
+  "cold_exhausted_ready_for_handoff",
+  "warm_pending_response",
+  "warm_responded_pending_nudge_1",
+  "warm_nudge_1_sent",
+  "warm_pending_nudge_2",
+  "warm_nudge_2_sent",
+  "warm_pending_nudge_3",
+  "warm_nudge_3_sent",
+  "stalled_warm",
+  "declined_this_campaign",
+  "opt_out_permanent",
+  "cancelled_by_them",
+  "confirmed",
+  "lifecycle_active",
+]);
+
 // Payment rails for paying hosts (internal staff + external contractors).
 export const paymentMethod = pgEnum("payment_method", [
   "venmo",
