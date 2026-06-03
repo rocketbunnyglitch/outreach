@@ -8,6 +8,52 @@
 
 ---
 
+---
+
+## RECONCILIATION ADDENDUM (AUTHORITATIVE -- read before any phase)
+
+> Added 2026-06-03 after a full spec-vs-code audit (see `docs/engine-reconciliation.md` + `docs/recon-inventory.md`). Where this addendum conflicts with a phase block below, THIS WINS. It exists so the remaining phases connect to the real engine instead of rebuilding it.
+
+### Migration numbering (0093-0096 are TAKEN)
+Shipped: 0093 email_drafts.engine_picked_template_id, 0094 cadence_rewrite, 0095 campaign_email_brand, 0096 external_host_brief_fields. The spec hardcoded numbers are renumbered +2 (already corrected inline below):
+1.9 -> 0097, 1.12 -> 0098, 1.13 -> 0099, 1.14 -> 0100, 3.8 -> 0101, 3.13 -> 0102, 4.6 -> 0103. Any new migration uses the next free number; never reuse <= 0096.
+
+### Engine is Anthropic-only + FTS
+No OpenAI, no embeddings, no pgvector (apt-installed but unused). Classifier + AI helpers use `lib/ai.ts` (`claude-haiku-4-5`). Retrieval = curated map + Postgres FTS via `retrieveRelevantSections`. Strike OpenAI/pgvector from any phase pre-flight.
+
+### Real file paths (the spec says "or equivalent" -- use these)
+- Send pipeline: `lib/compose-send-impl.ts` (`composeAndSendImpl`); server wrapper `app/(admin)/_actions/compose-and-send.ts`; drafts `app/(admin)/_actions/email-drafts.ts`.
+- Classifier: `lib/ai-classify.ts` (writes ONLY `email_threads.suggested_classification/_confidence/_at`; never overwrites operator-confirmed `classification`) + `lib/ai-auto-status.ts`.
+- Venue-confirm action: `app/(admin)/events/_venue-event-actions.ts` (runs `generateConfirmationCascade` in-transaction).
+- Cadence cron (OLD): `app/api/cron/follow-up-cadence/route.ts`.
+- staff_outreach_emails == connected_accounts (renamed @0042; `staffOutreachEmails` is a Drizzle alias). All FKs to the sending email target `connected_accounts`.
+
+### CADENCE CUTOVER (phases 1.9-1.11) -- highest-risk seam, sequence as ONE change
+The NEW cadence engine (`lib/cadence-engine.ts` + `cadence_state` + `venue_campaign_touch_log`) is BUILT but NOT WIRED. The cron + inbox still run the OLD `email_threads.follow_up_stage` system (`lib/follow-up-cadence.ts`), AND `compose-send-impl.ts` clears `follow_up_stage` on every send while `app/(admin)/inbox/_actions.ts` calls `clearCadenceOnAction`. Cutover plan (operator-approved):
+1. 1.9 read-side floor enforcement in `compose-send-impl.ts` (derive campaignId+brand from venueId/cityCampaignId server-side, fail-open; admin override mirrors the `bypassCap` pattern). Also begin writing `cadence_state` (call `recordTouch`) on send.
+2. 1.10 add a NEW cron `app/api/cron/cadence-advance/route.ts` driving `planNextTouch`; leave the OLD `follow-up-cadence` cron running during backfill.
+3. 1.11 backfill `cadence_state` from `follow_up_stage` (`scripts/migrate-cadence-state.ts`), switch `compose-send-impl` + `inbox/_actions` to maintain `cadence_state` (not `follow_up_stage`), THEN retire the OLD cron. Until cutover completes, both fields are maintained.
+
+### LIFECYCLE vs TASKS (phase 3.x) -- integrate, do NOT duplicate
+Confirmation ALREADY fires a TASK cascade today: `lib/confirmation-cascade.ts` -> 4 `tasks` (poster, 2-week confirm, 1-week confirm, floor-staff brief) on venue_event -> confirmed, assigned to `city_campaign.lead_staff_id`, tracked by 5 `venue_events` timestamps (`confirmed_at`, `two_week_email_sent_at`, `one_week_email_sent_at`, `three_day_call_completed_at`, `floor_staff_call_completed_at`) + `crawl_deliverables`. Rule: `lib/lifecycle-scheduler.ts` (Phase 3.1) owns the post-confirm EMAILS (T9-T17 scheduled drafts); `confirmation-cascade` keeps the call/checkbox TASKS. They SHARE the `venue_events` timestamp columns so neither double-fires (skip the email if its `*_sent_at` is set). Phase 3.13 `floor_staff_*` columns must reconcile with the existing `venue_events.floor_staff_call_completed_at` (extend, do not duplicate).
+
+### Reuse, don't rebuild
+- 2.9 suggested-response: reuse existing `email_threads.aiQuickReplies` (`lib/ai-quick-replies.ts`).
+- 2.8 classification chip: reuse the existing `suggested_classification` confirm flow.
+- 2.5 calls: reuse the existing Quo/OpenPhone integration (`lib/call-matching.ts`, `app/api/webhooks/quo`).
+- Cancellation / relationship-flags / SMS / worklist ARE greenfield (only enum/template scaffolding exists) -- build them, but wire to: `notifications` table (4.5), `venue_campaign_touch_log` (4.9), the classifier (4.2), `cold_outreach_entries` (worklist calls).
+
+### Engine function-roles (configurable via Admin -> Roles; do NOT hardcode UUIDs)
+Engine function-roles (lifecycle/post-confirm owner, wristband + host-payment coordinator, graphics) are assigned to users via the Admin Roles tab and resolved through `lib/engine-roles.ts` (keyed by a stable role-key, fallback `city_campaign.lead_staff_id` for the lifecycle owner). Current people: Bryle (lead) = lifecycle/post-confirm owner; Brandon (admin) = wristband shipments + host payments. Never hardcode their UUIDs in phase code -- read the assignment.
+
+### Merge fields to ADD when their phase lands (extend `lib/template-merge-context.ts`)
+- 3.3: `{{venue_nights_summary}}` (multi-night venues).
+- 4.4: the 4 `{{cancellation_reason_phrase}}` variants (currently blank in the builder).
+- Host briefs (3.6/3.7) need a host+event preview context; the builder accepts `hostExternalId`/`eventId` but the venue-centric preview leaves host fields blank.
+
+### Phase 6
+Not enumerated in this spec (single placeholder). Autonomous build STOPS at Phase 4.9; Phase 6 is scoped later. (Phase 5 = Twilio/SMS + Smart Map/Eventbrite, external procurement -> also a hard stop.)
+
 ## How to use this document
 
 ### For the operator handing this to Claude Code
@@ -1026,7 +1072,7 @@ This phase makes templates campaign-scoped, rewrites the cadence engine to match
      - UI surfaces the warning shown in Phase 2.10 (see below)
      - Admin can override with a confirmation; non-admins get hard-blocked
 
-2. Add `email_send_events.cadence_override_reason` column (migration 0095) to log admin overrides:
+2. Add `email_send_events.cadence_override_reason` column (migration 0097) to log admin overrides:
    ```sql
    ALTER TABLE email_send_events
      ADD COLUMN cadence_override_reason TEXT;
@@ -1112,7 +1158,7 @@ This phase makes templates campaign-scoped, rewrites the cadence engine to match
 
 **Build steps:**
 
-1. Migration `0096_reply_classification_additions.sql`:
+1. Migration `0098_reply_classification_additions.sql`:
    ```sql
    ALTER TYPE reply_classification ADD VALUE 'stalled_warm';
    ALTER TYPE reply_classification ADD VALUE 'cancelled_by_them';
@@ -1169,7 +1215,7 @@ This phase makes templates campaign-scoped, rewrites the cadence engine to match
    );
    ```
 
-4. Migration `0097_classifier_runs.sql` for the table.
+4. Migration `0099_classifier_runs.sql` for the table.
 
 **Acceptance criteria:**
 - Classifier produces same-or-better classifications on a held-out test set
@@ -1193,7 +1239,7 @@ This phase makes templates campaign-scoped, rewrites the cadence engine to match
    - If `confidence < 0.90`: write `email_threads.suggestedClassification = <auto-classified>` but leave `email_threads.classification = 'unclassified'`. Flag for human triage in the UI.
 
 2. Add `email_threads.needs_attention` boolean column (or reuse existing `is_stale` for this purpose — verify what exists):
-   - Migration `0098_needs_attention_flag.sql`
+   - Migration `0100_needs_attention_flag.sql`
    - Default false
    - Set true when classifier confidence < 0.90 OR engine can't generate a suggested response
 
@@ -1950,7 +1996,7 @@ This phase makes the engine auto-drive the post-confirmation sequence (T9-T17, H
 
 1. Inspect existing `venue_domain_aliases` table (migration 0084) — verify if it's already storing this data. If yes, extend; if no, create new table.
 
-2. Migration `0099_venue_domain_relationships.sql`:
+2. Migration `0101_venue_domain_relationships.sql`:
    ```sql
    CREATE TABLE venue_domain_relationships (
      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2096,7 +2142,7 @@ This phase makes the engine auto-drive the post-confirmation sequence (T9-T17, H
 
 **Build steps:**
 
-1. Migration `0100_floor_staff_briefed.sql`:
+1. Migration `0102_floor_staff_briefed.sql`:
    ```sql
    ALTER TABLE venue_events
      ADD COLUMN floor_staff_briefed_at TIMESTAMPTZ,
@@ -2309,7 +2355,7 @@ This phase handles the fire-drill case: confirmed venues canceling. Multi-staff 
 
 **Build steps:**
 
-1. Notifications table gets `acknowledged_at`, `acknowledged_by` columns (migration).
+1. Notifications table gets `acknowledged_at`, `acknowledged_by` columns (migration `0103_notification_acknowledgments.sql`).
 
 2. UI shows "Acknowledge" button on each notification.
 
@@ -2498,8 +2544,8 @@ The full map of which Reference Doc sections each AI task pulls. Maintained in `
 4. `venue_domain_aliases` (migration 0084) inspected — verify if it's already the relationship flag table.
 5. Bryle's user_id confirmed (referenced by lifecycle scheduler as default owner).
 6. Brandon's user_id + role confirmed (referenced by host payment confirmations).
-7. `OPENAI_API_KEY` is set and the existing AI features work (Phase 0.3 uses this for embeddings).
-8. pgvector extension installed on the DB (Phase 0.2 will install if missing).
+7. ANTHROPIC engine: `ANTHROPIC_API_KEY` is set and AI features (`lib/ai.ts`, `lib/ai-classify.ts`, model `claude-haiku-4-5`) work. The engine is Anthropic-only; there is NO OpenAI/embeddings dependency.
+8. Retrieval is the curated section map + Postgres full-text search (FTS), NOT embeddings. Phase 0.x shipped with FTS; pgvector was apt-installed but is UNUSED. Ignore embedding/pgvector language in Phase 0.2/0.3 -- it is the original plan, not what was built.
 
 ---
 
