@@ -75,7 +75,10 @@ export interface RenderResult {
   unresolvedFields: string[];
 }
 
-export function renderTemplate(template: string, context: RenderContext): RenderResult {
+export function renderTemplate(
+  template: string,
+  context: RenderContext | Record<string, string>,
+): RenderResult {
   const unresolved: string[] = [];
   const output = template.replace(MERGE_FIELD_RE, (_match, path: string) => {
     const value = resolvePath(context as Record<string, unknown>, path);

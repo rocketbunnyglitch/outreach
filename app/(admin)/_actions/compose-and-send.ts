@@ -20,8 +20,6 @@
  */
 
 import {
-  events,
-  cities,
   cityCampaigns,
   connectedAccounts,
   emailMessages,
@@ -29,7 +27,6 @@ import {
   emailThreads,
   outreachBrands,
   users,
-  venueEvents,
   venues,
 } from "@/db/schema";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
@@ -45,7 +42,7 @@ import type {
   SuppressionBlock,
 } from "@/lib/send-safety";
 import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
-import { type SlotContext, type SlotType, turnoutMergeFields } from "@/lib/turnout-quote";
+import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -191,77 +188,23 @@ export interface ComposeTemplate {
   bodyTemplateText: string;
 }
 
-export interface ComposeRenderContext {
-  /** Mirrors lib/template-render RenderContext but trimmed for the
-   *  fields we can populate from a venue + staff. */
-  venue?: {
-    name?: string;
-    city?: string;
-    phone?: string | null;
-    email?: string | null;
-    website?: string | null;
-  };
-  staff?: { displayName?: string; primaryEmail?: string };
-  /** Engine-computed turnout phrases (Phase 1.6), populated when the venue's
-   *  priority + slot can be derived. [ReferenceDoc Section 5] */
-  turnout_quote?: string;
-  turnout_quote_sales_update?: string;
-}
-
-/** Map a venue role + event format to the turnout helper's slot inputs. */
-function toSlotInputs(
-  role: "wristband" | "middle" | "final" | "alt_final",
-  crawlFormat: "standard" | "day_party",
-): { slotType: SlotType; slotContext: SlotContext } {
-  // alt_final venues are quoted as a final. [ReferenceDoc Section 5.2]
-  const slotType: SlotType =
-    role === "wristband" ? "wristband" : role === "middle" ? "middle" : "final";
-  if (crawlFormat === "day_party") return { slotType, slotContext: "afternoon" };
-  const slotContext: SlotContext =
-    slotType === "wristband" ? "pickup_window" : slotType === "middle" ? "slot" : "night";
-  return { slotType, slotContext };
-}
-
 /**
- * Compute {{turnout_quote}} / {{turnout_quote_sales_update}} for a venue from
- * its booking (venue_events -> events -> city_campaigns). Returns an empty
- * object when the priority + slot cannot be derived. The sales-update phrase is
- * only included when a live ticket count is known (> 0); a 0 count usually
- * means "not synced yet" rather than genuinely no sales. [ReferenceDoc Section 5]
+ * The composer's render context is the engine's flat merge-field map (see
+ * lib/template-merge-context). Every known {{field}} resolves from real data;
+ * fields that don't apply to the context are blank, never broken markers.
  */
-async function deriveTurnoutMerge(
-  venueId: string,
-): Promise<{ turnout_quote?: string; turnout_quote_sales_update?: string }> {
-  const bookings = await db
-    .select({
-      role: venueEvents.role,
-      eventDate: events.eventDate,
-      crawlFormat: events.crawlFormat,
-      ticketSalesCount: events.ticketSalesCount,
-      priority: cityCampaigns.priority,
-    })
-    .from(venueEvents)
-    .innerJoin(events, eq(events.id, venueEvents.eventId))
-    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
-    .where(and(eq(venueEvents.venueId, venueId), isNull(events.archivedAt)))
-    .orderBy(asc(events.eventDate));
+export type ComposeRenderContext = Record<string, string>;
 
-  if (bookings.length === 0) return {};
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const chosen = bookings.find((b) => b.eventDate >= todayIso) ?? bookings[bookings.length - 1];
-  if (!chosen) return {};
-
-  const priority = Math.min(6, Math.max(1, chosen.priority)) as 1 | 2 | 3 | 4 | 5 | 6;
-  const { slotType, slotContext } = toSlotInputs(chosen.role, chosen.crawlFormat);
-  return turnoutMergeFields({
-    priority,
-    slotType,
-    slotContext,
-    ticketsSold: chosen.ticketSalesCount > 0 ? chosen.ticketSalesCount : null,
-  });
-}
-
-export async function listComposeContext(opts: { venueId?: string | null } = {}): Promise<{
+export async function listComposeContext(
+  opts: {
+    venueId?: string | null;
+    /** City-campaign the composer is attributed to -- scopes crawls/slots and
+     *  resolves the campaign for company_name + the T7A/T7B insert block. */
+    cityCampaignId?: string | null;
+    /** Sending email -> its per-campaign brand for {{company_name}}. */
+    sendingAccountId?: string | null;
+  } = {},
+): Promise<{
   inboxes: ConnectedAccountOption[];
   labels: TeamLabelSummary[];
   templates: ComposeTemplate[];
@@ -299,49 +242,25 @@ export async function listComposeContext(opts: { venueId?: string | null } = {})
       ),
   ]);
 
-  // Build the render context. Staff always populates; venue only
-  // when the caller passed venueId. Fields the template references
-  // but we can't resolve will render as `[??field.path??]` markers
-  // — that's the desired UX so the operator sees broken merges
-  // before they hit Send.
-  const renderContext: ComposeRenderContext = {
-    staff: {
-      displayName: staff.displayName ?? undefined,
-      primaryEmail: staff.primaryEmail ?? undefined,
-    },
-  };
-
-  if (opts.venueId && UUID_RE.test(opts.venueId)) {
-    const venueRow = await db
-      .select({
-        name: venues.name,
-        cityName: cities.name,
-        phone: venues.phoneE164,
-        email: venues.email,
-        website: venues.websiteUrl,
-      })
-      .from(venues)
-      .leftJoin(cities, eq(cities.id, venues.cityId))
-      .where(eq(venues.id, opts.venueId))
+  // Resolve the campaign from the city-campaign so company_name + the insert
+  // block load correctly, then build the engine's flat merge-field map.
+  let campaignId: string | null = null;
+  if (opts.cityCampaignId && UUID_RE.test(opts.cityCampaignId)) {
+    const [cc] = await db
+      .select({ campaignId: cityCampaigns.campaignId })
+      .from(cityCampaigns)
+      .where(eq(cityCampaigns.id, opts.cityCampaignId))
       .limit(1);
-    const v = venueRow[0];
-    if (v) {
-      renderContext.venue = {
-        name: v.name ?? undefined,
-        city: v.cityName ?? undefined,
-        phone: v.phone,
-        email: v.email,
-        website: v.website,
-      };
-    }
-    // Engine turnout merge fields (Phase 1.6). Best-effort: a venue with no
-    // derivable booking simply leaves {{turnout_quote}} unresolved.
-    const turnout = await deriveTurnoutMerge(opts.venueId);
-    if (turnout.turnout_quote) renderContext.turnout_quote = turnout.turnout_quote;
-    if (turnout.turnout_quote_sales_update) {
-      renderContext.turnout_quote_sales_update = turnout.turnout_quote_sales_update;
-    }
+    campaignId = cc?.campaignId ?? null;
   }
+
+  const renderContext = await buildFlatMergeContext({
+    venueId: opts.venueId ?? null,
+    campaignId,
+    cityCampaignId: opts.cityCampaignId ?? null,
+    staffId: staff.id,
+    sendingAccountId: opts.sendingAccountId ?? null,
+  });
 
   return { inboxes, labels, templates: templateRows, renderContext };
 }

@@ -238,7 +238,11 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   // -------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
-    listComposeContext({ venueId: instance.venueId ?? undefined })
+    listComposeContext({
+      venueId: instance.venueId ?? undefined,
+      cityCampaignId: instance.cityCampaignId ?? undefined,
+      sendingAccountId: instance.fromAccountId || undefined,
+    })
       .then((ctx) => {
         if (cancelled) return;
         setInboxes(ctx.inboxes);
