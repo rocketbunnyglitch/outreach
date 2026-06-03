@@ -71,6 +71,7 @@ const ERROR_MESSAGE_MAX_BYTES = 2 * 1024;
 const HOST = os.hostname();
 
 export type CronName =
+  | "cadence-advance"
   | "daily-digest"
   | "eventbrite-sync"
   | "follow-up-cadence"
