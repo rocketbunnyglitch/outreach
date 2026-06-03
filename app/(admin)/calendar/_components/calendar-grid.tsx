@@ -1,5 +1,6 @@
 "use client";
 
+import { useHydrated } from "@/components/ui/use-hydrated";
 import type { CalendarItem, CalendarItemType } from "@/lib/calendar";
 import { cn } from "@/lib/cn";
 import { AlertTriangle, Calendar as CalendarIcon, Sparkles } from "lucide-react";
@@ -106,8 +107,15 @@ function DayColumn({
   items: CalendarItem[];
   showHours: boolean;
 } & Pick<Props, "canReschedule" | "rescheduleAction">) {
-  const isToday = isSameDay(day, new Date());
-  const isPast = day.getTime() < startOfDay(new Date()).getTime() && !isToday;
+  // "today"/"past" depend on the wall clock — gate behind hydration so the
+  // server and the client's FIRST render agree (both render no today/past
+  // highlight), then the real state applies post-mount. Computing
+  // `new Date()` directly here made each day cell's className differ between
+  // server and client → React #418 → frozen calendar.
+  const hydrated = useHydrated();
+  const now = hydrated ? new Date() : null;
+  const isToday = now ? isSameDay(day, now) : false;
+  const isPast = now ? day.getTime() < startOfDay(now).getTime() && !isToday : false;
 
   // Group items by hour for the hour-banded view
   const byHour = new Map<number, CalendarItem[]>();

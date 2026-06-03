@@ -17,6 +17,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useHydrated } from "@/components/ui/use-hydrated";
 import { CheckCircle2, Clock, Download, ExternalLink, Loader2, XCircle } from "lucide-react";
 import { useState, useTransition } from "react";
 import type { SheetsBackupStatus } from "../_actions-sheets-backup";
@@ -39,6 +40,8 @@ function relativeTime(iso: string): string {
 
 export function SheetsBackupCard({ initial }: Props) {
   const [status, setStatus] = useState<SheetsBackupStatus>(initial);
+  // Gate wall-clock relative time so SSR === first client render (#418).
+  const hydrated = useHydrated();
   const [pending, startTx] = useTransition();
   const toast = useToast();
 
@@ -106,8 +109,8 @@ export function SheetsBackupCard({ initial }: Props) {
           <>
             <span>
               Last:{" "}
-              <span className="text-zinc-900 dark:text-zinc-100">
-                {relativeTime(last.startedAt)}
+              <span className="text-zinc-900 dark:text-zinc-100" suppressHydrationWarning>
+                {hydrated ? relativeTime(last.startedAt) : ""}
               </span>
             </span>
             {last.destination && (
