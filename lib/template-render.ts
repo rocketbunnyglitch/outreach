@@ -59,6 +59,15 @@ export interface RenderContext {
     displayName?: string;
     primaryEmail?: string;
   };
+  /**
+   * Computed flat merge fields (Phase 1.6). Unlike the dotted structural
+   * fields above, these are engine-derived strings injected by the server-side
+   * context builder (see lib/turnout-quote.ts). Stored flat because the
+   * template pack references them as {{turnout_quote}} / {{turnout_quote_sales_update}}.
+   * [ReferenceDoc Section 5]
+   */
+  turnout_quote?: string;
+  turnout_quote_sales_update?: string;
 }
 
 export interface RenderResult {
@@ -128,4 +137,12 @@ export const KNOWN_MERGE_FIELDS: { path: string; description: string }[] = [
   { path: "outreachBrand.displayName", description: 'e.g. "Eventsperse"' },
   { path: "staff.displayName", description: "Sender's name (your name)" },
   { path: "staff.primaryEmail", description: "Sender's email" },
+  {
+    path: "turnout_quote",
+    description: "Engine turnout phrase by priority x slot (ReferenceDoc 5.2)",
+  },
+  {
+    path: "turnout_quote_sales_update",
+    description: "Engine sales-update turnout phrase by live tickets (ReferenceDoc 5.3)",
+  },
 ];

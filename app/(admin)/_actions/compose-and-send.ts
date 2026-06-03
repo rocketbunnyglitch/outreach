@@ -20,13 +20,16 @@
  */
 
 import {
+  events,
   cities,
+  cityCampaigns,
   connectedAccounts,
   emailMessages,
   emailTemplates,
   emailThreads,
   outreachBrands,
   users,
+  venueEvents,
   venues,
 } from "@/db/schema";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
@@ -42,6 +45,7 @@ import type {
   SuppressionBlock,
 } from "@/lib/send-safety";
 import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
+import { type SlotContext, type SlotType, turnoutMergeFields } from "@/lib/turnout-quote";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -198,6 +202,63 @@ export interface ComposeRenderContext {
     website?: string | null;
   };
   staff?: { displayName?: string; primaryEmail?: string };
+  /** Engine-computed turnout phrases (Phase 1.6), populated when the venue's
+   *  priority + slot can be derived. [ReferenceDoc Section 5] */
+  turnout_quote?: string;
+  turnout_quote_sales_update?: string;
+}
+
+/** Map a venue role + event format to the turnout helper's slot inputs. */
+function toSlotInputs(
+  role: "wristband" | "middle" | "final" | "alt_final",
+  crawlFormat: "standard" | "day_party",
+): { slotType: SlotType; slotContext: SlotContext } {
+  // alt_final venues are quoted as a final. [ReferenceDoc Section 5.2]
+  const slotType: SlotType =
+    role === "wristband" ? "wristband" : role === "middle" ? "middle" : "final";
+  if (crawlFormat === "day_party") return { slotType, slotContext: "afternoon" };
+  const slotContext: SlotContext =
+    slotType === "wristband" ? "pickup_window" : slotType === "middle" ? "slot" : "night";
+  return { slotType, slotContext };
+}
+
+/**
+ * Compute {{turnout_quote}} / {{turnout_quote_sales_update}} for a venue from
+ * its booking (venue_events -> events -> city_campaigns). Returns an empty
+ * object when the priority + slot cannot be derived. The sales-update phrase is
+ * only included when a live ticket count is known (> 0); a 0 count usually
+ * means "not synced yet" rather than genuinely no sales. [ReferenceDoc Section 5]
+ */
+async function deriveTurnoutMerge(
+  venueId: string,
+): Promise<{ turnout_quote?: string; turnout_quote_sales_update?: string }> {
+  const bookings = await db
+    .select({
+      role: venueEvents.role,
+      eventDate: events.eventDate,
+      crawlFormat: events.crawlFormat,
+      ticketSalesCount: events.ticketSalesCount,
+      priority: cityCampaigns.priority,
+    })
+    .from(venueEvents)
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .where(and(eq(venueEvents.venueId, venueId), isNull(events.archivedAt)))
+    .orderBy(asc(events.eventDate));
+
+  if (bookings.length === 0) return {};
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const chosen = bookings.find((b) => b.eventDate >= todayIso) ?? bookings[bookings.length - 1];
+  if (!chosen) return {};
+
+  const priority = Math.min(6, Math.max(1, chosen.priority)) as 1 | 2 | 3 | 4 | 5 | 6;
+  const { slotType, slotContext } = toSlotInputs(chosen.role, chosen.crawlFormat);
+  return turnoutMergeFields({
+    priority,
+    slotType,
+    slotContext,
+    ticketsSold: chosen.ticketSalesCount > 0 ? chosen.ticketSalesCount : null,
+  });
 }
 
 export async function listComposeContext(opts: { venueId?: string | null } = {}): Promise<{
@@ -272,6 +333,13 @@ export async function listComposeContext(opts: { venueId?: string | null } = {})
         email: v.email,
         website: v.website,
       };
+    }
+    // Engine turnout merge fields (Phase 1.6). Best-effort: a venue with no
+    // derivable booking simply leaves {{turnout_quote}} unresolved.
+    const turnout = await deriveTurnoutMerge(opts.venueId);
+    if (turnout.turnout_quote) renderContext.turnout_quote = turnout.turnout_quote;
+    if (turnout.turnout_quote_sales_update) {
+      renderContext.turnout_quote_sales_update = turnout.turnout_quote_sales_update;
     }
   }
 
