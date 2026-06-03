@@ -41,7 +41,7 @@ import "server-only";
  *     the same inbox.
  */
 
-import { emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
+import { cities, emailMessages, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { classifyInboundMessageAsync } from "@/lib/ai-classify";
 import { extractPromisesAsync } from "@/lib/ai-extract-promises";
 import { db, withAuditContext } from "@/lib/db";
@@ -1093,7 +1093,9 @@ async function ingestMessage(opts: {
     // on the venue communication timeline + threads into the app inbox.
     let venueId: string | null = null;
     if (direction === "inbound") {
-      venueId = await resolveVenueFromAddress(fromHeader);
+      // Pass subject+body so the fuzzy domain tier can disambiguate
+      // same-domain venues across cities (chain locations).
+      venueId = await resolveVenueFromAddress(fromHeader, `${subject} ${bodyText}`);
       if (!venueId) {
         // Smart auto-tag/create: when address matching finds nothing,
         // derive the venue name + city from the email (code first, Haiku
@@ -1539,7 +1541,15 @@ function extractSenderName(fromHeader: string): string {
   return fromHeader.split("@")[0] ?? fromHeader;
 }
 
-async function resolveVenueFromAddress(fromHeader: string): Promise<string | null> {
+async function resolveVenueFromAddress(
+  fromHeader: string,
+  // Optional subject+body text. Used ONLY by the fuzzy Tier-3 domain
+  // fallback to disambiguate same-domain venues across cities (chains like
+  // "SPIN" with a shared corporate domain in Washington AND Toronto). The
+  // high-confidence tiers (exact email / alt-email / operator alias) ignore
+  // it — an exact address is unambiguous regardless of city.
+  emailText?: string,
+): Promise<string | null> {
   const m = fromHeader.match(/<([^>]+)>/) ?? fromHeader.match(/([\w.\-+]+@[\w.\-]+)/);
   const email = m?.[1]?.toLowerCase();
   if (!email) return null;
@@ -1599,17 +1609,50 @@ async function resolveVenueFromAddress(fromHeader: string): Promise<string | nul
   // bookings@lavelle.com is the stored email).
   const domain = email.split("@")[1];
   if (!domain) return null;
-  const domainMatch = await db.execute<{ id: string }>(sql`
-    SELECT id FROM venues
+  const domainMatch = await db.execute<{ id: string; city_id: string | null }>(sql`
+    SELECT id, city_id FROM venues
     WHERE email IS NOT NULL
       AND lower(email) LIKE ${`%@${domain}`}
       AND archived_at IS NULL
-    LIMIT 1
   `);
-  const list: Array<{ id: string }> = Array.isArray(domainMatch)
-    ? (domainMatch as unknown as Array<{ id: string }>)
-    : ((domainMatch as unknown as { rows: Array<{ id: string }> }).rows ?? []);
-  return list[0]?.id ?? null;
+  const candidates: Array<{ id: string; city_id: string | null }> = Array.isArray(domainMatch)
+    ? (domainMatch as unknown as Array<{ id: string; city_id: string | null }>)
+    : ((domainMatch as unknown as { rows: Array<{ id: string; city_id: string | null }> }).rows ??
+      []);
+  if (candidates.length === 0) return null;
+
+  // City-disambiguation for shared/corporate domains (the SPIN-Washington-
+  // vs-SPIN-Toronto problem). A chain's locations can share one email
+  // domain, so a bare domain match would wrongly attach new-city mail to
+  // whichever same-domain venue happens to be first. If the email text
+  // names a known city, only match a candidate IN that city; if the named
+  // city has no same-domain venue yet, return null so autoTagOrCreateVenue
+  // creates/sorts the correct-city venue instead of mis-attributing.
+  if (emailText?.trim()) {
+    const cityRows = await db.select({ id: cities.id, name: cities.name }).from(cities);
+    const hay = emailText.toLowerCase();
+    // Longest names first so "New York City" wins over "York".
+    const byLongest = cityRows.slice().sort((a, b) => b.name.length - a.name.length);
+    let detectedCityId: string | null = null;
+    for (const c of byLongest) {
+      const n = c.name.trim().toLowerCase();
+      if (n.length >= 3 && hay.includes(n)) {
+        detectedCityId = c.id;
+        break;
+      }
+    }
+    if (detectedCityId) {
+      const inCity = candidates.find((v) => v.city_id === detectedCityId);
+      if (inCity) return inCity.id;
+      // Email clearly names a city, but no same-domain venue is in it →
+      // don't guess; let the auto-create path handle the new-city venue.
+      return null;
+    }
+  }
+
+  // No city signal in the text → fall back to the first domain match
+  // (prior behavior; safe when the domain isn't a multi-city chain).
+  return candidates[0]?.id ?? null;
 }
 
 async function gmailFetch(endpoint: string, accessToken: string): Promise<Record<string, unknown>> {
