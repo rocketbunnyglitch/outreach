@@ -65,7 +65,7 @@ export function SendMenu({
   }, [open]);
 
   const primaryLabel = scheduledFor
-    ? `Send ${new Date(scheduledFor).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`
+    ? `Send ${new Date(scheduledFor).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}`
     : "Send";
 
   return (

@@ -45,14 +45,14 @@ export function CityTime({ cityName, cityTimezone, viewerTimezone }: Props) {
     );
   }
 
-  const cityFormatter = new Intl.DateTimeFormat(undefined, {
+  const cityFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone: cityTimezone,
     hour: "numeric",
     minute: "2-digit",
     weekday: "short",
     hour12: true,
   });
-  const viewerFormatter = new Intl.DateTimeFormat(undefined, {
+  const viewerFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone: viewerTimezone,
     hour: "numeric",
     minute: "2-digit",

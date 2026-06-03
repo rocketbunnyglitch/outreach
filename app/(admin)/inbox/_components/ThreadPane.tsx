@@ -418,7 +418,7 @@ function VenueRail({
                       dateTime={h.createdAt.toISOString()}
                       className="shrink-0 font-mono text-[10px] text-zinc-500"
                     >
-                      {h.createdAt.toLocaleDateString([], {
+                      {h.createdAt.toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
                       })}
@@ -615,7 +615,7 @@ function RelatedThreadsBlock({
                 dateTime={t.lastMessageAt.toISOString()}
                 className="shrink-0 font-mono text-[10px] text-zinc-500"
               >
-                {t.lastMessageAt.toLocaleDateString([], {
+                {t.lastMessageAt.toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                 })}

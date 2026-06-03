@@ -1236,7 +1236,7 @@ function DraftStatusBadge({ instance }: { instance: ComposerInstance }) {
           {instance.lastSavedAt && (
             <span title={new Date(instance.lastSavedAt).toLocaleString("en-US")} className="ml-1">
               ·{" "}
-              {new Date(instance.lastSavedAt).toLocaleTimeString([], {
+              {new Date(instance.lastSavedAt).toLocaleTimeString("en-US", {
                 hour: "2-digit",
                 minute: "2-digit",
               })}

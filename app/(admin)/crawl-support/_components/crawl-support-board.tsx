@@ -541,7 +541,7 @@ function CallRow({
             : ""}
           {" · "}
           <span suppressHydrationWarning>
-            {new Date(call.occurredAtIso).toLocaleTimeString([], {
+            {new Date(call.occurredAtIso).toLocaleTimeString("en-US", {
               hour: "numeric",
               minute: "2-digit",
             })}
