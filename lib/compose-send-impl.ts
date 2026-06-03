@@ -30,7 +30,8 @@ import {
 } from "@/db/schema";
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
 import { type StaffRole, hasMinimumRole } from "@/lib/auth";
-import { checkCadenceFloors } from "@/lib/cadence-engine";
+import { checkCadenceFloors, recordTouch } from "@/lib/cadence-engine";
+import { planFromState } from "@/lib/cadence-engine-core";
 import { decideCadenceGate } from "@/lib/cadence-gate";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
@@ -369,6 +370,10 @@ export async function composeAndSendImpl(
     cityCampaignIdRaw && UUID_RE.test(cityCampaignIdRaw) ? cityCampaignIdRaw : null;
   const cadenceOverrideReasonRaw = String(formData.get("cadenceOverrideReason") ?? "").trim();
   let cadenceOverrideToLog: string | null = null;
+  // Campaign + brand for this send (also reused to record the cadence touch
+  // after a successful send -- Phase 1.11).
+  let sendCampaignId: string | null = null;
+  let sendOutreachBrandId: string | null = null;
   if (venueId && cityCampaignId) {
     const [cc] = await db
       .select({
@@ -380,6 +385,8 @@ export async function composeAndSendImpl(
       .where(eq(cityCampaigns.id, cityCampaignId))
       .limit(1);
     if (cc?.campaignId) {
+      sendCampaignId = cc.campaignId;
+      sendOutreachBrandId = cc.outreachBrandId ?? null;
       const floor = await checkCadenceFloors({
         venueId,
         campaignId: cc.campaignId,
@@ -762,6 +769,31 @@ export async function composeAndSendImpl(
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
+  }
+
+  // Record the cadence touch (Phase 1.11): logs venue_campaign_touch_log (the
+  // floor's data source) and advances the thread's cadence_state. Best-effort;
+  // only for venue-attributed campaign sends. The touch number is derived from
+  // the thread's current cadence_state (a fresh thread -> cold touch 1).
+  if (venueId && sendCampaignId) {
+    try {
+      const [tRow] = await db
+        .select({ cadenceState: emailThreads.cadenceState })
+        .from(emailThreads)
+        .where(eq(emailThreads.id, threadId))
+        .limit(1);
+      const current = tRow?.cadenceState ?? "cold_pending_touch_1";
+      const touchKind = planFromState(current, new Date())?.touchKind ?? "cold_touch_1";
+      await recordTouch({
+        venueId,
+        campaignId: sendCampaignId,
+        sendingAliasId: fromAccountId,
+        sendingOutreachBrandId: sendOutreachBrandId ?? "",
+        touchKind,
+      });
+    } catch (err) {
+      logger.error({ err, threadId, venueId }, "composeAndSend: recordTouch failed");
+    }
   }
 
   revalidatePath("/inbox");
