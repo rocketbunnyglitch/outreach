@@ -393,7 +393,7 @@ export function CommandPalette({
       // Phase G — Open tasks.
       for (const t of results.tasks) {
         const dueLabel = t.dueAt
-          ? `due ${new Date(t.dueAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+          ? `due ${new Date(t.dueAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Toronto" })}`
           : "no due date";
         dynamic.push({
           id: `task:${t.id}`,
@@ -406,10 +406,11 @@ export function CommandPalette({
       }
       // Phase G — Upcoming + recent crawl events.
       for (const e of results.events) {
-        const dateLabel = new Date(`${e.crawlDate}T00:00:00`).toLocaleDateString("en-US", {
+        const dateLabel = new Date(`${e.crawlDate}T00:00:00Z`).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
+          timeZone: "UTC",
         });
         dynamic.push({
           id: `event:${e.id}`,

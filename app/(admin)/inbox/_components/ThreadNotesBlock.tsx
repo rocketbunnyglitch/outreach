@@ -219,6 +219,8 @@ function renderNoteBody(body: string, mentionedNames: string[]): React.ReactNode
 }
 
 function formatRelative(d: Date): string {
+  // hydration-safe-tz: rendered only when `mounted` + under suppressHydrationWarning
+  // (SSR/first paint show an ISO date), so this local-tz branch never mismatches.
   const now = Date.now();
   const ts = d.getTime();
   const diff = Math.max(0, now - ts);

@@ -528,6 +528,8 @@ function EngineStatusPill({ state }: { state: string }) {
 // Only ever called client-side after mount (see timeMounted gate at the
 // call site). Locale pinned to en-US so the only runtime variance is the
 // operator's timezone, which is correct post-mount.
+// hydration-safe-tz: mount-gated (timeMounted) + suppressHydrationWarning on
+// the <time> cell, so this never runs during SSR / first hydration paint.
 function formatTime(date: Date): string {
   const now = Date.now();
   const diffMs = now - date.getTime();

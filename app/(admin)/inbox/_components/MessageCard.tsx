@@ -231,6 +231,8 @@ function firstLine(s: string | null): string {
 function formatTime(d: Date): string {
   // Locale pinned to en-US (not []) so the only remaining variance is the
   // runtime timezone -- and this only ever runs client-side after mount.
+  // hydration-safe-tz: gated by `mounted` + suppressHydrationWarning (SSR/first
+  // paint render isoStamp() instead), so this local-tz format never mismatches.
   return d.toLocaleString("en-US", {
     month: "short",
     day: "numeric",

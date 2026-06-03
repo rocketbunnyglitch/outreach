@@ -183,6 +183,7 @@ function NoteCard({
             title={note.createdAt.toLocaleString("en-US", {
               dateStyle: "medium",
               timeStyle: "short",
+              timeZone: "America/Toronto",
             })}
           >
             {formatRelative(note.createdAt)}
@@ -277,6 +278,8 @@ function authorInitials(name: string): string {
 }
 
 function formatRelative(d: Date): string {
+  // hydration-safe-tz: the call site wraps this in suppressHydrationWarning (the
+  // relative-time text legitimately differs server-vs-client by design).
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMin = Math.round(diffMs / 60000);

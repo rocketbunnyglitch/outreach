@@ -544,6 +544,7 @@ function CallRow({
             {new Date(call.occurredAtIso).toLocaleTimeString("en-US", {
               hour: "numeric",
               minute: "2-digit",
+              timeZone: "America/Toronto",
             })}
           </span>
         </p>

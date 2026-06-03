@@ -268,6 +268,8 @@ export function DraftList({ drafts, mode, folderLabel }: Props) {
 }
 
 function formatRelative(d: Date): string {
+  // hydration-safe-tz: only invoked behind the DraftList mount gate (mounted) +
+  // suppressHydrationWarning on the <time> cell — never runs at SSR/first paint.
   const diff = Date.now() - d.getTime();
   const minutes = Math.round(diff / 60_000);
   if (minutes < 1) return "just now";
@@ -280,6 +282,8 @@ function formatRelative(d: Date): string {
 }
 
 function formatScheduled(d: Date): string {
+  // hydration-safe-tz: only invoked behind the DraftList mount gate (mounted) +
+  // suppressHydrationWarning on the <time> cell — never runs at SSR/first paint.
   const now = Date.now();
   const diff = d.getTime() - now;
   if (diff < 0) return "(overdue)";

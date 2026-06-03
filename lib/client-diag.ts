@@ -37,6 +37,25 @@ export const CLIENT_DIAG_SCRIPT = `
     // the STACK (React-internal, unambiguous) plus the parentNode-null symptom.
     var STREAM_RE = /\\bat \\$R[BCST]\\b|\\$R[BCST]\\s*\\(|reading 'parentNode'/;
     var sent = 0;
+    // Hydration-mismatch PINPOINTER. On a clean hydrate React attaches to the
+    // server DOM without mutating it; on a #418 mismatch React discards the
+    // server node and inserts a freshly client-rendered one. The childList
+    // mutations recorded between DOMContentLoaded and the error therefore name
+    // the exact element that didn't match (parent + removed/added node briefs).
+    var mutLog = [];
+    function nodeBrief(n){ try{ if(!n) return ''+n; if(n.nodeType===3) return 'text:'+JSON.stringify((n.textContent||'').slice(0,48)); if(n.nodeType===1){ var t=n.tagName.toLowerCase(); var id=n.id?('#'+n.id):''; var cl=''; try{cl=(n.getAttribute('class')||'').slice(0,70);}catch(e){} return '<'+t+id+(cl?(' class='+JSON.stringify(cl)):'')+'>'; } return 'n'+n.nodeType; }catch(e){return 'e';} }
+    function startMO(){ try{
+      var mo = new MutationObserver(function(muts){
+        for (var k=0;k<muts.length;k++){ if(mutLog.length>=24) return; var m=muts[k];
+          if(m.type==='childList' && (m.removedNodes.length||m.addedNodes.length)){
+            mutLog.push({p:nodeBrief(m.target), rm:[].slice.call(m.removedNodes).slice(0,3).map(nodeBrief), ad:[].slice.call(m.addedNodes).slice(0,3).map(nodeBrief)});
+          }
+        }
+      });
+      mo.observe(document.documentElement, {childList:true, subtree:true});
+      setTimeout(function(){ try{mo.disconnect();}catch(e){} }, 8000);
+    }catch(e){} }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startMO); else startMO();
     function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_RE.test(s) || STREAM_RE.test(s); }
     function maybeReload(s) {
       try {
@@ -63,6 +82,7 @@ export const CLIENT_DIAG_SCRIPT = `
           hydrated: !!window.__perseHydrated,
           readyState: document.readyState,
           online: navigator.onLine,
+          mutLog: mutLog.slice(0, 24),
           extra: extra || null,
           ts: new Date().toISOString()
         };
