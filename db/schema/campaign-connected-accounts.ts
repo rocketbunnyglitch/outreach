@@ -4,6 +4,7 @@
  */
 
 import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { outreachBrands } from "./brands";
 import { campaigns } from "./campaigns";
 import { staffOutreachEmails, users } from "./users";
 
@@ -19,6 +20,12 @@ export const campaignConnectedAccounts = pgTable(
       .references(() => staffOutreachEmails.id, { onDelete: "cascade" }),
     assignedBy: uuid("assigned_by").references(() => users.id, { onDelete: "set null" }),
     assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Brand this email presents for this campaign, driving the
+     *  {{company_name}} merge field. NULL falls back to the template's
+     *  outreach brand. See migration 0095. */
+    outreachBrandId: uuid("outreach_brand_id").references(() => outreachBrands.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => ({
     unique: uniqueIndex("campaign_connected_accounts_unique").on(

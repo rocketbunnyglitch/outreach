@@ -42,6 +42,19 @@ export const externalHosts = pgTable("external_hosts", {
   /** Who/what to pay — handle, email, or contact name for payment. */
   paymentContact: text("payment_contact"),
 
+  // Host-brief merge fields (H0a/H0b). Free text so any locale's format
+  // reads naturally in the email. See migration 0096.
+  /** Manager/lead the host coordinates with on the night. */
+  hostManagerName: text("host_manager_name"),
+  /** That manager's phone. */
+  hostManagerPhone: text("host_manager_phone"),
+  /** When the host should arrive (e.g. "8 PM", "doors 7:30"). */
+  hostArrivalTime: text("host_arrival_time"),
+  /** Shift start. */
+  shiftStartTime: text("shift_start_time"),
+  /** Shift end. */
+  shiftEndTime: text("shift_end_time"),
+
   notes: text("notes"),
 
   ...auditColumns,
