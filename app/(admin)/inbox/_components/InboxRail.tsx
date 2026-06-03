@@ -42,12 +42,17 @@ export function InboxRailTrigger() {
 export function InboxRail({
   children,
   collapsed = false,
+  style,
 }: {
   children: React.ReactNode;
   /** Desktop-only: when true the static left pane is hidden (the operator
    *  collapsed it via InboxShell's toggle). Mobile drawer is unaffected —
    *  the hamburger still opens it. */
   collapsed?: boolean;
+  /** Desktop-only inline width (operator drag-resize). InboxShell passes it
+   *  ONLY on a mounted desktop viewport with the rail expanded, so it never
+   *  fights the mobile drawer's fixed width or SSR defaults. */
+  style?: React.CSSProperties;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -81,6 +86,7 @@ export function InboxRail({
         />
       )}
       <aside
+        style={style}
         className={cn(
           "shrink-0 border-zinc-200/80 dark:border-zinc-800/60",
           // Mobile: off-canvas overlay when open, hidden when closed.
