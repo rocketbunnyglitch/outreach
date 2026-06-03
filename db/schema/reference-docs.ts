@@ -7,11 +7,13 @@
  * See db/migrations/0091_reference_docs.sql for column semantics + indexes.
  * The schema here mirrors the migration; if you change one update both.
  *
- * Retrieval is curated-first with Postgres full-text search (the generated
- * search_tsv column) as the free-text fallback. The engine is Anthropic-only
- * with no embeddings provider, so there is intentionally no vector column.
- * search_tsv is a generated column the ORM never writes, so it is not modeled
- * here; full-text queries use raw SQL against it.
+ * Retrieval is curated-first, then semantic (the pgvector `embedding` column,
+ * OpenAI text-embedding-3-small), then Postgres full-text search (the generated
+ * `search_tsv` column) as the fallback. Neither `embedding` nor `search_tsv` is
+ * modeled here -- the ORM never writes the generated tsv, and the vector type
+ * has no native Drizzle column -- so both are accessed via raw SQL (the loader
+ * fills `embedding`; retrieval ranks by cosine `<=>`). See migrations 0091 +
+ * 0098.
  */
 
 import { index, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";

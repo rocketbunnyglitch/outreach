@@ -7,10 +7,13 @@
  * computes retrieval tags, and persists to reference_docs +
  * reference_doc_sections.
  *
- * Semantic retrieval uses Postgres full-text search (the generated search_tsv
- * column) plus Claude Haiku for the rare free-text query, so this loader does
- * NOT generate vector embeddings -- the engine is Anthropic-only and has no
- * embeddings provider. (Decided 2026-06-03.)
+ * Retrieval is curated-first, then semantic (OpenAI text-embedding-3-small
+ * cosine over the pgvector `embedding` column) with Postgres full-text search
+ * (search_tsv) as the fallback. This loader fills the embedding column on load
+ * and backfills any section that lacks one (ensureEmbeddings). When no OpenAI
+ * key is set it skips embeddings and FTS still works. (Embeddings enabled
+ * 2026-06-03 after an OpenAI key was provided; reverses the earlier
+ * Anthropic-only/no-embeddings decision.)
  *
  * Idempotent: if the file hash matches the latest loaded version, this is a
  * no-op. If the hash differs (or nothing is loaded yet) it inserts a new
@@ -28,6 +31,54 @@ import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { referenceDocSections, referenceDocs } from "../db/schema/reference-docs";
+import { embedTexts, isEmbeddingsConfigured, toVectorLiteral } from "../lib/embeddings";
+
+/**
+ * Fill the pgvector embedding column for any sections of `docId` that lack one
+ * (OpenAI text-embedding-3-small). Idempotent + safe to run every deploy: a
+ * no-op when embeddings are configured and up to date, or when no key is set
+ * (FTS retrieval still works). Uses raw SQL since the ORM does not model the
+ * vector column.
+ */
+async function ensureEmbeddings(pool: Pool, docId: string): Promise<void> {
+  if (!isEmbeddingsConfigured()) {
+    console.log(
+      "[loader] OPENAI_API_KEY not set; skipping embeddings (FTS retrieval still active)",
+    );
+    return;
+  }
+  const { rows } = await pool.query<{ id: string; section_title: string; section_body: string }>(
+    "SELECT id, section_title, section_body FROM reference_doc_sections WHERE reference_doc_id = $1 AND embedding IS NULL",
+    [docId],
+  );
+  if (rows.length === 0) {
+    console.log("[loader] embeddings up to date");
+    return;
+  }
+  console.log(`[loader] embedding ${rows.length} sections via OpenAI...`);
+  const CHUNK = 100;
+  let done = 0;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    const inputs = slice.map((r) => `${r.section_title}\n\n${r.section_body}`.slice(0, 8000));
+    const vecs = await embedTexts(inputs);
+    if (!vecs) {
+      console.error("[loader] embedding batch failed; leaving FTS-only (retrieval still works)");
+      return;
+    }
+    for (let j = 0; j < slice.length; j++) {
+      const vec = vecs[j];
+      const row = slice[j];
+      if (!vec || !row) continue;
+      await pool.query("UPDATE reference_doc_sections SET embedding = $1::vector WHERE id = $2", [
+        toVectorLiteral(vec),
+        row.id,
+      ]);
+      done++;
+    }
+  }
+  console.log(`[loader] embedded ${done} sections`);
+}
 
 interface ParsedSection {
   sectionCode: string;
@@ -202,6 +253,9 @@ async function main() {
       console.log(
         `[loader] no changes (hash ${fileHash.slice(0, 8)}, version ${latestRow.version}); nothing to do`,
       );
+      // Still backfill embeddings for any sections that lack one (e.g. the doc
+      // was loaded before embeddings existed). Self-heals on every deploy.
+      await ensureEmbeddings(pool, latestRow.id);
       return;
     }
 
@@ -239,6 +293,8 @@ async function main() {
     console.log(
       `[loader] loaded slug=${slug} version=${nextVersion}: ${parsed.length} sections, ${tagged} tagged (${pct}%)`,
     );
+    // Embed the freshly inserted sections for semantic retrieval.
+    await ensureEmbeddings(pool, doc.id);
   } finally {
     await pool.end();
   }

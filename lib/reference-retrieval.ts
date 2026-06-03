@@ -4,18 +4,20 @@
  *
  * Retrieval is curated-first: each task maps to an explicit, dependency-ordered
  * list of section codes (lib/reference-retrieval-task-map.ts). When a free-text
- * query is supplied, curated sections are topped up with Postgres full-text
- * search over the generated search_tsv column.
+ * query is supplied, curated sections are topped up by SEMANTIC search (OpenAI
+ * text-embedding-3-small cosine over the pgvector `embedding` column), then by
+ * Postgres full-text search (search_tsv) as a fallback.
  *
- * [Adapted from the spec's vector/cosine step: the engine is Anthropic-only
- * with no embeddings provider, so free-text retrieval uses Postgres FTS, with
- * Claude Haiku reserved for the rare semantic query. Decided 2026-06-03.]
+ * Embeddings are an enhancement, not a hard dependency: when no OpenAI key is
+ * configured, or a section has no embedding yet, retrieval degrades cleanly to
+ * FTS. (Embeddings enabled 2026-06-03 after an OpenAI key was provided.)
  */
 
 import "server-only";
 import { referenceDocSections, referenceDocs } from "@/db/schema/reference-docs";
 import { db } from "@/lib/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { embedText, isEmbeddingsConfigured, toVectorLiteral } from "./embeddings";
 import { type RetrievedSection, formatAsSystemPrompt } from "./reference-retrieval-format";
 import { type ReferenceTask, TASK_TO_SECTIONS } from "./reference-retrieval-task-map";
 
@@ -87,25 +89,18 @@ export async function retrieveRelevantSections(args: RetrieveArgs): Promise<Retr
   // No free-text query: curated only, truncated to topK.
   if (!query) return curated.slice(0, topK);
 
-  // Hybrid: curated first, then top up with full-text search until topK.
+  // Hybrid: curated first, then semantic (embeddings), then FTS, until topK.
   const result = [...curated];
   const seen = new Set(result.map((s) => s.sectionCode));
-  if (result.length < topK) {
-    const fts = await db.execute(sql`
-      SELECT section_code, section_title, section_body,
-             ts_rank(search_tsv, websearch_to_tsquery('english', ${query})) AS score
-      FROM reference_doc_sections
-      WHERE reference_doc_id = ${docId}
-        AND search_tsv @@ websearch_to_tsquery('english', ${query})
-      ORDER BY score DESC
-      LIMIT ${topK}
-    `);
-    const rows = fts.rows as Array<{
+
+  const pushRows = (
+    rows: Array<{
       section_code: string;
       section_title: string;
       section_body: string;
       score: number;
-    }>;
+    }>,
+  ) => {
     for (const row of rows) {
       if (result.length >= topK) break;
       if (seen.has(row.section_code)) continue;
@@ -117,6 +112,51 @@ export async function retrieveRelevantSections(args: RetrieveArgs): Promise<Retr
         score: Number(row.score),
       });
     }
+  };
+
+  // Semantic top-up: embed the query, rank by pgvector cosine similarity.
+  if (result.length < topK && isEmbeddingsConfigured()) {
+    const vec = await embedText(query);
+    if (vec) {
+      const literal = toVectorLiteral(vec);
+      const sem = await db.execute(sql`
+        SELECT section_code, section_title, section_body,
+               1 - (embedding <=> ${literal}::vector) AS score
+        FROM reference_doc_sections
+        WHERE reference_doc_id = ${docId} AND embedding IS NOT NULL
+        ORDER BY embedding <=> ${literal}::vector
+        LIMIT ${topK}
+      `);
+      pushRows(
+        sem.rows as Array<{
+          section_code: string;
+          section_title: string;
+          section_body: string;
+          score: number;
+        }>,
+      );
+    }
+  }
+
+  // FTS fallback/top-up (also the only path when embeddings are unconfigured).
+  if (result.length < topK) {
+    const fts = await db.execute(sql`
+      SELECT section_code, section_title, section_body,
+             ts_rank(search_tsv, websearch_to_tsquery('english', ${query})) AS score
+      FROM reference_doc_sections
+      WHERE reference_doc_id = ${docId}
+        AND search_tsv @@ websearch_to_tsquery('english', ${query})
+      ORDER BY score DESC
+      LIMIT ${topK}
+    `);
+    pushRows(
+      fts.rows as Array<{
+        section_code: string;
+        section_title: string;
+        section_body: string;
+        score: number;
+      }>,
+    );
   }
 
   return result.slice(0, topK);

@@ -84,6 +84,12 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: stringOptional,
   ANTHROPIC_MODEL: stringOptional,
 
+  // OpenAI - embeddings for semantic reference-doc retrieval
+  // (text-embedding-3-small). Without a key, retrieval falls back to
+  // Postgres full-text search.
+  OPENAI_API_KEY: stringOptional,
+  OPENAI_EMBEDDING_MODEL: stringOptional,
+
   // --- Phase 7: confirmation automations ---
   PUPPETEER_EXECUTABLE_PATH: stringOptional,
 
