@@ -14,21 +14,26 @@ import { AlertCircle, Eye, Mail } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 
+interface CityOpt {
+  id: string;
+  cityName: string;
+}
 interface VenueOpt {
   id: string;
   name: string;
-  cityName: string;
 }
 interface EventOpt {
   id: string;
-  eventDate: string;
+  label: string;
 }
 
 interface Props {
   templateId: string;
-  outreachBrandId: string;
-  currentPreviewVenueId: string | undefined;
-  currentPreviewEventId: string | undefined;
+  isCampaignScoped: boolean;
+  currentCityCampaignId: string | undefined;
+  currentVenueId: string | undefined;
+  currentEventId: string | undefined;
+  cities: CityOpt[];
   venues: VenueOpt[];
   events: EventOpt[];
   subjectRendered: string;
@@ -37,17 +42,21 @@ interface Props {
 }
 
 /**
- * Server-rendered template preview with a client-driven venue/event picker.
+ * Server-rendered template preview with a client-driven city/venue/event
+ * picker. Templates are campaign-scoped, so the context follows the real data
+ * path: pick a city the campaign runs in, then a venue in that city. The event
+ * is optional -- the merge builder falls back to the city's primary crawl.
  *
- * Changing the venue or event navigates with new query params, so the
- * server re-renders the template against the new context. This keeps the
- * render engine server-only — easier to verify, easier to debug — at the
- * cost of one extra round-trip per picker change. Worth it.
+ * Changing a picker navigates with new query params so the server re-renders
+ * the template against the new context, keeping the render engine server-only.
  */
 export function PreviewPane({
   templateId,
-  currentPreviewVenueId,
-  currentPreviewEventId,
+  isCampaignScoped,
+  currentCityCampaignId,
+  currentVenueId,
+  currentEventId,
+  cities,
   venues,
   events,
   subjectRendered,
@@ -78,54 +87,89 @@ export function PreviewPane({
           Live preview
         </h2>
         <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">
-          {isPending ? "rendering…" : "rendered"}
+          {isPending ? "rendering" : "rendered"}
         </span>
       </header>
 
-      {/* Context picker */}
+      {/* Context picker: city -> venue -> (optional) event */}
       <Card className="flex flex-col gap-4 p-5">
         <p className="font-medium text-xs text-zinc-500 uppercase tracking-widest">
           Preview context
         </p>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {!isCampaignScoped && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            This template is not tied to a campaign, so there are no campaign cities to preview
+            against. Merge fields that need venue or crawl data will render blank.
+          </p>
+        )}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="previewVenueId">Venue</Label>
+            <Label htmlFor="previewCity">City</Label>
             <Select
-              value={currentPreviewVenueId ?? venues[0]?.id ?? ""}
-              onValueChange={(v) => navigate({ previewVenueId: v, previewEventId: undefined })}
+              value={currentCityCampaignId ?? cities[0]?.id ?? ""}
+              onValueChange={(v) =>
+                navigate({
+                  previewCityCampaignId: v,
+                  previewVenueId: undefined,
+                  previewEventId: undefined,
+                })
+              }
+              disabled={cities.length === 0}
             >
-              <SelectTrigger id="previewVenueId">
-                <SelectValue placeholder="Pick a venue" />
+              <SelectTrigger id="previewCity">
+                <SelectValue
+                  placeholder={cities.length === 0 ? "No campaign cities" : "Pick a city"}
+                />
               </SelectTrigger>
               <SelectContent>
-                {venues.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.name}
-                    <span className="ml-2 text-xs text-zinc-500">{v.cityName}</span>
+                {cities.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.cityName}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="previewEventId">Event (linked to this venue)</Label>
+            <Label htmlFor="previewVenue">Venue</Label>
             <Select
-              value={currentPreviewEventId ?? events[0]?.id ?? "_none"}
-              onValueChange={(v) => navigate({ previewEventId: v === "_none" ? undefined : v })}
-              disabled={events.length === 0}
+              value={currentVenueId ?? venues[0]?.id ?? ""}
+              onValueChange={(v) => navigate({ previewVenueId: v })}
+              disabled={venues.length === 0}
             >
-              <SelectTrigger id="previewEventId">
+              <SelectTrigger id="previewVenue">
                 <SelectValue
-                  placeholder={
-                    events.length === 0 ? "No events linked to this venue" : "Pick an event"
-                  }
+                  placeholder={venues.length === 0 ? "No venues in this city" : "Pick a venue"}
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_none">— No event context —</SelectItem>
+                {venues.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="previewEvent">Crawl (optional)</Label>
+            <Select
+              value={currentEventId ?? "_none"}
+              onValueChange={(v) => navigate({ previewEventId: v === "_none" ? undefined : v })}
+              disabled={events.length === 0}
+            >
+              <SelectTrigger id="previewEvent">
+                <SelectValue
+                  placeholder={events.length === 0 ? "No crawls for this city" : "Primary crawl"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">Primary crawl (auto)</SelectItem>
                 {events.map((e) => (
                   <SelectItem key={e.id} value={e.id}>
-                    {e.eventDate}
+                    {e.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -161,12 +205,13 @@ export function PreviewPane({
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="flex-1">
               <p className="font-medium">
-                {unresolved.length} unresolved {unresolved.length === 1 ? "field" : "fields"} in
-                this preview
+                {unresolved.length} unknown {unresolved.length === 1 ? "field" : "fields"} in this
+                template
               </p>
               <p className="mt-1 text-xs">
-                These render as <code>[??path??]</code> markers. Either pick a more complete preview
-                context, or fix the field paths in the template below.
+                These render as <code>[??path??]</code> markers because the engine has no such merge
+                field. Fix the field name in the template below. (Fields that are simply empty for
+                this context render blank, not as markers.)
               </p>
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {unresolved.map((f) => (
