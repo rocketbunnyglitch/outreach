@@ -211,6 +211,21 @@ for f in db/migrations/*.sql; do
     "INSERT INTO _outreach_migrations_applied (filename, checksum) VALUES ('$filename', '$checksum');" >/dev/null
 done
 
+# === Step 3.6: Load reference docs ===
+# Keep reference_docs / reference_doc_sections in sync with the markdown in
+# lib/reference-docs/. Idempotent (no-op when the file hash is unchanged) and
+# non-fatal: a load failure must never abort a deploy. DATABASE_URL is already
+# in the environment (sourced in Step 3). This is the deploy-side equivalent of
+# the spec's "CI re-loads on doc change" -- the prod DB is localhost-only, so a
+# GitHub Action could not reach it. Runs regardless of SKIP_BUILD (a doc can
+# change without a code rebuild).
+log "loading reference docs..."
+if npx tsx scripts/load-reference-doc.ts --slug halloween-2026-intl >> "$LOG_FILE" 2>&1; then
+  log "  reference docs in sync"
+else
+  log "  WARN: reference-docs load failed (non-fatal); see $LOG_FILE"
+fi
+
 # === Step 3.5: Hydration-safety gate ===
 # Blocks deploying a client component that reads browser state during render
 # or uses an unpinned locale — the recurring "freezes on my profile but works

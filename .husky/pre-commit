@@ -27,3 +27,12 @@ node scripts/check-hydration-safety.cjs || {
   echo "  or use suppressHydrationWarning for intentional timestamps."
   exit 1
 }
+
+# Reference-doc drift guard: block the commit if a loaded reference doc changed
+# without a reload. Skips gracefully when the DB is unreachable / DATABASE_URL
+# is unset (deploy re-loads as the safety net).
+npm run reference-docs:check || {
+  echo ""
+  echo "X Reference doc changed. Run 'npm run reference-docs:load' before committing."
+  exit 1
+}
