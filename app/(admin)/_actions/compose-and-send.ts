@@ -584,6 +584,19 @@ export async function suggestRecipients(input: {
       for (const addr of r.to ?? []) tryAdd(addr, "venue_thread");
       for (const addr of r.cc ?? []) tryAdd(addr, "venue_thread");
     }
+
+    // Inbound SENDERS on this venue's threads — people who emailed US
+    // (synced correspondence), not only addresses we sent to. Without
+    // this, autocomplete worked for dashboard-sent recipients but not for
+    // contacts from previously-synced inbound email.
+    const inboundVenue = await db
+      .select({ from: emailMessages.fromEmailNormalized })
+      .from(emailMessages)
+      .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+      .where(and(eq(emailThreads.venueId, input.venueId), eq(emailMessages.direction, "inbound")))
+      .orderBy(desc(emailMessages.sentAt))
+      .limit(20);
+    for (const r of inboundVenue) tryAdd(r.from, "venue_thread");
   }
 
   // Fill remaining slots with most-recent team-wide outbound addresses.
@@ -603,6 +616,23 @@ export async function suggestRecipients(input: {
     for (const r of recent) {
       for (const addr of r.to ?? []) tryAdd(addr, "team_recent");
     }
+  }
+
+  // Fill remaining slots with most-recent team-wide INBOUND senders —
+  // synced contacts who have emailed us (the "Contacts" the operator
+  // expects to autocomplete), not just people we've sent to.
+  if (results.length < LIMIT) {
+    const recentInbound = await db
+      .select({ from: emailMessages.fromEmailNormalized })
+      .from(emailMessages)
+      .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(
+        and(eq(connectedAccounts.teamId, staff.teamId), eq(emailMessages.direction, "inbound")),
+      )
+      .orderBy(desc(emailMessages.sentAt))
+      .limit(40);
+    for (const r of recentInbound) tryAdd(r.from, "team_recent");
   }
 
   // Gmail Contacts (People API) — only when the caller specified an

@@ -265,7 +265,10 @@ export function RecipientChips({ value, onChange, placeholder, ariaLabel, sugges
               onClick={() => commitSuggestion(m)}
               onMouseEnter={() => setHighlightedIdx(i)}
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
+                // Explicit text color — without it the email inherited a
+                // dark color and rendered dark-on-dark (unreadable) in the
+                // dark-mode popover.
+                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-800 dark:text-zinc-100",
                 i === highlightedIdx
                   ? "bg-zinc-100 dark:bg-zinc-800"
                   : "hover:bg-zinc-50 dark:hover:bg-zinc-800/60",
