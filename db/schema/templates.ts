@@ -11,10 +11,47 @@
  *   {{crawl_brand.name}}, {{staff.first_name}}.
  */
 
-import { boolean, index, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { crawlBrands, outreachBrands } from "./brands";
+import { campaigns } from "./campaigns";
 import { emailTemplateStage } from "./enums";
+
+/**
+ * trigger_context shape (Phase 1.1). Describes when the engine should auto-pick
+ * a template. Stored as JSONB; the engine's template-picker (Phase 1.4) scores
+ * a PickContext against these fields. [ReferenceDoc Section 7]
+ */
+export interface TriggerContext {
+  channel?: "cold" | "warm" | "post_confirm" | "lifecycle" | "cancellation" | "post_event";
+  stage?:
+    | "first_touch"
+    | "follow_up"
+    | "detail"
+    | "confirmation"
+    | "graphic"
+    | "info_sheets"
+    | "pre_event"
+    | "day_before"
+    | "day_of";
+  event_type?: "night" | "day_party" | "any";
+  ask_size?: "big_open" | "small_specific";
+  priority?: number[];
+  crawls?: "multiple" | "single" | "any";
+  wristband_only?: boolean;
+  prior_relationship?: boolean;
+  min_days_to_event?: number;
+  max_days_to_event?: number;
+}
 
 // =========================================================================
 // email_templates
@@ -28,6 +65,22 @@ export const emailTemplates = pgTable(
     outreachBrandId: uuid("outreach_brand_id")
       .notNull()
       .references(() => outreachBrands.id, { onDelete: "cascade" }),
+
+    // Campaign scoping (Phase 1.1). NULL = a global/brand template (legacy).
+    campaignId: uuid("campaign_id").references(() => campaigns.id, {
+      onDelete: "cascade",
+    }),
+    // Stable code: T1..T17 / H0a / H0b / V1 for campaign templates,
+    // legacy_<stage> for pre-existing rows. Operator-created global templates
+    // get an auto-generated unique code so the global unique index holds; the
+    // campaign seeds set explicit codes.
+    templateCode: text("template_code")
+      .notNull()
+      .$defaultFn(() => `tpl_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`),
+    // When the engine should auto-pick this template (see TriggerContext).
+    triggerContext: jsonb("trigger_context").$type<TriggerContext>().notNull().default({}),
+    // Tiebreaker when multiple templates match a context; higher wins.
+    autoPickPriority: integer("auto_pick_priority").notNull().default(0),
 
     stage: emailTemplateStage("stage").notNull(),
     name: text("name").notNull(), // e.g. "Default cold v2", "Aggressive follow-up"
@@ -58,6 +111,10 @@ export const emailTemplates = pgTable(
     ),
     brandStageIdx: index("email_templates_brand_stage_idx").on(table.outreachBrandId, table.stage),
     defaultIdx: index("email_templates_default_idx").on(table.isDefaultForStage),
+    campaignIdx: index("email_templates_campaign_idx").on(table.campaignId),
+    // The partial unique indexes (campaign vs global) and the trigger_context
+    // GIN index live in db/migrations/0092 -- drizzle-kit cannot express
+    // partial / gin indexes and this repo hand-writes migrations.
   }),
 );
 

@@ -24,8 +24,41 @@ const stageEnum = z.enum([
   "custom",
 ]);
 
+// trigger_context validation (Phase 1.1). Mirrors TriggerContext in
+// db/schema/templates.ts. Unknown keys are stripped, not rejected.
+const triggerContextSchema = z.object({
+  channel: z
+    .enum(["cold", "warm", "post_confirm", "lifecycle", "cancellation", "post_event"])
+    .optional(),
+  stage: z
+    .enum([
+      "first_touch",
+      "follow_up",
+      "detail",
+      "confirmation",
+      "graphic",
+      "info_sheets",
+      "pre_event",
+      "day_before",
+      "day_of",
+    ])
+    .optional(),
+  event_type: z.enum(["night", "day_party", "any"]).optional(),
+  ask_size: z.enum(["big_open", "small_specific"]).optional(),
+  priority: z.array(z.number().int()).optional(),
+  crawls: z.enum(["multiple", "single", "any"]).optional(),
+  wristband_only: z.boolean().optional(),
+  prior_relationship: z.boolean().optional(),
+  min_days_to_event: z.number().int().optional(),
+  max_days_to_event: z.number().int().optional(),
+});
+
 export const emailTemplateCreateSchema = z.object({
   outreachBrandId: uuidSchema,
+  campaignId: uuidSchema.optional(),
+  templateCode: z.string().trim().min(1).max(64).optional(),
+  triggerContext: triggerContextSchema.optional(),
+  autoPickPriority: z.coerce.number().int().min(0).optional(),
   stage: stageEnum,
   name: z.string().trim().min(1, "Required").max(200),
   subjectTemplate: z.string().trim().min(1, "Required").max(500),
