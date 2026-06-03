@@ -60,13 +60,13 @@ export async function disconnectInbox(
  * (which keeps the row + history and just stops syncing): this DELETES the
  * connected_accounts row so the account disappears from the list entirely.
  *
- * The account's conversations are DETACHED, not destroyed: email_threads →
- * connected_accounts is a RESTRICT constraint at the DB level, so we first
- * NULL the threads' staff_outreach_email_id (which also removes them from
- * the team inbox, since orphaned threads are hidden), then delete the row.
- * Messages / drafts / send-events / labels resolve via their own set-null /
- * cascade constraints. Re-adding the same Gmail account later starts a
- * fresh sync.
+ * email_threads.staff_outreach_email_id is NOT NULL + a RESTRICT FK in the
+ * live DB, so the account's conversations can't be detached — they're
+ * DELETED. We delete the account's email_threads first (which cascades
+ * messages / thread-labels / notes / mentions; send-events / drafts /
+ * suppression null out), then delete the connected_accounts row. This is a
+ * true permanent removal; re-adding the same Gmail account later starts a
+ * fresh sync from scratch.
  *
  * Gated to the account OWNER or a team admin.
  */
@@ -94,12 +94,13 @@ export async function removeInboxPermanently(
         .limit(1);
       if (!owned[0]) return null;
 
-      // Detach conversations first (email_threads → connected_accounts is
-      // RESTRICT at the DB level). Raw SQL because drizzle's typed .set()
-      // rejects null for this column even though it's nullable in Postgres.
-      await tx.execute(
-        sql`UPDATE email_threads SET staff_outreach_email_id = NULL WHERE staff_outreach_email_id = ${id}`,
-      );
+      // Delete the account's conversations first. email_threads →
+      // connected_accounts is NOT NULL + RESTRICT in the live DB, so we
+      // can't detach (set null) — we delete the threads, which cascades
+      // their messages / labels / notes / mentions and nulls the set-null
+      // children (send-events / drafts / suppression). Only then can the
+      // RESTRICT FK on connected_accounts be satisfied for the row delete.
+      await tx.execute(sql`DELETE FROM email_threads WHERE staff_outreach_email_id = ${id}`);
 
       const deleted = await tx
         .delete(connectedAccounts)

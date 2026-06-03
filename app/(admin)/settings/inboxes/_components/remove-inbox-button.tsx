@@ -41,7 +41,7 @@ export function RemoveInboxButton({
   if (confirming) {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <span className="text-[11px] text-zinc-500">Remove permanently?</span>
+        <span className="text-[11px] text-zinc-500">Delete inbox + its synced emails?</span>
         <button
           type="button"
           disabled={pending}
@@ -68,7 +68,7 @@ export function RemoveInboxButton({
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        title={`Permanently remove ${inboxEmail} — deletes the account and removes its conversations from the inbox. Re-add it later to re-sync.`}
+        title={`Permanently remove ${inboxEmail} — deletes the account AND its synced conversations. Re-add the account later to re-sync from scratch.`}
         className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-white px-3 py-1.5 text-rose-700 text-xs hover:bg-rose-50 dark:border-rose-900/50 dark:bg-zinc-900 dark:text-rose-400 dark:hover:bg-rose-950/30"
       >
         <Trash2 className="h-3 w-3" />
