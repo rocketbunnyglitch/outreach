@@ -170,6 +170,19 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [sentThreadId, setSentThreadId] = useState<string | null>(null);
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+
+  // After a successful send we keep the window open showing the
+  // FollowUpPrompt (one-click "schedule a follow-up" affordance) rather
+  // than closing instantly. But it must not linger forever — operators
+  // reported the composer "stays popped up" after sending. Auto-close
+  // after a grace window; the operator can still pick a follow-up preset
+  // or hit Close before then, and acting flips showFollowUp false (via
+  // onClose) which clears this timer.
+  useEffect(() => {
+    if (!showFollowUp) return;
+    const t = setTimeout(() => close(instance.id), 12_000);
+    return () => clearTimeout(t);
+  }, [showFollowUp, close, instance.id]);
   // Toolbar visibility — Gmail collapses the formatting toolbar by
   // default and surfaces it via the Aa toggle. We default to open
   // on first paint so power users see the affordances; the toggle

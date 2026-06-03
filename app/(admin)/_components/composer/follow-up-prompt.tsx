@@ -11,7 +11,7 @@
  */
 
 import { useToast } from "@/components/ui/toast";
-import { Calendar, X } from "lucide-react";
+import { Calendar, Check, X } from "lucide-react";
 import { useTransition } from "react";
 import { createTask } from "../../tasks/_actions";
 
@@ -86,29 +86,34 @@ export function FollowUpPrompt({ venueId, threadId, subject, to, onClose }: Prop
   }
 
   return (
-    <div className="border-zinc-200 border-t bg-emerald-50/40 px-3 py-2 dark:border-zinc-800 dark:bg-emerald-950/20">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-1.5 text-xs">
-          <Calendar className="mt-0.5 h-3 w-3 text-emerald-700 dark:text-emerald-300" />
-          <span className="text-emerald-900 dark:text-emerald-100">Sent. Follow up?</span>
+    <div className="border-zinc-200 border-t bg-emerald-50 px-3 py-2.5 dark:border-zinc-800 dark:bg-emerald-950/40">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 font-medium text-sm">
+          <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-emerald-900 dark:text-emerald-100">Message sent</span>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Dismiss follow-up prompt"
-          className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          aria-label="Close"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-xs text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
-          <X className="h-3 w-3" />
+          <X className="h-3.5 w-3.5" />
+          Close
         </button>
       </div>
-      <div className="mt-1.5 flex flex-wrap gap-1">
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1 text-emerald-800 text-xs dark:text-emerald-200">
+          <Calendar className="h-3.5 w-3.5" />
+          Schedule a follow-up?
+        </span>
         {PRESETS.map((p) => (
           <button
             key={p.label}
             type="button"
             disabled={pending}
             onClick={() => schedule(p.days)}
-            className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+            className="rounded-full border border-emerald-300 bg-white px-3 py-1 font-medium text-emerald-900 text-xs hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-zinc-900 dark:text-emerald-100 dark:hover:bg-zinc-800"
           >
             {p.label}
           </button>
