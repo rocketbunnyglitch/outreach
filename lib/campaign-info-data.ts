@@ -13,9 +13,9 @@
  */
 
 import "server-only";
-import { campaignConnectedAccounts, staffOutreachEmails, users } from "@/db/schema";
+import { campaignConnectedAccounts, outreachBrands, staffOutreachEmails, users } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 export interface CampaignInboxRow {
   id: string;
@@ -26,6 +26,10 @@ export interface CampaignInboxRow {
   /** True when this inbox is assigned to the active campaign via
    *  campaign_connected_accounts. */
   assignedToCampaign: boolean;
+  /** Outreach brand this inbox presents for the active campaign, driving the
+   *  {{company_name}} merge field. NULL = falls back to the template's brand. */
+  outreachBrandId: string | null;
+  outreachBrandName: string | null;
 }
 
 export interface TeamMemberOption {
@@ -34,9 +38,16 @@ export interface TeamMemberOption {
   role: string;
 }
 
+export interface BrandOption {
+  id: string;
+  displayName: string;
+}
+
 export interface CampaignInfoData {
   inboxes: CampaignInboxRow[];
   teamMembers: TeamMemberOption[];
+  /** Outreach brands available to assign per inbox. */
+  brands: BrandOption[];
 }
 
 export async function loadCampaignInfo(opts: {
@@ -68,10 +79,13 @@ export async function loadCampaignInfo(opts: {
   const ownerMap = new Map<string, string>();
   for (const o of ownerRows) ownerMap.set(o.id, o.displayName);
 
-  // Which inboxes are assigned to this campaign.
+  // Which inboxes are assigned to this campaign, and the brand each presents.
   const assignmentRows = inboxRows.length
     ? await db
-        .select({ connectedAccountId: campaignConnectedAccounts.connectedAccountId })
+        .select({
+          connectedAccountId: campaignConnectedAccounts.connectedAccountId,
+          outreachBrandId: campaignConnectedAccounts.outreachBrandId,
+        })
         .from(campaignConnectedAccounts)
         .where(
           and(
@@ -84,15 +98,30 @@ export async function loadCampaignInfo(opts: {
         )
     : [];
   const assigned = new Set(assignmentRows.map((r) => r.connectedAccountId));
+  const brandByAccount = new Map<string, string | null>();
+  for (const a of assignmentRows) brandByAccount.set(a.connectedAccountId, a.outreachBrandId);
 
-  const inboxes: CampaignInboxRow[] = inboxRows.map((r) => ({
-    id: r.id,
-    emailAddress: r.emailAddress,
-    status: r.status as CampaignInboxRow["status"],
-    ownerUserId: r.ownerUserId,
-    ownerDisplayName: r.ownerUserId ? (ownerMap.get(r.ownerUserId) ?? null) : null,
-    assignedToCampaign: assigned.has(r.id),
-  }));
+  // Outreach brand catalogue for the per-inbox dropdown.
+  const brands = await db
+    .select({ id: outreachBrands.id, displayName: outreachBrands.displayName })
+    .from(outreachBrands)
+    .where(isNull(outreachBrands.archivedAt))
+    .orderBy(asc(outreachBrands.displayName));
+  const brandName = new Map(brands.map((b) => [b.id, b.displayName]));
+
+  const inboxes: CampaignInboxRow[] = inboxRows.map((r) => {
+    const brandId = brandByAccount.get(r.id) ?? null;
+    return {
+      id: r.id,
+      emailAddress: r.emailAddress,
+      status: r.status as CampaignInboxRow["status"],
+      ownerUserId: r.ownerUserId,
+      ownerDisplayName: r.ownerUserId ? (ownerMap.get(r.ownerUserId) ?? null) : null,
+      assignedToCampaign: assigned.has(r.id),
+      outreachBrandId: brandId,
+      outreachBrandName: brandId ? (brandName.get(brandId) ?? null) : null,
+    };
+  });
 
   // Team members for the owner-dropdown.
   const teamMembers = await db
@@ -101,5 +130,5 @@ export async function loadCampaignInfo(opts: {
     .where(and(eq(users.teamId, opts.teamId), eq(users.status, "active")))
     .orderBy(asc(users.displayName));
 
-  return { inboxes, teamMembers };
+  return { inboxes, teamMembers, brands };
 }

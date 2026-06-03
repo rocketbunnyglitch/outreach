@@ -21,7 +21,13 @@
  *   - revalidate the campaign-info page so the table refreshes
  */
 
-import { campaignConnectedAccounts, campaigns, staffOutreachEmails, users } from "@/db/schema";
+import {
+  campaignConnectedAccounts,
+  campaigns,
+  outreachBrands,
+  staffOutreachEmails,
+  users,
+} from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -145,5 +151,71 @@ export async function setInboxCampaignAssignment(
   } catch (err) {
     logger.error({ err, inboxId, campaignId, assign }, "setInboxCampaignAssignment failed");
     return { ok: false, error: "Could not update assignment." };
+  }
+}
+
+/**
+ * setInboxBrand(formData)
+ *   Set the outreach brand an inbox presents for the current campaign. This
+ *   drives the {{company_name}} merge field for emails sent from that inbox.
+ *   Upserts the campaign_connected_accounts row (so picking a brand also
+ *   assigns the inbox to the campaign); an empty brand clears it back to the
+ *   template's fallback brand.
+ */
+export async function setInboxBrand(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ inboxId: string; campaignId: string; outreachBrandId: string | null }>> {
+  const ctx = await requireAdmin();
+  const inboxId = String(formData.get("inboxId") ?? "");
+  const campaignId = String(formData.get("campaignId") ?? "");
+  const rawBrand = String(formData.get("outreachBrandId") ?? "");
+  const outreachBrandId = rawBrand === "" ? null : rawBrand;
+  if (!UUID_RE.test(inboxId) || !UUID_RE.test(campaignId)) {
+    return { ok: false, error: "Invalid ids." };
+  }
+  if (outreachBrandId !== null && !UUID_RE.test(outreachBrandId)) {
+    return { ok: false, error: "Invalid brand." };
+  }
+
+  // Inbox must be on the actor's team.
+  const inboxRow = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(staffOutreachEmails)
+    .where(eq(staffOutreachEmails.id, inboxId))
+    .limit(1);
+  if (!inboxRow[0] || inboxRow[0].teamId !== ctx.staff.teamId) {
+    return { ok: false, error: "Inbox not found on your team." };
+  }
+  if (outreachBrandId !== null) {
+    const brandRow = await db
+      .select({ id: outreachBrands.id })
+      .from(outreachBrands)
+      .where(eq(outreachBrands.id, outreachBrandId))
+      .limit(1);
+    if (!brandRow[0]) return { ok: false, error: "Brand not found." };
+  }
+
+  try {
+    await db
+      .insert(campaignConnectedAccounts)
+      .values({
+        campaignId,
+        connectedAccountId: inboxId,
+        assignedBy: ctx.staff.id,
+        outreachBrandId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          campaignConnectedAccounts.campaignId,
+          campaignConnectedAccounts.connectedAccountId,
+        ],
+        set: { outreachBrandId },
+      });
+    revalidatePath("/campaign-info");
+    return { ok: true, data: { inboxId, campaignId, outreachBrandId } };
+  } catch (err) {
+    logger.error({ err, inboxId, campaignId, outreachBrandId }, "setInboxBrand failed");
+    return { ok: false, error: "Could not update brand." };
   }
 }

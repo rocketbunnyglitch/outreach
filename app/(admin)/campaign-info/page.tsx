@@ -75,6 +75,7 @@ export default async function CampaignInfoPage() {
         <CampaignInfoTable
           inboxes={data.inboxes}
           teamMembers={data.teamMembers}
+          brands={data.brands}
           campaignId={campaignCtx.campaign.id}
           isAdmin={isAdmin}
         />

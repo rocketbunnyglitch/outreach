@@ -17,7 +17,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
-import { setInboxCampaignAssignment, setInboxOwner } from "../_actions";
+import { setInboxBrand, setInboxCampaignAssignment, setInboxOwner } from "../_actions";
 
 interface InboxRow {
   id: string;
@@ -26,6 +26,8 @@ interface InboxRow {
   ownerUserId: string | null;
   ownerDisplayName: string | null;
   assignedToCampaign: boolean;
+  outreachBrandId: string | null;
+  outreachBrandName: string | null;
 }
 
 interface TeamMember {
@@ -34,14 +36,21 @@ interface TeamMember {
   role: string;
 }
 
+interface BrandOption {
+  id: string;
+  displayName: string;
+}
+
 export function CampaignInfoTable({
   inboxes: initial,
   teamMembers,
+  brands,
   campaignId,
   isAdmin,
 }: {
   inboxes: InboxRow[];
   teamMembers: TeamMember[];
+  brands: BrandOption[];
   campaignId: string;
   isAdmin: boolean;
 }) {
@@ -57,6 +66,7 @@ export function CampaignInfoTable({
             <th className="px-4 py-2.5">Status</th>
             <th className="px-4 py-2.5">Owner</th>
             <th className="px-4 py-2.5">Assigned to campaign</th>
+            <th className="px-4 py-2.5">Brand (company name)</th>
           </tr>
         </thead>
         <tbody>
@@ -65,6 +75,7 @@ export function CampaignInfoTable({
               key={r.id}
               row={r}
               teamMembers={teamMembers}
+              brands={brands}
               campaignId={campaignId}
               isAdmin={isAdmin}
               onUpdate={(next) => {
@@ -88,6 +99,7 @@ export function CampaignInfoTable({
 function Row({
   row,
   teamMembers,
+  brands,
   campaignId,
   isAdmin,
   onUpdate,
@@ -95,6 +107,7 @@ function Row({
 }: {
   row: InboxRow;
   teamMembers: TeamMember[];
+  brands: BrandOption[];
   campaignId: string;
   isAdmin: boolean;
   onUpdate: (next: InboxRow) => void;
@@ -146,6 +159,37 @@ function Row({
         toast.show({
           kind: "error",
           message: result.error ?? "Couldn't change assignment.",
+          code: result.code,
+        });
+      }
+    });
+  }
+
+  function changeBrand(brandId: string) {
+    const previous = row;
+    // Picking a brand also assigns the inbox to the campaign (the upsert
+    // creates the row), so reflect that optimistically.
+    const next: InboxRow = {
+      ...row,
+      outreachBrandId: brandId || null,
+      outreachBrandName: brandId
+        ? (brands.find((b) => b.id === brandId)?.displayName ?? null)
+        : null,
+      assignedToCampaign: brandId ? true : row.assignedToCampaign,
+    };
+    onUpdate(next);
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("inboxId", row.id);
+      fd.set("campaignId", campaignId);
+      fd.set("outreachBrandId", brandId);
+      const result = await setInboxBrand(null, fd);
+      if (!result.ok) {
+        onUpdate(previous);
+        onError(result.error);
+        toast.show({
+          kind: "error",
+          message: result.error ?? "Couldn't change brand.",
           code: result.code,
         });
       }
@@ -228,6 +272,28 @@ function Row({
           )}
           {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />}
         </div>
+      </td>
+      <td className="px-4 py-2.5">
+        {isAdmin ? (
+          <select
+            value={row.outreachBrandId ?? ""}
+            onChange={(e) => changeBrand(e.target.value)}
+            disabled={isPending}
+            aria-label={`Brand for ${row.emailAddress}`}
+            className="rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            <option value="">Template default</option>
+            {brands.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.displayName}
+              </option>
+            ))}
+          </select>
+        ) : row.outreachBrandName ? (
+          <span className="text-sm">{row.outreachBrandName}</span>
+        ) : (
+          <span className="text-xs text-zinc-500">Template default</span>
+        )}
       </td>
     </tr>
   );
