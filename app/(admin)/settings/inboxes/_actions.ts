@@ -56,6 +56,71 @@ export async function disconnectInbox(
 }
 
 /**
+ * PERMANENTLY remove a connected inbox. Distinct from disconnectInbox
+ * (which keeps the row + history and just stops syncing): this DELETES the
+ * connected_accounts row so the account disappears from the list entirely.
+ *
+ * The account's conversations are DETACHED, not destroyed: email_threads →
+ * connected_accounts is a RESTRICT constraint at the DB level, so we first
+ * NULL the threads' staff_outreach_email_id (which also removes them from
+ * the team inbox, since orphaned threads are hidden), then delete the row.
+ * Messages / drafts / send-events / labels resolve via their own set-null /
+ * cascade constraints. Re-adding the same Gmail account later starts a
+ * fresh sync.
+ *
+ * Gated to the account OWNER or a team admin.
+ */
+export async function removeInboxPermanently(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { ok: false, error: "Missing inbox id" };
+  const isAdmin = hasMinimumRole(staff, "admin");
+
+  try {
+    const result = await withAuditContext(staff.id, async (tx) => {
+      // Ownership / admin gate — confirm the row is removable by this user
+      // before mutating anything.
+      const owned = await tx
+        .select({ id: connectedAccounts.id })
+        .from(connectedAccounts)
+        .where(
+          isAdmin
+            ? eq(connectedAccounts.id, id)
+            : and(eq(connectedAccounts.id, id), eq(connectedAccounts.ownerUserId, staff.id)),
+        )
+        .limit(1);
+      if (!owned[0]) return null;
+
+      // Detach conversations first (email_threads → connected_accounts is
+      // RESTRICT at the DB level). Raw SQL because drizzle's typed .set()
+      // rejects null for this column even though it's nullable in Postgres.
+      await tx.execute(
+        sql`UPDATE email_threads SET staff_outreach_email_id = NULL WHERE staff_outreach_email_id = ${id}`,
+      );
+
+      const deleted = await tx
+        .delete(connectedAccounts)
+        .where(eq(connectedAccounts.id, id))
+        .returning({ id: connectedAccounts.id });
+      return deleted[0]?.id;
+    });
+
+    if (!result) {
+      return { ok: false, error: "Inbox not found or not yours to remove." };
+    }
+
+    revalidatePath("/settings/inboxes");
+    return { ok: true, data: { id: result } };
+  } catch (err) {
+    logger.error({ err }, "removeInboxPermanently failed");
+    return { ok: false, error: "Remove failed. See server logs." };
+  }
+}
+
+/**
  * Resync a single connected inbox on demand. Bypasses the 5-min cron
  * cadence so the operator gets immediate feedback after connecting a
  * new account or troubleshooting a quiet inbox.

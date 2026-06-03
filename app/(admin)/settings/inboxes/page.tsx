@@ -27,6 +27,7 @@ import { disconnectInbox, resyncInbox, syncGmailLabelsNowAction } from "./_actio
 import { CapEditor } from "./_components/cap-editor";
 import { DeepResyncButton } from "./_components/deep-resync-button";
 import { InboxAnalyticsStrip } from "./_components/inbox-analytics-strip";
+import { RemoveInboxButton } from "./_components/remove-inbox-button";
 import { SignatureEditor } from "./_components/signature-editor";
 
 export const metadata = { title: "Email Connection" };
@@ -309,6 +310,9 @@ export default async function InboxesPage({ searchParams }: Props) {
                           Disconnect
                         </button>
                       </form>
+                      {/* Permanent removal — deletes the account row (vs
+                          Disconnect, which keeps it). Two-step confirm. */}
+                      <RemoveInboxButton inboxId={inbox.id} inboxEmail={inbox.emailAddress} />
                     </div>
                   </div>
                   {/* Per-inbox 30-day deliverability rollup. Health pill
