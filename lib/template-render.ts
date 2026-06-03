@@ -79,7 +79,13 @@ export function renderTemplate(template: string, context: RenderContext): Render
   const unresolved: string[] = [];
   const output = template.replace(MERGE_FIELD_RE, (_match, path: string) => {
     const value = resolvePath(context as Record<string, unknown>, path);
-    if (value === undefined || value === null || value === "") {
+    // A field that is ABSENT (undefined/null -- a typo or a path the context
+    // doesn't know) renders as a visible marker. A field that is PRESENT but
+    // empty ("") renders blank: the merge-context builder supplies every known
+    // field, using "" for the ones that simply don't apply to this context
+    // (e.g. wristband lines for a non-wristband venue), and those must not show
+    // a broken [??field??] marker in a real email.
+    if (value === undefined || value === null) {
       unresolved.push(path);
       return `[??${path}??]`;
     }

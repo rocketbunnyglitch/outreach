@@ -87,6 +87,14 @@ export function initialPitchQuote(args: InitialPitchArgs): string {
 }
 
 /**
+ * The bare priority x slot number with no wave qualifier, for templates that
+ * embed it mid-sentence ("around {{guest_count}} people"). [ReferenceDoc 5.2]
+ */
+export function initialPitchNumber(priority: Priority, slotType: SlotType): string {
+  return INITIAL_PITCH_NUMBER[priority][slotType];
+}
+
+/**
  * Format a single deflated count as venue-facing copy: never a precise figure,
  * always "around N". [ReferenceDoc Section 5.4]
  */
