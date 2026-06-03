@@ -58,7 +58,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 0.1 — Doc formatting + repo placement (e7945e8)
 - [x] 0.2 — Reference docs schema migration (fb6c18e)
 - [x] 0.3 — Doc loader script (parse + tag + persist; full-text not embeddings) (1d72974, refactor e0beaf5)
-- [ ] 0.4 — AI retrieval helper (`lib/reference-retrieval.ts`)
+- [x] 0.4 — AI retrieval helper (`lib/reference-retrieval.ts`) (3709236)
 - [ ] 0.5 — Operator-facing reference viewer page
 - [ ] 0.6 — CI sync workflow + doc-change detection
 
