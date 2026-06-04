@@ -396,22 +396,41 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
     fields.slot_list_2 = `${shortDateLabel(dayFirst.eventDate)} (day party): ${openSlotsLabel(dayOpen)}`;
   }
 
-  // Rich open-slot list -- {{slot_list_detailed}}. One block per open date (and
-  // the day party), the open roles in canonical order with their time windows +
-  // a short description. Reads the crawl tables; drops filled slots + completed
-  // crawls; empty when nothing is open / no crawl in this city.
-  const detailedBlocks: string[] = [];
+  // Rich open-slot list -- {{slot_list_detailed}}. Nights that share the SAME
+  // set of open roles collapse into ONE block (dates listed together, slot
+  // times written once) instead of repeating an identical list for every date.
+  // A real person writes "Thu, Fri & Sat -- every slot open:" once; spelling
+  // out four identical days reads like a robot. Reads the crawl tables; drops
+  // filled slots + completed crawls; empty when nothing is open.
+  const nightGroups = new Map<string, { dates: string[]; roles: VenueRole[] }>();
   for (const dp of NIGHT_DAYPARTS) {
     const first = eventsByDayPart(dp)[0];
     if (!first) continue;
     const open = orderOpen(openRolesForNight(dp));
     if (open.length === 0) continue;
-    const lines = open.map((r) => `- ${detailedSlotLine(r, false)}`);
-    detailedBlocks.push(`${shortDateLabel(first.eventDate)}:\n${lines.join("\n")}`);
+    const sig = open.join("|");
+    const existing = nightGroups.get(sig);
+    if (existing) existing.dates.push(shortDateLabel(first.eventDate));
+    else nightGroups.set(sig, { dates: [shortDateLabel(first.eventDate)], roles: open });
+  }
+  const detailedBlocks: string[] = [];
+  for (const { dates, roles } of nightGroups.values()) {
+    const everyOpen = roles.length === 3;
+    // Multi-date groups note WHY they're grouped (so the reader knows the same
+    // slots apply to all those dates); single dates just lead with the date.
+    const qualifier = everyOpen
+      ? " (every slot open)"
+      : dates.length > 1
+        ? ` (${openSlotsLabel(roles)} open)`
+        : "";
+    const lines = roles.map((r) => `- ${detailedSlotLine(r, false)}`);
+    detailedBlocks.push(`${joinAnd(dates)}${qualifier}:\n${lines.join("\n")}`);
   }
   if (dayFirst && dayOpen.length > 0) {
     const lines = dayOpen.map((r) => `- ${detailedSlotLine(r, true)}`);
-    detailedBlocks.push(`${shortDateLabel(dayFirst.eventDate)} (day party):\n${lines.join("\n")}`);
+    detailedBlocks.push(
+      `${shortDateLabel(dayFirst.eventDate)} day party (afternoon):\n${lines.join("\n")}`,
+    );
   }
 
   // Social proof -- venues already confirmed on OTHER slots in this city, as a
@@ -430,9 +449,19 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
       .select({ name: venues.name })
       .from(venues)
       .where(inArray(venues.id, confirmedIds));
-    const names = confirmedRows
-      .map((r) => (r.name ?? "").trim())
-      .filter((n): n is string => n.length > 0);
+    // Dedupe by name (case-insensitive): the venue DB has duplicate rows for
+    // the same bar, and one venue confirmed on several slots must read once.
+    // Otherwise the social-proof line repeats the same name redundantly.
+    const seenNames = new Set<string>();
+    const names: string[] = [];
+    for (const r of confirmedRows) {
+      const n = (r.name ?? "").trim();
+      if (!n) continue;
+      const key = n.toLowerCase();
+      if (seenNames.has(key)) continue;
+      seenNames.add(key);
+      names.push(n);
+    }
     if (names.length > 0) {
       const MAX_NAMED = 6;
       const shown = names.slice(0, MAX_NAMED);

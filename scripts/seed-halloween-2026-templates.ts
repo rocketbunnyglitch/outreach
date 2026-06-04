@@ -87,7 +87,7 @@ Friday, October 30th (night)
 Saturday, October 31st (night)
 Saturday, October 31st (day party, afternoon)
 
-It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. If you're interested, here's what's still open:
+It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. We usually bring around {{guest_count}} guests through each venue across the night, so it's a solid lift in foot traffic. If you're interested, here's what's still open:
 
 {{slot_list_detailed}}
 
