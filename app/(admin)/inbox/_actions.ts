@@ -412,7 +412,10 @@ export async function markThreadRead(threadId: string): Promise<ActionResult<{ o
     // Gmail, not per-thread. threads.modify removing UNREAD acts
     // on every message in the thread -- matches operator intent
     // ("I've seen all of this").
-    await mirrorGmailLabels({
+    // Fire-and-forget: the Gmail round-trip is the slow part of this action
+    // and engine state is already committed. Backgrounding it lets the UI
+    // reflect read-state instantly (the helper is fully guarded, never rejects).
+    void mirrorGmailLabels({
       threadId,
       removeLabelIds: ["UNREAD"],
       context: "markThreadRead",
@@ -468,7 +471,8 @@ export async function markThreadUnread(threadId: string): Promise<ActionResult<{
     // Mirror to Gmail by ADDING the UNREAD system label, the inverse
     // of markThreadRead. Without this, marking unread in the engine
     // left Gmail read -- one-way sync. Best-effort; logs on failure.
-    await mirrorGmailLabels({
+    // Fire-and-forget (see markThreadRead): instant UI, Gmail syncs in the bg.
+    void mirrorGmailLabels({
       threadId,
       addLabelIds: ["UNREAD"],
       context: "markThreadUnread",
@@ -543,8 +547,10 @@ export async function setThreadState(
     // have a clean Gmail mirror -- we leave the Gmail INBOX
     // label alone for those. The operator may have their own
     // Gmail-side organization that we shouldn't override.
+    // Fire-and-forget the Gmail mirror (the slow part); archive/unarchive
+    // reflects in the UI immediately and Gmail catches up in the background.
     if (state === "archived") {
-      await mirrorGmailLabels({
+      void mirrorGmailLabels({
         threadId,
         removeLabelIds: ["INBOX"],
         context: "setThreadState:archive",
@@ -554,7 +560,7 @@ export async function setThreadState(
       // thread back into the inbox view. Bring back the INBOX
       // label. Idempotent -- if INBOX was never removed, this
       // is a no-op on Gmail's side.
-      await mirrorGmailLabels({
+      void mirrorGmailLabels({
         threadId,
         addLabelIds: ["INBOX"],
         context: "setThreadState:unarchive",
@@ -668,32 +674,42 @@ async function mirrorGmailLabelsBatch(opts: {
   if ((opts.addLabelIds?.length ?? 0) === 0 && (opts.removeLabelIds?.length ?? 0) === 0) {
     return 0;
   }
-  const rows = await db
-    .select({
-      threadId: emailThreads.id,
-      gmailThreadId: emailThreads.gmailThreadId,
-      token: connectedAccounts.gmailOauthRefreshToken,
-    })
-    .from(emailThreads)
-    .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
-    .where(inArray(emailThreads.id, opts.threadIds));
   let ok = 0;
-  for (const row of rows) {
-    if (!row.token || !row.gmailThreadId) continue;
-    try {
-      await modifyGmailThreadLabels({
-        encryptedRefreshToken: row.token,
-        gmailThreadId: row.gmailThreadId,
-        addLabelIds: opts.addLabelIds,
-        removeLabelIds: opts.removeLabelIds,
-      });
-      ok++;
-    } catch (err) {
-      logger.warn(
-        { err, threadId: row.threadId, context: opts.context },
-        "mirrorGmailLabelsBatch entry failed (engine state already updated)",
-      );
+  // Fully guarded so the function can be fire-and-forget'd by callers without
+  // risking an unhandled rejection (the initial db.select is now inside the
+  // try too). Engine state is already committed before this runs.
+  try {
+    const rows = await db
+      .select({
+        threadId: emailThreads.id,
+        gmailThreadId: emailThreads.gmailThreadId,
+        token: connectedAccounts.gmailOauthRefreshToken,
+      })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(inArray(emailThreads.id, opts.threadIds));
+    for (const row of rows) {
+      if (!row.token || !row.gmailThreadId) continue;
+      try {
+        await modifyGmailThreadLabels({
+          encryptedRefreshToken: row.token,
+          gmailThreadId: row.gmailThreadId,
+          addLabelIds: opts.addLabelIds,
+          removeLabelIds: opts.removeLabelIds,
+        });
+        ok++;
+      } catch (err) {
+        logger.warn(
+          { err, threadId: row.threadId, context: opts.context },
+          "mirrorGmailLabelsBatch entry failed (engine state already updated)",
+        );
+      }
     }
+  } catch (err) {
+    logger.warn(
+      { err, context: opts.context },
+      "mirrorGmailLabelsBatch failed (engine state already updated)",
+    );
   }
   return ok;
 }
@@ -809,7 +825,7 @@ export async function setThreadStar(
     // success to the operator. The engine-side state is the
     // canonical source the UI shows; eventual consistency with
     // Gmail is the goal, not a hard requirement.
-    await mirrorGmailLabels({
+    void mirrorGmailLabels({
       threadId,
       addLabelIds: isStarred ? ["STARRED"] : [],
       removeLabelIds: isStarred ? [] : ["STARRED"],
@@ -941,7 +957,7 @@ export async function setThreadTrash(
     // wrapped in our gmail helper yet. For now we use the label
     // path which DOES work -- adding/removing the TRASH label
     // through threads.modify produces the same observable result.
-    await mirrorGmailLabels({
+    void mirrorGmailLabels({
       threadId,
       addLabelIds: trashed ? ["TRASH"] : [],
       removeLabelIds: trashed ? ["INBOX"] : ["TRASH"],
@@ -1421,8 +1437,11 @@ export async function bulkUpdateThreads(
         addLabels = ["UNREAD"];
         break;
     }
+    // Fire-and-forget: this iterates one Gmail call PER thread, so for a bulk
+    // selection it was the dominant latency. Backgrounding it makes bulk
+    // archive / mark-read feel instant; Gmail syncs after (fully guarded).
     if (addLabels.length > 0 || removeLabels.length > 0) {
-      await mirrorGmailLabelsBatch({
+      void mirrorGmailLabelsBatch({
         threadIds: okIds,
         addLabelIds: addLabels,
         removeLabelIds: removeLabels,
