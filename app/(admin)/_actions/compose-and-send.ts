@@ -178,6 +178,8 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
 export interface ComposeTemplate {
   id: string;
   name: string;
+  /** e.g. T1, T7A, H0a, V1 -- drives the logical dropdown order. */
+  templateCode: string;
   stage: string;
   brandId: string;
   brandName: string;
@@ -186,6 +188,26 @@ export interface ComposeTemplate {
   subjectTemplate: string;
   /** Raw text body template. */
   bodyTemplateText: string;
+}
+
+/**
+ * Natural order for template codes so the picker reads logically: T<n> first
+ * by number (T1 cold opener -> T2 follow-up -> ... -> T17), then H (host) then
+ * V (venue) families, then anything else. Suffix breaks ties (T7A < T7B,
+ * T9-far < T9-near).
+ */
+function compareTemplateCode(a: string, b: string): number {
+  const parse = (code: string): [number, number, string] => {
+    const m = code.match(/^([A-Za-z]+)(\d+)(.*)$/);
+    const prefix = (m?.[1] ?? code).toUpperCase();
+    const num = m ? Number(m[2]) : Number.MAX_SAFE_INTEGER;
+    const suffix = m?.[3] ?? "";
+    const rank = prefix === "T" ? 0 : prefix === "H" ? 1 : prefix === "V" ? 2 : 3;
+    return [rank, num, suffix];
+  };
+  const [ar, an, asfx] = parse(a);
+  const [br, bn, bsfx] = parse(b);
+  return ar - br || an - bn || asfx.localeCompare(bsfx);
 }
 
 /**
@@ -222,6 +244,7 @@ export async function listComposeContext(
       .select({
         id: emailTemplates.id,
         name: emailTemplates.name,
+        templateCode: emailTemplates.templateCode,
         stage: emailTemplates.stage,
         brandId: emailTemplates.outreachBrandId,
         brandName: outreachBrands.displayName,
@@ -265,6 +288,16 @@ export async function listComposeContext(
     staffId: staff.id,
     sendingAccountId,
   });
+
+  // Logical dropdown order: T-codes by number first (T1 cold opener -> T17),
+  // then H (host) then V (venue) families. All templates share stage='custom'
+  // + the same auto_pick_priority, so the SQL ORDER BY can't differentiate
+  // them; sort by a natural reading of the code here. Brand stays the primary
+  // group so a multi-brand catalog still clusters by brand.
+  templateRows.sort(
+    (a, b) =>
+      a.brandName.localeCompare(b.brandName) || compareTemplateCode(a.templateCode, b.templateCode),
+  );
 
   return { inboxes, labels, templates: templateRows, renderContext };
 }

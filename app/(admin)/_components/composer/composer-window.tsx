@@ -101,14 +101,22 @@ async function applyTemplate(
   const t = templates.find((x) => x.id === templateId);
   if (!t) return;
   const { renderTemplate } = await import("@/lib/template-render");
-  const subj = renderTemplate(t.subjectTemplate, renderContext);
-  const body = renderTemplate(t.bodyTemplateText, renderContext);
-  // Convert plain-text template body to minimal HTML so the rich
-  // text editor seeds correctly (paragraphs preserved).
+  // {{company_name}} falls back to the template's own brand when the render
+  // context didn't resolve it (e.g. the composer opened without a city-campaign
+  // attribution), so the body never renders a blank brand ("on behalf of  to").
+  const ctx = renderContext.company_name?.trim()
+    ? renderContext
+    : { ...renderContext, company_name: t.brandName ?? renderContext.company_name ?? "" };
+  const subj = renderTemplate(t.subjectTemplate, ctx);
+  const body = renderTemplate(t.bodyTemplateText, ctx);
+  // Convert the plain-text template body to minimal HTML for the rich text
+  // editor. Paragraphs (separated by a blank line in the source) are joined
+  // with an empty paragraph so the editor shows real spacing between them;
+  // single newlines within a paragraph become <br>.
   const html = body.output
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
-    .join("");
+    .join("<p></p>");
   setPatch({ subject: subj.output, bodyText: body.output, bodyHtml: html });
 }
 
