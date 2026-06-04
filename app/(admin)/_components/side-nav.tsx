@@ -47,6 +47,7 @@ import {
   Info,
   LayoutGrid,
   LifeBuoy,
+  ListChecks,
   Map as MapIcon,
   ShieldCheck,
   ShieldOff,
@@ -73,6 +74,9 @@ const SECTIONS: Array<{
   {
     label: "Current Crawl",
     items: [
+      // Primary daily surface for outreach + lead roles (Phase 2.1). Admins see
+      // it too; their default landing stays the dashboard.
+      { href: "/worklist", label: "Daily Worklist", icon: <ListChecks className="h-3.5 w-3.5" /> },
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3.5 w-3.5" /> },
       {
