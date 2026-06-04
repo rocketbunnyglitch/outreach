@@ -787,7 +787,7 @@ function escapeHtmlForBulk(s: string): string {
  * sent independently — passing only startTime leaves endsAt unchanged.
  */
 const bulkSetTimesSchema = z.object({
-  eventIds: z.array(uuid).min(1).max(500),
+  eventIds: z.array(uuid).min(1).max(2000),
   /** "HH:MM" 24-hour, or "" to clear. Optional means "don't touch". */
   startTime: z
     .string()
