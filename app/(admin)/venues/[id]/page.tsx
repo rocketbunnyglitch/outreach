@@ -38,6 +38,7 @@ import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-
 import { DomainAliasList } from "../_components/domain-alias-list";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
+import { VenueEnrichButton } from "../_components/venue-enrich-button";
 import { VenueForm } from "../_components/venue-form";
 import { VenueQuickLinks, VenueSummaryStrip } from "../_components/venue-summary-strip";
 import { VenueWristbandSection } from "../_components/venue-wristband-section";
@@ -257,16 +258,19 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
             <h1 className="mt-3 truncate font-semibold text-4xl tracking-tight">{venue.name}</h1>
             {venue.address && <p className="mt-1 text-sm text-zinc-500">{venue.address}</p>}
           </div>
-          <VenueQuickLinks
-            venueId={venue.id}
-            phoneE164={venue.phoneE164}
-            email={venue.email}
-            websiteUrl={venue.websiteUrl}
-            instagramHandle={venue.instagramHandle}
-            googlePlaceId={venue.googlePlaceId}
-            address={venue.address}
-            venueName={venue.name}
-          />
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <VenueQuickLinks
+              venueId={venue.id}
+              phoneE164={venue.phoneE164}
+              email={venue.email}
+              websiteUrl={venue.websiteUrl}
+              instagramHandle={venue.instagramHandle}
+              googlePlaceId={venue.googlePlaceId}
+              address={venue.address}
+              venueName={venue.name}
+            />
+            <VenueEnrichButton venueId={venue.id} />
+          </div>
         </div>
         <VenueSummaryStrip
           lastTouchAt={outreachEntries[0]?.createdAt ?? null}
