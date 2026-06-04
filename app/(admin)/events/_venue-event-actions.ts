@@ -23,6 +23,7 @@ import { venueEvents } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { generateConfirmationCascade, isConfirmationTransition } from "@/lib/confirmation-cascade";
 import { db, withAuditContext } from "@/lib/db";
+import { resolveEngineRole } from "@/lib/engine-roles";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import {
@@ -139,6 +140,16 @@ export async function updateVenueEvent(
       .limit(1);
     const previousStatus = previousStatusRow[0]?.status ?? null;
 
+    // Confirmation transition -> resolve the graphics designer (engine role)
+    // up front so the cascade can auto-assign the graphics task. Read happens
+    // outside the tx; null when unassigned (cascade falls back to the lead).
+    const isConfirming =
+      input.status !== undefined && isConfirmationTransition(previousStatus, input.status);
+    const graphicsDesignerId = isConfirming
+      ? await resolveEngineRole(staff.teamId, "graphics_designer")
+      : null;
+    let graphicsNotify: { assigneeId: string | null; venueName: string } | null = null;
+
     const txOutput = await withAuditContext(staff.id, async (tx) => {
       const result = await tx
         .update(venueEvents)
@@ -146,12 +157,14 @@ export async function updateVenueEvent(
         .where(eq(venueEvents.id, id))
         .returning({ eventId: venueEvents.eventId });
 
-      // Confirmation cascade — generate auto-tasks atomically with the
-      // status flip. Only fires on transition (not on repeated saves
-      // while already confirmed).
-      if (input.status !== undefined && isConfirmationTransition(previousStatus, input.status)) {
+      // Confirmation cascade - generate auto-tasks (+ the graphics task and
+      // social_media_graphics deliverable) atomically with the status flip.
+      // Only fires on transition (not on repeated saves while already
+      // confirmed).
+      if (isConfirming) {
         try {
-          const cascade = await generateConfirmationCascade(tx, id);
+          const cascade = await generateConfirmationCascade(tx, id, { graphicsDesignerId });
+          graphicsNotify = cascade.graphics;
           logger.info({ venueEventId: id, ...cascade }, "confirmation cascade fired");
         } catch (cascadeErr) {
           // Log but don't block the venue_event update. Operators can
@@ -166,6 +179,23 @@ export async function updateVenueEvent(
       return { result };
     });
 
+    // Notify the graphics designer after the tx commits (best-effort, deduped).
+    const notify = graphicsNotify as { assigneeId: string | null; venueName: string } | null;
+    if (notify?.assigneeId) {
+      try {
+        const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+        await emitNotification({
+          staffId: notify.assigneeId,
+          kind: "admin_message",
+          title: `Graphic needed: ${notify.venueName}`,
+          body: `${notify.venueName} is confirmed. Create the social media graphic, then hand it to the lifecycle owner to send.`,
+          linkPath: "/crawl-management?tab=graphics",
+        });
+      } catch (notifyErr) {
+        logger.error({ err: notifyErr, venueEventId: id }, "graphics-designer notification failed");
+      }
+    }
+
     // Phase 4 cascade-sends (auto-queue follow-up emails when a venue
     // confirmed) was removed in the send-queue decommission. The
     // confirmation-cascade above (operational tasks) is what remains.
@@ -173,6 +203,7 @@ export async function updateVenueEvent(
     const finalRow = txOutput?.result?.[0];
     if (finalRow?.eventId) revalidatePath(`/events/${finalRow.eventId}`);
     revalidatePath("/tasks");
+    revalidatePath("/crawl-management");
     revalidatePath("/");
     return { ok: true, data: { id } };
   } catch (err) {

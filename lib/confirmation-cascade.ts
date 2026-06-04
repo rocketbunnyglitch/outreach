@@ -23,10 +23,17 @@
  * unassigned and any staff can claim them.
  */
 
-import { tasks } from "@/db/schema";
+import { crawlDeliverables, tasks } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 
 type Tx = Parameters<Parameters<typeof import("@/lib/db").withAuditContext>[1]>[0];
+
+/**
+ * Title prefix for the auto-generated "create the social graphic" task. The
+ * Graphics queue (Graphics tab) filters tasks by this prefix, so keep them in
+ * sync. [Graphics workflow]
+ */
+export const GRAPHICS_TASK_TITLE_PREFIX = "Design social graphic";
 
 interface CascadeContext {
   venueEventId: string;
@@ -35,10 +42,19 @@ interface CascadeContext {
   leadStaffId: string | null;
 }
 
+export interface CascadeResult {
+  tasksCreated: number;
+  skipped: boolean;
+  /** Set when a graphics task was created, so the caller can notify the
+   *  assignee after the transaction commits. */
+  graphics: { assigneeId: string | null; venueName: string } | null;
+}
+
 export async function generateConfirmationCascade(
   tx: Tx,
   venueEventId: string,
-): Promise<{ tasksCreated: number; skipped: boolean }> {
+  opts?: { graphicsDesignerId?: string | null },
+): Promise<CascadeResult> {
   // 1. Pull the bits we need: venue.name, event.eventDate, city_campaign.lead_staff
   const ctxRows = await tx.execute<{
     venue_event_id: string;
@@ -72,7 +88,7 @@ export async function generateConfirmationCascade(
       ).rows ?? []);
   const row = list[0];
   if (!row) {
-    return { tasksCreated: 0, skipped: true };
+    return { tasksCreated: 0, skipped: true, graphics: null };
   }
 
   const ctx: CascadeContext = {
@@ -143,7 +159,43 @@ export async function generateConfirmationCascade(
     })),
   );
 
-  return { tasksCreated: cascade.length, skipped: false };
+  // Graphics workflow: auto-create the "create the social graphic" task,
+  // assigned to the graphics_designer (resolved by the caller from the engine
+  // roles) or falling back to the city lead, plus the social_media_graphics
+  // deliverable row the lifecycle owner later flips to "done" (= sent to the
+  // venue). The deliverable insert is onConflictDoNothing so a re-confirm never
+  // wipes a prior "sent" status. The graphics task IS an auto task, so the
+  // cleanup-delete above regenerates it on a re-confirm like the others.
+  const graphicsAssignee = opts?.graphicsDesignerId ?? ctx.leadStaffId;
+  await tx.insert(tasks).values({
+    title: `${GRAPHICS_TASK_TITLE_PREFIX} for ${ctx.venueName}`,
+    description: `${ctx.venueName} is confirmed. Create the social media graphic, then hand it to the lifecycle owner to send to the venue.`,
+    source: "auto" as const,
+    status: "pending" as const,
+    targetType: "venue_event" as const,
+    targetId: venueEventId,
+    assignedStaffId: graphicsAssignee,
+    dueAt: daysBefore(10),
+    slaThresholdMinutes: null,
+  });
+
+  await tx
+    .insert(crawlDeliverables)
+    .values({
+      venueEventId,
+      deliverableType: "social_media_graphics" as const,
+      status: "pending" as const,
+      assignedStaffId: graphicsAssignee,
+    })
+    .onConflictDoNothing({
+      target: [crawlDeliverables.venueEventId, crawlDeliverables.deliverableType],
+    });
+
+  return {
+    tasksCreated: cascade.length + 1,
+    skipped: false,
+    graphics: { assigneeId: graphicsAssignee, venueName: ctx.venueName },
+  };
 }
 
 /**

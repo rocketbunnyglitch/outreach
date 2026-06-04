@@ -1,10 +1,12 @@
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireStaff } from "@/lib/auth";
-import { loadCrawlManagement } from "@/lib/crawl-management-data";
+import { cn } from "@/lib/cn";
+import { loadCrawlManagement, loadGraphicsQueue } from "@/lib/crawl-management-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { ClipboardCheck } from "lucide-react";
 import Link from "next/link";
 import { CrawlManagementTree } from "./_components/crawl-management-tree";
+import { GraphicsQueue } from "./_components/graphics-queue";
 
 export const metadata = { title: "Crawl management" };
 export const dynamic = "force-dynamic";
@@ -26,12 +28,22 @@ export const dynamic = "force-dynamic";
  * delivered / issue) so the team sees shipping state at a glance
  * alongside the operational handoff checkbox.
  */
-export default async function CrawlManagementPage() {
+export default async function CrawlManagementPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   await requireStaff();
+  const { tab } = await searchParams;
+  const activeTab = tab === "graphics" ? "graphics" : "deliverables";
   const currentCampaign = await getCurrentCampaign();
   const campaignId = currentCampaign ? currentCampaign.campaign.id : null;
 
   const cities = campaignId ? await loadCrawlManagement({ campaignId }).catch(() => []) : [];
+  const graphicsRows =
+    campaignId && activeTab === "graphics"
+      ? await loadGraphicsQueue({ campaignId }).catch(() => [])
+      : [];
 
   // Aggregate pending across all cities for the header chip.
   const totalPending = cities.reduce((s, c) => s + c.pendingCount, 0);
@@ -59,12 +71,29 @@ export default async function CrawlManagementPage() {
         )}
       </header>
 
+      {/* Tabs: Deliverables (full per-venue checklist) | Graphics (the open
+          create-queue of social graphics not yet made). */}
+      <nav className="flex items-center gap-1 border-zinc-200 border-b dark:border-zinc-800">
+        <TabLink
+          href="/crawl-management"
+          label="Deliverables"
+          active={activeTab === "deliverables"}
+        />
+        <TabLink
+          href="/crawl-management?tab=graphics"
+          label="Graphics"
+          active={activeTab === "graphics"}
+        />
+      </nav>
+
       {!campaignId ? (
         <EmptyState
           icon={ClipboardCheck}
           title="No campaign selected"
           description="Pick a current campaign from the admin tab to see its crawl-management view."
         />
+      ) : activeTab === "graphics" ? (
+        <GraphicsQueue rows={graphicsRows} />
       ) : cities.length === 0 ? (
         <EmptyState
           icon={ClipboardCheck}
@@ -87,5 +116,21 @@ export default async function CrawlManagementPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+function TabLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "-mb-px border-b-2 px-3 py-2 font-medium text-sm transition-colors",
+        active
+          ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100"
+          : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200",
+      )}
+    >
+      {label}
+    </Link>
   );
 }
