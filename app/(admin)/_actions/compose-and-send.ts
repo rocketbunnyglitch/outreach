@@ -68,6 +68,9 @@ export interface ConnectedAccountOption {
   /** True when used >= cap. UI uses this to grey the option +
    *  block cold-outreach sends. */
   atCap: boolean;
+  /** ISO expiry of the cold-send pacing cooldown (migration 0106), or null
+   *  when none is active. Drives the composer's countdown ring. */
+  coldSendCooldownUntil: string | null;
 }
 
 /**
@@ -133,9 +136,14 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
   // already have it via the initial select — but we didn't carry it.
   // Re-fetch in one go.
   const capMap = new Map<string, number>();
+  const cooldownMap = new Map<string, string | null>();
   if (usable.length > 0) {
     const capRows = await db
-      .select({ id: connectedAccounts.id, cap: connectedAccounts.dailyColdSendCap })
+      .select({
+        id: connectedAccounts.id,
+        cap: connectedAccounts.dailyColdSendCap,
+        cooldownUntil: connectedAccounts.coldSendCooldownUntil,
+      })
       .from(connectedAccounts)
       .where(
         inArray(
@@ -143,7 +151,16 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
           usable.map((r) => r.id),
         ),
       );
-    for (const c of capRows) capMap.set(c.id, c.cap ?? 30);
+    for (const c of capRows) {
+      capMap.set(c.id, c.cap ?? 30);
+      // Surface only a still-active (future) cold-send cooldown (migration 0106).
+      cooldownMap.set(
+        c.id,
+        c.cooldownUntil && c.cooldownUntil.getTime() > Date.now()
+          ? c.cooldownUntil.toISOString()
+          : null,
+      );
+    }
   }
 
   const opts: ConnectedAccountOption[] = usable.map((r) => {
@@ -159,6 +176,7 @@ export async function listSendableInboxes(): Promise<ConnectedAccountOption[]> {
       coldSendsUsed: used,
       coldSendCap: cap,
       atCap: used >= cap,
+      coldSendCooldownUntil: cooldownMap.get(r.id) ?? null,
     };
   });
 
@@ -311,6 +329,11 @@ export type ComposeResult =
        *  a "Bypass cap" button (admins only). */
       capBlocked?: boolean;
       usage?: SendUsage;
+      /** Set when a cold-send pacing cooldown blocked the send (migration
+       *  0106). The composer shows the countdown ring; admins bypass via the
+       *  same path as the cap. cooldownUntil is the ISO expiry. */
+      cooldownBlocked?: boolean;
+      cooldownUntil?: string | null;
       /** Set when the cadence floor / hard cap blocked the send (Phase 1.9).
        *  Admins can retry with a cadenceOverrideReason; non-admins are
        *  hard-blocked. The composer UI surfaces this in Phase 2.10. */

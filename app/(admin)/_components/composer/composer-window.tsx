@@ -61,6 +61,7 @@ import { type EnginePickResult, pickTemplateForComposer } from "../../_actions/e
 import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
+import { CooldownRing } from "./cooldown-ring";
 import { FollowUpPrompt } from "./follow-up-prompt";
 import { PreviewModal } from "./preview-modal";
 import { RecipientChips } from "./recipient-chips";
@@ -174,6 +175,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
+  const [cooldownBlocked, setCooldownBlocked] = useState(false);
   const [wrongAccountBlocked, setWrongAccountBlocked] = useState(false);
   // Cadence floor block (Phase 2.10). Set when a send is refused because the
   // venue is at its cross-domain cadence floor; the warning block offers
@@ -566,14 +568,17 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         }
         setSendError(sendRes.error);
         setCapBlocked(sendRes.capBlocked ?? false);
+        setCooldownBlocked(sendRes.cooldownBlocked ?? false);
         setWrongAccountBlocked(sendRes.wrongAccountBlocked ?? false);
         toast.show({
           kind: "error",
           message: sendRes.capBlocked
             ? "Daily cold send cap reached."
-            : sendRes.wrongAccountBlocked
-              ? "Wrong inbox for this thread."
-              : `Send failed: ${sendRes.error}`,
+            : sendRes.cooldownBlocked
+              ? "Cold-send cooldown active - pacing between sends."
+              : sendRes.wrongAccountBlocked
+                ? "Wrong inbox for this thread."
+                : `Send failed: ${sendRes.error}`,
         });
         return;
       }
@@ -597,6 +602,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   function handleSendNow() {
     setSendError(null);
     setCapBlocked(false);
+    setCooldownBlocked(false);
     setWrongAccountBlocked(false);
     setCadenceBlock(null);
     const err = validate();
@@ -1009,6 +1015,13 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               })}
             </select>
           )}
+          {/* Cold-send pacing cooldown ring (migration 0106) for the selected
+              From inbox. Renders nothing when no cooldown is active. */}
+          <CooldownRing
+            until={
+              inboxes?.find((x) => x.id === instance.fromAccountId)?.coldSendCooldownUntil ?? null
+            }
+          />
         </div>
 
         {/* To row with CC/BCC reveal */}
@@ -1336,6 +1349,22 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
             >
               Bypass cap
+            </button>
+          )}
+          {cooldownBlocked && instance.isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                // Admin path: override the cold-send pacing cooldown. Reuses the
+                // bypassCap flag (server re-checks the admin role).
+                setCooldownBlocked(false);
+                setSendError(null);
+                actuallySend({ bypassCap: true });
+              }}
+              className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
+              title="Override the cold-send pacing cooldown (admin only)"
+            >
+              Send anyway
             </button>
           )}
           {wrongAccountBlocked && instance.isAdmin && (

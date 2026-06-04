@@ -38,7 +38,7 @@ import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
-import { preflightSend, recordSendEvent } from "@/lib/send-cap";
+import { preflightSend, recordSendEvent, startColdSendCooldown } from "@/lib/send-cap";
 import {
   type DuplicateWarning,
   describeBlock,
@@ -336,7 +336,21 @@ export async function composeAndSendImpl(
     threadId: replyToThreadId,
   });
   if (!preflight.ok) {
-    if (!bypassCap || !hasMinimumRole(staff, "admin")) {
+    const canBypass = bypassCap && hasMinimumRole(staff, "admin");
+    if (!canBypass) {
+      // Cold-send pacing cooldown (migration 0106) gets its own block reason so
+      // the composer can show the countdown ring instead of a cap message.
+      if (preflight.reason === "cooldown") {
+        return {
+          ok: false,
+          error: `Cold-send cooldown active on ${inbox.email}. Pacing between cold sends -- the next one unlocks shortly.${
+            hasMinimumRole(staff, "admin") ? " Click 'Send anyway' to override." : ""
+          }`,
+          cooldownBlocked: true,
+          cooldownUntil: preflight.usage.cooldownUntil,
+          usage: preflight.usage,
+        };
+      }
       return {
         ok: false,
         error: `Daily cold-send cap reached on ${inbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
@@ -349,8 +363,10 @@ export async function composeAndSendImpl(
       };
     }
     logger.warn(
-      { fromAccountId, userId: staff.id, used: preflight.usage.used, cap: preflight.usage.cap },
-      "composeAndSend: admin bypassed cold-send cap",
+      { fromAccountId, userId: staff.id, reason: preflight.reason },
+      preflight.reason === "cooldown"
+        ? "composeAndSend: admin bypassed cold-send cooldown"
+        : "composeAndSend: admin bypassed cold-send cap",
     );
   }
   const sendCategory = preflight.ok ? preflight.category : preflight.category;
@@ -826,6 +842,17 @@ export async function composeAndSendImpl(
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
+  }
+
+  // Start the randomized 5-8 min cold-send pacing cooldown on this inbox after
+  // a cold send (migration 0106). Warm sends/replies are unaffected.
+  // Best-effort: a missed cooldown just means no pacing on the next send.
+  if (sendCategory === "cold") {
+    try {
+      await startColdSendCooldown(fromAccountId);
+    } catch (err) {
+      logger.error({ err, fromAccountId }, "composeAndSend: startColdSendCooldown failed");
+    }
   }
 
   // Record the cadence touch (Phase 1.11): logs venue_campaign_touch_log (the

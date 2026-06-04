@@ -173,6 +173,12 @@ export const connectedAccounts = pgTable(
      *  migration 0049. */
     dailyColdSendCap: integer("daily_cold_send_cap").notNull().default(30),
 
+    /** Cold-send pacing cooldown (migration 0106). After a cold send this is
+     *  set to now() + a randomized 5-8 min; the send path blocks further cold
+     *  sends from this inbox until it passes, and the composer shows a
+     *  countdown ring. NULL = no active cooldown. Warm/replies are unaffected. */
+    coldSendCooldownUntil: timestamp("cold_send_cooldown_until", { withTimezone: true }),
+
     /** Optional HTML signature appended to outbound mail sent from
      *  this inbox. Edited from /settings/inboxes. The global composer
      *  appends it to the body if the operator hasn't already inlined

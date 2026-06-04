@@ -364,6 +364,8 @@ export async function sendDraft(
       totalTouchCount: number;
       hardCapReached: boolean;
     };
+    cooldownBlocked?: boolean;
+    cooldownUntil?: string | null;
   }
 > {
   const { staff } = await requireStaff();
@@ -407,6 +409,8 @@ async function sendDraftAsUser(input: {
       totalTouchCount: number;
       hardCapReached: boolean;
     };
+    cooldownBlocked?: boolean;
+    cooldownUntil?: string | null;
   }
 > {
   const [draft] = await db
@@ -516,6 +520,8 @@ async function sendDraftAsUser(input: {
       chosenAccountEmail: "chosenAccountEmail" in result ? result.chosenAccountEmail : undefined,
       cadenceBlocked: "cadenceBlocked" in result ? result.cadenceBlocked : undefined,
       cadence: "cadence" in result ? result.cadence : undefined,
+      cooldownBlocked: "cooldownBlocked" in result ? result.cooldownBlocked : undefined,
+      cooldownUntil: "cooldownUntil" in result ? result.cooldownUntil : undefined,
     };
   }
 

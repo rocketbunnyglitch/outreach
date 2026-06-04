@@ -101,6 +101,10 @@ export interface SendUsage {
   /** Cumulative cold sends including bypassed sends today. Lets the
    *  UI show "22 / 30 (+2 bypassed)" if useful. */
   bypassedToday: number;
+  /** ISO timestamp the cold-send cooldown expires, or null when none. */
+  cooldownUntil: string | null;
+  /** True when a cold-send pacing cooldown is currently active. */
+  cooldownActive: boolean;
 }
 
 /**
@@ -115,6 +119,7 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
       id: staffOutreachEmails.id,
       ownerUserId: staffOutreachEmails.ownerUserId,
       cap: staffOutreachEmails.dailyColdSendCap,
+      cooldownUntil: staffOutreachEmails.coldSendCooldownUntil,
     })
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.id, connectedAccountId))
@@ -122,8 +127,20 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
 
   const cap = acct[0]?.cap ?? 30;
   const ownerId = acct[0]?.ownerUserId;
+  // Cold-send pacing cooldown (migration 0106): active only while in the future.
+  const cooldownAt = acct[0]?.cooldownUntil ?? null;
+  const cooldownActive = cooldownAt != null && cooldownAt.getTime() > Date.now();
+  const cooldownUntil = cooldownActive && cooldownAt ? cooldownAt.toISOString() : null;
   if (!acct[0] || !ownerId) {
-    return { used: 0, cap, remaining: cap, atCap: false, bypassedToday: 0 };
+    return {
+      used: 0,
+      cap,
+      remaining: cap,
+      atCap: false,
+      bypassedToday: 0,
+      cooldownUntil: null,
+      cooldownActive: false,
+    };
   }
 
   // Owner timezone determines "today."
@@ -165,7 +182,7 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
   const bypassedToday = bypassedRow[0]?.n ?? 0;
 
   const remaining = Math.max(0, cap - used);
-  return { used, cap, remaining, atCap: used >= cap, bypassedToday };
+  return { used, cap, remaining, atCap: used >= cap, bypassedToday, cooldownUntil, cooldownActive };
 }
 
 /**
@@ -187,7 +204,8 @@ export async function classifySend(opts: {
 
 export type PreflightResult =
   | { ok: true; category: "cold" | "warm"; usage: SendUsage }
-  | { ok: false; reason: "at_cap"; usage: SendUsage; category: "cold" };
+  | { ok: false; reason: "at_cap"; usage: SendUsage; category: "cold" }
+  | { ok: false; reason: "cooldown"; usage: SendUsage; category: "cold" };
 
 /**
  * Run before sending. Classifies the send + checks the cap. Returns
@@ -207,7 +225,26 @@ export async function preflightSend(opts: {
   if (category === "cold" && usage.atCap) {
     return { ok: false, reason: "at_cap", usage, category };
   }
+  // Cold-send pacing cooldown (migration 0106): block back-to-back cold sends
+  // from the same inbox until the randomized window passes. Warm/replies skip
+  // this. Admins bypass via the same bypassCap path as the cap.
+  if (category === "cold" && usage.cooldownActive) {
+    return { ok: false, reason: "cooldown", usage, category };
+  }
   return { ok: true, category, usage };
+}
+
+/**
+ * Start a randomized 5-8 minute cold-send cooldown on an inbox. Called after a
+ * successful cold send. The window is deliberately jittered so sends don't fall
+ * into a detectable fixed rhythm.
+ */
+export async function startColdSendCooldown(connectedAccountId: string): Promise<void> {
+  const ms = (5 + Math.random() * 3) * 60_000;
+  await db
+    .update(staffOutreachEmails)
+    .set({ coldSendCooldownUntil: new Date(Date.now() + ms) })
+    .where(eq(staffOutreachEmails.id, connectedAccountId));
 }
 
 /**
