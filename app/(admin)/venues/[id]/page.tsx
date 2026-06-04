@@ -19,7 +19,7 @@ import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
-import { loadVenueCommunication } from "@/lib/venue-communication";
+import { loadVenueCommunication, loadVenueConfirmationMessages } from "@/lib/venue-communication";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -40,6 +40,7 @@ import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-
 import { DomainAliasList } from "../_components/domain-alias-list";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
+import { VenueConfirmationSection } from "../_components/venue-confirmation-section";
 import { VenueEnrichButton } from "../_components/venue-enrich-button";
 import { VenueForm } from "../_components/venue-form";
 import {
@@ -103,6 +104,13 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     })),
   ]);
   if (!venue) notFound();
+
+  // Inbound replies for this venue's threads, with their written-confirmation
+  // flag, for the confirmation section. Reuses the thread ids already resolved
+  // above so we don't re-run the venue match. Degrades to empty on error.
+  const confirmationMessages = await loadVenueConfirmationMessages(
+    venueCommunication.threads.map((t) => t.threadId),
+  ).catch(() => []);
 
   // Smart-note suggestions for these notes
   const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
@@ -374,6 +382,10 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
           venue across every connected staff account, regardless of
           Gmail subject. Renders nothing when the venue has no
           email history yet (silent). */}
+      {/* Written-confirmation proof — flag the email where the venue agreed,
+          pulled up fast for dispute defense. Sits above the full timeline. */}
+      <VenueConfirmationSection venueId={id} messages={confirmationMessages} />
+
       <VenueCommunicationSection data={venueCommunication} />
 
       <CrawlHistorySection rows={crawlHistory} />

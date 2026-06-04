@@ -16,6 +16,7 @@
 
 import {
   bigint,
+  boolean,
   index,
   jsonb,
   pgTable,
@@ -133,6 +134,16 @@ export const emailMessages = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid("created_by"),
+
+    /** Written-confirmation flag (migration 0107). An operator marks the
+     *  inbound email where a venue agreed to a slot, so the venue detail card
+     *  can surface the proof for dispute defense. flaggedBy/At record which
+     *  operator filed it + when. */
+    isConfirmation: boolean("is_confirmation").notNull().default(false),
+    confirmationFlaggedBy: uuid("confirmation_flagged_by").references(() => staffMembers.id, {
+      onDelete: "set null",
+    }),
+    confirmationFlaggedAt: timestamp("confirmation_flagged_at", { withTimezone: true }),
   },
   (table) => ({
     /**

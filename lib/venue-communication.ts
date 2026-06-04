@@ -477,3 +477,68 @@ function extractDomain(input: string): string | null {
     return null;
   }
 }
+
+// =========================================================================
+// Written-confirmation messages (venue detail card)
+// =========================================================================
+
+export interface VenueConfirmationMessage {
+  messageId: string;
+  threadId: string;
+  subject: string | null;
+  /** The venue-side person who replied (display name, falls back to address). */
+  fromName: string | null;
+  fromAddress: string;
+  /** When the venue sent it (received_at, falling back to sent_at). */
+  at: Date | null;
+  snippet: string | null;
+  /** True when an operator has flagged this message as the written confirmation. */
+  isConfirmation: boolean;
+  /** Operator who flagged it + when (null until flagged). */
+  flaggedByName: string | null;
+  flaggedAt: Date | null;
+}
+
+/**
+ * Inbound emails for a venue's matched threads, newest first, each carrying its
+ * written-confirmation flag. Drives the venue card's confirmation section:
+ * flagged messages are the "confirmation on file" proof; the rest are
+ * candidates the operator can flag. Pass the thread ids already resolved by
+ * loadVenueCommunication so we never re-run the (expensive) venue match.
+ */
+export async function loadVenueConfirmationMessages(
+  threadIds: string[],
+): Promise<VenueConfirmationMessage[]> {
+  if (threadIds.length === 0) return [];
+  const rows = await db
+    .select({
+      messageId: emailMessages.id,
+      threadId: emailMessages.threadId,
+      subject: emailMessages.subject,
+      fromName: emailMessages.fromName,
+      fromAddress: emailMessages.fromAddress,
+      receivedAt: emailMessages.receivedAt,
+      sentAt: emailMessages.sentAt,
+      snippet: emailMessages.snippet,
+      isConfirmation: emailMessages.isConfirmation,
+      flaggedAt: emailMessages.confirmationFlaggedAt,
+      flaggedByName: staffMembers.displayName,
+    })
+    .from(emailMessages)
+    .leftJoin(staffMembers, eq(staffMembers.id, emailMessages.confirmationFlaggedBy))
+    .where(and(inArray(emailMessages.threadId, threadIds), eq(emailMessages.direction, "inbound")))
+    .orderBy(desc(emailMessages.receivedAt), desc(emailMessages.sentAt))
+    .limit(60);
+  return rows.map((r) => ({
+    messageId: r.messageId,
+    threadId: r.threadId,
+    subject: r.subject,
+    fromName: r.fromName,
+    fromAddress: r.fromAddress,
+    at: r.receivedAt ?? r.sentAt ?? null,
+    snippet: r.snippet,
+    isConfirmation: r.isConfirmation,
+    flaggedByName: r.flaggedByName,
+    flaggedAt: r.flaggedAt,
+  }));
+}
