@@ -87,12 +87,12 @@ Friday, October 30th (night)
 Saturday, October 31st (night)
 Saturday, October 31st (day party, afternoon)
 
-It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. If you're interested, I've put our available timeslots below. Just let us know which ones you want and we'll book you in.
+It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. If you're interested, here's what's still open:
 
-[[insert: only the slots actually open for this venue; drop any already filled. Full reference set:
-Wristband Venue (7:30 PM to 10:30 PM): Check-in/where guests will pickup their wristbands.
-Participating Venue (8:30 PM to 11:30 PM): Middle slot timing shared with 2-3 other venues.
-Final Venue (11:30 PM to 2:00 AM): Final slot where everyone meets to end the night off.]]
+{{slot_list}}
+{{slot_list_2}}
+
+Just let us know which slots you want and we'll book you in.
 
 Thanks again,
 {{your_name}}
