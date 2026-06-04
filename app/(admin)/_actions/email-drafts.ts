@@ -274,18 +274,29 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
   }
 }
 
-// Spacing between consecutive queued cold sends per inbox. Randomized
-// 5-8 min (matching the cold-send cooldown the operator approved) so the
-// queue drains as a steady, jittered trickle -- Gmail flags bursts, so
-// never two back-to-back. Tunable here if deliverability tuning is needed.
-const QUEUE_MIN_GAP_MS = 5 * 60_000;
-const QUEUE_MAX_GAP_MS = 8 * 60_000;
+/**
+ * Randomized gap (ms) between consecutive queued cold sends on an inbox.
+ *
+ * Deliverability-first: every queued email is human-written + human-reviewed;
+ * queueing only spaces them out so the inbox never sends a burst (which Gmail
+ * flags). A FIXED interval is itself a detectable machine signature, so we
+ * make the spacing irregular:
+ *   - base gap 4-9 min, with sub-minute jitter (non-round send times)
+ *   - ~15% of the time a longer 10-22 min "break" so there's no steady rhythm
+ * Tunable here without touching the scheduler.
+ */
+function randomQueueGapMs(): number {
+  let minutes = 4 + Math.random() * 5; // 4-9 min
+  if (Math.random() < 0.15) minutes = 10 + Math.random() * 12; // occasional longer pause
+  const seconds = Math.random() * 60; // sub-minute jitter
+  return Math.round((minutes * 60 + seconds) * 1000);
+}
 
 /**
  * Queue a draft for auto-staggered sending instead of sending it now.
  *
- * Computes a randomized scheduled_for that lands 5-8 min AFTER the last
- * queued (unsent, future-scheduled) draft on the same inbox, so a batch
+ * Computes a randomized scheduled_for that lands a short, irregular gap AFTER
+ * the last queued (unsent, future-scheduled) draft on the same inbox, so a batch
  * of cold emails drains as a spaced-out trickle the scheduled-sends cron
  * dispatches one by one. The operator hits Queue and moves on; the live
  * cooldown ring only governs interactive "Send now".
@@ -339,9 +350,7 @@ export async function queueColdSend(
       .limit(1);
 
     const base = latest?.scheduledFor && latest.scheduledFor > now ? latest.scheduledFor : now;
-    const gap =
-      QUEUE_MIN_GAP_MS + Math.floor(Math.random() * (QUEUE_MAX_GAP_MS - QUEUE_MIN_GAP_MS));
-    const scheduledFor = new Date(base.getTime() + gap);
+    const scheduledFor = new Date(base.getTime() + randomQueueGapMs());
 
     await db
       .update(emailDrafts)

@@ -49,7 +49,7 @@ export function EmailQueueList({ queued, sending, sent, viewerTimezone }: Props)
           title="Queued"
           count={queued.length + sending.length}
           tone="amber"
-          hint="auto-spaced 5-8 min apart"
+          hint="auto-spaced a few minutes apart"
         >
           {sending.map((item) => (
             <QueueRow key={item.id} item={item} state="sending" viewerTimezone={viewerTimezone} />

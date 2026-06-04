@@ -611,7 +611,12 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
           : undefined,
       ),
     )
-    .orderBy(desc(emailThreads.lastMessageAt))
+    // Sort by INBOUND activity, not last message: Gmail-style, sending an
+    // email must NOT bump its thread to the top -- only a reply from the
+    // other side does. Threads with no reply yet fall back to their creation
+    // time (stable), so outbound-only cold threads don't jump around as the
+    // operator sends. last_message_at still drives the relative-time display.
+    .orderBy(sql`COALESCE(${emailThreads.lastInboundAt}, ${emailThreads.createdAt}) DESC`)
     .limit(200);
 
   // Fetch the labels for all visible threads in one round trip, then
