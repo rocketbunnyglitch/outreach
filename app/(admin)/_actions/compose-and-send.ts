@@ -20,6 +20,8 @@
  */
 
 import {
+  campaigns,
+  cities,
   cityCampaigns,
   connectedAccounts,
   emailMessages,
@@ -41,7 +43,7 @@ import type {
   SafetyWarning,
   SuppressionBlock,
 } from "@/lib/send-safety";
-import { type TeamLabelSummary, listTeamLabels } from "@/lib/team-labels";
+import { type TeamLabelSummary, ensureTeamLabel, listTeamLabels } from "@/lib/team-labels";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
@@ -249,6 +251,10 @@ export async function listComposeContext(
   labels: TeamLabelSummary[];
   templates: ComposeTemplate[];
   renderContext: ComposeRenderContext;
+  /** Team-label ids to pre-select on a fresh campaign-attributed draft (the
+   *  campaign Gmail label + the venue's city), so the operator sees what the
+   *  send will tag. Empty when there's no campaign attribution / label. */
+  defaultLabelIds: string[];
 }> {
   const { staff } = await requireStaff();
   const [inboxes, labels, templateRows] = await Promise.all([
@@ -284,15 +290,27 @@ export async function listComposeContext(
   ]);
 
   // Resolve the campaign from the city-campaign so company_name + the insert
-  // block load correctly, then build the engine's flat merge-field map.
+  // block load correctly, then build the engine's flat merge-field map. Also
+  // grab the campaign's Gmail label + the venue's city name so we can pre-tag a
+  // fresh campaign-attributed draft (visibility for what the send auto-applies).
   let campaignId: string | null = null;
+  let campaignGmailLabel: string | null = null;
+  let attributedCityName: string | null = null;
   if (opts.cityCampaignId && UUID_RE.test(opts.cityCampaignId)) {
     const [cc] = await db
-      .select({ campaignId: cityCampaigns.campaignId })
+      .select({
+        campaignId: cityCampaigns.campaignId,
+        gmailLabel: campaigns.outreachGmailLabel,
+        cityName: cities.name,
+      })
       .from(cityCampaigns)
+      .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+      .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
       .where(eq(cityCampaigns.id, opts.cityCampaignId))
       .limit(1);
     campaignId = cc?.campaignId ?? null;
+    campaignGmailLabel = cc?.gmailLabel ?? null;
+    attributedCityName = cc?.cityName ?? null;
   }
 
   // Default the sending email to the composer's default From (first inbox) so
@@ -317,7 +335,27 @@ export async function listComposeContext(
       a.brandName.localeCompare(b.brandName) || compareTemplateCode(a.templateCode, b.templateCode),
   );
 
-  return { inboxes, labels, templates: templateRows, renderContext };
+  // Pre-tag visibility: ensure the campaign's Gmail label + the venue's city
+  // label exist and return their ids so the composer can pre-select them on a
+  // fresh campaign-attributed draft. The operator then SEES "halloween 2026" +
+  // city in the Label control before sending -- matching what the send pipeline
+  // auto-applies. No campaign attribution / no configured label -> empty, so
+  // the control reads "none" and the operator knows it WON'T be tagged.
+  const defaultLabelIds: string[] = [];
+  const labelNames = [campaignGmailLabel, attributedCityName]
+    .map((s) => s?.trim())
+    .filter((s): s is string => Boolean(s));
+  for (const name of labelNames) {
+    try {
+      const { id } = await ensureTeamLabel({ teamId: staff.teamId, name, createdBy: staff.id });
+      if (!defaultLabelIds.includes(id)) defaultLabelIds.push(id);
+      if (!labels.some((l) => l.id === id)) labels.push({ id, name, color: null });
+    } catch (err) {
+      logger.warn({ err, name }, "listComposeContext: ensureTeamLabel for pre-tag failed");
+    }
+  }
+
+  return { inboxes, labels, templates: templateRows, renderContext, defaultLabelIds };
 }
 
 export type ComposeResult =

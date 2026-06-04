@@ -267,6 +267,16 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setInboxes(ctx.inboxes);
         setTemplates(ctx.templates);
         setRenderContext(ctx.renderContext);
+        // Pre-tag a fresh campaign-attributed draft with the campaign + city
+        // labels so the operator SEES what the send will apply ("halloween
+        // 2026" + city) before sending. Only when the draft has no labels yet
+        // -- never clobber a restored draft or a manual selection.
+        if (
+          ctx.defaultLabelIds.length > 0 &&
+          (!instance.pendingLabelIds || instance.pendingLabelIds.length === 0)
+        ) {
+          setField(instance.id, { pendingLabelIds: ctx.defaultLabelIds });
+        }
         if (!instance.fromAccountId && ctx.inboxes[0]) {
           const first = ctx.inboxes[0];
           const patch: Partial<typeof instance> = { fromAccountId: first.id };
