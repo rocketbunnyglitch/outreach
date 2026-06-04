@@ -136,7 +136,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 2.7 — Inbox: engine suggestion bar above reply (efdfcd7)
 - [x] 2.8 — Inbox: classification confirmation chip (e1eda7a)
 - [x] 2.9 — Inbox: suggested-response UI for questions (17b3b09)
-- [ ] 2.10 — Inbox: cadence floor warning in composer
+- [x] 2.10 — Inbox: cadence floor warning in composer (a00d333)
 - [ ] 2.11 — Inbox: quick-action chips (Engaged / Soft No / etc.)
 - [ ] 2.12 — Cold outreach: cadence-aware row states + next-action column
 - [ ] 2.13 — Cold outreach: bulk actions (schedule next touches / bulk add / bulk reassign)
