@@ -167,6 +167,15 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [sendError, setSendError] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
   const [wrongAccountBlocked, setWrongAccountBlocked] = useState(false);
+  // Cadence floor block (Phase 2.10). Set when a send is refused because the
+  // venue is at its cross-domain cadence floor; the warning block offers
+  // Cancel / Schedule-for-earliest / admin Override-with-reason.
+  const [cadenceBlock, setCadenceBlock] = useState<{
+    reason: string | null;
+    earliestAllowedAt: string | null;
+    hardCapReached: boolean;
+  } | null>(null);
+  const [cadenceOverrideReason, setCadenceOverrideReason] = useState("");
   /**
    * Set when the server returned safety warnings (recent decline,
    * cross-staff ownership, duplicate outreach). Triggers the
@@ -472,7 +481,12 @@ export function ComposerWindow({ instance, isMobile }: Props) {
 
   /** Actually fire the send (called once the undo window elapses). */
   function actuallySend(
-    opts: { testOnly?: boolean; bypassCap?: boolean; ackDuplicates?: boolean } = {},
+    opts: {
+      testOnly?: boolean;
+      bypassCap?: boolean;
+      ackDuplicates?: boolean;
+      cadenceOverrideReason?: string;
+    } = {},
   ) {
     startSendTx(async () => {
       // Persist final state of the draft so sendDraft has fresh data.
@@ -511,9 +525,22 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       const sendRes = await sendDraft(instance.id, {
         bypassCap: opts.bypassCap,
         ackDuplicates: opts.ackDuplicates,
+        cadenceOverrideReason: opts.cadenceOverrideReason,
       });
       setUndoActive(false);
       if (!sendRes.ok) {
+        // Cadence floor block (Phase 2.10) gets a dedicated inline warning
+        // (Cancel / Schedule / admin Override) rather than a generic error.
+        if (!opts.testOnly && sendRes.cadenceBlocked) {
+          setCadenceBlock(
+            sendRes.cadence ?? {
+              reason: sendRes.error,
+              earliestAllowedAt: null,
+              hardCapReached: false,
+            },
+          );
+          return;
+        }
         // Safety warnings (decline, cross-staff, duplicate) get a
         // dedicated confirm dialog rather than a generic error
         // toast. Operators must explicitly acknowledge before the
@@ -563,6 +590,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     setSendError(null);
     setCapBlocked(false);
     setWrongAccountBlocked(false);
+    setCadenceBlock(null);
     const err = validate();
     if (err) {
       setSendError(err);
@@ -603,6 +631,46 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       return;
     }
     actuallySend({ testOnly: true });
+  }
+
+  /**
+   * Cadence "Schedule for <earliest>" (Phase 2.10). Persists the draft with
+   * scheduled_for = the floor's earliest-allowed time instead of sending now;
+   * the /api/cron/scheduled-sends cron fires it then (re-checking the floor,
+   * which will have passed). Writes scheduledFor explicitly so it doesn't race
+   * the setField state update.
+   */
+  function scheduleForCadence(iso: string) {
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    setField(instance.id, { scheduledFor: iso });
+    setCadenceBlock(null);
+    void upsertDraft({
+      id: instance.id,
+      connectedAccountId: instance.fromAccountId || null,
+      toAddresses: toList,
+      ccAddresses: ccList,
+      bccAddresses: bccList,
+      subject: instance.subject,
+      bodyText: instance.bodyText,
+      bodyHtml: instance.bodyHtml,
+      venueId: instance.venueId,
+      cityCampaignId: instance.cityCampaignId,
+      templateId: instance.templateId,
+      enginePickedTemplateId: instance.enginePickedTemplateId,
+      attachments: instance.attachments,
+      scheduledFor: iso,
+      mode: instance.composeMode,
+      replyToThreadId: instance.replyToThreadId,
+      replyToMessageId: instance.replyToMessageId,
+      pendingLabelIds: instance.pendingLabelIds,
+    }).then((res) => {
+      if (res.ok) setStatus(instance.id, "saved", res.data.updatedAt);
+    });
+    toast.show({
+      kind: "success",
+      message: `Scheduled to send ${new Date(iso).toLocaleString("en-US")}.`,
+    });
+    close(instance.id);
   }
 
   function handleSaveAsDraft() {
@@ -1122,6 +1190,82 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           <div className="flex items-start gap-2 border-zinc-200 border-t bg-rose-50 px-3 py-2 text-rose-800 text-xs dark:border-zinc-800 dark:bg-rose-950 dark:text-rose-200">
             <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
             <span className="flex-1">{sendError}</span>
+          </div>
+        )}
+
+        {/* Cadence floor warning (Phase 2.10). Surfaced when the send was
+            refused because the venue is at its cross-domain cadence floor.
+            Non-admins get Cancel + Schedule; admins also get an override that
+            logs a reason to email_send_events.cadence_override_reason. */}
+        {cadenceBlock && (
+          <div className="flex flex-col gap-2 border-zinc-200 border-t bg-amber-50 px-3 py-2 text-amber-900 text-xs dark:border-zinc-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">Cadence floor would be violated</p>
+                <p className="mt-0.5 opacity-90">
+                  {cadenceBlock.reason ?? "This venue is at its cadence floor."}
+                  {cadenceBlock.earliestAllowedAt
+                    ? ` Earliest allowed: ${new Date(
+                        cadenceBlock.earliestAllowedAt,
+                      ).toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        timeZone: "America/Toronto",
+                      })}.`
+                    : ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCadenceBlock(null)}
+                className="rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-800 dark:border-amber-900/40 dark:bg-zinc-900 dark:text-amber-200"
+              >
+                Cancel
+              </button>
+              {cadenceBlock.earliestAllowedAt && (
+                <button
+                  type="button"
+                  onClick={() => scheduleForCadence(cadenceBlock.earliestAllowedAt as string)}
+                  className="rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/40 dark:text-amber-100"
+                >
+                  Schedule for{" "}
+                  {new Date(cadenceBlock.earliestAllowedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    timeZone: "America/Toronto",
+                  })}
+                </button>
+              )}
+            </div>
+            {instance.isAdmin && (
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={cadenceOverrideReason}
+                  onChange={(e) => setCadenceOverrideReason(e.target.value)}
+                  placeholder="Override reason (required, admin)"
+                  className="min-w-48 flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-900 placeholder:text-amber-500 dark:border-amber-900/40 dark:bg-zinc-900 dark:text-amber-100"
+                />
+                <button
+                  type="button"
+                  disabled={!cadenceOverrideReason.trim()}
+                  onClick={() => {
+                    const reason = cadenceOverrideReason.trim();
+                    if (!reason) return;
+                    setCadenceBlock(null);
+                    setCadenceOverrideReason("");
+                    actuallySend({ cadenceOverrideReason: reason });
+                  }}
+                  className="rounded-md border border-amber-400 bg-amber-200 px-2 py-1 font-medium text-amber-900 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-800/50 dark:text-amber-100"
+                >
+                  Override + send
+                </button>
+              </div>
+            )}
           </div>
         )}
 
