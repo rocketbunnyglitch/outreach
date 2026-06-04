@@ -123,7 +123,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 1.11 — Migrate existing threads to new cadence_state (a06eaf8)
 - [x] 1.12 — Reply classification enum: add `stalled_warm`, `cancelled_by_them` (cb44f2b)
 - [x] 1.13 — Classifier prompt updated to use Reference Doc retrieval (06345a5)
-- [ ] 1.14 — 90% confidence threshold logic + needs-attention flagging
+- [x] 1.14 — 90% confidence threshold logic + needs-attention flagging (ac90b4d)
 
 ### Phase 2 — Operator daily UX
 
