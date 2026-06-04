@@ -129,7 +129,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 
 - [x] 2.1 — `/worklist` page scaffolding + nav entry (b41ef32)
 - [x] 2.2 — Worklist Section 1: Drafts to review and send (9f91e30)
-- [ ] 2.3 — Worklist Section 2: Pending replies
+- [x] 2.3 — Worklist Section 2: Pending replies (a14a6ee)
 - [ ] 2.4 — Worklist Section 3: Follow-ups due (next few days)
 - [ ] 2.5 — Worklist Section 4: Calls to make today
 - [ ] 2.6 — Worklist empty-state + completion stats
