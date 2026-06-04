@@ -293,6 +293,19 @@ export const threadDirection = pgEnum("thread_direction", ["inbound", "outbound"
  * reply_classification — the AI classifier output, copied onto the thread
  * for fast list-view rendering. Superset of reply_category to add
  * callback_requested + unsubscribe + auto_reply + spam.
+ *
+ * Reference Doc -> engine mapping (Phase 1.12):
+ *   engaged          -> interested / warm
+ *   soft-no          -> decline
+ *   hard-no          -> unsubscribe
+ *   stalled-warm     -> stalled_warm       (NEW: was warm/engaged, then went
+ *                                            quiet -- distinct from a decline)
+ *   cancelled-by-them-> cancelled_by_them  (NEW: confirmed then backed out --
+ *                                            distinct from a pre-confirm decline)
+ *   question         -> question
+ *   unclassifiable   -> unclassified
+ * stalled_warm + cancelled_by_them are appended (migration 0102). Postgres enum
+ * values are referenced by string, so append order does not affect existing rows.
  */
 export const replyClassification = pgEnum("reply_classification", [
   "interested",
@@ -305,6 +318,8 @@ export const replyClassification = pgEnum("reply_classification", [
   "auto_reply",
   "spam",
   "unclassified",
+  "stalled_warm",
+  "cancelled_by_them",
 ]);
 
 export const messageKind = pgEnum("message_kind", ["email", "sms", "viber", "line", "manual_note"]);
