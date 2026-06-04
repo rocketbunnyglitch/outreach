@@ -277,6 +277,11 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   // value is a stringified key like "complete:saturday_night:1" or
   // "complete:all:1" for the all-day-parts variant. null = no KPI filter.
   const [kpiFilter, setKpiFilter] = useState<string | null>(null);
+  // Independent (stackable) row hides. Cancelled cities clutter the view once
+  // they're dead; 0-sales rows are noise when triaging where tickets are
+  // moving. Both can be on at once.
+  const [hideCancelled, setHideCancelled] = useState(false);
+  const [hideZeroSales, setHideZeroSales] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "priority",
     dir: "asc",
@@ -319,8 +324,14 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
     const base =
       priorityFilter.size === 0 ? rows : rows.filter((r) => priorityFilter.has(r.priority));
     const afterKpi = kpiFilter ? base.filter((r) => matchesKpi(r, kpiFilter)) : base;
+    const afterHides = afterKpi.filter((r) => {
+      if (hideCancelled && (r.status === "cancelled" || r.need.statusPill === "cancelled"))
+        return false;
+      if (hideZeroSales && r.totalSalesCents <= 0) return false;
+      return true;
+    });
     const filtered = q
-      ? afterKpi.filter((r) => {
+      ? afterHides.filter((r) => {
           const assignee = r.leadStaffId ? (staffNameById.get(r.leadStaffId) ?? "") : "";
           return (
             r.cityName.toLowerCase().includes(q) ||
@@ -329,10 +340,20 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
             (r.dashboardNote ?? "").toLowerCase().includes(q)
           );
         })
-      : afterKpi;
+      : afterHides;
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => compareRows(a, b, sort.key, staffNameById) * dir);
-  }, [rows, query, sort, staffNameById, priorityFilter, kpiFilter, matchesKpi]);
+  }, [
+    rows,
+    query,
+    sort,
+    staffNameById,
+    priorityFilter,
+    kpiFilter,
+    matchesKpi,
+    hideCancelled,
+    hideZeroSales,
+  ]);
 
   // Distinct priorities present in the data, sorted ascending. Drives
   // the chip row — only render chips for priorities that actually
@@ -540,6 +561,37 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
               </button>
             );
           })}
+        </div>
+        {/* Stackable row hides -- cancelled cities + zero-sales cities. Both
+            toggle independently; either or both can be on. */}
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mx-1 hidden h-3 w-px shrink-0 bg-zinc-300 sm:inline-block dark:bg-zinc-700" />
+          <button
+            type="button"
+            onClick={() => setHideCancelled((v) => !v)}
+            title="Hide cancelled cities"
+            className={cn(
+              "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
+              hideCancelled
+                ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+                : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+            )}
+          >
+            Hide cancelled
+          </button>
+          <button
+            type="button"
+            onClick={() => setHideZeroSales((v) => !v)}
+            title="Hide cities with no ticket sales yet"
+            className={cn(
+              "rounded-full px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ring-1 ring-inset transition-colors",
+              hideZeroSales
+                ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+                : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+            )}
+          >
+            Hide 0 sales
+          </button>
         </div>
         <Input
           value={query}
@@ -1162,11 +1214,17 @@ function CityRow({
   // the table and a subtle 8% emerald reads as "almost zinc" on a
   // black canvas. Bumped to 14% so the row reliably reads as
   // "this is green" without going neon.
-  const rowTone = cityComplete
-    ? "bg-emerald-500/[0.10] dark:bg-emerald-500/[0.14]"
-    : stripeIndex % 2 === 0
-      ? "bg-zinc-50 dark:bg-zinc-900/30"
-      : "bg-zinc-100 dark:bg-zinc-900/70";
+  // Cancelled cities read as "killed" -- a near-black row in light mode, a
+  // purple row in dark mode (operator's pick). Light text on the dark fill
+  // stays readable; takes precedence over the zebra + complete tints.
+  const isCancelledCity = row.status === "cancelled" || row.need.statusPill === "cancelled";
+  const rowTone = isCancelledCity
+    ? "bg-zinc-800 text-zinc-300 dark:bg-purple-950/70 dark:text-purple-200"
+    : cityComplete
+      ? "bg-emerald-500/[0.10] dark:bg-emerald-500/[0.14]"
+      : stripeIndex % 2 === 0
+        ? "bg-zinc-50 dark:bg-zinc-900/30"
+        : "bg-zinc-100 dark:bg-zinc-900/70";
 
   return (
     <>
