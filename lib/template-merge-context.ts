@@ -43,6 +43,7 @@ import {
   eventDayName,
   formatEventDate,
   guestCount,
+  joinAnd,
   openSlotsLabel,
   payRateLabel,
   roleLabel,
@@ -94,6 +95,7 @@ export const MERGE_FIELD_KEYS = [
   "slot_list_2",
   "slot_list_detailed",
   "slot_shorthand",
+  "confirmed_venues",
   "open_slots",
   "thu_crawls",
   "fri_crawls",
@@ -151,6 +153,7 @@ function slotInputs(
 interface EventRow {
   id: string;
   eventDate: string;
+  status: string;
   dayPart: DayPart | null;
   crawlFormat: "standard" | "day_party";
   ticketSalesCount: number;
@@ -312,6 +315,7 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
       .select({
         id: events.id,
         eventDate: events.eventDate,
+        status: events.status,
         dayPart: events.dayPart,
         crawlFormat: events.crawlFormat,
         ticketSalesCount: events.ticketSalesCount,
@@ -322,6 +326,16 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
       .from(events)
       .where(and(eq(events.cityCampaignId, cityCampaignId), isNull(events.archivedAt)))
       .orderBy(asc(events.eventDate))) as EventRow[];
+
+    // Drop crawls that are already over so we never pitch a slot on a date that
+    // has passed (or a crawl marked completed/cancelled). Date-only compare in
+    // UTC -- the column is a DATE and the VPS clock is UTC; a same-day crawl
+    // stays listed until the following day. Go-forward: as Oct dates pass they
+    // fall off the open-slot lists automatically.
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    cityEvents = cityEvents.filter(
+      (e) => e.eventDate >= todayUtc && e.status !== "completed" && e.status !== "cancelled",
+    );
 
     if (cityEvents.length > 0) {
       cityVes = (await db
@@ -357,49 +371,84 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
   fields.fri_open_slots = openSlotsLabel(openRolesForNight("friday_night"));
   fields.sat_open_slots = openSlotsLabel(openRolesForNight("saturday_night"));
 
-  // T8 slot menu: night lines + the Saturday-day crawl on its own line.
+  // Open roles in canonical order, deduped (a city runs MULTIPLE crawls per
+  // night; if a role is open in any crawl that night we list it once).
+  const orderOpen = (open: VenueRole[]): VenueRole[] =>
+    (["wristband", "middle", "final"] as VenueRole[]).filter((r) => open.includes(r));
+
+  // Slot lists are grouped by DATE, not per crawl. A city with 3 Friday crawls
+  // must not print "Friday" three times -- we aggregate the open roles across
+  // every crawl that night into one line/block per date. T8 slot menu
+  // ({{slot_list}}) is the terse one-line-per-night version; the day party is
+  // its own line.
   const nightLines: string[] = [];
   for (const dp of NIGHT_DAYPARTS) {
-    for (const e of eventsByDayPart(dp)) {
-      const open = openRolesForEvent(e, cityVes);
-      if (open.length === 0) continue;
-      nightLines.push(`${shortDateLabel(e.eventDate)}: ${openSlotsLabel(open)}`);
-    }
+    const first = eventsByDayPart(dp)[0];
+    if (!first) continue;
+    const open = orderOpen(openRolesForNight(dp));
+    if (open.length === 0) continue;
+    nightLines.push(`${shortDateLabel(first.eventDate)}: ${openSlotsLabel(open)}`);
   }
   fields.slot_list = nightLines.join("\n");
-  const dayCrawl = eventsByDayPart("saturday_day")[0];
-  if (dayCrawl) {
-    const open = openRolesForEvent(dayCrawl, cityVes);
-    if (open.length > 0) {
-      fields.slot_list_2 = `${shortDateLabel(dayCrawl.eventDate)} (day party): ${openSlotsLabel(open)}`;
+  const dayFirst = eventsByDayPart("saturday_day")[0];
+  const dayOpen = orderOpen(openRolesForNight("saturday_day"));
+  if (dayFirst && dayOpen.length > 0) {
+    fields.slot_list_2 = `${shortDateLabel(dayFirst.eventDate)} (day party): ${openSlotsLabel(dayOpen)}`;
+  }
+
+  // Rich open-slot list -- {{slot_list_detailed}}. One block per open date (and
+  // the day party), the open roles in canonical order with their time windows +
+  // a short description. Reads the crawl tables; drops filled slots + completed
+  // crawls; empty when nothing is open / no crawl in this city.
+  const detailedBlocks: string[] = [];
+  for (const dp of NIGHT_DAYPARTS) {
+    const first = eventsByDayPart(dp)[0];
+    if (!first) continue;
+    const open = orderOpen(openRolesForNight(dp));
+    if (open.length === 0) continue;
+    const lines = open.map((r) => `- ${detailedSlotLine(r, false)}`);
+    detailedBlocks.push(`${shortDateLabel(first.eventDate)}:\n${lines.join("\n")}`);
+  }
+  if (dayFirst && dayOpen.length > 0) {
+    const lines = dayOpen.map((r) => `- ${detailedSlotLine(r, true)}`);
+    detailedBlocks.push(`${shortDateLabel(dayFirst.eventDate)} (day party):\n${lines.join("\n")}`);
+  }
+
+  // Social proof -- venues already confirmed on OTHER slots in this city, as a
+  // separate paragraph after the open slots (operator: must read as distinct
+  // from what's open, not confuse it). Empty until venues start confirming;
+  // self-populates as the crawl fills. Excludes the recipient venue itself.
+  const confirmedIds = Array.from(
+    new Set(
+      cityVes
+        .filter((v) => v.status === "confirmed" && v.venueId && v.venueId !== input.venueId)
+        .map((v) => v.venueId),
+    ),
+  );
+  if (confirmedIds.length > 0) {
+    const confirmedRows = await db
+      .select({ name: venues.name })
+      .from(venues)
+      .where(inArray(venues.id, confirmedIds));
+    const names = confirmedRows
+      .map((r) => (r.name ?? "").trim())
+      .filter((n): n is string => n.length > 0);
+    if (names.length > 0) {
+      const MAX_NAMED = 6;
+      const shown = names.slice(0, MAX_NAMED);
+      const extra = names.length - shown.length;
+      const list = extra > 0 ? `${shown.join(", ")}, and ${extra} more` : joinAnd(shown);
+      const cityPhrase = fields.city ? ` for our ${fields.city} crawls` : "";
+      fields.confirmed_venues = `A few spots are already locked in: ${list} have confirmed${cityPhrase}.`;
     }
   }
 
-  // Rich open-slot list -- {{slot_list_detailed}}. Per open night (and the day
-  // party), the open roles in canonical order with their time windows + a short
-  // description. Reads the crawl tables; drops filled slots; empty when nothing
-  // is open / no crawl in this city.
-  const orderOpen = (open: VenueRole[]): VenueRole[] =>
-    (["wristband", "middle", "final"] as VenueRole[]).filter((r) => open.includes(r));
-  const detailedBlocks: string[] = [];
-  for (const dp of NIGHT_DAYPARTS) {
-    for (const e of eventsByDayPart(dp)) {
-      const open = openRolesForEvent(e, cityVes);
-      if (open.length === 0) continue;
-      const lines = orderOpen(open).map((r) => `- ${detailedSlotLine(r, false)}`);
-      detailedBlocks.push(`${shortDateLabel(e.eventDate)}:\n${lines.join("\n")}`);
-    }
-  }
-  if (dayCrawl) {
-    const open = openRolesForEvent(dayCrawl, cityVes);
-    if (open.length > 0) {
-      const lines = orderOpen(open).map((r) => `- ${detailedSlotLine(r, true)}`);
-      detailedBlocks.push(
-        `${shortDateLabel(dayCrawl.eventDate)} (day party):\n${lines.join("\n")}`,
-      );
-    }
-  }
-  fields.slot_list_detailed = detailedBlocks.join("\n\n");
+  // The detailed list a template renders ({{slot_list_detailed}}) carries the
+  // social-proof paragraph appended after the open slots, separated by a blank
+  // line so it never blends into the open-slot block.
+  fields.slot_list_detailed = [detailedBlocks.join("\n\n"), fields.confirmed_venues]
+    .filter((s) => s.length > 0)
+    .join("\n\n");
 
   fields.slot_shorthand = "a Halloween slot";
 
