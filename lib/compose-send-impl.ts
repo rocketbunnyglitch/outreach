@@ -676,7 +676,12 @@ export async function composeAndSendImpl(
         .update(emailThreads)
         .set({
           state: "waiting_on_them",
-          direction: "mixed",
+          // Only become "mixed" if the venue has actually sent something
+          // inbound. Replying to an outbound-only thread (e.g. a cold
+          // follow-up, RE: subject, no reply yet) must keep direction
+          // "outbound" so it stays in Sent, not the Inbox. Once the venue
+          // replies, the poll ingestion flips it to inbound/mixed.
+          direction: sql`case when ${emailThreads.direction} = 'outbound' then 'outbound' else 'mixed' end`,
           messageCount: sql`${emailThreads.messageCount} + 1`,
           lastOutboundAt: now,
           lastSenderName: inbox.email,

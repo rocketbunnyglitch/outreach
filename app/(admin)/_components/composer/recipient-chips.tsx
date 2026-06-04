@@ -42,13 +42,27 @@ interface Props {
    *  the operator's current typed query. When provided, a popover
    *  appears once the typed value is 2+ chars. */
   suggestions?: (query: string) => Promise<RecipientSuggestion[]>;
+  /** Mirror of the not-yet-committed typed text. The composer reads this on
+   *  send so a recipient typed-but-not-Entered still goes out -- otherwise
+   *  clicking Send before committing the chip dropped the address ("add at
+   *  least one recipient"). Kept in sync every render. */
+  pendingRef?: { current: string };
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUGGESTION_DEBOUNCE_MS = 180;
 
-export function RecipientChips({ value, onChange, placeholder, ariaLabel, suggestions }: Props) {
+export function RecipientChips({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  suggestions,
+  pendingRef,
+}: Props) {
   const [typed, setTyped] = useState("");
+  // Keep the parent's mirror current with whatever is half-typed in the input.
+  if (pendingRef) pendingRef.current = typed;
   const [showPopover, setShowPopover] = useState(false);
   const [matches, setMatches] = useState<RecipientSuggestion[]>([]);
   const [highlightedIdx, setHighlightedIdx] = useState(0);

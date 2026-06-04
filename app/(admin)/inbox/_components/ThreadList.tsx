@@ -334,11 +334,15 @@ function ThreadRow({
             <EngineStatusPill state={thread.state} />
           ) : null}
 
-          {/* SLA breach badge (recency-based, ad-hoc heuristic) */}
+          {/* Overdue badge (recency-based, ad-hoc heuristic). Labeled in plain
+              language -- "SLA" meant nothing to outreach staff. */}
           {thread.slaBreached && (
-            <span className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[9px] text-rose-700 uppercase tracking-widest dark:bg-rose-950/40 dark:text-rose-300">
+            <span
+              title="Overdue -- this reply has been waiting longer than it should"
+              className="inline-flex items-center gap-1 rounded-sm bg-rose-50 px-1.5 py-0.5 font-mono text-[9px] text-rose-700 uppercase tracking-widest dark:bg-rose-950/40 dark:text-rose-300"
+            >
               <AlertTriangle className="h-2.5 w-2.5" />
-              SLA
+              Overdue
             </span>
           )}
 

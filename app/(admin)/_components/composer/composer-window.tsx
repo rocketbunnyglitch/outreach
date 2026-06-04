@@ -75,7 +75,7 @@ const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Gmail's undo-send window is configurable up to 30s; 15s is the
  *  default. We follow that. After this elapses the actual send is
  *  dispatched. */
-const UNDO_WINDOW_MS = 15_000;
+const UNDO_WINDOW_MS = 5_000;
 
 interface Props {
   instance: ComposerInstance;
@@ -243,6 +243,19 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const toList = useMemo(() => parseAddressList(instance.to), [instance.to]);
   const ccList = useMemo(() => parseAddressList(instance.cc), [instance.cc]);
   const bccList = useMemo(() => parseAddressList(instance.bcc), [instance.bcc]);
+
+  // Mirrors of the not-yet-committed text in each recipient field. Reading
+  // these on send means an address typed but not Entered (the operator clicks
+  // Send straight after typing) still goes out, instead of being dropped with
+  // "add at least one recipient".
+  const pendingToRef = useRef("");
+  const pendingCcRef = useRef("");
+  const pendingBccRef = useRef("");
+  const withPending = useCallback((list: string[], ref: { current: string }): string[] => {
+    const p = ref.current.trim().replace(/[,;]+$/, "");
+    if (p && !list.some((v) => v.toLowerCase() === p.toLowerCase())) return [...list, p];
+    return list;
+  }, []);
 
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstSaveRef = useRef(true);
@@ -507,8 +520,11 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   // -------------------------------------------------------------
   function validate(): string | null {
     if (!instance.fromAccountId) return "Pick a From inbox before sending.";
-    if (toList.length === 0) return "Add at least one recipient.";
-    for (const addr of [...toList, ...ccList, ...bccList]) {
+    const effTo = withPending(toList, pendingToRef);
+    const effCc = withPending(ccList, pendingCcRef);
+    const effBcc = withPending(bccList, pendingBccRef);
+    if (effTo.length === 0) return "Add at least one recipient.";
+    for (const addr of [...effTo, ...effCc, ...effBcc]) {
       if (!isValidEmail(addr)) return `Invalid email address: ${addr}`;
     }
     if (!instance.bodyText.trim()) return "Body can't be empty.";
@@ -536,9 +552,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               inboxes?.find((x) => x.id === instance.fromAccountId)?.emailAddress ??
                 instance.fromAccountId,
             ]
-          : toList,
-        ccAddresses: opts.testOnly ? [] : ccList,
-        bccAddresses: opts.testOnly ? [] : bccList,
+          : withPending(toList, pendingToRef),
+        ccAddresses: opts.testOnly ? [] : withPending(ccList, pendingCcRef),
+        bccAddresses: opts.testOnly ? [] : withPending(bccList, pendingBccRef),
         subject: opts.testOnly ? `[TEST] ${instance.subject}` : instance.subject,
         bodyText: instance.bodyText,
         bodyHtml: instance.bodyHtml,
@@ -693,9 +709,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       const saveRes = await upsertDraft({
         id: instance.id,
         connectedAccountId: instance.fromAccountId,
-        toAddresses: toList,
-        ccAddresses: ccList,
-        bccAddresses: bccList,
+        toAddresses: withPending(toList, pendingToRef),
+        ccAddresses: withPending(ccList, pendingCcRef),
+        bccAddresses: withPending(bccList, pendingBccRef),
         subject: instance.subject,
         bodyText: instance.bodyText,
         bodyHtml: instance.bodyHtml,
@@ -775,9 +791,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     void upsertDraft({
       id: instance.id,
       connectedAccountId: instance.fromAccountId || null,
-      toAddresses: toList,
-      ccAddresses: ccList,
-      bccAddresses: bccList,
+      toAddresses: withPending(toList, pendingToRef),
+      ccAddresses: withPending(ccList, pendingCcRef),
+      bccAddresses: withPending(bccList, pendingBccRef),
       subject: instance.subject,
       bodyText: instance.bodyText,
       bodyHtml: instance.bodyHtml,
@@ -1137,6 +1153,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             placeholder="recipient@example.com"
             ariaLabel="To recipients"
             suggestions={fetchSuggestions}
+            pendingRef={pendingToRef}
           />
           <div className="flex shrink-0 items-center gap-1 pt-0.5">
             {!instance.showCc && (
@@ -1168,6 +1185,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               onChange={(next) => setField(instance.id, { cc: next.join(", ") })}
               ariaLabel="Cc recipients"
               suggestions={fetchSuggestions}
+              pendingRef={pendingCcRef}
             />
           </div>
         )}
@@ -1180,6 +1198,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               onChange={(next) => setField(instance.id, { bcc: next.join(", ") })}
               ariaLabel="Bcc recipients"
               suggestions={fetchSuggestions}
+              pendingRef={pendingBccRef}
             />
           </div>
         )}
