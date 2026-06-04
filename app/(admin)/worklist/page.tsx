@@ -1,27 +1,46 @@
 /**
- * /worklist - the operator's daily worklist (Phase 2.1 scaffold).
+ * /worklist - the operator's daily worklist.
  *
  * The single dummy-proofing surface: everything an operator needs to do today,
- * grouped into four queues (drafts, replies, follow-ups, calls). This phase
- * scaffolds the page + four section placeholders showing empty states; each
- * section is wired to real data in Phase 2.2-2.6.
+ * grouped into four queues (drafts, replies, follow-ups, calls). The four
+ * datasets are loaded once here and passed into the (presentational) sections;
+ * when all four are empty the page shows a celebratory "all caught up" state
+ * with today's completion stats (Phase 2.6).
  *
  * Intended as the primary landing for the outreach + lead roles; that default
- * post-login redirect is deliberately deferred until the sections carry real
- * data (Phase 2.2+), so operators are not dropped onto an empty page.
+ * post-login redirect is deliberately deferred until later, so operators are
+ * not dropped onto an empty page.
  */
 
 import { requireStaff } from "@/lib/auth";
+import {
+  loadWorklistCalls,
+  loadWorklistDrafts,
+  loadWorklistFollowUps,
+  loadWorklistReplies,
+} from "@/lib/worklist-data";
 import { CallsSection } from "./_components/calls-section";
 import { DraftsSection } from "./_components/drafts-section";
 import { FollowUpsSection } from "./_components/follow-ups-section";
 import { RepliesSection } from "./_components/replies-section";
+import { WorklistAllCaughtUp } from "./_components/worklist-all-caught-up";
 
 export const metadata = { title: "Daily worklist" };
 export const dynamic = "force-dynamic";
 
 export default async function WorklistPage() {
   const { staff } = await requireStaff();
+
+  // Load all four queues once so we can detect the all-empty state without
+  // double-querying; the sections render the data passed in.
+  const [drafts, replies, followUps, calls] = await Promise.all([
+    loadWorklistDrafts({ staffId: staff.id }),
+    loadWorklistReplies({ staffId: staff.id }),
+    loadWorklistFollowUps({ staffId: staff.id }),
+    loadWorklistCalls({ staffId: staff.id }),
+  ]);
+  const allEmpty =
+    drafts.length === 0 && replies.length === 0 && followUps.length === 0 && calls.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -33,12 +52,16 @@ export default async function WorklistPage() {
         </p>
       </header>
 
-      <div className="flex flex-col gap-4">
-        <DraftsSection staffId={staff.id} />
-        <RepliesSection staffId={staff.id} />
-        <FollowUpsSection staffId={staff.id} />
-        <CallsSection staffId={staff.id} />
-      </div>
+      {allEmpty ? (
+        <WorklistAllCaughtUp staffId={staff.id} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <DraftsSection drafts={drafts} />
+          <RepliesSection replies={replies} />
+          <FollowUpsSection followUps={followUps} />
+          <CallsSection calls={calls} />
+        </div>
+      )}
     </div>
   );
 }

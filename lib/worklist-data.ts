@@ -446,3 +446,62 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
   }
   return rows;
 }
+
+// =========================================================================
+// Today's completion stats (Phase 2.6) -- powers the worklist's "all caught
+// up" empty state. Three real, operator-attributable counters for the current
+// day. "Today" is bounded in America/Toronto entirely in SQL so the day rolls
+// over at local midnight regardless of the server's UTC clock.
+// =========================================================================
+
+export interface WorklistTodayStats {
+  /** New/cold outbound sent by the operator today (sends on threads with no inbound). */
+  draftsSent: number;
+  /** Replies sent by the operator today (sends on threads that had an inbound). */
+  repliesHandled: number;
+  /** Calls the operator logged today (outreach_log channel='call'). */
+  callsCompleted: number;
+}
+
+export async function loadWorklistTodayStats(opts: {
+  staffId: string;
+}): Promise<WorklistTodayStats> {
+  const { staffId } = opts;
+
+  // Sends split into cold (no prior inbound) vs replies (thread had inbound).
+  // last_inbound_at is the persisted "we've heard from them" marker on the
+  // thread; a send on such a thread is treated as a reply handled.
+  const sends = await db.execute<{ drafts_sent: number; replies_handled: number }>(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE t.last_inbound_at IS NULL)::int AS drafts_sent,
+      COUNT(*) FILTER (WHERE t.last_inbound_at IS NOT NULL)::int AS replies_handled
+    FROM email_send_events e
+    LEFT JOIN email_threads t ON t.id = e.thread_id
+    WHERE e.sent_by_user_id = ${staffId}
+      AND (e.sent_at AT TIME ZONE 'America/Toronto')
+          >= date_trunc('day', now() AT TIME ZONE 'America/Toronto')
+  `);
+
+  const calls = await db.execute<{ calls_completed: number }>(sql`
+    SELECT COUNT(*)::int AS calls_completed
+    FROM outreach_log
+    WHERE channel = 'call'
+      AND staff_member_id = ${staffId}
+      AND (created_at AT TIME ZONE 'America/Toronto')
+          >= date_trunc('day', now() AT TIME ZONE 'America/Toronto')
+  `);
+
+  const sendsRow = (Array.isArray(sends) ? sends[0] : sends.rows?.[0]) ?? {
+    drafts_sent: 0,
+    replies_handled: 0,
+  };
+  const callsRow = (Array.isArray(calls) ? calls[0] : calls.rows?.[0]) ?? {
+    calls_completed: 0,
+  };
+
+  return {
+    draftsSent: Number(sendsRow.drafts_sent ?? 0),
+    repliesHandled: Number(sendsRow.replies_handled ?? 0),
+    callsCompleted: Number(callsRow.calls_completed ?? 0),
+  };
+}

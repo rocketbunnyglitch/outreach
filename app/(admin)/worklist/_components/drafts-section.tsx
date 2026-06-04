@@ -1,19 +1,17 @@
 /**
  * Worklist Section 1: Drafts to review and send (Phase 2.2).
  *
- * Loads the operator's queued drafts (engine-generated + manual) and renders
- * them; the interactive rows live in the DraftsList client component. Empty
- * state when nothing is queued.
+ * Renders the operator's queued drafts (engine-generated + manual); the
+ * interactive rows live in the DraftsList client component. Empty state when
+ * nothing is queued. Data is loaded once by the worklist page and passed in.
  */
 
-import { loadWorklistDrafts } from "@/lib/worklist-data";
+import type { WorklistDraftRow } from "@/lib/worklist-data";
 import { FileCheck2 } from "lucide-react";
 import { DraftsList } from "./drafts-list";
 import { WorklistEmpty, WorklistSection } from "./worklist-section";
 
-export async function DraftsSection({ staffId }: { staffId: string }) {
-  const drafts = await loadWorklistDrafts({ staffId });
-
+export function DraftsSection({ drafts }: { drafts: WorklistDraftRow[] }) {
   return (
     <WorklistSection
       title="Drafts to review and send"

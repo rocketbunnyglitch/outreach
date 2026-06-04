@@ -7,14 +7,12 @@
  * FollowUpsList client component.
  */
 
-import { loadWorklistFollowUps } from "@/lib/worklist-data";
+import type { WorklistFollowUpRow } from "@/lib/worklist-data";
 import { CalendarClock } from "lucide-react";
 import { FollowUpsList } from "./follow-ups-list";
 import { WorklistEmpty, WorklistSection } from "./worklist-section";
 
-export async function FollowUpsSection({ staffId }: { staffId: string }) {
-  const followUps = await loadWorklistFollowUps({ staffId });
-
+export function FollowUpsSection({ followUps }: { followUps: WorklistFollowUpRow[] }) {
   return (
     <WorklistSection
       title="Follow-ups due"

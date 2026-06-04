@@ -13,7 +13,7 @@
  * rows get an amber accent so they stand out.
  */
 
-import { type WorklistReplyRow, loadWorklistReplies } from "@/lib/worklist-data";
+import type { WorklistReplyRow } from "@/lib/worklist-data";
 import { MessageSquareReply } from "lucide-react";
 import Link from "next/link";
 import { WorklistEmpty, WorklistSection } from "./worklist-section";
@@ -91,9 +91,7 @@ function ReplyRow({ reply }: { reply: WorklistReplyRow }) {
   );
 }
 
-export async function RepliesSection({ staffId }: { staffId: string }) {
-  const replies = await loadWorklistReplies({ staffId });
-
+export function RepliesSection({ replies }: { replies: WorklistReplyRow[] }) {
   return (
     <WorklistSection
       title="Replies needing attention"

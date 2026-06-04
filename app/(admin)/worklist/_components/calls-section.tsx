@@ -8,7 +8,7 @@
  * interactive piece.
  */
 
-import { type WorklistCallRow, loadWorklistCalls } from "@/lib/worklist-data";
+import type { WorklistCallRow } from "@/lib/worklist-data";
 import { PhoneCall } from "lucide-react";
 import { QuoDialControls } from "../../city-campaigns/_components/quo-dial-controls";
 import { WorklistEmpty, WorklistSection } from "./worklist-section";
@@ -54,9 +54,7 @@ function CallRow({ call }: { call: WorklistCallRow }) {
   );
 }
 
-export async function CallsSection({ staffId }: { staffId: string }) {
-  const calls = await loadWorklistCalls({ staffId });
-
+export function CallsSection({ calls }: { calls: WorklistCallRow[] }) {
   return (
     <WorklistSection
       title="Calls to make"
