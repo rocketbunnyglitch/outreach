@@ -37,7 +37,7 @@ export default async function WorklistPage() {
         <DraftsSection staffId={staff.id} />
         <RepliesSection staffId={staff.id} />
         <FollowUpsSection staffId={staff.id} />
-        <CallsSection />
+        <CallsSection staffId={staff.id} />
       </div>
     </div>
   );

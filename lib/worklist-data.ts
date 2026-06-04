@@ -7,11 +7,14 @@
 
 import "server-only";
 import {
+  campaigns,
   cities,
   cityCampaigns,
+  coldOutreachEntries,
   emailDrafts,
   emailTemplates,
   emailThreads,
+  outreachLog,
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
@@ -321,5 +324,125 @@ export async function loadWorklistFollowUps(opts: {
   }
 
   rows.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+  return rows;
+}
+
+export interface WorklistCallRow {
+  coldEntryId: string;
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  cityCampaignId: string;
+  outreachBrandId: string | null;
+  priority: number;
+  phoneE164: string | null;
+  venueHours: string | null;
+  venueTimezone: string | null;
+  summary: string;
+}
+
+const CALL_CAP = 8;
+
+function callSummary(status: string, isWarm: boolean, lastTouchAt: Date | null, now: Date): string {
+  const days = lastTouchAt ? Math.floor((now.getTime() - lastTouchAt.getTime()) / DAY_MS) : null;
+  if (status === "follow_up_due") return "Follow-up due";
+  if (isWarm) return days !== null ? `Warm, quiet for ${days}d` : "Warm lead";
+  if (status === "email_sent")
+    return days !== null ? `Emailed, no reply for ${days}d` : "Emailed, no reply";
+  return "Due for a call";
+}
+
+/**
+ * High-priority calls for the operator today (Phase 2.5). Cold entries the
+ * operator owns, in priority 1-3 cities, that are due for a call (emailed but
+ * silent 5+ days, a warm lead gone quiet, or follow_up_due) and have NOT been
+ * called in the last 2 days. Capped at 8 (more than an operator can realistically
+ * make), ranked by city priority then stalest-first.
+ *
+ * "Last call attempt" reads outreach_log channel='call' (where click-to-call
+ * logs every attempt). Phone dialling reuses QuoDialControls.
+ */
+export async function loadWorklistCalls(opts: { staffId: string }): Promise<WorklistCallRow[]> {
+  const now = new Date();
+  const fiveDaysAgo = new Date(now.getTime() - 5 * DAY_MS);
+  const twoDaysAgo = new Date(now.getTime() - 2 * DAY_MS);
+
+  const candidates = await db
+    .select({
+      coldEntryId: coldOutreachEntries.id,
+      venueId: coldOutreachEntries.venueId,
+      cityCampaignId: coldOutreachEntries.cityCampaignId,
+      status: coldOutreachEntries.status,
+      isWarm: coldOutreachEntries.isWarm,
+      lastTouchAt: coldOutreachEntries.lastTouchAt,
+      priority: cityCampaigns.priority,
+      outreachBrandId: campaigns.outreachBrandId,
+      venueName: venues.name,
+      phoneE164: venues.phoneE164,
+      venueHours: venues.hours,
+      cityName: cities.name,
+      cityTimezone: cities.timezone,
+    })
+    .from(coldOutreachEntries)
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, coldOutreachEntries.cityCampaignId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .innerJoin(venues, eq(venues.id, coldOutreachEntries.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .where(
+      and(
+        eq(coldOutreachEntries.assignedStaffId, opts.staffId),
+        lte(cityCampaigns.priority, 3),
+        or(
+          and(
+            eq(coldOutreachEntries.status, "email_sent"),
+            lte(coldOutreachEntries.lastTouchAt, fiveDaysAgo),
+          ),
+          and(
+            eq(coldOutreachEntries.isWarm, true),
+            lte(coldOutreachEntries.lastTouchAt, fiveDaysAgo),
+          ),
+          eq(coldOutreachEntries.status, "follow_up_due"),
+        ),
+      ),
+    )
+    .orderBy(asc(cityCampaigns.priority), asc(coldOutreachEntries.lastTouchAt))
+    .limit(40);
+
+  if (candidates.length === 0) return [];
+
+  // Last call attempt per venue, from the click-to-call log.
+  const venueIds = [...new Set(candidates.map((c) => c.venueId))];
+  const lastCalls = await db
+    .select({
+      venueId: outreachLog.venueId,
+      lastCallAt: sql<string | null>`max(${outreachLog.createdAt})`,
+    })
+    .from(outreachLog)
+    .where(and(inArray(outreachLog.venueId, venueIds), eq(outreachLog.channel, "call")))
+    .groupBy(outreachLog.venueId);
+  const lastCallByVenue = new Map(
+    lastCalls.map((r) => [r.venueId, r.lastCallAt ? new Date(r.lastCallAt) : null]),
+  );
+
+  const rows: WorklistCallRow[] = [];
+  for (const c of candidates) {
+    const lastCallAt = lastCallByVenue.get(c.venueId) ?? null;
+    // Skip venues called within the last 2 days.
+    if (lastCallAt && lastCallAt.getTime() > twoDaysAgo.getTime()) continue;
+    rows.push({
+      coldEntryId: c.coldEntryId,
+      venueId: c.venueId,
+      venueName: c.venueName,
+      cityName: c.cityName ?? null,
+      cityCampaignId: c.cityCampaignId,
+      outreachBrandId: c.outreachBrandId ?? null,
+      priority: c.priority,
+      phoneE164: c.phoneE164 ?? null,
+      venueHours: c.venueHours ?? null,
+      venueTimezone: c.cityTimezone ?? null,
+      summary: callSummary(c.status, c.isWarm, c.lastTouchAt, now),
+    });
+    if (rows.length >= CALL_CAP) break;
+  }
   return rows;
 }
