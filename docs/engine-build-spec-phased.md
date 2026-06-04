@@ -133,7 +133,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 2.4 — Worklist Section 3: Follow-ups due (next few days) (72de24f)
 - [x] 2.5 — Worklist Section 4: Calls to make today (c53aa4b)
 - [x] 2.6 — Worklist empty-state + completion stats (561bb5d)
-- [ ] 2.7 — Inbox: engine suggestion bar above reply
+- [x] 2.7 — Inbox: engine suggestion bar above reply (efdfcd7)
 - [ ] 2.8 — Inbox: classification confirmation chip
 - [ ] 2.9 — Inbox: suggested-response UI for questions
 - [ ] 2.10 — Inbox: cadence floor warning in composer
