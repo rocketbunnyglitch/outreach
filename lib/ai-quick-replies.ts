@@ -93,6 +93,12 @@ Constraints:
     no "Hi NAME," opener (the operator's signature handles
     those). Start with the action / answer.
   - Use plain text, no markdown.
+  - NEVER ask the venue whether they are hosting a costume party, a
+    costume contest, or their own Halloween event. It confuses them
+    (they may think WE are running a contest or some special thing). To
+    surface what they have going, ask ONLY whether there is anything
+    they would like us to mention to their guests, like drink specials
+    or anything else they have on that night.
   - If the venue asked a specific question the operator
     couldn't possibly know the answer to (e.g. "what's
     your insurance carrier"), have reply 1 acknowledge +
