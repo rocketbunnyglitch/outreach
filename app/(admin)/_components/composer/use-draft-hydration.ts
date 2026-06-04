@@ -65,6 +65,8 @@ export function useDraftHydration() {
           replyToMessageId: r.replyToMessageId ?? null,
           pendingLabelIds: r.pendingLabelIds ?? [],
           quotedHtml: r.quotedHtml ?? null,
+          // Restored existing draft: never auto-pick (operators work is preserved).
+          enginePickAttempted: true,
         }));
         hydrate(instances);
       })

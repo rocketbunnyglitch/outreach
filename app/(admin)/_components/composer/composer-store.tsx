@@ -93,6 +93,12 @@ export interface ComposerInstance {
    *  Rendered behind a "..." chip below the editable surface;
    *  concatenated onto bodyHtml at send time. */
   quotedHtml: string | null;
+  /** Whether the engine template auto-pick (Phase 1.5) has already run for
+   *  this draft. Lives on the persisted store instance (not a component ref)
+   *  so a router.refresh()-driven remount of the composer NEVER re-fires the
+   *  pick and clobbers the operator's chosen template. Restored drafts set
+   *  this true (they already had their chance); fresh drafts start false. */
+  enginePickAttempted: boolean;
 }
 
 export interface OpenComposerInput {
@@ -237,6 +243,8 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       replyToMessageId: input.replyToMessageId ?? null,
       pendingLabelIds: [],
       quotedHtml: null,
+      // Fresh draft -> eligible for exactly one engine auto-pick.
+      enginePickAttempted: false,
     };
     dispatch({ type: "open", payload: { id, instance } });
     return id;
@@ -373,6 +381,9 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
               replyToMessageId: row.replyToMessageId,
               pendingLabelIds: row.pendingLabelIds ?? [],
               quotedHtml: row.quotedHtml ?? null,
+              // A just-created reply/forward draft (openReplyDraft) is
+              // eligible for one engine auto-pick (Phase 1.5 / 2.7).
+              enginePickAttempted: false,
             },
           ]);
         });

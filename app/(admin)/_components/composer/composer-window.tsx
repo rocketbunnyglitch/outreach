@@ -318,6 +318,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   // [ReferenceDoc Section 7 + 8.7] engine picks, operator overrides.
   // -------------------------------------------------------------
   useEffect(() => {
+    // Cross-mount one-shot: enginePickAttempted lives on the persisted store
+    // instance (which survives router.refresh, fired every 60s by
+    // RealtimeRefresh). A component-local ref would reset on remount and let
+    // the pick re-fire, clobbering the operator's chosen template -- the
+    // "draft resets to T1 after a minute" bug. The local ref below still
+    // guards against a double-run within a single mount (before the store
+    // update propagates).
+    if (instance.enginePickAttempted) return;
     if (enginePickRanRef.current) return;
     if (!templates || templates.length === 0) return;
     if (instance.templateId || instance.enginePickedTemplateId) return;
@@ -327,6 +335,8 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     if (!hasColdAttribution && !hasReplyAttribution) return;
 
     enginePickRanRef.current = true;
+    // Persist the attempt immediately so a remount mid-pick never re-runs it.
+    setField(instance.id, { enginePickAttempted: true });
     let cancelled = false;
     pickTemplateForComposer({
       venueId: instance.venueId,
