@@ -55,6 +55,9 @@ export interface TrackerRow {
    * omits the badge when null.
    */
   countryCode?: string | null;
+  /** IANA timezone of the city, for the operating-hours dot beside the name.
+   *  Falls back to America/Toronto upstream when a city has none recorded. */
+  cityTimezone?: string | null;
   priority: number;
   totalSalesCents: number;
   status: "planning" | "active" | "confirmed" | "cancelled";
@@ -991,6 +994,59 @@ function PriorityCell({ row }: { row: TrackerRow }) {
 }
 
 /**
+ * CityHoursDot — a small glowing dot beside a city name signaling whether it's
+ * within outreach/operating hours in THAT city's local time. Green + pulse
+ * when it's a good time to reach out (9-21 local), amber at the edges
+ * (7-9 / 21-22), grey otherwise. Hover shows the city's exact local time.
+ * Clock read is deferred to an effect so SSR and first paint match.
+ */
+function CityHoursDot({ cityName, timezone }: { cityName: string; timezone: string }) {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!now) {
+    return (
+      <span
+        className="inline-block h-2 w-2 shrink-0 rounded-full bg-zinc-300 align-middle dark:bg-zinc-700"
+        aria-hidden="true"
+      />
+    );
+  }
+  const hour = Number.parseInt(
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", hour12: false }).format(
+      now,
+    ),
+    10,
+  );
+  const localTime = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(now);
+  let cls = "bg-zinc-300 dark:bg-zinc-700";
+  let label = "outside outreach hours";
+  if (hour >= 9 && hour < 21) {
+    cls = "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.25)] animate-pulse";
+    label = "outreach hours";
+  } else if ((hour >= 7 && hour < 9) || (hour >= 21 && hour < 22)) {
+    cls = "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.2)]";
+    label = "borderline outreach time";
+  }
+  return (
+    <span
+      className={`inline-block h-2 w-2 shrink-0 rounded-full align-middle ${cls}`}
+      title={`${cityName}: ${localTime} local - ${label}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
  * Mobile (<sm) variant of CityRow — one card per city. Same editable
  * controls as the table cells, stacked vertically. Tap targets sized
  * up (checkbox is h-5 w-5 inside a p-2 hit area; chevron is h-9 w-9).
@@ -1069,6 +1125,10 @@ function CityCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <PriorityCell row={row} />
+            <CityHoursDot
+              cityName={row.cityName}
+              timezone={row.cityTimezone ?? "America/Toronto"}
+            />
             <Link
               href={`/city-campaigns/${row.cityCampaignId}`}
               className="min-w-0 flex-1 truncate font-medium text-base text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
@@ -1290,6 +1350,7 @@ function CityRow({
             FROZEN_BASE,
           )}
         >
+          <CityHoursDot cityName={row.cityName} timezone={row.cityTimezone ?? "America/Toronto"} />
           <Link
             href={`/city-campaigns/${row.cityCampaignId}`}
             className="font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"

@@ -32,6 +32,7 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
       // to the city name to disambiguate "London CAN" vs "London
       // GBR" — operator feedback (screenshot).
       cityCountryCode: cities.countryCode,
+      cityTimezone: cities.timezone,
       priority: cityCampaigns.priority,
       status: cityCampaigns.status,
       leadStaffId: cityCampaigns.leadStaffId,
@@ -81,6 +82,7 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
     cityId: r.cityId,
     cityName: r.cityName,
     countryCode: r.cityCountryCode ?? null,
+    cityTimezone: r.cityTimezone ?? "America/Toronto",
     priority: r.priority ?? 5,
     totalSalesCents: salesMap[r.cityCampaignId] ?? 0,
     status: (r.status as TrackerRow["status"]) ?? "planning",
