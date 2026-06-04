@@ -45,6 +45,7 @@ export * from "./event-submission-sites";
 export * from "./events";
 export * from "./venues";
 export * from "./venue-domain-aliases";
+export * from "./venue-domain-relationships";
 export * from "./venue-events";
 export * from "./outreach";
 export * from "./email-send-events";

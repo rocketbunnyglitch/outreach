@@ -4,8 +4,10 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  outreachBrands,
   users,
   venueDomainAliases,
+  venueDomainRelationships,
   venueEvents,
   venues,
   wristbands,
@@ -40,8 +42,13 @@ import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
 import { VenueEnrichButton } from "../_components/venue-enrich-button";
 import { VenueForm } from "../_components/venue-form";
+import {
+  type VenueRelationshipRow,
+  VenueRelationshipsSection,
+} from "../_components/venue-relationships-section";
 import { VenueQuickLinks, VenueSummaryStrip } from "../_components/venue-summary-strip";
 import { VenueWristbandSection } from "../_components/venue-wristband-section";
+import { removeVenueRelationship, setVenueRelationship } from "../_relationship-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -153,6 +160,52 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     }),
     matchedThreadCount: Number(a.matchedThreadCount ?? 0),
   }));
+
+  // Per-brand relationship flags (Phase 3.8). One row per outreach brand this
+  // venue has a recorded relationship with. Guarded like crawlHistory so a
+  // query failure (e.g. table not yet migrated on this env) degrades to an
+  // empty section instead of 500-ing the page. Dates are formatted server-side
+  // (pinned tz) so the client component renders plain strings.
+  let relationshipRows: VenueRelationshipRow[] = [];
+  try {
+    const fmtDate = (d: Date) =>
+      d.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "America/Toronto",
+      });
+    const rows = await db
+      .select({
+        id: venueDomainRelationships.id,
+        outreachBrandId: venueDomainRelationships.outreachBrandId,
+        brandName: outreachBrands.displayName,
+        status: venueDomainRelationships.status,
+        setBy: venueDomainRelationships.setBy,
+        notes: venueDomainRelationships.notes,
+        setAt: venueDomainRelationships.setAt,
+        autoClearAt: venueDomainRelationships.autoClearAt,
+        setByName: users.displayName,
+      })
+      .from(venueDomainRelationships)
+      .innerJoin(outreachBrands, eq(outreachBrands.id, venueDomainRelationships.outreachBrandId))
+      .leftJoin(users, eq(users.id, venueDomainRelationships.setByStaffId))
+      .where(eq(venueDomainRelationships.venueId, id))
+      .orderBy(asc(outreachBrands.displayName));
+    relationshipRows = rows.map((r) => ({
+      id: r.id,
+      outreachBrandId: r.outreachBrandId,
+      brandName: r.brandName,
+      status: r.status,
+      setBy: r.setBy,
+      notes: r.notes,
+      setByName: r.setByName,
+      setAtLabel: fmtDate(r.setAt),
+      autoClearAtLabel: r.autoClearAt ? fmtDate(r.autoClearAt) : null,
+    }));
+  } catch (err) {
+    console.error("[venue] relationship query failed", err);
+  }
 
   // Confirmed/scheduled crawl history for this venue. Guarded so a query
   // failure (e.g. an enum value not yet migrated) degrades to an empty
@@ -293,6 +346,17 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         dismissSuggestionAction={dismissSuggestion}
         createAction={createNote}
         deleteAction={deleteNote}
+      />
+
+      {/* Per-brand relationship flags (Phase 3.8) -- how this venue feels about
+          each outreach brand. A 'bad' flag warns (and, in later phases, blocks)
+          sends from that brand. */}
+      <VenueRelationshipsSection
+        venueId={id}
+        brands={outreachBrandsList.map((b) => ({ id: b.id, displayName: b.displayName }))}
+        relationships={relationshipRows}
+        setAction={setVenueRelationship}
+        removeAction={removeVenueRelationship}
       />
 
       <OutreachLogSection
