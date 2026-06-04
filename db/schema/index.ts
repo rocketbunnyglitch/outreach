@@ -80,3 +80,4 @@ export * from "./cron-runs";
 export * from "./reference-docs";
 export * from "./venue-campaign-touch-log";
 export * from "./engine-role-assignments";
+export * from "./classifier-runs";

@@ -29,11 +29,12 @@ import "server-only";
  * cost. Opus is overkill here.
  */
 
-import { cities, emailMessages, emailThreads, venues } from "@/db/schema";
+import { cities, classifierRuns, emailMessages, emailThreads, venues } from "@/db/schema";
 import { generateCompletion, isAiConfigured } from "@/lib/ai";
 import { syncColdStatusFromClassificationAsync } from "@/lib/ai-auto-status";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { formatAsSystemPrompt, retrieveRelevantSections } from "@/lib/reference-retrieval";
 import { and, desc, eq } from "drizzle-orm";
 
 const CLASSIFIER_MODEL = "claude-haiku-4-5-20251001";
@@ -52,6 +53,8 @@ const VALID_CLASSIFICATIONS = [
   "unsubscribe",
   "auto_reply",
   "spam",
+  "stalled_warm",
+  "cancelled_by_them",
 ] as const;
 
 type Classification = (typeof VALID_CLASSIFICATIONS)[number];
@@ -101,6 +104,16 @@ classification from this exact list, with a 0..1 confidence:
 
   spam                — The reply itself is unrelated marketing, phishing,
                         or noise. Rare on cold-outreach threads.
+
+  stalled_warm        - A thread that was previously interested/warm has gone
+                        quiet or keeps deferring without a no: "let me check
+                        and get back to you" that never lands, repeated "not
+                        sure yet." Use ONLY when the prior thread shows earlier
+                        positive intent; a fresh pass is "decline," not this.
+
+  cancelled_by_them   - The venue had agreed/confirmed and is now backing out:
+                        "we have to cancel," "we can no longer host." Distinct
+                        from "decline" (which is a no BEFORE any agreement).
 
 Tie-breaker rules:
   - If the reply both asks a question AND signals interest, prefer
@@ -220,8 +233,23 @@ export async function classifyInboundMessage(
     },
   });
 
+  // Ground the classifier in the Reference Doc's classification rules
+  // (sections 6.3/6.4/8.3/8.4 via the curated `classify_reply` map, topped up
+  // semantically by the reply text). Prepended to the static instructions so
+  // the doc's rules lead. Degrades to the static prompt when no doc/embeddings
+  // are configured. [ReferenceDoc 6.3 + 8.4]
+  const retrieved = await retrieveRelevantSections({
+    task: "classify_reply",
+    query: truncate(msg.bodyText ?? "", 1000),
+    topK: 4,
+  });
+  const retrievedCodes = retrieved.map((s) => s.sectionCode);
+  const groundedSystem = [formatAsSystemPrompt(retrieved), SYSTEM_PROMPT]
+    .filter(Boolean)
+    .join("\n\n");
+
   const result = await generateCompletion({
-    system: SYSTEM_PROMPT,
+    system: groundedSystem,
     prompt,
     tag: "inbox_auto_classify",
     model: CLASSIFIER_MODEL,
@@ -243,6 +271,22 @@ export async function classifyInboundMessage(
       "[ai-classify] could not parse model output",
     );
     return null;
+  }
+
+  // Audit the run: which doc sections grounded it + the model output. Logged
+  // for every successful classification (even when the suggestion write is
+  // skipped below), so classifier_runs is a complete record. Best-effort.
+  try {
+    await db.insert(classifierRuns).values({
+      threadId: input.threadId,
+      messageId: input.messageId,
+      retrievedSectionCodes: retrievedCodes,
+      classification: parsed.classification,
+      confidence: parsed.confidence.toFixed(3),
+      model: CLASSIFIER_MODEL,
+    });
+  } catch (err) {
+    logger.warn({ err, threadId: input.threadId }, "[ai-classify] classifier_runs insert failed");
   }
 
   // Write suggestion to the thread. ONLY writes the suggested_*
