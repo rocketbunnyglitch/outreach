@@ -47,7 +47,7 @@ import {
   listThreadLabels,
   removeLabelFromThread,
 } from "@/lib/team-labels";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1354,13 +1354,20 @@ export async function bulkUpdateThreads(
     // first-time-read timestamp, not a recurring state. Toggling
     // unread on after read doesn't un-read history.
     if (act === "mark_read") {
-      await db.execute(sql`
-        UPDATE email_messages
-        SET read_at = NOW()
-        WHERE thread_id = ANY(${okIds}::uuid[])
-          AND direction = 'inbound'
-          AND read_at IS NULL
-      `);
+      // Use drizzle inArray, NOT sql`= ANY(${okIds}::uuid[])`: interpolating a
+      // JS array into a raw sql template binds each element as a separate
+      // parameter, so the ::uuid[] cast receives a bare uuid string and Postgres
+      // throws "malformed array literal". That broke bulk mark-read entirely.
+      await db
+        .update(emailMessages)
+        .set({ readAt: now })
+        .where(
+          and(
+            inArray(emailMessages.threadId, okIds),
+            eq(emailMessages.direction, "inbound"),
+            isNull(emailMessages.readAt),
+          ),
+        );
     }
 
     // Gmail mirror for every action that maps to a Gmail label
