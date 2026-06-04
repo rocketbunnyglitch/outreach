@@ -283,10 +283,10 @@ export function ThreadPane({
           pick for this thread above the reply controls. "Use this
           template" opens the reply; the composer applies the same pick
           (Phase 1.5) and offers the alternatives swap. Renders nothing
-          when there's no confident pick. */}
-      <div className="hidden lg:block">
-        <ThreadSuggestionBar threadId={thread.id} />
-      </div>
+          when there's no confident pick. Shown on mobile too -- "Use"
+          dispatches inbox-reply, which the mounted (hidden) reply bridge
+          handles to open the composer. */}
+      <ThreadSuggestionBar threadId={thread.id} />
 
       {/* Reply triggers — Reply / Reply All / Forward all hand off
           to the global composer, which carries the full Gmail-style
