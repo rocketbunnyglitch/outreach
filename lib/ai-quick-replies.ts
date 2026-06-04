@@ -38,6 +38,7 @@ import { generateCompletion, isAiConfigured } from "@/lib/ai";
 import { isAiFeatureEnabled, truncateForAi } from "@/lib/ai-guardrails";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { formatAsSystemPrompt, retrieveRelevantSections } from "@/lib/reference-retrieval";
 import { desc, eq } from "drizzle-orm";
 
 const QUICK_REPLY_MODEL = "claude-haiku-4-5-20251001";
@@ -232,9 +233,35 @@ ${messagesBlock}
 
 Return the JSON object with exactly 3 reply chips.`;
 
+  // Reference-Doc grounding (Phase 2.9). When the inbound is a QUESTION,
+  // ground the suggested responses in the engine's actual policies (slot
+  // times, pricing, FAQ answers) so the chips quote real specifics instead of
+  // inventing them. Retrieval is curated -> semantic -> FTS; degrades to the
+  // ungrounded prompt if nothing is found. Only for questions to bound cost.
+  // [ReferenceDoc 8.5]
+  let systemPrompt = SYSTEM_PROMPT;
+  if (effectiveClass === "question") {
+    try {
+      const sections = await retrieveRelevantSections({
+        task: "suggest_response",
+        query: truncateForAi(latest.bodyText ?? thread.subject ?? "", 600),
+        topK: 4,
+      });
+      const grounding = formatAsSystemPrompt(sections);
+      if (grounding.trim()) {
+        systemPrompt = `${grounding}\n\n${SYSTEM_PROMPT}`;
+      }
+    } catch (err) {
+      logger.warn(
+        { err, threadId: input.threadId },
+        "suggest_response retrieval failed; using ungrounded prompt",
+      );
+    }
+  }
+
   const start = Date.now();
   const aiResult = await generateCompletion({
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     prompt: userPrompt,
     model: QUICK_REPLY_MODEL,
     maxTokens: QUICK_REPLY_MAX_TOKENS,
