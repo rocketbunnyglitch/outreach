@@ -222,3 +222,27 @@ async function advanceThread(t: DueThread): Promise<boolean> {
   await pause();
   return true;
 }
+
+/**
+ * Generate the engine draft for a single thread on demand (the worklist
+ * "Draft now" action, Phase 2.4) -- the same logic the daily cron runs, pulled
+ * forward for one thread. Loads the thread's cadence inputs and runs the shared
+ * advanceThread path; returns true when a draft was created, false when the
+ * thread can't be advanced (missing venue/campaign/template, etc.) or does not
+ * exist. Like the cron, it pauses the thread after generating.
+ */
+export async function generateCadenceDraftForThread(threadId: string): Promise<boolean> {
+  const [t] = await db
+    .select({
+      id: emailThreads.id,
+      venueId: emailThreads.venueId,
+      cityCampaignId: emailThreads.cityCampaignId,
+      staffOutreachEmailId: emailThreads.staffOutreachEmailId,
+      assignedStaffId: emailThreads.assignedStaffId,
+    })
+    .from(emailThreads)
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!t) return false;
+  return advanceThread(t);
+}

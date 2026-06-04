@@ -15,7 +15,8 @@ import {
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { planFromState } from "./cadence-engine-core";
 
 export interface WorklistDraftRow {
   id: string;
@@ -191,4 +192,134 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
   );
 
   return mapped;
+}
+
+export interface WorklistFollowUpRow {
+  /** cadence = a due cadence touch on a thread (action: Draft now). */
+  /** scheduled_draft = an already-built draft scheduled to go out (action: Review). */
+  kind: "cadence" | "scheduled_draft";
+  /** thread id (cadence) or draft id (scheduled_draft). */
+  id: string;
+  dueAt: string;
+  /** Today / Tomorrow / weekday, in the campaign timezone. */
+  dayLabel: string;
+  touchLabel: string;
+  venueName: string | null;
+  cityName: string | null;
+  daysSinceLastTouch: number | null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DISPLAY_TZ = "America/Toronto";
+
+function dayLabelFor(due: Date, now: Date): string {
+  const ymd = (d: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: DISPLAY_TZ,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  const dueKey = ymd(due);
+  if (dueKey === ymd(now)) return "Today";
+  if (dueKey === ymd(new Date(now.getTime() + DAY_MS))) return "Tomorrow";
+  return new Intl.DateTimeFormat("en-US", { timeZone: DISPLAY_TZ, weekday: "long" }).format(due);
+}
+
+function humanizeTouchKind(touchKind: string): string {
+  return touchKind.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Upcoming work for the operator's owned venues over the next 7 days (Phase
+ * 2.4): cadence touches that come due (from the thread's cadence_state +
+ * cadence_next_due_at) plus scheduled drafts (the lifecycle T11/T13/... touches
+ * land here once the lifecycle scheduler runs in Phase 3.x). Returned flat,
+ * sorted by due time; the section groups by dayLabel.
+ */
+export async function loadWorklistFollowUps(opts: {
+  staffId: string;
+}): Promise<WorklistFollowUpRow[]> {
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 7 * DAY_MS);
+
+  const cadenceRows = await db
+    .select({
+      id: emailThreads.id,
+      cadenceState: emailThreads.cadenceState,
+      cadenceNextDueAt: emailThreads.cadenceNextDueAt,
+      lastOutboundAt: emailThreads.lastOutboundAt,
+      venueName: venues.name,
+      cityName: cities.name,
+    })
+    .from(emailThreads)
+    .leftJoin(venues, eq(venues.id, emailThreads.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .where(
+      and(
+        eq(emailThreads.assignedStaffId, opts.staffId),
+        gt(emailThreads.cadenceNextDueAt, now),
+        lte(emailThreads.cadenceNextDueAt, horizon),
+        isNull(emailThreads.deletedAt),
+      ),
+    );
+
+  const templateJoin = sql`${emailTemplates.id} = coalesce(${emailDrafts.enginePickedTemplateId}, ${emailDrafts.templateId})`;
+  const draftRows = await db
+    .select({
+      id: emailDrafts.id,
+      scheduledFor: emailDrafts.scheduledFor,
+      templateCode: emailTemplates.templateCode,
+      venueName: venues.name,
+      cityName: cities.name,
+    })
+    .from(emailDrafts)
+    .leftJoin(emailTemplates, templateJoin)
+    .leftJoin(venues, eq(venues.id, emailDrafts.venueId))
+    .leftJoin(cityCampaigns, eq(cityCampaigns.id, emailDrafts.cityCampaignId))
+    .leftJoin(cities, eq(cities.id, cityCampaigns.cityId))
+    .where(
+      and(
+        eq(emailDrafts.ownerUserId, opts.staffId),
+        isNull(emailDrafts.sentAt),
+        gt(emailDrafts.scheduledFor, now),
+        lte(emailDrafts.scheduledFor, horizon),
+      ),
+    );
+
+  const rows: WorklistFollowUpRow[] = [];
+
+  for (const r of cadenceRows) {
+    if (!r.cadenceNextDueAt) continue;
+    const plan = r.cadenceState ? planFromState(r.cadenceState, r.lastOutboundAt ?? now) : null;
+    rows.push({
+      kind: "cadence",
+      id: r.id,
+      dueAt: r.cadenceNextDueAt.toISOString(),
+      dayLabel: dayLabelFor(r.cadenceNextDueAt, now),
+      touchLabel: plan ? humanizeTouchKind(plan.touchKind) : "Follow-up",
+      venueName: r.venueName ?? null,
+      cityName: r.cityName ?? null,
+      daysSinceLastTouch: r.lastOutboundAt
+        ? Math.floor((now.getTime() - r.lastOutboundAt.getTime()) / DAY_MS)
+        : null,
+    });
+  }
+
+  for (const r of draftRows) {
+    if (!r.scheduledFor) continue;
+    rows.push({
+      kind: "scheduled_draft",
+      id: r.id,
+      dueAt: r.scheduledFor.toISOString(),
+      dayLabel: dayLabelFor(r.scheduledFor, now),
+      touchLabel: r.templateCode ?? "Scheduled draft",
+      venueName: r.venueName ?? null,
+      cityName: r.cityName ?? null,
+      daysSinceLastTouch: null,
+    });
+  }
+
+  rows.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+  return rows;
 }
