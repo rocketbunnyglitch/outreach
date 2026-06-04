@@ -127,7 +127,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 
 ### Phase 2 — Operator daily UX
 
-- [ ] 2.1 — `/worklist` page scaffolding + nav entry
+- [x] 2.1 — `/worklist` page scaffolding + nav entry (b41ef32)
 - [ ] 2.2 — Worklist Section 1: Drafts to review and send
 - [ ] 2.3 — Worklist Section 2: Pending replies
 - [ ] 2.4 — Worklist Section 3: Follow-ups due (next few days)
