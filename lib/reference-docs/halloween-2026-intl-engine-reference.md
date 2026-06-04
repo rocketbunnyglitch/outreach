@@ -499,6 +499,15 @@ The number quoted to a venue is determined by **slot type × priority**, NOT by 
 
 Exception: the late-stage manual bump in 5.5.
 
+### 5.7 Where the pitch number is surfaced [ENGINE - current behavior]
+
+The initial-pitch number from 5.2 is derived from **city priority x slot type** and is available **even before a venue is booked** - when the venue has no confirmed role yet the engine falls back to the city's primary crawl and a default slot, so an opener can still quote the expected turnout. It is surfaced in:
+
+- **Warm re-engagement opener (T3):** a light expected-guests mention - "around {{guest_count}} guests through each venue across the night" - so a past partner sees the upside up front.
+- **Slot-detail follow-up (T4):** the full quote - "around {{guest_count}} people for your slot" - paired with the 5.1 wave qualifier.
+
+The bare cold openers (T1/T2) intentionally omit a number (the ask is the slot, not the turnout pitch). Detailed turnout quotes (T4 onward) always carry the wave framing from 5.1; the T3 one-liner is a teaser, not a precise commitment.
+
 ---
 
 ## 6. Cadence and anti-spam [LOCKED]
@@ -587,6 +596,25 @@ Call outcomes feed back into email cadence:
 ### 6.8 Known gap: call logging is inconsistent
 
 The engine currently has some call-logging integration (likely OpenPhone or similar), but tracking is partial. **Phase 2 build item:** full call logging to venue detail page — every call, outcome, operator, notes, timestamp.
+
+### 6.9 Send pacing — cold-send cooldown + email queue [ENGINE - current behavior]
+
+On top of the cadence floors (6.1-6.4) and the per-campaign hard cap (6.3), the engine paces individual SENDS to protect deliverability — Gmail flags bursts. Every queued or sent email is still **human-written and human-reviewed**; pacing only controls WHEN a message leaves the inbox, never what it says.
+
+- **Cold-send cooldown.** After a cold send to a NEW thread, that inbox enters a randomized **5-8 minute** cooldown before the next cold send is allowed. Warm replies / in-thread sends are exempt (those are responses, not outreach). The composer shows a live countdown ring next to the inbox's daily send counter; an admin can override.
+- **Email queue.** Instead of "Send now", an operator can **Queue** a cold email and move on. Queued sends auto-stagger per inbox on an irregular schedule — roughly **4-9 minutes apart, with sub-minute jitter and an occasional longer pause** — so a batch never goes out as a burst and the spacing isn't a detectable fixed rhythm. A background cron dispatches each one when its time arrives; the **Email Queue** page shows Queued / Sending / Sent with cancel + edit. The per-inbox daily send cap still applies at dispatch time.
+
+The intent: an operator can write and review a batch of cold emails, queue them, and switch to other work while they trickle out naturally.
+
+### 6.10 How open slots are communicated in openers [ENGINE - current behavior]
+
+When an opener lists what's still open (the {{slot_list_detailed}} field in T1/T2/T3), the engine writes it the way a person would — concise, not an exhaustive machine dump:
+
+- **Identical days collapse.** Dates that share the same set of open roles are grouped into ONE block — the dates are listed together and the slot times written once ("Thu, Fri & Sat — every slot open: ...") rather than repeating an identical list for each date. Only dates whose openings genuinely differ are itemized separately.
+- **Past / completed crawls are dropped** from the list automatically — the engine never pitches a slot on a date that has already happened.
+- **Social proof.** A separate line names venues already confirmed elsewhere in the city (deduped, so a venue never repeats), kept visually distinct from the open-slot list so it reads as momentum, not availability.
+
+General copy principle: summarize the common case, surface only the exceptions, and never overwhelm — a real person collapses repetition.
 
 ---
 
@@ -1602,6 +1630,8 @@ The four core sections every operator sees:
 **Host check-ins are NOT in the regular operator worklist.** Only the **host manager** (a dedicated role) handles host check-ins. Regular operators don't see the H1-H5 status flow.
 
 The worklist is designed for the high-load reality: one operator might be juggling 5+ priority-1 cities, each with 10+ venues at different cadence states (cold opener due, follow-up 2 due, slot detail to draft, reply pending, call to make). Without a single unified surface, things get dropped. The worklist's job is to make sure nothing falls through.
+
+**Inbox ordering [ENGINE - current behavior].** The inbox thread list is Gmail-style: a thread is bumped to the top only when an **inbound reply** arrives, NOT when the operator sends. Sending an email leaves the thread where it was (it sorts by last inbound activity, falling back to thread creation time for threads with no reply yet). This keeps "what needs my attention" — i.e. who replied — at the top, instead of the operator's own outbound churn reshuffling the list.
 
 ### 8.3 Auto-classification of inbound replies
 
