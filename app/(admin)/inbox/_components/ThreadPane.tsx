@@ -13,6 +13,7 @@ import { CampaignSuggestionRow } from "./CampaignSuggestionRow";
 import { ClassificationPicker } from "./ClassificationPicker";
 import { InlineReplyHost } from "./InlineReplyHost";
 import { MessageCard } from "./MessageCard";
+import { QuickActionChips } from "./QuickActionChips";
 import { QuickReplyChips } from "./QuickReplyChips";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
@@ -272,6 +273,11 @@ export function ThreadPane({
         if (cachedAtCount !== null && cachedAtCount < thread.messageCount) return null;
         return <QuickReplyChips threadId={thread.id} chips={cached} />;
       })()}
+
+      {/* Quick-action chips (Phase 2.11) - one-click triage transitions
+          (Engaged / Soft no / Hard no / Cancelled / Snooze) above the reply
+          controls. Assignment stays on the header AssignmentPicker. */}
+      <QuickActionChips threadId={thread.id} />
 
       {/* Engine suggestion (Phase 2.7) - surfaces the engine's template
           pick for this thread above the reply controls. "Use this

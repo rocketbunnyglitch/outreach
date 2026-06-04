@@ -1818,6 +1818,98 @@ export async function setThreadClassification(
 }
 
 /**
+ * applyQuickAction (Phase 2.11) -- one-click combined transitions from the
+ * thread quick-action chips. Each sets the operator-confirmed classification +
+ * thread state + (where terminal) cadence_state in one statement, clears the AI
+ * suggestion + needs_attention, and drops the thread out of the worklist.
+ *
+ * DEFERRED (documented):
+ *   - hard_no sets the thread to opt_out_permanent + closed_dnc but does NOT
+ *     mark the venue do-not-contact across ALL campaigns -- that venue-wide
+ *     suppression is a consequential, hard-to-reverse global write, left to an
+ *     explicit operator action / later phase.
+ *   - cancelled records classification + cadence_state = cancelled_by_them (the
+ *     data transition); the downstream cancellation cascade (multi-staff
+ *     notifications, T16, stop-downstream-touches) is Phase 4 and will hook off
+ *     this state.
+ */
+export async function applyQuickAction(
+  threadId: string,
+  action: "engaged" | "soft_no" | "hard_no" | "cancelled" | "snooze_5d",
+): Promise<ActionResult<{ ok: true }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  try {
+    switch (action) {
+      case "engaged":
+        await db.execute(sql`
+          UPDATE email_threads
+          SET classification = 'interested'::reply_classification,
+              suggested_classification = NULL, suggested_classification_confidence = NULL,
+              suggested_classification_at = NULL, needs_attention = false,
+              state = 'needs_reply'::thread_state,
+              updated_at = NOW(), updated_by = ${staff.id}
+          WHERE id = ${threadId}`);
+        break;
+      case "soft_no":
+        await db.execute(sql`
+          UPDATE email_threads
+          SET classification = 'decline'::reply_classification,
+              suggested_classification = NULL, suggested_classification_confidence = NULL,
+              suggested_classification_at = NULL, needs_attention = false,
+              state = 'closed_lost'::thread_state,
+              cadence_state = 'declined_this_campaign'::cadence_state, cadence_next_due_at = NULL,
+              updated_at = NOW(), updated_by = ${staff.id}
+          WHERE id = ${threadId}`);
+        break;
+      case "hard_no":
+        await db.execute(sql`
+          UPDATE email_threads
+          SET classification = 'unsubscribe'::reply_classification,
+              suggested_classification = NULL, suggested_classification_confidence = NULL,
+              suggested_classification_at = NULL, needs_attention = false,
+              state = 'closed_dnc'::thread_state,
+              cadence_state = 'opt_out_permanent'::cadence_state, cadence_next_due_at = NULL,
+              updated_at = NOW(), updated_by = ${staff.id}
+          WHERE id = ${threadId}`);
+        break;
+      case "cancelled":
+        await db.execute(sql`
+          UPDATE email_threads
+          SET classification = 'cancelled_by_them'::reply_classification,
+              suggested_classification = NULL, suggested_classification_confidence = NULL,
+              suggested_classification_at = NULL, needs_attention = false,
+              state = 'closed_lost'::thread_state,
+              cadence_state = 'cancelled_by_them'::cadence_state, cadence_next_due_at = NULL,
+              updated_at = NOW(), updated_by = ${staff.id}
+          WHERE id = ${threadId}`);
+        break;
+      case "snooze_5d":
+        await db.execute(sql`
+          UPDATE email_threads
+          SET state = 'waiting_on_them'::thread_state,
+              cadence_next_due_at = NOW() + INTERVAL '5 days',
+              updated_at = NOW(), updated_by = ${staff.id}
+          WHERE id = ${threadId}`);
+        break;
+    }
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName,
+    });
+    revalidatePath("/inbox");
+    revalidatePath("/worklist");
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    logger.error({ err, threadId, action }, "applyQuickAction failed");
+    return { ok: false, error: "Couldn't apply that action." };
+  }
+}
+
+/**
  * backfillThreadClassifications -- re-runs the triage classifier across
  * every thread that's currently unclassified, using the latest inbound
  * message in each thread as the signal.
