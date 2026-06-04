@@ -89,8 +89,7 @@ Saturday, October 31st (day party, afternoon)
 
 It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. If you're interested, here's what's still open:
 
-{{slot_list}}
-{{slot_list_2}}
+{{slot_list_detailed}}
 
 Just let us know which slots you want and we'll book you in.
 

@@ -26,11 +26,39 @@ export const STANDARD_SLOT_TIME: Record<"wristband" | "middle" | "final", string
   final: "11:30 PM to 2:00 AM",
 };
 
+/** Day-party slot windows (the afternoon crawl has only wristband + middle). */
+export const DAY_SLOT_TIME: Record<"wristband" | "middle", string> = {
+  wristband: "1:00 PM to 4:00 PM",
+  middle: "3:00 PM to 8:00 PM",
+};
+
 /** Venue-facing label for a crawl role ("Participating" for middle). */
 export function roleLabel(role: VenueRole): string {
   if (role === "wristband") return "Wristband";
   if (role === "middle") return "Participating";
   return "Final"; // final + alt_final
+}
+
+/**
+ * A rich, venue-facing slot line for the detailed open-slots list, e.g.
+ * "Wristband Venue (7:30 PM to 10:30 PM): check-in, where guests pick up their
+ * wristbands to start the night". Night vs day-party times + descriptions.
+ */
+export function detailedSlotLine(role: VenueRole, isDay: boolean): string {
+  const key: "wristband" | "middle" | "final" = role === "alt_final" ? "final" : role;
+  const time = isDay && key !== "final" ? DAY_SLOT_TIME[key] : STANDARD_SLOT_TIME[key];
+  const desc = isDay
+    ? {
+        wristband: "check-in, where guests pick up their wristbands to start",
+        middle: "a stop on the crawl with an open bar-hop window",
+        final: "the final stop",
+      }
+    : {
+        wristband: "check-in, where guests pick up their wristbands to start the night",
+        middle: "a middle stop on the crawl, shared with 2-3 other venues",
+        final: "the final stop where everyone meets to end the night",
+      };
+  return `${roleLabel(role)} Venue (${time}): ${desc[key]}`;
 }
 
 /** "Saturday, October 31" (date-only, pinned to UTC -- the VPS clock is UTC). */

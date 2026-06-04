@@ -39,6 +39,7 @@ import {
   type VenueRole,
   crawlsCountLabel,
   dayPartLabel,
+  detailedSlotLine,
   eventDayName,
   formatEventDate,
   guestCount,
@@ -91,6 +92,7 @@ export const MERGE_FIELD_KEYS = [
   "slot_summary",
   "slot_list",
   "slot_list_2",
+  "slot_list_detailed",
   "slot_shorthand",
   "open_slots",
   "thu_crawls",
@@ -372,6 +374,33 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
       fields.slot_list_2 = `${shortDateLabel(dayCrawl.eventDate)} (day party): ${openSlotsLabel(open)}`;
     }
   }
+
+  // Rich open-slot list -- {{slot_list_detailed}}. Per open night (and the day
+  // party), the open roles in canonical order with their time windows + a short
+  // description. Reads the crawl tables; drops filled slots; empty when nothing
+  // is open / no crawl in this city.
+  const orderOpen = (open: VenueRole[]): VenueRole[] =>
+    (["wristband", "middle", "final"] as VenueRole[]).filter((r) => open.includes(r));
+  const detailedBlocks: string[] = [];
+  for (const dp of NIGHT_DAYPARTS) {
+    for (const e of eventsByDayPart(dp)) {
+      const open = openRolesForEvent(e, cityVes);
+      if (open.length === 0) continue;
+      const lines = orderOpen(open).map((r) => `- ${detailedSlotLine(r, false)}`);
+      detailedBlocks.push(`${shortDateLabel(e.eventDate)}:\n${lines.join("\n")}`);
+    }
+  }
+  if (dayCrawl) {
+    const open = openRolesForEvent(dayCrawl, cityVes);
+    if (open.length > 0) {
+      const lines = orderOpen(open).map((r) => `- ${detailedSlotLine(r, true)}`);
+      detailedBlocks.push(
+        `${shortDateLabel(dayCrawl.eventDate)} (day party):\n${lines.join("\n")}`,
+      );
+    }
+  }
+  fields.slot_list_detailed = detailedBlocks.join("\n\n");
+
   fields.slot_shorthand = "a Halloween slot";
 
   // --- The venue's own booking (slot_summary, night, guest_count, turnout) ---
