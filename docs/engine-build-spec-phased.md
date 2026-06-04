@@ -131,7 +131,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 2.2 — Worklist Section 1: Drafts to review and send (9f91e30)
 - [x] 2.3 — Worklist Section 2: Pending replies (a14a6ee)
 - [x] 2.4 — Worklist Section 3: Follow-ups due (next few days) (72de24f)
-- [ ] 2.5 — Worklist Section 4: Calls to make today
+- [x] 2.5 — Worklist Section 4: Calls to make today (c53aa4b)
 - [ ] 2.6 — Worklist empty-state + completion stats
 - [ ] 2.7 — Inbox: engine suggestion bar above reply
 - [ ] 2.8 — Inbox: classification confirmation chip
