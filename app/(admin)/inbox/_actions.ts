@@ -1782,6 +1782,8 @@ export async function setThreadClassification(
     | "unsubscribe"
     | "auto_reply"
     | "spam"
+    | "stalled_warm"
+    | "cancelled_by_them"
     | "unclassified",
 ): Promise<ActionResult<{ ok: true }>> {
   const { staff } = await requireStaff();

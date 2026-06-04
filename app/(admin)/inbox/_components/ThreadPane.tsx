@@ -141,6 +141,8 @@ export function ThreadPane({
                 | "unsubscribe"
                 | "auto_reply"
                 | "spam"
+                | "stalled_warm"
+                | "cancelled_by_them"
                 | "unclassified"
             }
             aiSuggestion={
@@ -156,6 +158,8 @@ export function ThreadPane({
                       | "unsubscribe"
                       | "auto_reply"
                       | "spam"
+                      | "stalled_warm"
+                      | "cancelled_by_them"
                       | "unclassified",
                     confidence: thread.suggestedClassificationConfidence
                       ? Number(thread.suggestedClassificationConfidence)

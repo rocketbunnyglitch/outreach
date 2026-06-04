@@ -16,9 +16,11 @@ import { cn } from "@/lib/cn";
 import {
   AlertCircle,
   CalendarCheck,
+  CalendarX,
   Check,
   CircleHelp,
   Flame,
+  Hourglass,
   Loader2,
   Mail,
   MessageSquareX,
@@ -39,6 +41,8 @@ type Classification =
   | "unsubscribe"
   | "auto_reply"
   | "spam"
+  | "stalled_warm"
+  | "cancelled_by_them"
   | "unclassified";
 
 interface Props {
@@ -116,6 +120,18 @@ const OPTIONS: Array<{
     tone: "text-zinc-500 dark:text-zinc-400",
   },
   {
+    value: "stalled_warm",
+    label: "Stalled warm",
+    icon: Hourglass,
+    tone: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    value: "cancelled_by_them",
+    label: "Cancelled",
+    icon: CalendarX,
+    tone: "text-rose-600 dark:text-rose-400",
+  },
+  {
     value: "unclassified",
     label: "Unclassified",
     icon: CircleHelp,
@@ -172,10 +188,17 @@ export function ClassificationPicker({ threadId, current, aiSuggestion }: Props)
   // itself 'unclassified'. Disappears the instant the operator
   // confirms or overrides — clearing the suggestion is part of the
   // setThreadClassification server action.
+  // 90% threshold (Phase 2.8): a confident suggestion gets a one-click
+  // confirm pill; a low-confidence one drops to an all-categories triage
+  // row so the operator classifies fast. Both only show while the thread
+  // is still unclassified.
+  const highConfidence = !!aiSuggestion && aiSuggestion.confidence >= 0.9;
   const showSuggestion =
     !!aiSuggestion &&
+    highConfidence &&
     optimistic === "unclassified" &&
     aiSuggestion.classification !== "unclassified";
+  const showLowConfTriage = !!aiSuggestion && !highConfidence && optimistic === "unclassified";
   const suggestedOption = showSuggestion
     ? OPTIONS.find((o) => o.value === aiSuggestion.classification)
     : null;
@@ -226,6 +249,46 @@ export function ClassificationPicker({ threadId, current, aiSuggestion }: Props)
           <span>{suggestedOption.label}</span>
           <span className="font-mono opacity-70">{Math.round(aiSuggestion.confidence * 100)}%</span>
         </button>
+      )}
+
+      {/* Low-confidence (<90%) triage row (Phase 2.8). The engine wasn't
+          sure, so surface the categories as one-click buttons instead of a
+          single confirm pill. */}
+      {showLowConfTriage && aiSuggestion && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+            <AlertCircle className="h-3 w-3" />
+            Engine unsure ({Math.round(aiSuggestion.confidence * 100)}%) - triage:
+          </span>
+          {(
+            [
+              ["interested", "Engaged"],
+              ["decline", "Soft no"],
+              ["unsubscribe", "Hard no"],
+              ["stalled_warm", "Stalled warm"],
+              ["cancelled_by_them", "Cancelled"],
+              ["question", "Question"],
+            ] as Array<[Classification, string]>
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => choose(value)}
+              disabled={pending}
+              className="rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            disabled={pending}
+            className="rounded-full border border-zinc-200 px-2 py-0.5 text-[10px] hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            Other
+          </button>
+        </div>
       )}
 
       {open && (
