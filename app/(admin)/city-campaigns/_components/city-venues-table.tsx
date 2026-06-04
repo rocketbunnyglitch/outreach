@@ -52,6 +52,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { logCallAttempt } from "../../_actions/quo-actions";
 import { archiveVenueNoRedirect, hardDeleteVenue, unarchiveVenue } from "../../venues/_actions";
 import { upsertColdOutreachEntry } from "../_cold-outreach-actions";
 
@@ -62,6 +63,9 @@ interface Props {
   rows: CityVenueRow[];
   totalInCity: number;
   capped: boolean;
+  /** Campaign's outreach brand -- needed to log a click-to-call against the
+   *  right Quo line when the operator dials straight from this table. */
+  outreachBrandId: string | null;
   /**
    * Whether the viewer is an admin. Admins get a "Delete
    * permanently" action; non-admins get "Archive" (soft-delete).
@@ -78,6 +82,7 @@ export function CityVenuesTable({
   totalInCity,
   capped,
   currentStaffIsAdmin,
+  outreachBrandId,
 }: Props) {
   const [query, setQuery] = useState("");
   const [onlyUsed, setOnlyUsed] = useState(false);
@@ -149,6 +154,80 @@ export function CityVenuesTable({
           return n;
         });
       }
+    });
+  }
+
+  // Add the venue to cold outreach (idempotent) and return its entry id, or
+  // null on failure. Shared by the email + call quick actions so clicking
+  // either icon "just works" AND files the venue into the cold-outreach table
+  // automatically (operator: intuitive + automatic, no separate Add step).
+  async function ensureColdEntry(venueId: string): Promise<string | null> {
+    const fd = new FormData();
+    fd.set("cityCampaignId", cityCampaignId);
+    fd.set("venueId", venueId);
+    try {
+      const res = await upsertColdOutreachEntry(null, fd);
+      if (!res.ok) {
+        toast.show({
+          kind: "error",
+          message: res.error || "Couldn't add to cold outreach.",
+          code: (res as { code?: string }).code,
+          tag: "city_venues.quick_contact",
+        });
+        return null;
+      }
+      return res.data.id;
+    } catch (err) {
+      const cap = captureClientError(err, {
+        tag: "city_venues.quick_contact",
+        fallback: "Couldn't add to cold outreach.",
+      });
+      toast.show({ kind: "error", message: cap.message, code: cap.code });
+      return null;
+    }
+  }
+
+  // Email icon -> auto-add to cold outreach, then open the composer pre-filled
+  // for this venue. The composer auto-picks the cold-outreach template (the
+  // engine pick keys off venueId + cityCampaignId).
+  function emailVenue(venueId: string, venueName: string, email: string | null) {
+    startTx(async () => {
+      const entryId = await ensureColdEntry(venueId);
+      if (!entryId) return;
+      window.dispatchEvent(
+        new CustomEvent("compose-email", {
+          detail: { venueId, cityCampaignId, to: email ?? undefined },
+        }),
+      );
+      toast.show({ kind: "success", message: `Drafting cold email to ${venueName}.` });
+      router.refresh();
+    });
+  }
+
+  // Phone icon -> auto-add to cold outreach, log the call attempt against the
+  // campaign's Quo line (best-effort; needs the brand), then open the dialer.
+  // The venue now lives in the cold-outreach table where the full dial +
+  // outcome controls (QuoDialControls) take over for follow-up.
+  function callVenue(venueId: string, venueName: string, phone: string | null) {
+    if (!phone) return;
+    startTx(async () => {
+      const entryId = await ensureColdEntry(venueId);
+      if (!entryId) return;
+      if (outreachBrandId) {
+        const fd = new FormData();
+        fd.set("venueId", venueId);
+        fd.set("outreachBrandId", outreachBrandId);
+        fd.set("cityCampaignId", cityCampaignId);
+        fd.set("coldEntryId", entryId);
+        try {
+          await logCallAttempt(null, fd);
+        } catch {
+          // Best-effort log; the dialer still opens below.
+        }
+      }
+      toast.show({ kind: "success", message: `Calling ${venueName}.` });
+      router.refresh();
+      window.open(`tel:${phone}`, "_self");
     });
   }
 
@@ -228,6 +307,8 @@ export function CityVenuesTable({
               isAdding={adding.has(row.venueId)}
               addPending={pending}
               onAdd={() => addToCampaign(row.venueId, row.venueName)}
+              onEmail={() => emailVenue(row.venueId, row.venueName, row.email)}
+              onCall={() => callVenue(row.venueId, row.venueName, row.phoneE164)}
               currentStaffIsAdmin={currentStaffIsAdmin}
             />
           ))}
@@ -268,12 +349,16 @@ function CityVenueRowItem({
   isAdding,
   addPending,
   onAdd,
+  onEmail,
+  onCall,
   currentStaffIsAdmin,
 }: {
   row: CityVenueRow;
   isAdding: boolean;
   addPending: boolean;
   onAdd: () => void;
+  onEmail: () => void;
+  onCall: () => void;
   currentStaffIsAdmin: boolean;
 }) {
   const router = useRouter();
@@ -399,10 +484,33 @@ function CityVenueRowItem({
         )}
       </div>
 
-      {/* Contact + meta */}
+      {/* Contact + meta. Email + phone are click-to-act: they auto-add the
+          venue to cold outreach, then open the composer / dialer. */}
       <div className="flex shrink-0 items-center gap-2 text-zinc-500">
-        {row.email && <Mail className="h-3 w-3" aria-label={`Has email: ${row.email}`} />}
-        {row.phoneE164 && <Phone className="h-3 w-3" aria-label={`Has phone: ${row.phoneE164}`} />}
+        {row.email && (
+          <button
+            type="button"
+            onClick={onEmail}
+            disabled={pending || row.doNotContact}
+            title={`Cold email ${row.email} (adds to cold outreach)`}
+            aria-label={`Cold email ${row.venueName}`}
+            className="rounded p-0.5 hover:bg-blue-500/[0.08] hover:text-blue-700 disabled:opacity-40 dark:hover:text-blue-300"
+          >
+            <Mail className="h-3 w-3" />
+          </button>
+        )}
+        {row.phoneE164 && (
+          <button
+            type="button"
+            onClick={onCall}
+            disabled={pending || row.doNotContact}
+            title={`Call ${row.phoneE164} (adds to cold outreach)`}
+            aria-label={`Call ${row.venueName}`}
+            className="rounded p-0.5 hover:bg-blue-500/[0.08] hover:text-blue-700 disabled:opacity-40 dark:hover:text-blue-300"
+          >
+            <Phone className="h-3 w-3" />
+          </button>
+        )}
         {row.websiteUrl && (
           <a
             href={row.websiteUrl}
