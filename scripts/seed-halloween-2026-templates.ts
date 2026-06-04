@@ -65,7 +65,7 @@ Thanks,
 
 I'm reaching out on behalf of {{company_name}} to invite {{venue_name}} to be a participating stop at our {{city}} Halloween bar crawl on Saturday, October 31st at 1pm-8pm (day party).
 
-We're scheduling our timeslots now and thought {{venue_name}} would be a great fit. Our crawlers bar-hop through partner venues across the afternoon, so it's basically extra foot traffic and bar sales during the slower daytime hours.
+We're scheduling our timeslots now and thought {{venue_name}} would be a great fit. Our crawlers bar-hop through partner venues across the afternoon, so it's basically extra foot traffic and bar sales during the slower daytime hours. Right now we're expecting a small crowd of about 20-50 people total, and they come through in small groups across the afternoon, never all at once.
 
 If you're interested in being one of our stops please let me know and I'll send over further details and the time slots.
 
@@ -87,7 +87,7 @@ Friday, October 30th (night)
 Saturday, October 31st (night)
 Saturday, October 31st (day party, afternoon)
 
-It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. We usually bring around {{guest_count}} guests through each venue across the night, so it's a solid lift in foot traffic. If you're interested, here's what's still open:
+It would be the same terms as last time, we keep ticket sales, you keep 100% of bar sales. No line bypass or exclusivity required. We usually bring around {{guest_count}} guests through each venue across the night, always in small groups rather than all at once, so it's a solid lift in foot traffic. If you're interested, here's what's still open:
 
 {{slot_list_detailed}}
 
