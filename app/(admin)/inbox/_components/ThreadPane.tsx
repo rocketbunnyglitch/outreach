@@ -23,6 +23,7 @@ import { ThreadLabelsRow } from "./ThreadLabelsRow";
 import { ThreadNotesBlock } from "./ThreadNotesBlock";
 import { ThreadReplyBar } from "./ThreadReplyBar";
 import { ThreadReplyButtons } from "./ThreadReplyButtons";
+import { ThreadSuggestionBar } from "./ThreadSuggestionBar";
 import { ThreadViewersPill } from "./ThreadViewersPill";
 
 /**
@@ -267,6 +268,15 @@ export function ThreadPane({
         if (cachedAtCount !== null && cachedAtCount < thread.messageCount) return null;
         return <QuickReplyChips threadId={thread.id} chips={cached} />;
       })()}
+
+      {/* Engine suggestion (Phase 2.7) - surfaces the engine's template
+          pick for this thread above the reply controls. "Use this
+          template" opens the reply; the composer applies the same pick
+          (Phase 1.5) and offers the alternatives swap. Renders nothing
+          when there's no confident pick. */}
+      <div className="hidden lg:block">
+        <ThreadSuggestionBar threadId={thread.id} />
+      </div>
 
       {/* Reply triggers — Reply / Reply All / Forward all hand off
           to the global composer, which carries the full Gmail-style

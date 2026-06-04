@@ -41,6 +41,7 @@ export interface EnginePickInput {
 export interface EnginePickAlternative {
   templateId: string;
   templateCode: string;
+  templateName: string;
   reason: string;
 }
 
@@ -49,6 +50,7 @@ export interface EnginePickResult {
   pick: {
     templateId: string;
     templateCode: string;
+    templateName: string;
     reason: string;
     matchScore: number;
   } | null;
@@ -183,10 +185,14 @@ export async function pickTemplateForComposer(
     // Resolve alternative codes -> ids so the client can swap without another
     // round trip. Codes are scoped to the same campaign as the pick.
     const altCodes = picked.alternatives.map((a) => a.templateCode);
-    const idByCode = new Map<string, string>();
+    const metaByCode = new Map<string, { id: string; name: string }>();
     if (altCodes.length > 0) {
       const rows = await db
-        .select({ id: emailTemplates.id, templateCode: emailTemplates.templateCode })
+        .select({
+          id: emailTemplates.id,
+          templateCode: emailTemplates.templateCode,
+          name: emailTemplates.name,
+        })
         .from(emailTemplates)
         .where(
           and(
@@ -194,13 +200,20 @@ export async function pickTemplateForComposer(
             inArray(emailTemplates.templateCode, altCodes),
           ),
         );
-      for (const r of rows) idByCode.set(r.templateCode, r.id);
+      for (const r of rows) metaByCode.set(r.templateCode, { id: r.id, name: r.name });
     }
 
     const alternatives: EnginePickAlternative[] = picked.alternatives
       .map((a) => {
-        const id = idByCode.get(a.templateCode);
-        return id ? { templateId: id, templateCode: a.templateCode, reason: a.reason } : null;
+        const meta = metaByCode.get(a.templateCode);
+        return meta
+          ? {
+              templateId: meta.id,
+              templateCode: a.templateCode,
+              templateName: meta.name,
+              reason: a.reason,
+            }
+          : null;
       })
       .filter((a): a is EnginePickAlternative => a !== null);
 
@@ -210,6 +223,7 @@ export async function pickTemplateForComposer(
         pick: {
           templateId: picked.template.id,
           templateCode: picked.template.templateCode,
+          templateName: picked.template.name,
           reason: picked.reason,
           matchScore: picked.matchScore,
         },
