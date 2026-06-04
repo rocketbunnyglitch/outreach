@@ -49,6 +49,7 @@ import {
   LifeBuoy,
   ListChecks,
   Map as MapIcon,
+  Send,
   ShieldCheck,
   ShieldOff,
   Table2,
@@ -85,6 +86,7 @@ const SECTIONS: Array<{
         icon: <ClipboardCheck className="h-3.5 w-3.5" />,
       },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3.5 w-3.5" /> },
+      { href: "/email-queue", label: "Email Queue", icon: <Send className="h-3.5 w-3.5" /> },
       {
         href: "/campaign-info",
         label: "Campaign Info",

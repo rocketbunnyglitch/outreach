@@ -70,6 +70,7 @@ import {
   LayoutGrid,
   LifeBuoy,
   Map as MapIcon,
+  Send,
   ShieldCheck,
   ShieldOff,
   Table2,
@@ -107,6 +108,7 @@ const SECTIONS: Section[] = [
         icon: <ClipboardCheck className="h-3 w-3" />,
       },
       { href: "/inbox", label: "Inbox", icon: <Inbox className="h-3 w-3" /> },
+      { href: "/email-queue", label: "Email Queue", icon: <Send className="h-3 w-3" /> },
       {
         href: "/campaign-info",
         label: "Campaign Info",

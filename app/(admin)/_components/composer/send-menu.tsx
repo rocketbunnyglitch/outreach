@@ -18,7 +18,16 @@
  */
 
 import { cn } from "@/lib/cn";
-import { BookmarkPlus, Calendar, ChevronDown, Eye, FileText, Inbox, Send } from "lucide-react";
+import {
+  BookmarkPlus,
+  Calendar,
+  ChevronDown,
+  Clock,
+  Eye,
+  FileText,
+  Inbox,
+  Send,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -27,6 +36,9 @@ interface Props {
   scheduledFor: string | null;
   onSendNow: () => void;
   onSchedule: (iso: string | null) => void;
+  /** Queue for auto-staggered sending (cold-send queue). Omitted -> the
+   *  item is hidden (e.g. replies/forwards, which send immediately). */
+  onQueue?: () => void;
   onSendTest: () => void;
   onSaveAsDraft: () => void;
   onPreview: () => void;
@@ -41,6 +53,7 @@ export function SendMenu({
   scheduledFor,
   onSendNow,
   onSchedule,
+  onQueue,
   onSendTest,
   onSaveAsDraft,
   onPreview,
@@ -98,6 +111,16 @@ export function SendMenu({
               onSendNow();
             }}
           />
+          {onQueue && (
+            <MenuItem
+              icon={<Clock className="h-3 w-3" />}
+              label="Queue (auto-staggered)"
+              onClick={() => {
+                setOpen(false);
+                onQueue();
+              }}
+            />
+          )}
           {showDateInput ? (
             <div className="border-zinc-100 border-t border-b px-3 py-2 dark:border-zinc-800">
               <label className="block text-[10px] text-zinc-500" htmlFor="composer-schedule-input">

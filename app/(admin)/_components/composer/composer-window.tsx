@@ -58,7 +58,7 @@ import {
   type ConnectedAccountOption,
   listComposeContext,
 } from "../../_actions/compose-and-send";
-import { deleteDraft, sendDraft, upsertDraft } from "../../_actions/email-drafts";
+import { deleteDraft, queueColdSend, sendDraft, upsertDraft } from "../../_actions/email-drafts";
 import { type EnginePickResult, pickTemplateForComposer } from "../../_actions/engine-pick";
 import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
@@ -671,6 +671,62 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       return;
     }
     actuallySend({ testOnly: true });
+  }
+
+  /**
+   * Queue (send later): instead of firing now, persist the draft and let
+   * queueColdSend assign an auto-staggered randomized scheduled_for (5-8 min
+   * after the last queued send on this inbox). The scheduled-sends cron
+   * dispatches it; the operator closes the composer and moves on. Lands on
+   * the Email Queue page. This is the "send a batch and walk away" path the
+   * operators asked for once the cold-send cooldown was added.
+   */
+  function handleQueue() {
+    setSendError(null);
+    const err = validate();
+    if (err) {
+      setSendError(err);
+      return;
+    }
+    if (!instance.subject.trim() && !confirm("Queue with an empty subject?")) return;
+    startSendTx(async () => {
+      const saveRes = await upsertDraft({
+        id: instance.id,
+        connectedAccountId: instance.fromAccountId,
+        toAddresses: toList,
+        ccAddresses: ccList,
+        bccAddresses: bccList,
+        subject: instance.subject,
+        bodyText: instance.bodyText,
+        bodyHtml: instance.bodyHtml,
+        venueId: instance.venueId,
+        cityCampaignId: instance.cityCampaignId,
+        templateId: instance.templateId,
+        enginePickedTemplateId: instance.enginePickedTemplateId,
+        attachments: instance.attachments,
+        scheduledFor: null,
+        mode: instance.composeMode,
+        replyToThreadId: instance.replyToThreadId,
+        replyToMessageId: instance.replyToMessageId,
+        pendingLabelIds: instance.pendingLabelIds,
+      });
+      if (!saveRes.ok) {
+        setSendError(saveRes.error);
+        return;
+      }
+      const qRes = await queueColdSend(instance.id);
+      if (!qRes.ok) {
+        setSendError(qRes.error);
+        toast.show({ kind: "error", message: qRes.error ?? "Couldn't queue the email." });
+        return;
+      }
+      const at = new Date(qRes.data.scheduledFor).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      toast.show({ kind: "success", message: `Queued - sends around ${at}. On to the next.` });
+      close(instance.id);
+    });
   }
 
   /**
@@ -1377,6 +1433,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             scheduledFor={instance.scheduledFor}
             onSendNow={handleSendNow}
             onSchedule={(iso) => setField(instance.id, { scheduledFor: iso })}
+            onQueue={instance.composeMode === "new" ? handleQueue : undefined}
             onSendTest={handleSendTest}
             onSaveAsDraft={handleSaveAsDraft}
             onPreview={() => setShowPreview(true)}

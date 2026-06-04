@@ -30,7 +30,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { composeAndSend } from "./compose-and-send";
 
@@ -271,6 +271,89 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
   } catch (err) {
     logger.error({ err, draftId }, "deleteDraft failed");
     return { ok: false, error: "Couldn't discard draft." };
+  }
+}
+
+// Spacing between consecutive queued cold sends per inbox. Randomized
+// 5-8 min (matching the cold-send cooldown the operator approved) so the
+// queue drains as a steady, jittered trickle -- Gmail flags bursts, so
+// never two back-to-back. Tunable here if deliverability tuning is needed.
+const QUEUE_MIN_GAP_MS = 5 * 60_000;
+const QUEUE_MAX_GAP_MS = 8 * 60_000;
+
+/**
+ * Queue a draft for auto-staggered sending instead of sending it now.
+ *
+ * Computes a randomized scheduled_for that lands 5-8 min AFTER the last
+ * queued (unsent, future-scheduled) draft on the same inbox, so a batch
+ * of cold emails drains as a spaced-out trickle the scheduled-sends cron
+ * dispatches one by one. The operator hits Queue and moves on; the live
+ * cooldown ring only governs interactive "Send now".
+ *
+ * The draft must already be autosaved with a From inbox + at least one
+ * recipient (the composer flushes its autosave before calling this).
+ */
+export async function queueColdSend(
+  draftId: string,
+): Promise<ActionResult<{ scheduledFor: string }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(draftId)) {
+    return { ok: false, error: "Invalid draft id." };
+  }
+  try {
+    const [draft] = await db
+      .select({
+        connectedAccountId: emailDrafts.connectedAccountId,
+        toAddresses: emailDrafts.toAddresses,
+        sentAt: emailDrafts.sentAt,
+      })
+      .from(emailDrafts)
+      .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)))
+      .limit(1);
+    if (!draft) return { ok: false, error: "Draft not found." };
+    if (draft.sentAt) return { ok: false, error: "This email has already been sent." };
+    if (!draft.connectedAccountId) {
+      return { ok: false, error: "Pick a From inbox before queueing." };
+    }
+    const hasRecipient = (draft.toAddresses ?? []).some((a) => a && a.trim().length > 0);
+    if (!hasRecipient) return { ok: false, error: "Add a recipient before queueing." };
+
+    // Latest pending (unsent, future) queued send on this inbox -> stagger
+    // after it; otherwise stagger from now. Scope to the inbox so two
+    // inboxes queue independently (each has its own daily cap + cooldown).
+    const now = new Date();
+    const [latest] = await db
+      .select({ scheduledFor: emailDrafts.scheduledFor })
+      .from(emailDrafts)
+      .where(
+        and(
+          eq(emailDrafts.ownerUserId, staff.id),
+          eq(emailDrafts.connectedAccountId, draft.connectedAccountId),
+          isNotNull(emailDrafts.scheduledFor),
+          isNull(emailDrafts.sentAt),
+          gt(emailDrafts.scheduledFor, now),
+          ne(emailDrafts.id, draftId),
+        ),
+      )
+      .orderBy(desc(emailDrafts.scheduledFor))
+      .limit(1);
+
+    const base = latest?.scheduledFor && latest.scheduledFor > now ? latest.scheduledFor : now;
+    const gap =
+      QUEUE_MIN_GAP_MS + Math.floor(Math.random() * (QUEUE_MAX_GAP_MS - QUEUE_MIN_GAP_MS));
+    const scheduledFor = new Date(base.getTime() + gap);
+
+    await db
+      .update(emailDrafts)
+      .set({ scheduledFor, updatedAt: now })
+      .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)));
+
+    revalidatePath("/email-queue");
+    revalidatePath("/inbox");
+    return { ok: true, data: { scheduledFor: scheduledFor.toISOString() } };
+  } catch (err) {
+    logger.error({ err, draftId }, "queueColdSend failed");
+    return { ok: false, error: "Couldn't queue the email." };
   }
 }
 
