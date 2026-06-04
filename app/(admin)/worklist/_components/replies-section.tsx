@@ -1,20 +1,115 @@
 /**
- * Worklist Section 2: Replies needing attention (Phase 2.1 scaffold).
- * Placeholder empty state; needs_attention / suggested-classification queue
- * wiring lands in Phase 2.3.
+ * Worklist Section 2: Replies needing attention (Phase 2.3).
+ *
+ * Inbound replies assigned to the operator (needs_reply / follow_up_due),
+ * sorted needs_attention-first then by classification urgency. Each row shows
+ * the classification badge, venue + city, the latest snippet, the engine's
+ * suggested next action, and an "Open thread" link. Pure server component -- the
+ * only interaction is navigation.
+ *
+ * Colour palette follows the engine's convention (no rose/red unless
+ * destructive): engaged -> blue, question -> amber, soft-no -> zinc,
+ * cancelled-by-them -> rose (the one fire-drill exception). needs_attention
+ * rows get an amber accent so they stand out.
  */
 
+import { type WorklistReplyRow, loadWorklistReplies } from "@/lib/worklist-data";
 import { MessageSquareReply } from "lucide-react";
+import Link from "next/link";
 import { WorklistEmpty, WorklistSection } from "./worklist-section";
 
-export function RepliesSection() {
+/** Badge label + colour classes for an effective classification. */
+function classificationBadge(classification: string): { label: string; className: string } {
+  const label = classification.replace(/_/g, " ");
+  switch (classification) {
+    case "interested":
+    case "warm":
+    case "confirmed":
+    case "stalled_warm":
+      return {
+        label,
+        className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+      };
+    case "question":
+    case "callback_requested":
+      return {
+        label,
+        className: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+      };
+    case "cancelled_by_them":
+      return {
+        label,
+        className: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+      };
+    default:
+      // decline / unsubscribe / auto_reply / spam / unclassified -> muted.
+      return {
+        label,
+        className: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+      };
+  }
+}
+
+function ReplyRow({ reply }: { reply: WorklistReplyRow }) {
+  const badge = classificationBadge(reply.classification);
+  return (
+    <Link
+      href={`/inbox/${reply.id}`}
+      className={`block rounded-xl border px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
+        reply.needsAttention
+          ? "border-amber-300 dark:border-amber-700/60"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-medium text-sm">
+            {reply.venueName ?? "(no venue)"}
+            {reply.cityName ? <span className="text-zinc-500"> · {reply.cityName}</span> : null}
+          </span>
+          {reply.needsAttention ? (
+            <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 font-medium text-[10px] text-amber-700 uppercase tracking-wide dark:bg-amber-950/50 dark:text-amber-300">
+              Needs attention
+            </span>
+          ) : null}
+        </div>
+        <span
+          className={`shrink-0 rounded-md px-1.5 py-0.5 font-medium text-[11px] capitalize ${badge.className}`}
+        >
+          {badge.label}
+        </span>
+      </div>
+      {reply.snippet ? (
+        <p className="mt-1 truncate text-xs text-zinc-500">{reply.snippet}</p>
+      ) : null}
+      {reply.nextActionLabel ? (
+        <p className="mt-1 truncate text-xs text-zinc-600 dark:text-zinc-400">
+          <span className="font-medium">Next:</span> {reply.nextActionLabel}
+        </p>
+      ) : null}
+    </Link>
+  );
+}
+
+export async function RepliesSection({ staffId }: { staffId: string }) {
+  const replies = await loadWorklistReplies({ staffId });
+
   return (
     <WorklistSection
       title="Replies needing attention"
       subtitle="Inbound replies the engine flagged for you to triage"
       icon={<MessageSquareReply className="h-4 w-4" />}
+      count={replies.length}
     >
-      <WorklistEmpty message="No replies need attention right now." />
+      {replies.length === 0 ? (
+        <WorklistEmpty message="No replies need attention right now." />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {replies.map((r) => (
+            <ReplyRow key={r.id} reply={r} />
+          ))}
+        </div>
+      )}
     </WorklistSection>
   );
 }

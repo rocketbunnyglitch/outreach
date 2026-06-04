@@ -35,7 +35,7 @@ export default async function WorklistPage() {
 
       <div className="flex flex-col gap-4">
         <DraftsSection staffId={staff.id} />
-        <RepliesSection />
+        <RepliesSection staffId={staff.id} />
         <FollowUpsSection />
         <CallsSection />
       </div>
