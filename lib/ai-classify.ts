@@ -40,6 +40,18 @@ import { and, desc, eq } from "drizzle-orm";
 const CLASSIFIER_MODEL = "claude-haiku-4-5-20251001";
 const CLASSIFIER_MAX_TOKENS = 80;
 
+/**
+ * Confidence floor for acting on an auto-classification without human triage
+ * (Reference Doc 8.4: act only at >=90%). Below this, the suggestion is still
+ * written but the thread is flagged needs_attention for the worklist. We do NOT
+ * auto-write the operator-confirmed `classification` even at high confidence:
+ * the engine keeps a human in the loop (suggestion + one-click confirm), per
+ * the reconciliation addendum (classifier writes suggested_* only). The >=90%
+ * downstream auto-transitions (cancellation/opt-out) are greenfield Phase 4.x.
+ * [ReferenceDoc 8.4]
+ */
+const CONFIDENCE_AUTO_ACT_THRESHOLD = 0.9;
+
 /** Set of valid classifications the model can return. Matches the
  *  reply_classification enum exactly — anything outside this list
  *  is rejected. */
@@ -309,12 +321,18 @@ export async function classifyInboundMessage(
     return parsed;
   }
 
+  // Below the confidence floor -> flag for human triage (Reference Doc 8.4).
+  // Only ever SET the flag here; clearing is the operator's call on triage
+  // (setThreadNeedsAttention), so a low-confidence run can't be silently undone
+  // by a later one. [ReferenceDoc 8.4]
+  const lowConfidence = parsed.confidence < CONFIDENCE_AUTO_ACT_THRESHOLD;
   await db
     .update(emailThreads)
     .set({
       suggestedClassification: parsed.classification,
       suggestedClassificationConfidence: parsed.confidence.toFixed(3),
       suggestedClassificationAt: new Date(),
+      ...(lowConfidence ? { needsAttention: true } : {}),
     })
     .where(eq(emailThreads.id, input.threadId));
 

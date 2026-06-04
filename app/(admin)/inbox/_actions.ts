@@ -833,6 +833,57 @@ export async function setThreadStar(
 }
 
 /**
+ * setThreadNeedsAttention -- flag or clear a thread for human triage (Phase
+ * 1.14). The auto-classifier sets needs_attention=true when it lands below the
+ * Reference Doc 8.4 confidence floor; the worklist (Phase 2) surfaces flagged
+ * threads first. The operator clears the flag here once triaged. Distinct from
+ * is_stale (SLA staleness). Auth: requireStaff + team-scoped. [ReferenceDoc 8.4]
+ */
+export async function setThreadNeedsAttention(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ needsAttention: boolean }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  const raw = String(formData.get("needsAttention") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (raw !== "true" && raw !== "false") return { ok: false, error: "Invalid attention state." };
+  const needsAttention = raw === "true";
+
+  try {
+    // Verify the thread is on the operator's team before updating.
+    const [row] = await db
+      .select({ teamId: connectedAccounts.teamId })
+      .from(emailThreads)
+      .innerJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
+      .where(eq(emailThreads.id, threadId))
+      .limit(1);
+    if (!row || row.teamId !== staff.teamId) {
+      return { ok: false, error: "Thread not on your team." };
+    }
+
+    await db
+      .update(emailThreads)
+      .set({ needsAttention, updatedBy: staff.id })
+      .where(eq(emailThreads.id, threadId));
+
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    publishRealtime({
+      table: "email_threads",
+      id: threadId,
+      type: "update",
+      byStaffId: staff.id,
+      byStaffName: staff.displayName ?? null,
+    });
+    return { ok: true, data: { needsAttention } };
+  } catch (err) {
+    logger.error({ err, threadId }, "setThreadNeedsAttention failed");
+    return { ok: false, error: "Couldn't update attention flag." };
+  }
+}
+
+/**
  * setThreadTrash -- soft-delete a thread (move to Trash) or restore it.
  *
  * Sets / clears email_threads.deleted_at. The Trash mailbox view shows

@@ -249,6 +249,14 @@ export const emailThreads = pgTable(
      *  tooltip on the stale chip. */
     staleReason: text("stale_reason"),
 
+    /** True when an inbound reply needs human triage: the auto-classifier
+     *  landed BELOW the confidence floor (Reference Doc 8.4: act only at
+     *  >=90%), or (Phase 2.9) the engine could not produce a suggested
+     *  response. Distinct from is_stale (SLA staleness). Set by the classifier;
+     *  cleared on operator triage (setThreadNeedsAttention). The worklist
+     *  (Phase 2) surfaces these first. Migration 0104. [ReferenceDoc 8.4] */
+    needsAttention: boolean("needs_attention").notNull().default(false),
+
     /** Follow-up cadence stage. 0=initial cold send, 1=follow_up_due
      *  flipped by cadence cron, 2=call task auto-created. Reset to 0
      *  when an operator action (reply, state change) interrupts the
