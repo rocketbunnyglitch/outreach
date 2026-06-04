@@ -121,7 +121,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [x] 1.9 — Cadence floor enforcement in send pipeline (8df514f)
 - [x] 1.10 — Daily cadence cron rewrite (32dadf7)
 - [x] 1.11 — Migrate existing threads to new cadence_state (a06eaf8)
-- [ ] 1.12 — Reply classification enum: add `stalled_warm`, `cancelled_by_them`
+- [x] 1.12 — Reply classification enum: add `stalled_warm`, `cancelled_by_them` (cb44f2b)
 - [ ] 1.13 — Classifier prompt updated to use Reference Doc retrieval
 - [ ] 1.14 — 90% confidence threshold logic + needs-attention flagging
 
