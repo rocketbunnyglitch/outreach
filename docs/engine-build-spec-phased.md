@@ -152,7 +152,7 @@ The Build Tracker (below) is the single source of truth for build progress. Afte
 - [ ] 3.5 — Slot-change reply handling (cancel + re-confirm pattern)
 - [ ] 3.6 — H0a hire-time briefing email + trigger
 - [ ] 3.7 — H0b week-of briefing email + trigger
-- [ ] 3.8 — Migration: per-venue × per-domain relationship flag table
+- [x] 3.8 — Migration: per-venue × per-domain relationship flag table (30cf792)
 - [ ] 3.9 — Relationship flag auto-detection from inbound replies
 - [ ] 3.10 — Hard-block on send for `bad`-flagged domain × venue pairs
 - [ ] 3.11 — Auto-decay cron for `bad` flags (1-year horizon)
