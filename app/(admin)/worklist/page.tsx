@@ -21,7 +21,7 @@ export const metadata = { title: "Daily worklist" };
 export const dynamic = "force-dynamic";
 
 export default async function WorklistPage() {
-  await requireStaff();
+  const { staff } = await requireStaff();
 
   return (
     <div className="flex flex-col gap-6">
@@ -34,7 +34,7 @@ export default async function WorklistPage() {
       </header>
 
       <div className="flex flex-col gap-4">
-        <DraftsSection />
+        <DraftsSection staffId={staff.id} />
         <RepliesSection />
         <FollowUpsSection />
         <CallsSection />
