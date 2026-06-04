@@ -1017,6 +1017,91 @@ export async function bulkPasteVenues(
  * Read helper: cold outreach pipeline for a city_campaign, joined with
  * venue + email_validation (for ZeroBounce status) + assigned staff.
  */
+// Human labels for the cadence-aware "Cadence" column (Phase 2.12). cadence_state
+// (on the venue's email_thread for this campaign) is the rich signal; when there's
+// no thread yet we fall back to the cold_outreach status.
+const CADENCE_STATE_LABEL: Record<string, string> = {
+  cold_pending_touch_1: "Cold opener pending",
+  cold_sent_touch_1: "Cold opener sent",
+  cold_pending_touch_2: "Touch 2 pending",
+  cold_sent_touch_2: "Touch 2 sent",
+  cold_pending_touch_3: "Touch 3 pending",
+  cold_sent_touch_3: "Touch 3 sent",
+  cold_exhausted_ready_for_handoff: "Sequence exhausted - ready for handoff",
+  warm_pending_response: "Warm - awaiting reply",
+  warm_responded_pending_nudge_1: "Warm - nudge 1 pending",
+  warm_nudge_1_sent: "Warm - nudge 1 sent",
+  warm_pending_nudge_2: "Warm - nudge 2 pending",
+  warm_nudge_2_sent: "Warm - nudge 2 sent",
+  warm_pending_nudge_3: "Warm - nudge 3 pending",
+  warm_nudge_3_sent: "Warm - nudge 3 sent",
+  stalled_warm: "Stalled warm",
+  declined_this_campaign: "Declined",
+  opt_out_permanent: "Opted out",
+  cancelled_by_them: "Cancelled by them",
+  confirmed: "Confirmed",
+  lifecycle_active: "Confirmed (lifecycle active)",
+};
+
+const COLD_STATUS_LABEL: Record<string, string> = {
+  not_contacted: "Not contacted",
+  email_sent: "Cold email sent",
+  follow_up_due: "Follow-up due",
+  called: "Called",
+  voicemail: "Voicemail left",
+  no_answer: "No answer",
+  interested: "Interested",
+  declined: "Declined",
+  bad_email: "Bad email",
+  wrong_number: "Wrong number",
+  do_not_contact: "Do not contact",
+  unreachable: "Unreachable",
+};
+
+function relativeDayLabel(from: Date | null, now: Date): string {
+  if (!from) return "";
+  const d = Math.floor((now.getTime() - from.getTime()) / 86_400_000);
+  if (d <= 0) return "today";
+  return d === 1 ? "1 day ago" : `${d} days ago`;
+}
+
+function dueDayLabel(due: Date | null, now: Date): string {
+  if (!due) return "";
+  const d = Math.ceil((due.getTime() - now.getTime()) / 86_400_000);
+  if (d < 0) return "overdue";
+  if (d === 0) return "due today";
+  return d === 1 ? "due tomorrow" : `due in ${d} days`;
+}
+
+/** Build the Cadence column label from the venue's thread cadence_state (rich)
+ *  or the cold_outreach status (fallback), plus relative timing. */
+function coldCadenceLabel(opts: {
+  cadenceState: string | null;
+  cadenceNextDueAt: Date | null;
+  classification: string | null;
+  status: string;
+  lastTouchAt: Date | null;
+  now: Date;
+}): string {
+  const { cadenceState, cadenceNextDueAt, classification, status, lastTouchAt, now } = opts;
+  if (cadenceState) {
+    let base = CADENCE_STATE_LABEL[cadenceState] ?? cadenceState.replace(/_/g, " ");
+    // A warm thread with a confirmed classification leads with the reply.
+    if (cadenceState.startsWith("warm") && classification && classification !== "unclassified") {
+      base = `Replied: ${classification.replace(/_/g, " ")}`;
+    }
+    const parts = [base];
+    const rel = relativeDayLabel(lastTouchAt, now);
+    if (rel) parts.push(rel);
+    const due = dueDayLabel(cadenceNextDueAt, now);
+    if (due) parts.push(`next ${due}`);
+    return parts.join(" - ");
+  }
+  const base = COLD_STATUS_LABEL[status] ?? status.replace(/_/g, " ");
+  const rel = relativeDayLabel(lastTouchAt, now);
+  return rel ? `${base} - ${rel}` : base;
+}
+
 export async function loadColdOutreach(cityCampaignId: string): Promise<
   Array<{
     entryId: string;
@@ -1084,6 +1169,10 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     aiLeadScore: number | null;
     aiLeadScoreReason: string | null;
     aiLeadScoreAt: Date | null;
+    /** Cadence-aware row state label (Phase 2.12): the venue's thread
+     *  cadence_state for this campaign (rich) or the cold-outreach status
+     *  (fallback), with relative timing. */
+    cadenceLabel: string;
   }>
 > {
   await requireStaff();
@@ -1172,6 +1261,44 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     for (const row of callList) callCountMap.set(row.venue_id, row.n);
   }
 
+  // Cadence state per venue (Phase 2.12): the most-recent email_thread for this
+  // campaign carries cadence_state + next-due + classification. DISTINCT ON picks
+  // the latest thread per venue. Single query -> Map for O(1) lookup.
+  type CadenceRow = {
+    venue_id: string;
+    cadence_state: string | null;
+    cadence_next_due_at: string | null;
+    classification: string | null;
+  };
+  const cadenceMap = new Map<
+    string,
+    { cadenceState: string | null; cadenceNextDueAt: Date | null; classification: string | null }
+  >();
+  if (venueIds.length > 0) {
+    const cadenceRows = await db.execute<CadenceRow>(sql`
+      SELECT DISTINCT ON (venue_id)
+        venue_id::text AS venue_id,
+        cadence_state::text AS cadence_state,
+        cadence_next_due_at,
+        classification::text AS classification
+      FROM email_threads
+      WHERE city_campaign_id = ${cityCampaignId}
+        AND venue_id IN ${venueIds}
+      ORDER BY venue_id, last_message_at DESC
+    `);
+    const cadenceList: CadenceRow[] = Array.isArray(cadenceRows)
+      ? (cadenceRows as unknown as CadenceRow[])
+      : ((cadenceRows as unknown as { rows: CadenceRow[] }).rows ?? []);
+    for (const row of cadenceList) {
+      cadenceMap.set(row.venue_id, {
+        cadenceState: row.cadence_state,
+        cadenceNextDueAt: row.cadence_next_due_at ? new Date(row.cadence_next_due_at) : null,
+        classification: row.classification,
+      });
+    }
+  }
+  const now = new Date();
+
   return rows.map((r) => ({
     entryId: r.entryId,
     venueId: r.venueId,
@@ -1203,6 +1330,14 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     aiLeadScore: r.aiLeadScore,
     aiLeadScoreReason: r.aiLeadScoreReason,
     aiLeadScoreAt: r.aiLeadScoreAt,
+    cadenceLabel: coldCadenceLabel({
+      cadenceState: cadenceMap.get(r.venueId)?.cadenceState ?? null,
+      cadenceNextDueAt: cadenceMap.get(r.venueId)?.cadenceNextDueAt ?? null,
+      classification: cadenceMap.get(r.venueId)?.classification ?? null,
+      status: r.status as string,
+      lastTouchAt: r.lastTouchAt,
+      now,
+    }),
   }));
 }
 

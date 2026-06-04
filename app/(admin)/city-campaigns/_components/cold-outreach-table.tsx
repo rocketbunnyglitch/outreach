@@ -127,6 +127,9 @@ interface ColdEntry {
   aiLeadScore: number | null;
   aiLeadScoreReason: string | null;
   aiLeadScoreAt: Date | null;
+  /** Cadence-aware row state label (Phase 2.12): thread cadence_state for this
+   *  campaign (rich) or the cold-outreach status, with relative timing. */
+  cadenceLabel: string;
 }
 
 interface Props {
@@ -983,6 +986,8 @@ export function ColdOutreachTable({
                 onClick={() => toggleSort("status")}
                 width="w-32 px-2"
               />
+              {/* Cadence-aware row state (Phase 2.12). Read-only column. */}
+              <th className="w-44 px-2 py-2.5">Cadence</th>
               <SortableTh
                 label="Assigned"
                 col="assignee"
@@ -1838,6 +1843,11 @@ function ColdRow({
           onChange={(v) => commitField("status", v)}
           entryId={entry.entryId}
         />
+      </td>
+
+      {/* Cadence (Phase 2.12) -- read-only cadence-aware row state. */}
+      <td className="w-44 px-2 py-2 align-middle text-[11px] text-zinc-600 leading-snug dark:text-zinc-400">
+        {entry.cadenceLabel}
       </td>
 
       {/* Assigned */}
@@ -3181,10 +3191,20 @@ function CallWindowHint({
   venueType: readonly string[];
   venueTimezone?: string;
 }) {
-  const suggestion = useMemo(() => {
-    if (!venueHours && (!venueType || venueType.length === 0)) return null;
+  // HOTFIX: the call-window suggestion depends on the current wall clock, which
+  // differs between SSR (server UTC) and the client (operator's local tz).
+  // Computing it during render produced different HTML server vs client -> React
+  // #418 hydration bail on /city-campaigns/[id], which cascaded into a failed
+  // lazy chunk load and the composer/templates not loading for 20-30s. Compute
+  // it only AFTER mount so the first paint matches the server, then fill in.
+  const [suggestion, setSuggestion] = useState<ReturnType<typeof suggestCallWindow> | null>(null);
+  useEffect(() => {
+    if (!venueHours && (!venueType || venueType.length === 0)) {
+      setSuggestion(null);
+      return;
+    }
     const parsed = parseVenueHours(venueHours);
-    return suggestCallWindow(parsed, new Date(), venueType, venueTimezone);
+    setSuggestion(suggestCallWindow(parsed, new Date(), venueType, venueTimezone));
   }, [venueHours, venueType, venueTimezone]);
 
   if (!suggestion) return null;
