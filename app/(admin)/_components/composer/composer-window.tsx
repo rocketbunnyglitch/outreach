@@ -34,6 +34,7 @@
 
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import type { TeamLabelSummary } from "@/lib/team-labels";
 import {
   AlertCircle,
   Image as ImageIcon,
@@ -46,6 +47,7 @@ import {
   PenLine,
   SendHorizontal,
   Smile,
+  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -164,6 +166,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const [inboxes, setInboxes] = useState<ConnectedAccountOption[] | null>(null);
   const [templates, setTemplates] = useState<ComposeTemplate[] | null>(null);
   const [renderContext, setRenderContext] = useState<ComposeRenderContext>({});
+  // Team labels (incl. the pre-tagged campaign + city labels) for the
+  // always-visible applied-labels chip row.
+  const [labels, setLabels] = useState<TeamLabelSummary[] | null>(null);
   // Engine template auto-pick (Phase 1.5). enginePick holds the pick +
   // alternatives for the banner; enginePickOpen toggles the alternatives
   // list; enginePickDismissed hides the banner after "Use blank instead".
@@ -267,6 +272,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setInboxes(ctx.inboxes);
         setTemplates(ctx.templates);
         setRenderContext(ctx.renderContext);
+        setLabels(ctx.labels);
         // Pre-tag a fresh campaign-attributed draft with the campaign + city
         // labels so the operator SEES what the send will apply ("halloween
         // 2026" + city) before sending. Only when the draft has no labels yet
@@ -1033,6 +1039,28 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             }
           />
         </div>
+
+        {/* Applied-labels chip row -- the Gmail labels this send will get
+            (campaign + city, pre-tagged for campaign-attributed sends), shown
+            at a glance so operators can SEE the tagging without opening the
+            labels menu. Hidden when no labels are queued. */}
+        {labels && instance.pendingLabelIds && instance.pendingLabelIds.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 border-zinc-200 border-b px-4 py-2 text-xs dark:border-zinc-800">
+            <Tag className="h-3 w-3 shrink-0 text-zinc-400" />
+            <span className="text-zinc-500">Labels:</span>
+            {instance.pendingLabelIds.map((id) => {
+              const l = labels.find((x) => x.id === id);
+              return l ? (
+                <span
+                  key={id}
+                  className="rounded-full bg-indigo-50 px-2 py-0.5 font-medium text-[11px] text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300"
+                >
+                  {l.name}
+                </span>
+              ) : null;
+            })}
+          </div>
+        ) : null}
 
         {/* To row with CC/BCC reveal */}
         <div className="flex items-start gap-2 border-zinc-200 border-b px-4 py-2.5 text-sm dark:border-zinc-800">
