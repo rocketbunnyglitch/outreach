@@ -1,12 +1,62 @@
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireStaff } from "@/lib/auth";
+import { type CancelledVenueRow, loadCancelledVenues } from "@/lib/cancelled-venues-data";
 import { cn } from "@/lib/cn";
 import { loadCrawlManagement, loadGraphicsQueue } from "@/lib/crawl-management-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, XCircle } from "lucide-react";
 import Link from "next/link";
 import { CrawlManagementTree } from "./_components/crawl-management-tree";
 import { GraphicsQueue } from "./_components/graphics-queue";
+
+function fmtCancelledAt(iso: string | null): string {
+  if (!iso) return "unknown";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function CancelledVenues({ rows }: { rows: CancelledVenueRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon={XCircle}
+        title="No cancellations"
+        description="Venues that cancel after confirming will appear here, with who/when/why."
+      />
+    );
+  }
+  return (
+    <ul className="flex flex-col divide-y divide-zinc-200/60 dark:divide-zinc-800/40">
+      {rows.map((r) => (
+        <li key={r.venueEventId} className="flex items-start justify-between gap-3 py-3">
+          <div className="min-w-0">
+            <p className="font-medium text-sm">
+              <Link href={`/venues/${r.venueId}`} className="hover:underline">
+                {r.venueName}
+              </Link>
+              {r.cityName ? <span className="text-zinc-500"> &middot; {r.cityName}</span> : null}
+              <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                {r.role === "alt_final" ? "final" : r.role}
+              </span>
+            </p>
+            {r.reason ? (
+              <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">{r.reason}</p>
+            ) : null}
+            <p className="mt-0.5 font-mono text-[10px] text-zinc-400">
+              event {r.eventDate} &middot; cancelled {fmtCancelledAt(r.cancelledAt)}
+              {r.cancelledByName ? ` by ${r.cancelledByName}` : ""}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export const metadata = { title: "Crawl management" };
 export const dynamic = "force-dynamic";
@@ -35,7 +85,8 @@ export default async function CrawlManagementPage({
 }) {
   await requireStaff();
   const { tab } = await searchParams;
-  const activeTab = tab === "graphics" ? "graphics" : "deliverables";
+  const activeTab =
+    tab === "graphics" ? "graphics" : tab === "cancelled" ? "cancelled" : "deliverables";
   const currentCampaign = await getCurrentCampaign();
   const campaignId = currentCampaign ? currentCampaign.campaign.id : null;
 
@@ -43,6 +94,10 @@ export default async function CrawlManagementPage({
   const graphicsRows =
     campaignId && activeTab === "graphics"
       ? await loadGraphicsQueue({ campaignId }).catch(() => [])
+      : [];
+  const cancelledRows =
+    campaignId && activeTab === "cancelled"
+      ? await loadCancelledVenues({ campaignId }).catch(() => [])
       : [];
 
   // Aggregate pending across all cities for the header chip.
@@ -84,6 +139,11 @@ export default async function CrawlManagementPage({
           label="Graphics"
           active={activeTab === "graphics"}
         />
+        <TabLink
+          href="/crawl-management?tab=cancelled"
+          label="Cancelled"
+          active={activeTab === "cancelled"}
+        />
       </nav>
 
       {!campaignId ? (
@@ -94,6 +154,8 @@ export default async function CrawlManagementPage({
         />
       ) : activeTab === "graphics" ? (
         <GraphicsQueue rows={graphicsRows} />
+      ) : activeTab === "cancelled" ? (
+        <CancelledVenues rows={cancelledRows} />
       ) : cities.length === 0 ? (
         <EmptyState
           icon={ClipboardCheck}
