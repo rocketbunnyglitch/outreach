@@ -683,6 +683,86 @@ export async function loadWorklistComebacks(opts: {
 }
 
 // =========================================================================
+// V2 floor-staff briefing calls (Phase 3.13). [ReferenceDoc 7.14.3a] For every
+// confirmed venue 0-4 days before its event, the city lead calls the venue's
+// frontline staff to make sure they know the crawl is happening. Surfaced until
+// floor_staff_call_completed_at (the "briefed" marker) is set. Scoped to the
+// city lead (the team has no separate host-manager role).
+// =========================================================================
+
+export interface WorklistFloorStaffCallRow {
+  venueEventId: string;
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  eventDate: string;
+  role: string;
+  slotStartTime: string | null;
+  slotEndTime: string | null;
+  phoneE164: string | null;
+  outreachBrandId: string | null;
+  cityCampaignId: string;
+  attempts: number;
+  lastCallAt: string | null;
+  lastOutcome: string | null;
+}
+
+export async function loadWorklistFloorStaffCalls(opts: {
+  staffId: string;
+}): Promise<WorklistFloorStaffCallRow[]> {
+  const rows = await db
+    .select({
+      venueEventId: venueEvents.id,
+      venueId: venues.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      eventDate: events.eventDate,
+      role: venueEvents.role,
+      slotStartTime: venueEvents.slotStartTime,
+      slotEndTime: venueEvents.slotEndTime,
+      phoneE164: venues.phoneE164,
+      outreachBrandId: campaigns.outreachBrandId,
+      cityCampaignId: events.cityCampaignId,
+      attempts: venueEvents.floorStaffCallAttempts,
+      lastCallAt: venueEvents.floorStaffLastCallAt,
+      lastOutcome: venueEvents.floorStaffLastCallOutcome,
+    })
+    .from(venueEvents)
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .where(
+      and(
+        eq(venueEvents.status, "confirmed"),
+        eq(cityCampaigns.leadStaffId, opts.staffId),
+        isNull(venueEvents.floorStaffCallCompletedAt),
+        sql`${events.eventDate} >= now()::date`,
+        sql`${events.eventDate} <= (now() + interval '4 days')::date`,
+      ),
+    )
+    .orderBy(asc(events.eventDate), asc(cityCampaigns.priority));
+
+  return rows.map((r) => ({
+    venueEventId: r.venueEventId,
+    venueId: r.venueId,
+    venueName: r.venueName,
+    cityName: r.cityName ?? null,
+    eventDate: r.eventDate,
+    role: r.role,
+    slotStartTime: r.slotStartTime ?? null,
+    slotEndTime: r.slotEndTime ?? null,
+    phoneE164: r.phoneE164 ?? null,
+    outreachBrandId: r.outreachBrandId ?? null,
+    cityCampaignId: r.cityCampaignId,
+    attempts: r.attempts,
+    lastCallAt: r.lastCallAt ? r.lastCallAt.toISOString() : null,
+    lastOutcome: r.lastOutcome ?? null,
+  }));
+}
+
+// =========================================================================
 // Today's completion stats (Phase 2.6) -- powers the worklist's "all caught
 // up" empty state. Three real, operator-attributable counters for the current
 // day. "Today" is bounded in America/Toronto entirely in SQL so the day rolls

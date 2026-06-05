@@ -13,6 +13,7 @@
 import {
   boolean,
   index,
+  integer,
   pgTable,
   smallint,
   text,
@@ -91,6 +92,11 @@ export const venueEvents = pgTable(
     floorStaffCallCompletedAt: timestamp("floor_staff_call_completed_at", {
       withTimezone: true,
     }),
+    // V2 floor-staff call attempt history (Phase 3.13, migration 0114). The
+    // completed-at above is the "briefed" marker; these track the attempts.
+    floorStaffCallAttempts: integer("floor_staff_call_attempts").notNull().default(0),
+    floorStaffLastCallAt: timestamp("floor_staff_last_call_at", { withTimezone: true }),
+    floorStaffLastCallOutcome: text("floor_staff_last_call_outcome"),
 
     /** Temporary in-crawl disable (migration 0108). When a confirmed MIDDLE
      *  venue backs out last-minute, an operator flips this so the slot reopens

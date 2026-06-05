@@ -23,12 +23,19 @@ import { resolveEngineRole } from "@/lib/engine-roles";
 import type { ActionResult } from "@/lib/form-utils";
 import { scheduleLifecycle } from "@/lib/lifecycle-scheduler";
 import { logger } from "@/lib/logger";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 const POST_EVENT_STATUSES = ["good", "neutral", "bad"] as const;
+const FLOOR_OUTCOMES = [
+  "confirmed_with_floor_staff",
+  "manager_again_partial",
+  "no_answer",
+  "voicemail",
+  "issue_raised",
+] as const;
 
 export async function draftCadenceTouchNow(
   _prev: unknown,
@@ -160,5 +167,39 @@ export async function reconfirmCancelledVenue(input: {
   } catch (err) {
     logger.error({ err, venueEventId: input.venueEventId }, "reconfirmCancelledVenue failed");
     return { ok: false, error: "Couldn't re-confirm the venue." };
+  }
+}
+
+/**
+ * Phase 3.13: record a V2 floor-staff briefing call outcome. Increments the
+ * attempt count + stamps last call/outcome; "confirmed_with_floor_staff" also
+ * sets floor_staff_call_completed_at (the briefed marker) which drops the row
+ * off the worklist.
+ */
+export async function recordFloorStaffCall(input: {
+  venueEventId: string;
+  outcome: (typeof FLOOR_OUTCOMES)[number];
+}): Promise<ActionResult<{ ok: true }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(input.venueEventId)) return { ok: false, error: "Invalid id." };
+  if (!FLOOR_OUTCOMES.includes(input.outcome)) return { ok: false, error: "Bad outcome." };
+  try {
+    const now = new Date();
+    const confirmed = input.outcome === "confirmed_with_floor_staff";
+    await db
+      .update(venueEvents)
+      .set({
+        floorStaffCallAttempts: sql`${venueEvents.floorStaffCallAttempts} + 1`,
+        floorStaffLastCallAt: now,
+        floorStaffLastCallOutcome: input.outcome,
+        ...(confirmed ? { floorStaffCallCompletedAt: now } : {}),
+        updatedBy: staff.id,
+      })
+      .where(eq(venueEvents.id, input.venueEventId));
+    revalidatePath("/worklist");
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    logger.error({ err, venueEventId: input.venueEventId }, "recordFloorStaffCall failed");
+    return { ok: false, error: "Couldn't record the call." };
   }
 }
