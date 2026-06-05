@@ -1097,14 +1097,19 @@ function CityCard({
     row.status !== "cancelled" &&
     row.need.crawlBreakdown.every((c) => c.status === "cancelled" || c.confirmedVenueCount >= 4) &&
     row.need.crawlBreakdown.some((c) => c.status !== "cancelled" && c.confirmedVenueCount >= 4);
+  // Cancelled cities read as "killed" -- near-black card in light mode, purple
+  // in dark (matches the desktop row). Takes precedence over complete + select.
+  const isCancelledCity = row.status === "cancelled" || row.need.statusPill === "cancelled";
   return (
     <li
       className={cn(
         "px-3 py-3",
-        cityComplete
-          ? "bg-emerald-500/[0.10] dark:bg-emerald-500/[0.14]"
-          : "bg-white dark:bg-zinc-950",
-        selected && !cityComplete && "bg-blue-50/40 dark:bg-blue-950/15",
+        isCancelledCity
+          ? "bg-zinc-800 text-zinc-300 dark:bg-purple-950/70 dark:text-purple-200"
+          : cityComplete
+            ? "bg-emerald-500/[0.10] dark:bg-emerald-500/[0.14]"
+            : "bg-white dark:bg-zinc-950",
+        selected && !cityComplete && !isCancelledCity && "bg-blue-50/40 dark:bg-blue-950/15",
       )}
     >
       <div className="flex items-start gap-2">
