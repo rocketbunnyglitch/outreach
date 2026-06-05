@@ -87,6 +87,7 @@ export const MERGE_FIELD_KEYS = [
   "your_name",
   "contact_first_name",
   "company_name",
+  "campaign_name",
   "venue_manager_name",
   "venue_manager_phone",
   "operator_cell",
@@ -670,6 +671,17 @@ async function latestSenderName(connectedAccountId: string): Promise<string | nu
 }
 
 async function resolveCompanyName(fields: MergeFields, input: MergeContextInput): Promise<void> {
+  // {{campaign_name}} -- the public campaign label (e.g. "Halloween
+  // International 2026"). Resolved whenever a campaign id is present,
+  // independent of the company/alias paths below (which can early-return).
+  if (input.campaignId) {
+    const [c] = await db
+      .select({ name: campaigns.name })
+      .from(campaigns)
+      .where(eq(campaigns.id, input.campaignId))
+      .limit(1);
+    if (c?.name) fields.campaign_name = c.name;
+  }
   if (input.sendingAccountId && input.campaignId) {
     const [row] = await db
       .select({

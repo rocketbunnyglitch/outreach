@@ -354,7 +354,11 @@ export function ColdOutreachTable({
     // the row from cold — exactly the bug the operator was
     // describing. is_warm is independent of status so promotions
     // preserve the cold-table presence.
-    if (mode === "warm") return rawEntries.filter((e) => e.isWarm);
+    // A venue counts as warm if it carries the is_warm flag OR its
+    // status is "interested" -- some interested rows never got the flag
+    // set (AI/inbox auto-status writes status directly), and the
+    // operator's mental model is "interested == warm".
+    if (mode === "warm") return rawEntries.filter((e) => e.isWarm || e.status === "interested");
     return rawEntries;
   }, [rawEntries, mode]);
 
@@ -789,12 +793,29 @@ export function ColdOutreachTable({
 
   //   - cold: full discovery EmptyState (CTAs to add venues / paste /
   //           AI suggest) — that's where outreach starts
-  //   - warm: hide the section entirely. An empty warm queue isn't a
-  //           "do something" moment; it just means nothing has been
-  //           promoted yet. The cold table above still works as the
-  //           on-ramp.
+  //   - warm: keep the section visible with a short hint. Operators
+  //           reported "the warm table disappeared" when a city had no
+  //           warm rows yet; an always-present table is the obvious
+  //           place to move leads INTO.
   if (entries.length === 0 && !adding) {
-    if (mode === "warm") return null;
+    if (mode === "warm") {
+      return (
+        <section className="card-surface overflow-hidden ring-1 ring-emerald-500/30">
+          <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-4 dark:border-zinc-800/40">
+            <div className="flex items-baseline gap-2">
+              <h2 className="font-semibold text-lg tracking-tight">Warm leads</h2>
+              <span className="font-mono text-[11px] text-zinc-500">0</span>
+            </div>
+          </header>
+          <div className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            No warm leads yet. In the cold-outreach table below, select venues that showed interest
+            and choose{" "}
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">Move to warm leads</span>{" "}
+            -- or set a venue's status to Interested. They collect here.
+          </div>
+        </section>
+      );
+    }
     return (
       <EmptyState
         cityCampaignId={cityCampaignId}

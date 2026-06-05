@@ -39,18 +39,18 @@ export const HALLOWEEN_2026_TEMPLATES: SeedTemplate[] = [
   {
     code: "T1",
     name: "T1 - Cold opener, night crawls",
-    subject: "Include {{venue_name}} in our {{city}} Halloween bar crawls",
+    subject: "{{city}} | {{venue_name}}: Halloween Bar Crawl Partnership",
     body: `Hey {{venue_name}},
 
-I'm reaching out on behalf of {{company_name}} to invite {{venue_name}} to join our upcoming {{city}} Halloween bar crawls we're running on:
+We're projecting {{guest_count}} participants for this crawl in {{city}} and we'd love to partner with {{venue_name}} in the {{campaign_name}} experience. Guests will have wristbands for entry at each stop, and we'll promote the route to drive groups through the night.
+
+We're running on:
 
 Thursday, October 29th
 Friday, October 30th
 Saturday, October 31st
 
-{{venue_name}} is in the area and we thought you'd be a good fit. Typically we run it from 7:30 PM to 2:00 AM and we have different time slots to choose from.
-
-Would you be open to having our guests come through on any of those nights? If so, I can send over the time slots, terms and how it works.
+We typically run from 7:30 PM to 2:00 AM with a few different time slots to choose from. Would you be open to having our guests come through on any of those nights? If so, I can send over the time slots, terms and how it works.
 
 Thanks,
 {{your_name}}
@@ -60,7 +60,7 @@ Thanks,
   {
     code: "T2",
     name: "T2 - Cold opener, day party",
-    subject: "{{city}} Halloween day party bar crawl with {{venue_name}}",
+    subject: "{{city}} | {{venue_name}}: Halloween Bar Crawl Partnership",
     body: `Hey {{venue_name}},
 
 I'm reaching out on behalf of {{company_name}} to invite {{venue_name}} to be a participating stop at our {{city}} Halloween bar crawl on Saturday, October 31st at 1pm-8pm (day party).
