@@ -16,12 +16,13 @@ import "server-only";
 import {
   campaignConnectedAccounts,
   campaigns,
+  emailMessages,
   outreachBrands,
   staffOutreachEmails,
   users,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 export interface CampaignInboxRow {
   id: string;
@@ -29,6 +30,10 @@ export interface CampaignInboxRow {
   status: "connected" | "needs_reauth" | "disconnected";
   ownerUserId: string | null;
   ownerDisplayName: string | null;
+  /** The Google account's full name, read from the From header of this inbox's
+   *  own sent mail (email_messages.from_name on the latest outbound). Used to
+   *  prefill the sender alias. NULL when the inbox hasn't sent anything yet. */
+  googleDisplayName: string | null;
   /** True when this inbox is assigned to the active campaign via
    *  campaign_connected_accounts. */
   assignedToCampaign: boolean;
@@ -95,6 +100,34 @@ export async function loadCampaignInfo(opts: {
   const ownerMap = new Map<string, string>();
   for (const o of ownerRows) ownerMap.set(o.id, o.displayName);
 
+  // Google account name per inbox: read from the From header of its OWN sent
+  // mail (email_messages.from_name on the latest outbound). Gmail stamps the
+  // Google account's full name there, so this is the account's real name with
+  // no extra OAuth scope. Latest per account via DISTINCT ON.
+  const googleNameByAccount = new Map<string, string>();
+  if (inboxRows.length) {
+    const nameRows = await db
+      .selectDistinctOn([emailMessages.staffOutreachEmailId], {
+        accountId: emailMessages.staffOutreachEmailId,
+        fromName: emailMessages.fromName,
+      })
+      .from(emailMessages)
+      .where(
+        and(
+          inArray(
+            emailMessages.staffOutreachEmailId,
+            inboxRows.map((r) => r.id),
+          ),
+          eq(emailMessages.direction, "outbound"),
+          sql`${emailMessages.fromName} is not null and ${emailMessages.fromName} <> ''`,
+        ),
+      )
+      .orderBy(emailMessages.staffOutreachEmailId, sql`${emailMessages.sentAt} desc`);
+    for (const n of nameRows) {
+      if (n.accountId && n.fromName) googleNameByAccount.set(n.accountId, n.fromName);
+    }
+  }
+
   // Which inboxes are assigned to this campaign, and the brand each presents.
   const assignmentRows = inboxRows.length
     ? await db
@@ -138,6 +171,7 @@ export async function loadCampaignInfo(opts: {
       status: r.status as CampaignInboxRow["status"],
       ownerUserId: r.ownerUserId,
       ownerDisplayName: r.ownerUserId ? (ownerMap.get(r.ownerUserId) ?? null) : null,
+      googleDisplayName: googleNameByAccount.get(r.id) ?? null,
       assignedToCampaign: assigned.has(r.id),
       outreachBrandId: brandId,
       outreachBrandName: brandId ? (brandName.get(brandId) ?? null) : null,

@@ -36,6 +36,7 @@ interface InboxRow {
   outreachBrandName: string | null;
   aliasName: string | null;
   signatureHtml: string | null;
+  googleDisplayName: string | null;
 }
 
 interface TeamMember {
@@ -330,20 +331,38 @@ function Row({
       </td>
       <td className="px-4 py-2.5">
         {isAdmin ? (
-          <input
-            type="text"
-            defaultValue={row.aliasName ?? ""}
-            onBlur={(e) => saveAlias(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-            disabled={isPending}
-            placeholder="Sender's name"
-            aria-label={`Sender alias for ${row.emailAddress}`}
-            className="w-32 rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          <div className="flex flex-col items-start gap-1">
+            <input
+              // Re-mount when the saved alias changes (e.g. after "Use Google
+              // name") so the uncommitted defaultValue reflects the new value.
+              key={row.aliasName ?? "empty"}
+              type="text"
+              defaultValue={row.aliasName ?? ""}
+              onBlur={(e) => saveAlias(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              disabled={isPending}
+              placeholder={row.googleDisplayName ?? "Sender's name"}
+              aria-label={`Sender alias for ${row.emailAddress}`}
+              className="w-36 rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400/30 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+            {!row.aliasName && row.googleDisplayName && (
+              <button
+                type="button"
+                onClick={() => saveAlias(row.googleDisplayName ?? "")}
+                disabled={isPending}
+                title="Use the Google account name as the sender name"
+                className="font-mono text-[10px] text-blue-600 uppercase tracking-[0.06em] hover:underline disabled:opacity-50 dark:text-blue-400"
+              >
+                Use "{row.googleDisplayName}"
+              </button>
+            )}
+          </div>
         ) : row.aliasName ? (
           <span className="text-sm">{row.aliasName}</span>
+        ) : row.googleDisplayName ? (
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">{row.googleDisplayName}</span>
         ) : (
           <span className="text-xs text-zinc-500">User's name</span>
         )}
