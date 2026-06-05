@@ -45,6 +45,7 @@ import {
   runSendSafetyForRecipients,
 } from "@/lib/send-safety";
 import { applyLabelToThread, ensureTeamLabel } from "@/lib/team-labels";
+import { getVenueBrandRelationship } from "@/lib/venue-relationships";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -413,6 +414,34 @@ export async function composeAndSendImpl(
       sendOutreachBrandId = cc.outreachBrandId ?? null;
       sendCampaignGmailLabel = cc.gmailLabel ?? null;
       sendCityName = cc.cityName ?? null;
+
+      // Phase 3.10: hard-block sending from a brand to a venue flagged 'bad'
+      // (they asked us to stop, or a post-event flag). Admins override via the
+      // same bypassCap path as the cap/cooldown; non-admins are hard-blocked.
+      if (sendOutreachBrandId) {
+        const rel = await getVenueBrandRelationship(venueId, sendOutreachBrandId);
+        if (rel?.status === "bad") {
+          const canBypass = bypassCap && hasMinimumRole(staff, "admin");
+          if (!canBypass) {
+            return {
+              ok: false,
+              error: `This venue is flagged as a 'bad' relationship for this brand${
+                rel.notes ? ` -- ${rel.notes}` : ""
+              }. ${
+                hasMinimumRole(staff, "admin")
+                  ? "Click 'Bypass cap' to override."
+                  : "Ask an admin to override before sending."
+              }`,
+              relationshipBlocked: true,
+            };
+          }
+          logger.warn(
+            { venueId, sendOutreachBrandId, userId: staff.id },
+            "composeAndSend: admin bypassed bad-relationship block",
+          );
+        }
+      }
+
       const floor = await checkCadenceFloors({
         venueId,
         campaignId: cc.campaignId,

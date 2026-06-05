@@ -367,6 +367,10 @@ export type ComposeResult =
        *  a "Bypass cap" button (admins only). */
       capBlocked?: boolean;
       usage?: SendUsage;
+      /** Set when the venue x sending-brand relationship is flagged 'bad'
+       *  (Phase 3.10). Hard-blocked for non-admins; admins override via the
+       *  same bypassCap path. */
+      relationshipBlocked?: boolean;
       /** Set when a cold-send pacing cooldown blocked the send (migration
        *  0106). The composer shows the countdown ring; admins bypass via the
        *  same path as the cap. cooldownUntil is the ISO expiry. */

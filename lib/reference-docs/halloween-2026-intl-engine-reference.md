@@ -398,6 +398,13 @@ Engine should show flag source ("set by Bryle on Oct 15" vs "auto-detected from 
 
 **Decay:** Bad flag auto-clears after **1 year** from set date. After auto-clear, relationship goes to "no history" (not "good") so next outreach is fresh-start.
 
+#### [ENGINE - current behavior] (Phase 3.9/3.10/3.11)
+
+Stored in `venue_domain_relationships` (one row per venue x outreach_brand). Helpers in `lib/venue-relationships.ts`.
+- **Auto-detect (3.9):** the inbound classifier (`lib/ai-classify.ts`) updates the flag after each classification -- `hard_no` -> `bad` with `auto_clear_at = now + 1 year` (overrides any prior flag, `set_by = auto_inbound`); a first `engaged` -> `neutral` only when no row exists yet (never downgrades a good/bad; `good` still needs an explicit operator/post-event signal); `cancelled_by_them` never auto-flags bad.
+- **Hard block (3.10):** `composeAndSend` refuses to send when the venue x sending-brand flag is `bad` (`relationshipBlocked`). Admins override via the same `bypassCap` path as the cap/cooldown; non-admins are hard-blocked. NOTE: this gate is on the interactive composer; the scheduled-send runner (which auto-sends lifecycle T13-T17, incl. the relationship-gated T17 of 7.15.2) does not yet re-check it -- a follow-up.
+- **Decay (3.11):** `POST /api/cron/relationship-decay` (daily, cron_runs-logged) clears `bad` flags past `auto_clear_at` back to `no_history`. Operator must add the crontab entry.
+
 ### 3.4 No country restrictions on domains [LOCKED]
 
 Any outreach domain can email any country. No country restrictions on which domains target which markets.
