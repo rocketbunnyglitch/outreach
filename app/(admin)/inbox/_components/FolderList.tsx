@@ -194,17 +194,17 @@ export function FolderList({
               ))}
               <FacetOverflowChip
                 groupLabel="Brands"
-                allFacets={facets.brands}
-                visibleCount={6}
-                buildHref={(id) =>
-                  buildChipHref({
+                allFacets={facets.brands.map((f) => ({
+                  ...f,
+                  href: buildChipHref({
                     activeFolder,
                     preservedQueryBase,
-                    brandId: id,
+                    brandId: f.id,
                     campaignId: activeCampaignId,
                     labelId: activeLabelId,
-                  })
-                }
+                  }),
+                }))}
+                visibleCount={6}
                 activeId={activeBrandId}
               />
             </>
@@ -234,17 +234,17 @@ export function FolderList({
               ))}
               <FacetOverflowChip
                 groupLabel="Campaigns"
-                allFacets={facets.campaigns}
-                visibleCount={8}
-                buildHref={(id) =>
-                  buildChipHref({
+                allFacets={facets.campaigns.map((f) => ({
+                  ...f,
+                  href: buildChipHref({
                     activeFolder,
                     preservedQueryBase,
                     brandId: activeBrandId,
-                    campaignId: id,
+                    campaignId: f.id,
                     labelId: activeLabelId,
-                  })
-                }
+                  }),
+                }))}
+                visibleCount={8}
                 activeId={activeCampaignId}
               />
             </>
@@ -280,17 +280,17 @@ export function FolderList({
               ))}
               <FacetOverflowChip
                 groupLabel="Labels"
-                allFacets={facets.labels}
-                visibleCount={10}
-                buildHref={(id) =>
-                  buildChipHref({
+                allFacets={facets.labels.map((f) => ({
+                  ...f,
+                  href: buildChipHref({
                     activeFolder,
                     preservedQueryBase,
                     brandId: activeBrandId,
                     campaignId: activeCampaignId,
-                    labelId: id,
-                  })
-                }
+                    labelId: f.id,
+                  }),
+                }))}
+                visibleCount={10}
                 activeId={activeLabelId}
               />
             </>

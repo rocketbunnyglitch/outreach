@@ -32,6 +32,10 @@ export interface FacetItem {
   id: string;
   label: string;
   count: number;
+  /** Precomputed navigation href. Built server-side in FolderList -- a
+   *  function prop can't cross the server/client boundary (RSC serialization
+   *  error), so the href is materialized as a string here. */
+  href: string;
 }
 
 interface Props {
@@ -43,19 +47,11 @@ interface Props {
   /** How many are already rendered inline; the chip label says
    *  "+{N} more" where N = allFacets.length - visibleCount. */
   visibleCount: number;
-  /** Build the href to navigate to when a facet is picked. */
-  buildHref: (facetId: string) => string;
   /** Currently-active facet id, if any. Highlighted in the modal. */
   activeId?: string;
 }
 
-export function FacetOverflowChip({
-  groupLabel,
-  allFacets,
-  visibleCount,
-  buildHref,
-  activeId,
-}: Props) {
+export function FacetOverflowChip({ groupLabel, allFacets, visibleCount, activeId }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const overflowCount = Math.max(0, allFacets.length - visibleCount);
@@ -80,7 +76,6 @@ export function FacetOverflowChip({
           allFacets={allFacets}
           query={query}
           setQuery={setQuery}
-          buildHref={buildHref}
           activeId={activeId}
           onClose={() => setOpen(false)}
         />
@@ -94,7 +89,6 @@ function Modal({
   allFacets,
   query,
   setQuery,
-  buildHref,
   activeId,
   onClose,
 }: {
@@ -102,7 +96,6 @@ function Modal({
   allFacets: FacetItem[];
   query: string;
   setQuery: (s: string) => void;
-  buildHref: (id: string) => string;
   activeId?: string;
   onClose: () => void;
 }) {
@@ -173,7 +166,7 @@ function Modal({
             filtered.map((f) => (
               <li key={f.id}>
                 <Link
-                  href={buildHref(f.id)}
+                  href={f.href}
                   onClick={onClose}
                   className={`flex items-center gap-2 px-3 py-1.5 text-xs ${
                     activeId === f.id
