@@ -39,7 +39,7 @@ export default async function BrandsPage() {
       <section id="outreach" className="flex flex-col gap-4">
         <SectionHeader
           title="Outreach brands"
-          subtitle="Venue-facing. Email + Postmark + Gmail + signatures. No public web presence."
+          subtitle="Venue-facing. Email + Gmail + signatures. No public web presence."
           newHref="/brands/outreach/new"
         />
         {outreachActive.length === 0 ? (
@@ -136,7 +136,6 @@ function OutreachBrandCard({
 }: {
   brand: Awaited<ReturnType<typeof listOutreachBrands>>[number];
 }) {
-  const hasPostmark = Boolean(brand.postmarkServerToken);
   const hasSignature = Boolean(brand.emailSignatureText || brand.emailSignatureHtml);
 
   return (
@@ -151,7 +150,6 @@ function OutreachBrandCard({
             <Badge tone={brand.status === "active" ? "success" : "muted"}>{brand.status}</Badge>
           </div>
           <div className="flex flex-wrap gap-1.5 pt-1">
-            <ConfigBadge label="Postmark" ok={hasPostmark} />
             <ConfigBadge label="Signature" ok={hasSignature} />
             <ConfigBadge label="Quo" ok={Boolean(brand.quoLineE164)} />
           </div>

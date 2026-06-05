@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  FieldRow,
-  FieldShell,
-  FormSection,
-  SecretConfiguredHint,
-} from "@/app/(admin)/_components/form-field";
+import { FieldRow, FieldShell, FormSection } from "@/app/(admin)/_components/form-field";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +32,6 @@ export function OutreachBrandForm({ initial, action }: OutreachBrandFormProps) {
   const [state, formAction] = useActionState<FormState, FormData>(action, null);
   const fieldErrors = state && state.ok === false ? (state.fieldErrors ?? {}) : {};
   const isEdit = !!initial;
-  const hasPostmark = !!initial?.postmarkServerToken;
 
   return (
     <form action={formAction} className="flex flex-col gap-10">
@@ -92,49 +86,6 @@ export function OutreachBrandForm({ initial, action }: OutreachBrandFormProps) {
             defaultValue={initial?.emailDomain ?? ""}
             placeholder="eventsperse.com"
           />
-        </FieldShell>
-      </FormSection>
-
-      <FormSection
-        title="Postmark"
-        description="Transactional email provider. One account per outreach brand (DECISIONS.md#015)."
-      >
-        <FieldRow>
-          <FieldShell
-            name="postmarkAccountId"
-            label="Account ID"
-            hint="Reference only — not used to send."
-          >
-            <Input
-              id="postmarkAccountId"
-              name="postmarkAccountId"
-              defaultValue={initial?.postmarkAccountId ?? ""}
-            />
-          </FieldShell>
-
-          <FieldShell
-            name="postmarkSenderSignature"
-            label="Sender signature"
-            hint="The From address verified in Postmark."
-          >
-            <Input
-              id="postmarkSenderSignature"
-              name="postmarkSenderSignature"
-              defaultValue={initial?.postmarkSenderSignature ?? ""}
-              placeholder="hello@eventsperse.com"
-            />
-          </FieldShell>
-        </FieldRow>
-
-        <FieldShell name="postmarkServerToken" label="Server token">
-          <Input
-            id="postmarkServerToken"
-            name="postmarkServerToken"
-            type="password"
-            autoComplete="off"
-            placeholder={hasPostmark ? "•••••••• (configured)" : ""}
-          />
-          <SecretConfiguredHint configured={hasPostmark} />
         </FieldShell>
       </FormSection>
 
