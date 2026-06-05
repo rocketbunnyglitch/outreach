@@ -249,15 +249,16 @@ if [ "$SKIP_BUILD" = "1" ]; then
 else
   log "building Next.js standalone bundle..."
   log "(this is the slow step — 4-7 min on 2GB RAM)"
-  # Preserve the previous build's hashed static chunks so tabs opened
-  # before this deploy can still fetch their immutable chunks instead of
-  # 404 -> ChunkLoadError. Archived before `next build` wipes .next, then
-  # merged back (no-clobber) after the fresh static is copied in.
-  PREV_STATIC_ARCHIVE=""
-  if [ -d .next/standalone/.next/static ]; then
-    PREV_STATIC_ARCHIVE="$(mktemp -d)"
-    cp -r .next/standalone/.next/static/. "$PREV_STATIC_ARCHIVE/" 2>/dev/null || true
-  fi
+  # Persistent chunk pool: keep EVERY recent deploy's immutable hashed
+  # static chunks (not just the immediately-previous build) so a tab
+  # opened many deploys / up to a week ago can still fetch its chunks
+  # instead of 404 -> ChunkLoadError. The old single-generation archive
+  # only survived ONE deploy, so a burst of deploys broke open tabs.
+  # The pool lives at $APP_DIR/.chunk-pool and survives `next build`
+  # (which only wipes .next). cp -n never re-touches existing pool files,
+  # so their mtime reflects first-seen time and the 7-day prune works.
+  CHUNK_POOL="$APP_DIR/.chunk-pool"
+  mkdir -p "$CHUNK_POOL"
   NODE_OPTIONS="--max-old-space-size=$NODE_MAX_OLD_SPACE" \
   BUILD_VERSION=$(git rev-parse --short HEAD) \
   BUILD_COMMIT=$(git rev-parse HEAD) \
@@ -266,11 +267,13 @@ else
 
   # Copy static assets into standalone tree (next build doesn't do this)
   cp -r .next/static .next/standalone/.next/
-  # Merge prior build's chunks back without overwriting this build's files.
-  if [ -n "$PREV_STATIC_ARCHIVE" ] && [ -d "$PREV_STATIC_ARCHIVE" ]; then
-    cp -rn "$PREV_STATIC_ARCHIVE/." .next/standalone/.next/static/ 2>/dev/null || true
-    rm -rf "$PREV_STATIC_ARCHIVE"
-  fi
+  # Merge the retained pool back without overwriting this build's files
+  # (so stale tabs can still load their old chunks), then add this build's
+  # fresh chunks to the pool for future deploys, then prune > 7 days old.
+  cp -rn "$CHUNK_POOL/." .next/standalone/.next/static/ 2>/dev/null || true
+  cp -rn .next/standalone/.next/static/. "$CHUNK_POOL/" 2>/dev/null || true
+  find "$CHUNK_POOL" -type f -mtime +7 -delete 2>/dev/null || true
+  find "$CHUNK_POOL" -type d -empty -delete 2>/dev/null || true
   [ -d public ] && cp -r public .next/standalone/ 2>/dev/null || true
 
   # Copy data/ — non-code import payloads (e.g. halloween_2025.json
