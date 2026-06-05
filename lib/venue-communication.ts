@@ -223,6 +223,17 @@ export async function loadVenueCommunication(
   const emailMatchIds = new Set<string>();
   if (emailSurface.size > 0) {
     const emailList = Array.from(emailSurface);
+    // Build a real text[] parameter for the && overlap operator. Interpolating
+    // a JS array directly (`${emailList}::text[]`) does NOT work: drizzle
+    // spreads the array into scalar params, so a single email casts the bare
+    // string to text[] and Postgres throws 22P02 "malformed array literal".
+    // Since the venue page .catch()'s this loader, that crash silently emptied
+    // the ENTIRE communication timeline for any venue with a stored email.
+    // ARRAY[$n, ...]::text[] binds each element as its own param -> correct.
+    const emailArray = sql`ARRAY[${sql.join(
+      emailList.map((e) => sql`${e}`),
+      sql`, `,
+    )}]::text[]`;
     const matchedRows = await db
       .selectDistinct({ threadId: emailMessages.threadId })
       .from(emailMessages)
@@ -233,15 +244,12 @@ export async function loadVenueCommunication(
           eq(connectedAccounts.teamId, teamId),
           isNull(emailThreads.deletedAt),
           or(
-            // inArray, NOT sql`= ANY(${emailList})` — the latter mis-binds
-            // the JS array as a scalar (22P02 malformed array literal) and
-            // this query is .catch(()=>null)'d, so it silently dropped the
-            // venue timeline. The && overlap lines below correctly cast via
-            // ${emailList}::text[]; this scalar-column match needs inArray.
+            // Scalar column -> inArray. Array columns -> && overlap against the
+            // properly-bound emailArray above.
             inArray(emailMessages.fromEmailNormalized, emailList),
-            sql`${emailMessages.toEmailsNormalized} && ${emailList}::text[]`,
-            sql`${emailMessages.ccEmailsNormalized} && ${emailList}::text[]`,
-            sql`${emailMessages.bccEmailsNormalized} && ${emailList}::text[]`,
+            sql`${emailMessages.toEmailsNormalized} && ${emailArray}`,
+            sql`${emailMessages.ccEmailsNormalized} && ${emailArray}`,
+            sql`${emailMessages.bccEmailsNormalized} && ${emailArray}`,
           ),
         ),
       );
