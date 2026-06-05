@@ -49,6 +49,7 @@ import { parseEmailHeader, parseEmailList } from "@/lib/email-address";
 import { refreshAccessToken } from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { logger } from "@/lib/logger";
+import { routeMisroutedReply } from "@/lib/misrouted-reply";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { reconcileGmailLabelsForThread, unreconcileGmailLabelsForThread } from "@/lib/team-labels";
 import { classifyInboundEmail } from "@/lib/triage-classifier";
@@ -1278,6 +1279,15 @@ async function ingestMessage(opts: {
       updated_by = ${inbox.staff_member_id}
     WHERE id = ${threadId}
   `);
+
+  // Phase 4.9: an inbound reply that landed on a different alias than the one
+  // that pitched the venue gets routed to the original pitcher's queue.
+  // Best-effort -- never blocks ingestion.
+  if (direction === "inbound") {
+    await routeMisroutedReply(threadId).catch((err) =>
+      logger.warn({ err, threadId }, "misrouted-reply routing failed"),
+    );
+  }
 
   // Reconcile Gmail labels onto team_labels. Skip system labels
   // (INBOX, UNREAD, IMPORTANT, CATEGORY_*, SENT etc.) — those aren't
