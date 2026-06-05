@@ -96,6 +96,10 @@ interface Props {
    *  footer. Defaults to true so existing callers keep their
    *  current behavior. */
   showToolbar?: boolean;
+  /** When true, place the caret in the editor on mount (Gmail-style
+   *  reply: hitting Reply lands the cursor in the body). Off by
+   *  default so opening a fresh compose window doesn't steal focus. */
+  autofocus?: boolean;
 }
 
 const FONT_SIZES: Array<{ label: string; value: string }> = [
@@ -131,6 +135,7 @@ export function RichTextEditor({
   placeholder,
   className,
   showToolbar = true,
+  autofocus = false,
 }: Props) {
   // Track last-emitted HTML so we don't re-seed the editor on our
   // own round-trip (which would jump the cursor to the start).
@@ -235,6 +240,9 @@ export function RichTextEditor({
       }),
     ],
     content: valueHtml ?? "",
+    // Gmail-style: land the caret at the end of the body on mount for
+    // inline replies. Off for fresh compose so the To field keeps focus.
+    autofocus: autofocus ? "end" : false,
     // ProseMirror logs an SSR warning if it tries to render server-
     // side. Defer attaching to the DOM until mount.
     immediatelyRender: false,

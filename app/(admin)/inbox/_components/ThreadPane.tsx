@@ -231,14 +231,14 @@ export function ThreadPane({
           stale; the summary itself materializes on the next view. */}
       {thread.aiSummary && <ThreadSummaryBlock summary={thread.aiSummary} />}
 
-      {/* Messages — NEWEST FIRST (top), like the rest of the app's
-          newest-on-top expectation: the loader returns oldest->newest, so
-          we reverse for display. The newest stays expanded; older messages
+      {/* Messages -- OLDEST FIRST (top), newest at the bottom, like
+          Gmail: the loader returns oldest->newest, so we render in that
+          order. The newest (last) stays expanded; older messages
           collapse to a one-line summary when there are 3+. */}
       <ol className="flex flex-col">
-        {[...messages].reverse().map((m, i) => {
-          // After reverse, the newest message is first (index 0).
-          const isNewest = i === 0;
+        {messages.map((m, i) => {
+          // Newest message is last in chronological order.
+          const isNewest = i === messages.length - 1;
           // Auto-collapse older messages only when there are 3+; single-
           // and two-message threads stay fully expanded.
           const defaultCollapsed = messages.length >= 3 && !isNewest;

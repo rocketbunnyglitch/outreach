@@ -24,7 +24,7 @@
 
 import { useComposer } from "@/app/(admin)/_components/composer/composer-store";
 import { ComposerWindow } from "@/app/(admin)/_components/composer/composer-window";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   threadId: string;
@@ -32,6 +32,9 @@ interface Props {
 
 export function InlineReplyHost({ threadId }: Props) {
   const { composers } = useComposer();
+  // Anchors the desktop inline reply so we can scroll it into view the
+  // moment it opens (Gmail jumps you to the reply box).
+  const wrapperRef = useRef<HTMLDivElement>(null);
   // Detect mobile (below lg) so a reply opens FULL-SCREEN on phones --
   // Gmail-mobile behavior -- instead of a cramped inline box. When
   // isMobile, ComposerWindow forces effectiveMode=fullscreen (a fixed
@@ -50,6 +53,18 @@ export function InlineReplyHost({ threadId }: Props) {
   const inline = Array.from(composers.values()).find(
     (c) => c.mode === "inline" && c.replyToThreadId === threadId,
   );
+
+  // When an inline reply opens (or switches threads), scroll it into
+  // view so the operator lands at the reply box. The editor itself
+  // autofocuses (RichTextEditor autofocus prop in inline mode), so the
+  // caret is already in the body once it's on screen. Desktop only --
+  // mobile opens a full-screen overlay.
+  const inlineId = inline?.id;
+  useEffect(() => {
+    if (!inlineId || isMobile) return;
+    wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [inlineId, isMobile]);
+
   if (!inline) return null;
 
   // Mobile: full-screen overlay (the composer is position:fixed when
@@ -59,7 +74,10 @@ export function InlineReplyHost({ threadId }: Props) {
   }
   // Desktop: anchored inline surface at the bottom of the thread.
   return (
-    <div className="border-zinc-200/80 border-t bg-white dark:border-zinc-800/60 dark:bg-zinc-950">
+    <div
+      ref={wrapperRef}
+      className="border-zinc-200/80 border-t bg-white dark:border-zinc-800/60 dark:bg-zinc-950"
+    >
       <ComposerWindow instance={inline} index={0} isMobile={false} />
     </div>
   );

@@ -1318,6 +1318,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           // body also shows the expanded original below it.
           className="min-h-[10rem] flex-1"
           showToolbar={toolbarOpen}
+          // Gmail-style: an inline reply lands the caret in the body so
+          // the operator can start typing immediately. Fresh compose
+          // windows keep focus on the To field.
+          autofocus={effectiveMode === "inline"}
         />
 
         {/* Collapsed quoted-thread chip — Gmail-parity. Shows when

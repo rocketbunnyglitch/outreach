@@ -330,63 +330,75 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       }>;
       const d = ce.detail ?? {};
       const initialMode: ComposerInstance["mode"] = d.initialMode ?? "docked";
+      // Shared loader: pull a draft row from the server and add it to
+      // the store with the requested mode. hydrate() never overwrites
+      // an already-open composer, so calling this when the draft is
+      // already loaded is a safe no-op for its fields.
+      async function hydrateDraftById(
+        id: string,
+        mode: ComposerInstance["mode"],
+        enginePickAttempted: boolean,
+      ) {
+        const mod = await import("../../_actions/email-drafts");
+        const rows = await mod.listMyDrafts();
+        const row = rows.find((r) => r.id === id);
+        if (!row) return;
+        hydrate([
+          {
+            id: row.id,
+            mode,
+            fromAccountId: row.connectedAccountId ?? "",
+            to: row.toAddresses.join(", "),
+            cc: row.ccAddresses.join(", "),
+            bcc: row.bccAddresses.join(", "),
+            showCc: row.ccAddresses.length > 0,
+            showBcc: row.bccAddresses.length > 0,
+            subject: row.subject,
+            bodyText: row.bodyText,
+            bodyHtml: row.bodyHtml,
+            venueId: row.venueId,
+            cityCampaignId: row.cityCampaignId,
+            templateId: row.templateId,
+            enginePickedTemplateId: row.enginePickedTemplateId,
+            attachments: (row.attachments ?? []).map((a, i) => ({
+              id: `${row.id}-att-${i}`,
+              name: a.name,
+              size: a.size,
+              mime: a.mime,
+              storage_key: a.storage_key,
+            })),
+            scheduledFor: row.scheduledFor,
+            draftStatus: "saved",
+            lastSavedAt: row.updatedAt,
+            isAdmin: false,
+            composeMode: (row.mode as ComposerInstance["composeMode"]) ?? "new",
+            replyToThreadId: row.replyToThreadId,
+            replyToMessageId: row.replyToMessageId,
+            pendingLabelIds: row.pendingLabelIds ?? [],
+            quotedHtml: row.quotedHtml ?? null,
+            enginePickAttempted,
+          },
+        ]);
+      }
       if (d.draftId) {
-        // Resume an existing draft. If it's not in the store yet
-        // (hydration slow or never ran), fall through to open()
-        // which creates a fresh instance with empty fields — the
-        // autosave will then sync against the existing row id once
-        // the operator starts typing.
-        setMode(d.draftId, initialMode);
+        // Resume an existing draft (worklist "Review & send", inbox
+        // Drafts list, draft-ready notifications). Bring it forward if
+        // it's already in the store; otherwise hydrate it from the
+        // server so the click reliably pops the composer instead of
+        // silently no-op'ing. enginePickAttempted=true -> a resumed
+        // draft keeps its own template (no engine re-pick clobber).
+        const id = d.draftId;
+        setMode(id, initialMode);
+        void hydrateDraftById(id, initialMode, true);
         return;
       }
       if (d.hydrateDraftId) {
         // Server just created a draft (e.g. openReplyDraft); pull it
         // from the server + add to the store with the requested mode
         // (inline for thread replies, docked otherwise).
-        const id = d.hydrateDraftId;
-        void import("../../_actions/email-drafts").then(async (mod) => {
-          const rows = await mod.listMyDrafts();
-          const row = rows.find((r) => r.id === id);
-          if (!row) return;
-          hydrate([
-            {
-              id: row.id,
-              mode: initialMode,
-              fromAccountId: row.connectedAccountId ?? "",
-              to: row.toAddresses.join(", "),
-              cc: row.ccAddresses.join(", "),
-              bcc: row.bccAddresses.join(", "),
-              showCc: row.ccAddresses.length > 0,
-              showBcc: row.bccAddresses.length > 0,
-              subject: row.subject,
-              bodyText: row.bodyText,
-              bodyHtml: row.bodyHtml,
-              venueId: row.venueId,
-              cityCampaignId: row.cityCampaignId,
-              templateId: row.templateId,
-              enginePickedTemplateId: row.enginePickedTemplateId,
-              attachments: (row.attachments ?? []).map((a, i) => ({
-                id: `${row.id}-att-${i}`,
-                name: a.name,
-                size: a.size,
-                mime: a.mime,
-                storage_key: a.storage_key,
-              })),
-              scheduledFor: row.scheduledFor,
-              draftStatus: "saved",
-              lastSavedAt: row.updatedAt,
-              isAdmin: false,
-              composeMode: (row.mode as ComposerInstance["composeMode"]) ?? "new",
-              replyToThreadId: row.replyToThreadId,
-              replyToMessageId: row.replyToMessageId,
-              pendingLabelIds: row.pendingLabelIds ?? [],
-              quotedHtml: row.quotedHtml ?? null,
-              // A just-created reply/forward draft (openReplyDraft) is
-              // eligible for one engine auto-pick (Phase 1.5 / 2.7).
-              enginePickAttempted: false,
-            },
-          ]);
-        });
+        // enginePickAttempted=false -> a fresh reply/forward draft is
+        // eligible for exactly one engine auto-pick (Phase 1.5 / 2.7).
+        void hydrateDraftById(d.hydrateDraftId, initialMode, false);
         return;
       }
       open({
