@@ -117,6 +117,7 @@ export const MERGE_FIELD_KEYS = [
   "wristband_shipping_status",
   "wristband_shipping_note",
   "wristband_attachments_note",
+  "wristband_ask_line",
   "host_name",
   "host_manager_name",
   "host_manager_phone",
@@ -349,6 +350,11 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
           return `${label} as ${n.role === "alt_final" ? "final" : n.role}`;
         })
         .join(" + ");
+      // Only wristband venues get asked for a shipping address (T9-near). Blank
+      // for everyone else so the line simply doesn't appear.
+      if (nights.some((n) => n.role === "wristband")) {
+        fields.wristband_ask_line = "- A shipping address so we can send your wristband package.";
+      }
     }
   }
 

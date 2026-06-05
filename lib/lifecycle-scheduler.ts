@@ -9,16 +9,18 @@ import "server-only";
  * TASKS + the graphics deliverable; this scheduler owns the EMAILS. They share
  * the venue_events timestamp columns so neither double-fires.
  *
- * Grounded to the REAL seeded templates: the Halloween 2026 post-confirm set is
- * T13/T14/T15/T17 (T9/T11 are not seeded; T10 is the graphics email, which the
- * graphics workflow gates on its own readiness -- not time-scheduled here).
+ * Touches (the seeded Halloween 2026 set; T10 is the graphics email, gated by
+ * graphics readiness, so not time-scheduled here):
+ *   - T9 / T9-near -> confirm time, REVIEW draft (scheduled_for null). T9-near
+ *     (loaded, bundles T11 info) replaces sparse T9 inside the 3-week window.
+ *   - T11  -> event - 21 days   (far confirms only; near bundles it into T9-near)
  *   - T13  -> event - 14 days   (idempotency: venue_events.two_week_email_sent_at)
  *   - T14  -> event -  7 days   (idempotency: venue_events.one_week_email_sent_at)
  *   - T15  -> morning of event
  *   - T17  -> event +  2 days
  *
- * Multi-night bundling (3.3) and late-addition collapse (3.4) layer on top of
- * this base; here each confirmed venue_event schedules its own straight set.
+ * Multi-night (3.3): anchors to the earliest confirmed night. Per-night T15
+ * split is a later refinement.
  */
 
 import {
@@ -34,7 +36,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { renderTemplate } from "@/lib/template-render";
-import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 
 interface LifecycleTouch {
   code: string;
@@ -128,8 +130,33 @@ export async function scheduleLifecycle(
   const eventDate = new Date(`${earliest?.eventDate ?? ve.eventDate}T00:00:00Z`);
   const now = new Date();
 
-  // Resolve the lifecycle templates by code for this campaign.
-  const codes = LIFECYCLE_TOUCHES.map((t) => t.code);
+  // T9 fires at confirm time as a REVIEW draft (scheduled_for null) -- the
+  // operator reviews/edits/sends it (ReferenceDoc 7.2). Inside the 3-week window
+  // the loaded T9-near variant replaces the sparse T9 and bundles the T11 info,
+  // so the separate T11 (3 weeks out) is only scheduled for far confirms.
+  const daysToEvent = Math.floor((eventDate.getTime() - now.getTime()) / 86_400_000);
+  type PlannedTouch = {
+    code: string;
+    scheduledFor: Date | null;
+    sentAtColumn?: "twoWeekEmailSentAt" | "oneWeekEmailSentAt";
+  };
+  const plan: PlannedTouch[] = [{ code: daysToEvent > 21 ? "T9" : "T9-near", scheduledFor: null }];
+  if (daysToEvent > 21) {
+    plan.push({
+      code: "T11",
+      scheduledFor: scheduledForOf(eventDate, { code: "T11", offsetDays: -21, hourUtc: 14 }),
+    });
+  }
+  for (const t of LIFECYCLE_TOUCHES) {
+    plan.push({
+      code: t.code,
+      scheduledFor: scheduledForOf(eventDate, t),
+      sentAtColumn: t.sentAtColumn,
+    });
+  }
+
+  // Resolve every template the plan needs for this campaign.
+  const codes = [...new Set(plan.map((p) => p.code))];
   const templates = await db
     .select({
       id: emailTemplates.id,
@@ -156,7 +183,7 @@ export async function scheduleLifecycle(
     staffId: args.ownerStaffId,
   });
 
-  for (const touch of LIFECYCLE_TOUCHES) {
+  for (const touch of plan) {
     const tpl = byCode.get(touch.code);
     if (!tpl) {
       skippedTouches.push({ code: touch.code, reason: "template not seeded" });
@@ -166,10 +193,9 @@ export async function scheduleLifecycle(
       skippedTouches.push({ code: touch.code, reason: "already sent" });
       continue;
     }
-    const scheduledFor = scheduledForOf(eventDate, touch);
-    if (scheduledFor.getTime() <= now.getTime()) {
-      // Late confirmation: this touch's window has passed. (3.4 will bundle the
-      // missed early touches into a near-term opener; the base scheduler skips.)
+    // A scheduled touch (Date) whose window has passed is skipped; a review
+    // draft (scheduledFor null, e.g. T9) is always created.
+    if (touch.scheduledFor && touch.scheduledFor.getTime() <= now.getTime()) {
       skippedTouches.push({ code: touch.code, reason: "window passed" });
       continue;
     }
@@ -178,8 +204,10 @@ export async function scheduleLifecycle(
     const bodyText = renderTemplate(tpl.bodyText, ctx).output;
     const bodyHtml = tpl.bodyHtml ? renderTemplate(tpl.bodyHtml, ctx).output : null;
 
-    // Idempotent re-confirm: drop any prior unsent future draft for this venue +
-    // template before re-inserting, so flipping confirmed off/on doesn't pile up.
+    // Idempotent re-confirm: drop any prior unsent draft for this venue +
+    // template that is still pending -- a future-scheduled one OR an unsent
+    // review draft (scheduled_for null) -- so flipping confirmed off/on or
+    // confirming another night doesn't pile up duplicates.
     await db
       .delete(emailDrafts)
       .where(
@@ -187,7 +215,7 @@ export async function scheduleLifecycle(
           eq(emailDrafts.venueId, ve.venueId),
           eq(emailDrafts.templateId, tpl.id),
           isNull(emailDrafts.sentAt),
-          gt(emailDrafts.scheduledFor, now),
+          or(isNull(emailDrafts.scheduledFor), gt(emailDrafts.scheduledFor, now)),
         ),
       );
 
@@ -203,7 +231,7 @@ export async function scheduleLifecycle(
         venueId: ve.venueId,
         cityCampaignId: ve.cityCampaignId,
         templateId: tpl.id,
-        scheduledFor,
+        scheduledFor: touch.scheduledFor,
       })
       .returning({ id: emailDrafts.id });
     if (inserted) scheduledDraftIds.push(inserted.id);
