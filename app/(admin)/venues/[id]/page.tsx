@@ -19,7 +19,11 @@ import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
-import { loadVenueCommunication, loadVenueConfirmationMessages } from "@/lib/venue-communication";
+import {
+  loadVenueCommunication,
+  loadVenueConfirmationCalls,
+  loadVenueConfirmationMessages,
+} from "@/lib/venue-communication";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -113,6 +117,10 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   const confirmationMessages = await loadVenueConfirmationMessages(
     venueCommunication.threads.map((t) => t.threadId),
   ).catch(() => []);
+
+  // Logged calls for this venue with their verbal-confirmation flag (phone
+  // channel of the same confirmation section). Degrades to empty on error.
+  const confirmationCalls = await loadVenueConfirmationCalls(id).catch(() => []);
 
   // Smart-note suggestions for these notes
   const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
@@ -369,7 +377,11 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
             count: venueCommunication.threads.length,
             content: (
               <div className="flex flex-col gap-6">
-                <VenueConfirmationSection venueId={id} messages={confirmationMessages} />
+                <VenueConfirmationSection
+                  venueId={id}
+                  messages={confirmationMessages}
+                  calls={confirmationCalls}
+                />
                 <VenueCommunicationSection data={venueCommunication} />
               </div>
             ),

@@ -18,16 +18,21 @@
 import { useToast } from "@/components/ui/toast";
 import { captureClientError } from "@/lib/client-error";
 import { cn } from "@/lib/cn";
-import type { VenueConfirmationMessage } from "@/lib/venue-communication";
-import { BadgeCheck, ExternalLink, Mail, Star, X } from "lucide-react";
+import type { VenueConfirmationCall, VenueConfirmationMessage } from "@/lib/venue-communication";
+import { BadgeCheck, ExternalLink, Mail, Phone, Star, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { setEmailConfirmation } from "../_confirmation-actions";
+import { setCallConfirmation, setEmailConfirmation } from "../_confirmation-actions";
 
 interface Props {
   venueId: string;
   messages: VenueConfirmationMessage[];
+  calls: VenueConfirmationCall[];
+}
+
+function outcomeLabel(outcome: string): string {
+  return outcome.replace(/_/g, " ");
 }
 
 function fmt(at: Date | string | null): string {
@@ -43,21 +48,33 @@ function fmt(at: Date | string | null): string {
   }).format(new Date(at));
 }
 
-export function VenueConfirmationSection({ venueId, messages }: Props) {
+export function VenueConfirmationSection({ venueId, messages, calls }: Props) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTx] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showAllCalls, setShowAllCalls] = useState(false);
 
   const flagged = useMemo(() => messages.filter((m) => m.isConfirmation), [messages]);
   const candidates = useMemo(() => messages.filter((m) => !m.isConfirmation), [messages]);
+  const flaggedCalls = useMemo(() => calls.filter((c) => c.isConfirmation), [calls]);
+  const candidateCalls = useMemo(() => calls.filter((c) => !c.isConfirmation), [calls]);
+  const anyFlagged = flagged.length > 0 || flaggedCalls.length > 0;
 
-  function toggle(messageId: string, next: boolean) {
-    setBusyId(messageId);
+  function runToggle(
+    id: string,
+    next: boolean,
+    action: (
+      id: string,
+      next: boolean,
+      venueId: string,
+    ) => Promise<{ ok: boolean; error?: string }>,
+  ) {
+    setBusyId(id);
     startTx(async () => {
       try {
-        const res = await setEmailConfirmation(messageId, next, venueId);
+        const res = await action(id, next, venueId);
         if (!res.ok) {
           toast.show({
             kind: "error",
@@ -69,7 +86,7 @@ export function VenueConfirmationSection({ venueId, messages }: Props) {
         }
         toast.show({
           kind: "success",
-          message: next ? "Flagged as the written confirmation." : "Confirmation flag removed.",
+          message: next ? "Flagged as the confirmation." : "Confirmation flag removed.",
         });
         router.refresh();
       } catch (err) {
@@ -80,14 +97,23 @@ export function VenueConfirmationSection({ venueId, messages }: Props) {
     });
   }
 
+  function toggle(messageId: string, next: boolean) {
+    runToggle(messageId, next, setEmailConfirmation);
+  }
+
+  function toggleCall(logId: string, next: boolean) {
+    runToggle(logId, next, setCallConfirmation);
+  }
+
   const shown = showAll ? candidates : candidates.slice(0, 4);
+  const shownCalls = showAllCalls ? candidateCalls : candidateCalls.slice(0, 4);
 
   return (
     <section className="card-surface overflow-hidden">
       <header className="flex items-center gap-2 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <BadgeCheck className="h-4 w-4 text-emerald-500" />
         <h3 className="font-semibold text-sm tracking-tight">Written confirmation</h3>
-        {flagged.length > 0 && (
+        {anyFlagged && (
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-[9px] text-emerald-800 uppercase tracking-[0.1em] dark:bg-emerald-950/60 dark:text-emerald-200">
             on file
           </span>
@@ -147,18 +173,19 @@ export function VenueConfirmationSection({ venueId, messages }: Props) {
       )}
 
       {/* No confirmation flagged yet - nudge. */}
-      {flagged.length === 0 && (
+      {!anyFlagged && (
         <div className="border-zinc-200/40 border-b bg-amber-50/40 px-5 py-2.5 dark:border-zinc-800/30 dark:bg-amber-950/15">
           <p className="text-[11px] text-amber-800 dark:text-amber-300">
-            No written confirmation flagged yet. If this venue confirmed by email, mark that reply
-            below so it's on file if there's ever a dispute.
+            No confirmation flagged yet. If this venue confirmed by email or phone, mark that reply
+            or call below so it's on file if there's ever a dispute.
           </p>
         </div>
       )}
 
       {/* Candidate inbound replies. */}
       {candidates.length === 0 ? (
-        flagged.length === 0 && (
+        !anyFlagged &&
+        calls.length === 0 && (
           <div className="px-5 py-6 text-center text-xs text-zinc-500">
             <Mail className="mx-auto h-5 w-5 text-zinc-300" />
             <p className="mt-2">No replies from this venue yet.</p>
@@ -215,6 +242,99 @@ export function VenueConfirmationSection({ venueId, messages }: Props) {
               className="w-full border-zinc-200/60 border-t px-5 py-2 text-center font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] hover:bg-zinc-50 dark:border-zinc-800/40 dark:hover:bg-zinc-900"
             >
               {showAll ? "Show fewer" : `Show ${candidates.length - 4} more`}
+            </button>
+          )}
+        </>
+      )}
+
+      {/* Phone confirmations -- same proof, the call channel. */}
+      {flaggedCalls.length > 0 && (
+        <ul className="divide-y divide-emerald-200/50 border-zinc-200/40 border-t dark:divide-emerald-900/30 dark:border-zinc-800/30">
+          {flaggedCalls.map((c) => (
+            <li key={c.logId} className="bg-emerald-50/60 px-5 py-3 dark:bg-emerald-950/20">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">
+                    Confirmed by phone{c.staffName ? ` (logged by ${c.staffName})` : ""}
+                  </p>
+                  <p className="font-mono text-[10px] text-zinc-500 tracking-tight dark:text-zinc-400">
+                    call &middot; {outcomeLabel(c.outcome)} &middot; {fmt(c.at)}
+                  </p>
+                  {(c.notes || c.snippet) && (
+                    <p className="mt-0.5 line-clamp-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      {c.notes || c.snippet}
+                    </p>
+                  )}
+                  {c.flaggedByName && (
+                    <p className="mt-1 font-mono text-[9px] text-emerald-700 uppercase tracking-[0.08em] dark:text-emerald-300">
+                      flagged by {c.flaggedByName}
+                      {c.flaggedAt ? ` ${fmt(c.flaggedAt)}` : ""}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleCall(c.logId, false)}
+                    disabled={pending && busyId === c.logId}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-800"
+                  >
+                    <X className="h-3 w-3" /> Unflag
+                  </button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {candidateCalls.length > 0 && (
+        <>
+          <p className="px-5 pt-3 pb-1 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.12em]">
+            Calls with this venue
+          </p>
+          <ul className="divide-y divide-zinc-200/60 dark:divide-zinc-800/40">
+            {shownCalls.map((c) => (
+              <li key={c.logId} className="flex items-start gap-3 px-5 py-2.5">
+                <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs">
+                    <span className="font-medium">{outcomeLabel(c.outcome)}</span>{" "}
+                    <span className="font-mono text-[10px] text-zinc-400">{fmt(c.at)}</span>
+                    {c.staffName ? (
+                      <span className="text-[11px] text-zinc-500"> &middot; {c.staffName}</span>
+                    ) : null}
+                  </p>
+                  {(c.notes || c.snippet) && (
+                    <p className="truncate text-[11px] text-zinc-600 dark:text-zinc-400">
+                      {c.notes || c.snippet}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleCall(c.logId, true)}
+                    disabled={pending && busyId === c.logId}
+                    title="Mark as the verbal confirmation"
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] disabled:opacity-50",
+                      "border-zinc-200 text-zinc-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-emerald-900/50 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-200",
+                    )}
+                  >
+                    <Star className="h-3 w-3" /> Mark
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {candidateCalls.length > 4 && (
+            <button
+              type="button"
+              onClick={() => setShowAllCalls((v) => !v)}
+              className="w-full border-zinc-200/60 border-t px-5 py-2 text-center font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] hover:bg-zinc-50 dark:border-zinc-800/40 dark:hover:bg-zinc-900"
+            >
+              {showAllCalls ? "Show fewer" : `Show ${candidateCalls.length - 4} more`}
             </button>
           )}
         </>

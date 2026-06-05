@@ -42,6 +42,7 @@ import {
   connectedAccounts,
   emailMessages,
   emailThreads,
+  outreachLog,
   staffMembers,
   venueDomainAliases,
   venues,
@@ -545,6 +546,70 @@ export async function loadVenueConfirmationMessages(
     fromAddress: r.fromAddress,
     at: r.receivedAt ?? r.sentAt ?? null,
     snippet: r.snippet,
+    isConfirmation: r.isConfirmation,
+    flaggedByName: r.flaggedByName,
+    flaggedAt: r.flaggedAt,
+  }));
+}
+
+// =========================================================================
+// Verbal-confirmation calls (venue detail card)
+// =========================================================================
+
+export interface VenueConfirmationCall {
+  logId: string;
+  /** Call outcome enum value (e.g. "confirmed", "voicemail"). */
+  outcome: string;
+  notes: string | null;
+  snippet: string | null;
+  /** When the call was logged. */
+  at: Date | null;
+  /** Staff member who made/logged the call (display name). */
+  staffName: string | null;
+  /** True when an operator has flagged this call as the verbal confirmation. */
+  isConfirmation: boolean;
+  /** Operator who flagged it + when (null until flagged). */
+  flaggedByName: string | null;
+  flaggedAt: Date | null;
+}
+
+/**
+ * Logged calls for a venue, newest first, each carrying its verbal-confirmation
+ * flag. Mirrors loadVenueConfirmationMessages for the phone channel: flagged
+ * calls are the "confirmation on file" proof; the rest are candidates the
+ * operator can flag. Keyed directly on venue_id (calls are logged against the
+ * venue, no thread match needed).
+ */
+export async function loadVenueConfirmationCalls(
+  venueId: string,
+): Promise<VenueConfirmationCall[]> {
+  const caller = aliasedTable(staffMembers, "call_staff");
+  const flagger = aliasedTable(staffMembers, "call_flagger");
+  const rows = await db
+    .select({
+      logId: outreachLog.id,
+      outcome: outreachLog.outcome,
+      notes: outreachLog.notes,
+      snippet: outreachLog.bodySnippet,
+      at: outreachLog.createdAt,
+      staffName: caller.displayName,
+      isConfirmation: outreachLog.isConfirmation,
+      flaggedAt: outreachLog.confirmationFlaggedAt,
+      flaggedByName: flagger.displayName,
+    })
+    .from(outreachLog)
+    .leftJoin(caller, eq(caller.id, outreachLog.staffMemberId))
+    .leftJoin(flagger, eq(flagger.id, outreachLog.confirmationFlaggedBy))
+    .where(and(eq(outreachLog.venueId, venueId), eq(outreachLog.channel, "call")))
+    .orderBy(desc(outreachLog.createdAt))
+    .limit(60);
+  return rows.map((r) => ({
+    logId: r.logId,
+    outcome: r.outcome,
+    notes: r.notes,
+    snippet: r.snippet,
+    at: r.at,
+    staffName: r.staffName,
     isConfirmation: r.isConfirmation,
     flaggedByName: r.flaggedByName,
     flaggedAt: r.flaggedAt,

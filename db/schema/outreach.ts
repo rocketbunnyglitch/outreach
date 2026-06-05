@@ -87,6 +87,17 @@ export const outreachLog = pgTable(
 
     notes: text("notes"),
 
+    /** Verbal-confirmation flag (migration 0110). An operator marks the logged
+     *  CALL where a venue verbally confirmed a slot, so the venue detail card
+     *  can surface the proof for dispute defense (symmetric to the email flag).
+     *  flaggedBy/At record which operator filed it + when. These are the only
+     *  mutable columns on this otherwise append-only table. */
+    isConfirmation: boolean("is_confirmation").notNull().default(false),
+    confirmationFlaggedBy: uuid("confirmation_flagged_by").references(() => staffMembers.id, {
+      onDelete: "set null",
+    }),
+    confirmationFlaggedAt: timestamp("confirmation_flagged_at", { withTimezone: true }),
+
     // Append-only: no updatedAt, no version, no archive.
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid("created_by"),
