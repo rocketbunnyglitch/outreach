@@ -34,7 +34,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { renderTemplate } from "@/lib/template-render";
-import { and, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 
 interface LifecycleTouch {
   code: string;
@@ -105,7 +105,27 @@ export async function scheduleLifecycle(
     return { scheduledDraftIds, skippedTouches: [{ code: "*", reason: "venue_event not found" }] };
   }
 
-  const eventDate = new Date(`${ve.eventDate}T00:00:00Z`);
+  // Multi-night (Phase 3.3): anchor the bundled lifecycle to the EARLIEST
+  // confirmed night for this venue in the campaign, so confirming a second
+  // night doesn't shift the schedule (and the per-template dedup below doesn't
+  // drop the first night's drafts). venue_nights_summary in the merge context
+  // names every night. T15 (day-of) still anchors here; per-night day-of splits
+  // are a later refinement.
+  const [earliest] = await db
+    .select({ eventDate: events.eventDate })
+    .from(venueEvents)
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .where(
+      and(
+        eq(venueEvents.venueId, ve.venueId),
+        eq(cityCampaigns.campaignId, ve.campaignId),
+        eq(venueEvents.status, "confirmed"),
+      ),
+    )
+    .orderBy(asc(events.eventDate))
+    .limit(1);
+  const eventDate = new Date(`${earliest?.eventDate ?? ve.eventDate}T00:00:00Z`);
   const now = new Date();
 
   // Resolve the lifecycle templates by code for this campaign.

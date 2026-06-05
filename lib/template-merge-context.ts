@@ -96,6 +96,7 @@ export const MERGE_FIELD_KEYS = [
   "guest_count",
   "turnout_quote_current",
   "slot_summary",
+  "venue_nights_summary",
   "slot_list",
   "slot_list_2",
   "slot_list_detailed",
@@ -315,6 +316,39 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
     if (replier) {
       fields.venue_manager_name = replier;
       fields.contact_first_name = replier.split(/\s+/)[0] ?? "";
+    }
+  }
+
+  // --- Multi-night summary (Phase 3.3) ---
+  // Every confirmed crawl this venue is on for the campaign, e.g. "Thursday Oct
+  // 29 as wristband + Friday Oct 30 as middle". Lets bundled lifecycle / host
+  // emails name all nights instead of just the one that triggered the render.
+  if (input.venueId && input.campaignId) {
+    const nights = await db
+      .select({ eventDate: events.eventDate, role: venueEvents.role })
+      .from(venueEvents)
+      .innerJoin(events, eq(events.id, venueEvents.eventId))
+      .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+      .where(
+        and(
+          eq(venueEvents.venueId, input.venueId),
+          eq(cityCampaigns.campaignId, input.campaignId),
+          eq(venueEvents.status, "confirmed"),
+        ),
+      )
+      .orderBy(asc(events.eventDate));
+    if (nights.length > 0) {
+      fields.venue_nights_summary = nights
+        .map((n) => {
+          const label = new Intl.DateTimeFormat("en-US", {
+            timeZone: "UTC",
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+          }).format(new Date(`${n.eventDate}T00:00:00Z`));
+          return `${label} as ${n.role === "alt_final" ? "final" : n.role}`;
+        })
+        .join(" + ");
     }
   }
 
