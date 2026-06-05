@@ -25,6 +25,7 @@ import { generateConfirmationCascade, isConfirmationTransition } from "@/lib/con
 import { db, withAuditContext } from "@/lib/db";
 import { resolveEngineRole } from "@/lib/engine-roles";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
+import { scheduleLifecycle } from "@/lib/lifecycle-scheduler";
 import { logger } from "@/lib/logger";
 import {
   type VenueEventCreateInput,
@@ -99,7 +100,7 @@ export async function updateVenueEvent(
   id: string,
   _prev: unknown,
   formData: FormData,
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; lifecycleScheduled?: number }>> {
   const { staff } = await requireStaff();
   const parsed = venueEventUpdateSchema.safeParse(formToObject(formData));
   if (!parsed.success) {
@@ -147,6 +148,11 @@ export async function updateVenueEvent(
       input.status !== undefined && isConfirmationTransition(previousStatus, input.status);
     const graphicsDesignerId = isConfirming
       ? await resolveEngineRole(staff.teamId, "graphics_designer")
+      : null;
+    // Lifecycle owner sends the post-confirm emails (T13-T17). Falls back to the
+    // confirming operator so the scheduled drafts always have a valid owner.
+    const lifecycleOwnerId = isConfirming
+      ? ((await resolveEngineRole(staff.teamId, "lifecycle_owner")) ?? staff.id)
       : null;
     let graphicsNotify: { assigneeId: string | null; venueName: string } | null = null;
 
@@ -196,16 +202,34 @@ export async function updateVenueEvent(
       }
     }
 
-    // Phase 4 cascade-sends (auto-queue follow-up emails when a venue
-    // confirmed) was removed in the send-queue decommission. The
-    // confirmation-cascade above (operational tasks) is what remains.
+    // Lifecycle scheduler (Phase 3.2): auto-create the post-confirm scheduled
+    // emails (T13-T17). Best-effort + outside the tx so a scheduling hiccup
+    // never blocks the confirm; idempotent on re-confirm.
+    let lifecycleScheduled = 0;
+    if (isConfirming && lifecycleOwnerId) {
+      try {
+        const result = await scheduleLifecycle({
+          venueEventId: id,
+          ownerStaffId: lifecycleOwnerId,
+          teamId: staff.teamId,
+        });
+        lifecycleScheduled = result.scheduledDraftIds.length;
+        logger.info({ venueEventId: id, ...result }, "lifecycle scheduled on confirm");
+      } catch (lifecycleErr) {
+        logger.error(
+          { err: lifecycleErr, venueEventId: id },
+          "lifecycle scheduling failed (confirm committed anyway)",
+        );
+      }
+    }
 
     const finalRow = txOutput?.result?.[0];
     if (finalRow?.eventId) revalidatePath(`/events/${finalRow.eventId}`);
     revalidatePath("/tasks");
     revalidatePath("/crawl-management");
+    revalidatePath("/worklist");
     revalidatePath("/");
-    return { ok: true, data: { id } };
+    return { ok: true, data: { id, lifecycleScheduled } };
   } catch (err) {
     return wrapDbError(err, "update venue event");
   }
