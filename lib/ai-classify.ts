@@ -35,6 +35,7 @@ import { syncColdStatusFromClassificationAsync } from "@/lib/ai-auto-status";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { formatAsSystemPrompt, retrieveRelevantSections } from "@/lib/reference-retrieval";
+import { autoFlagRelationshipFromClassification } from "@/lib/venue-relationships";
 import { and, desc, eq } from "drizzle-orm";
 
 const CLASSIFIER_MODEL = "claude-haiku-4-5-20251001";
@@ -218,6 +219,7 @@ export async function classifyInboundMessage(
   const threadCtx = await db
     .select({
       venueId: emailThreads.venueId,
+      outreachBrandId: emailThreads.outreachBrandId,
       venueName: venues.name,
       cityName: cities.name,
     })
@@ -299,6 +301,17 @@ export async function classifyInboundMessage(
     });
   } catch (err) {
     logger.warn({ err, threadId: input.threadId }, "[ai-classify] classifier_runs insert failed");
+  }
+
+  // Phase 3.9: auto-update the venue x brand relationship flag from the
+  // classification (hard_no -> bad +1yr; engaged -> neutral when no prior row;
+  // cancellations never auto-flag bad). Best-effort; never blocks classification.
+  if (ctx?.venueId && ctx.outreachBrandId) {
+    await autoFlagRelationshipFromClassification({
+      venueId: ctx.venueId,
+      outreachBrandId: ctx.outreachBrandId,
+      classification: parsed.classification,
+    });
   }
 
   // Write suggestion to the thread. ONLY writes the suggested_*

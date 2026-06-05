@@ -78,6 +78,7 @@ export type CronName =
   | "gmail-poll"
   | "inbox-alerts"
   | "inbox-daily-stats"
+  | "relationship-decay"
   | "scheduled-sends"
   | "stale-tagger";
 
