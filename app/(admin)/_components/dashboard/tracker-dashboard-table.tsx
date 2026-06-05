@@ -792,7 +792,6 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sort={sort}
                 onSort={toggleSort}
                 align="right"
-                className="w-20"
                 tooltip="Tickets sold across all of this city's crawls, shown as a dollar/k figure."
               />
               <SortableTh
@@ -814,7 +813,6 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sortKey="assign"
                 sort={sort}
                 onSort={toggleSort}
-                className="w-32"
                 tooltip="The lead staffer responsible for this city. Click to reassign."
               />
               <SortableTh
@@ -822,6 +820,10 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sortKey="notes"
                 sort={sort}
                 onSort={toggleSort}
+                // Notes claims all leftover width (w-full in a table-auto
+                // table) so every other column shrinks to its content's
+                // min width; min-w keeps Notes usable on narrow viewports.
+                className="w-full min-w-[16rem]"
                 tooltip="A quick dashboard note for this city. Click the cell to edit inline."
               />
             </tr>

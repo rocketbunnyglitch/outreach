@@ -123,13 +123,13 @@ export function VenueRelationshipsSection({
           fd.set("notes", notes);
           doSet(fd);
         }}
-        className="flex flex-col gap-2 sm:flex-row sm:items-start"
+        className="flex flex-col gap-2"
       >
         <select
           aria-label="Brand"
           value={brandId}
           onChange={(e) => setBrandId(e.target.value)}
-          className={`${SELECT_CLASS} sm:w-44`}
+          className={`${SELECT_CLASS} w-full`}
         >
           {brands.length === 0 ? <option value="">No brands</option> : null}
           {brands.map((b) => (
@@ -142,7 +142,7 @@ export function VenueRelationshipsSection({
           aria-label="Status"
           value={status}
           onChange={(e) => setStatus(e.target.value as RelationshipStatus)}
-          className={`${SELECT_CLASS} sm:w-36`}
+          className={`${SELECT_CLASS} w-full`}
         >
           {STATUS_ORDER.map((s) => (
             <option key={s} value={s}>
@@ -157,7 +157,7 @@ export function VenueRelationshipsSection({
           placeholder="Note (optional) e.g. GM loves us, booked twice"
           autoComplete="off"
           maxLength={1000}
-          className="sm:flex-1"
+          className="w-full"
         />
         <Button type="submit" size="sm" disabled={saving || brandId === ""}>
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}

@@ -147,7 +147,7 @@ function StatTile({
       : "bg-zinc-50/40 dark:bg-zinc-900/30";
   return (
     <div
-      className={`flex min-w-[120px] flex-col rounded-xl border border-zinc-200/60 px-3 py-2 dark:border-zinc-800/40 ${tintBg}`}
+      className={`flex min-w-[88px] flex-1 flex-col rounded-xl border border-zinc-200/60 px-3 py-2 dark:border-zinc-800/40 ${tintBg}`}
     >
       <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-[0.14em]">
         {label}

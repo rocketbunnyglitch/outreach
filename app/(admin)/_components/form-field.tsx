@@ -49,7 +49,9 @@ export function FieldShell({
  * Stacks on mobile.
  */
 export function FieldRow({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>;
+  // [&>*]:min-w-0 lets the paired fields shrink inside narrow containers
+  // (e.g. the venue deal-room tab column) instead of overflowing.
+  return <div className="grid grid-cols-1 gap-4 [&>*]:min-w-0 sm:grid-cols-2">{children}</div>;
 }
 
 /**
@@ -65,7 +67,7 @@ export function FormSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="grid grid-cols-1 gap-6 border-zinc-200 border-t pt-8 first:border-t-0 first:pt-0 sm:grid-cols-[200px_1fr] dark:border-zinc-800">
+    <section className="grid grid-cols-1 gap-6 border-zinc-200 border-t pt-8 first:border-t-0 first:pt-0 sm:grid-cols-[200px_minmax(0,1fr)] dark:border-zinc-800">
       <div>
         <h2 className="font-semibold text-lg tracking-tight ">{title}</h2>
         {description && <p className="mt-1 text-xs text-zinc-500">{description}</p>}

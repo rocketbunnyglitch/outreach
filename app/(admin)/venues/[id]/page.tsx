@@ -16,6 +16,7 @@ import { getSuperUserOrNull, requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
@@ -95,19 +96,24 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     // section below. CLAUDE.md §12.3 — wrap in try/catch so an
     // email-side issue degrades the section instead of 500-ing the
     // whole venue page.
-    loadVenueCommunication(id, staff.teamId).catch(() => ({
-      threads: [],
-      summary: {
-        totalThreads: 0,
-        totalMessages: 0,
-        lastInboundAt: null,
-        lastOutboundAt: null,
-        needsReplyCount: 0,
-        staleCount: 0,
-        staffEmails: [],
-        staffOwnerNames: [],
-      },
-    })),
+    loadVenueCommunication(id, staff.teamId).catch((err) => {
+      // Surface the failure (CLAUDE.md 12.4) -- a silently-empty timeline
+      // reads to the operator as "the log is broken".
+      logger.error({ err, venueId: id }, "loadVenueCommunication failed");
+      return {
+        threads: [],
+        summary: {
+          totalThreads: 0,
+          totalMessages: 0,
+          lastInboundAt: null,
+          lastOutboundAt: null,
+          needsReplyCount: 0,
+          staleCount: 0,
+          staffEmails: [],
+          staffOwnerNames: [],
+        },
+      };
+    }),
   ]);
   if (!venue) notFound();
 
@@ -116,11 +122,17 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   // above so we don't re-run the venue match. Degrades to empty on error.
   const confirmationMessages = await loadVenueConfirmationMessages(
     venueCommunication.threads.map((t) => t.threadId),
-  ).catch(() => []);
+  ).catch((err) => {
+    logger.error({ err, venueId: id }, "loadVenueConfirmationMessages failed");
+    return [];
+  });
 
   // Logged calls for this venue with their verbal-confirmation flag (phone
   // channel of the same confirmation section). Degrades to empty on error.
-  const confirmationCalls = await loadVenueConfirmationCalls(id).catch(() => []);
+  const confirmationCalls = await loadVenueConfirmationCalls(id).catch((err) => {
+    logger.error({ err, venueId: id }, "loadVenueConfirmationCalls failed");
+    return [];
+  });
 
   // Smart-note suggestions for these notes
   const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
