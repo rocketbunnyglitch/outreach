@@ -15,7 +15,9 @@ import "server-only";
  *     (loaded, bundles T11 info) replaces sparse T9 inside the 3-week window.
  *   - T11  -> event - 21 days   (far confirms only; near bundles it into T9-near)
  *   - T13  -> event - 14 days   (idempotency: venue_events.two_week_email_sent_at)
- *   - T14  -> event -  7 days   (idempotency: venue_events.one_week_email_sent_at)
+ *   - T13W -> event -  7 days   week-out turnout-update + asset bundle summary
+ *            (idempotency: venue_events.one_week_email_sent_at)
+ *   - T14  -> event -  1 day    true day-before check-in (range-safe turnout)
  *   - T15  -> morning of event
  *   - T17  -> event +  2 days
  *
@@ -50,7 +52,15 @@ interface LifecycleTouch {
 
 const LIFECYCLE_TOUCHES: LifecycleTouch[] = [
   { code: "T13", offsetDays: -14, hourUtc: 14, sentAtColumn: "twoWeekEmailSentAt" },
-  { code: "T14", offsetDays: -7, hourUtc: 14, sentAtColumn: "oneWeekEmailSentAt" },
+  // Week-out (T-7) turnout-update + asset-bundle summary. Reuses the
+  // one-week idempotency column (the actual dedup is the delete-then-
+  // insert per venue+template below; the column is a belt-and-braces skip).
+  { code: "T13W", offsetDays: -7, hourUtc: 14, sentAtColumn: "oneWeekEmailSentAt" },
+  // T14 re-anchored from -7d to a TRUE day-before (-1d) check-in. Its
+  // seeded copy is "see you tomorrow" and it carries the range-safe
+  // {{turnout_quote_current}} figure -- which only made sense the day
+  // before. No idempotency column: re-confirm dedups via delete-then-insert.
+  { code: "T14", offsetDays: -1, hourUtc: 14 },
   { code: "T15", offsetDays: 0, hourUtc: 13 },
   { code: "T17", offsetDays: 2, hourUtc: 14 },
 ];

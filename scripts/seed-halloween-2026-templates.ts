@@ -384,6 +384,32 @@ Thanks,
     },
   },
   {
+    code: "T13W",
+    name: "T13W - Week-out turnout update + asset bundle",
+    subject: "1 week out - {{city}} Halloween crawl with {{venue_name}}",
+    body: `Hey {{contact_first_name}},
+
+We're a week out from the {{city}} Halloween crawl on {{event_date}}, so here's a quick update.
+
+{{turnout_quote_current}}
+
+We expect that number to climb as we get closer -- most tickets sell in the final days -- and I'll send you a firmer headcount a day or two before the night.
+
+A few things heading your way before the event: the staff info sheet, your participant poster, and the social graphics to post. Your slot: {{slot_summary}}
+
+Anything you'd like us to flag to your guests (drink specials, etc.)? Otherwise you're all set, and we'll be in touch with the final numbers.
+
+Thanks,
+{{your_name}}
+{{company_name}}`,
+    trigger: {
+      channel: "lifecycle",
+      stage: "pre_event",
+      max_days_to_event: 7,
+      min_days_to_event: 2,
+    },
+  },
+  {
     code: "T14",
     name: "T14 - Day-before confirmation",
     subject: "See you tomorrow - {{city}} Halloween crawl",
