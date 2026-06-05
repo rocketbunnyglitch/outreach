@@ -167,6 +167,7 @@ interface VeRow {
   venueId: string;
   role: VenueRole;
   status: string;
+  temporarilyDisabled: boolean;
   slotStartTime: string | null;
   slotEndTime: string | null;
 }
@@ -182,12 +183,13 @@ function requiredRoles(e: EventRow): VenueRole[] {
 }
 
 /** Open (unfilled) roles for an event: a role is filled when a venue_event for
- *  it is status='confirmed'. Any other status (or no row) leaves it open. */
+ *  it is status='confirmed' AND not temporarily disabled. Any other status, a
+ *  temporarily-disabled venue (pulled mid-crawl), or no row leaves it open. */
 function openRolesForEvent(e: EventRow, ves: VeRow[]): VenueRole[] {
   const confirmedByRole = new Map<VenueRole, number>();
   for (const v of ves) {
     if (v.eventId !== e.id) continue;
-    if (v.status !== "confirmed") continue;
+    if (v.status !== "confirmed" || v.temporarilyDisabled) continue;
     const key: VenueRole = v.role === "alt_final" ? "final" : v.role;
     confirmedByRole.set(key, (confirmedByRole.get(key) ?? 0) + 1);
   }
@@ -344,6 +346,7 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
           venueId: venueEvents.venueId,
           role: venueEvents.role,
           status: venueEvents.status,
+          temporarilyDisabled: venueEvents.temporarilyDisabled,
           slotStartTime: venueEvents.slotStartTime,
           slotEndTime: venueEvents.slotEndTime,
         })

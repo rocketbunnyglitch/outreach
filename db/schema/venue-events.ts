@@ -11,6 +11,7 @@
  */
 
 import {
+  boolean,
   index,
   pgTable,
   smallint,
@@ -84,6 +85,17 @@ export const venueEvents = pgTable(
     }),
     floorStaffCallCompletedAt: timestamp("floor_staff_call_completed_at", {
       withTimezone: true,
+    }),
+
+    /** Temporary in-crawl disable (migration 0108). When a confirmed MIDDLE
+     *  venue backs out last-minute, an operator flips this so the slot reopens
+     *  in outreach lists without losing the booking; Restore flips it back
+     *  (e.g. the owner steps in). Middle role only -- wristband/final get fully
+     *  replaced instead. */
+    temporarilyDisabled: boolean("temporarily_disabled").notNull().default(false),
+    temporarilyDisabledAt: timestamp("temporarily_disabled_at", { withTimezone: true }),
+    temporarilyDisabledBy: uuid("temporarily_disabled_by").references(() => staffMembers.id, {
+      onDelete: "set null",
     }),
 
     ...auditColumns,

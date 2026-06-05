@@ -17,9 +17,11 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  PauseCircle,
   Pencil,
   Plus,
   Repeat2,
+  RotateCcw,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,6 +34,7 @@ import {
   clearSlot,
   deleteCrawl,
   demoteVenueFromCrawl,
+  setVenueEventDisabled,
   updateCrawl,
   updateSlotField,
 } from "../_slot-actions";
@@ -664,7 +667,10 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
   const minSlots = isDayParty ? 3 : 4;
   const hasMinSlots = requiredSlots.length >= minSlots;
   const allVenuesConfirmed =
-    hasMinSlots && requiredSlots.every((s) => !!s.venueEventId && isConfirmedStatus(s.status));
+    hasMinSlots &&
+    requiredSlots.every(
+      (s) => !!s.venueEventId && isConfirmedStatus(s.status) && !s.temporarilyDisabled,
+    );
 
   return (
     <section
@@ -796,6 +802,91 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         </button>
       </footer>
     </section>
+  );
+}
+
+const CONFIRMED_SLOT_STATUSES = new Set(["confirmed", "contract_signed", "scheduled"]);
+
+/**
+ * Temporary disable / restore for a confirmed MIDDLE venue. Renders nothing
+ * for any other role/status. Disabling reopens the slot in the outreach lists
+ * (without losing the booking); Restore flips it straight back. Wristband and
+ * final venues are too central to pause -- they get fully replaced instead.
+ */
+function DisableToggle({
+  slot,
+  cityCampaignId,
+}: {
+  slot: SlotRow;
+  cityCampaignId: string;
+}) {
+  const [pending, startTx] = useTransition();
+  const toast = useToast();
+  if (
+    slot.role !== "middle" ||
+    !slot.venueEventId ||
+    !CONFIRMED_SLOT_STATUSES.has(slot.status ?? "")
+  ) {
+    return null;
+  }
+  const disabled = slot.temporarilyDisabled;
+  function toggle() {
+    const veId = slot.venueEventId;
+    if (!veId) return;
+    const next = !disabled;
+    const name = slot.venueName ?? "Venue";
+    startTx(async () => {
+      const res = await setVenueEventDisabled({
+        venueEventId: veId,
+        cityCampaignId,
+        disabled: next,
+      });
+      if (!res.ok) {
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't update.",
+          tag: "slot.disable",
+        });
+        return;
+      }
+      toast.show({
+        kind: "success",
+        message: next ? `${name} disabled - slot reopened.` : `${name} restored to the crawl.`,
+      });
+    });
+  }
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={pending}
+      title={
+        disabled
+          ? "Restore this venue to the crawl"
+          : "Temporarily disable - reopens the slot, restore anytime"
+      }
+      aria-label={disabled ? "Restore venue" : "Temporarily disable venue"}
+      className={cn(
+        "rounded-md p-1 transition-colors disabled:opacity-50",
+        disabled
+          ? "text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
+          : "text-zinc-400 hover:bg-amber-500/[0.08] hover:text-amber-600 dark:hover:text-amber-400",
+      )}
+    >
+      {disabled ? <RotateCcw className="h-3 w-3" /> : <PauseCircle className="h-3 w-3" />}
+    </button>
+  );
+}
+
+function PausedBadge() {
+  return (
+    <span
+      title="Temporarily disabled - this slot is reopened in outreach until restored"
+      className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-1.5 py-0.5 font-mono text-[9px] text-amber-800 uppercase tracking-[0.08em] dark:bg-amber-950/60 dark:text-amber-200"
+    >
+      <PauseCircle className="h-2.5 w-2.5" />
+      Paused
+    </span>
   );
 }
 
@@ -975,9 +1066,11 @@ function SlotTableRow({
               {slotLabel}
             </span>
             <ReuseChip reuse={slot.reuse} />
+            {slot.temporarilyDisabled && <PausedBadge />}
           </span>
           <div className="flex items-center gap-2">
             <SlotStatusSelect slot={slot} cityCampaignId={cityCampaignId} />
+            <DisableToggle slot={slot} cityCampaignId={cityCampaignId} />
             {canDelete ? (
               <button
                 type="button"
@@ -1140,6 +1233,7 @@ function SlotTableRow({
               {slotLabel}
             </span>
             <ReuseChip reuse={slot.reuse} />
+            {slot.temporarilyDisabled && <PausedBadge />}
           </span>
         </td>
 
@@ -1239,6 +1333,7 @@ function SlotTableRow({
 
         {/* Clear / delete */}
         <td className="px-1 py-2 align-middle">
+          <DisableToggle slot={slot} cityCampaignId={cityCampaignId} />
           {canDelete ? (
             <button
               type="button"
@@ -1554,6 +1649,7 @@ function emptySlot(role: "middle" | "alt_final", slotPosition: number): SlotRow 
     role,
     slotPosition,
     status: null,
+    temporarilyDisabled: false,
     venueId: null,
     venueName: null,
     venueEmail: null,
@@ -1625,7 +1721,7 @@ function DemoteMenu({
       <button
         type="button"
         onClick={() => onPick("delete")}
-        className="block w-full border-zinc-200/60 border-t px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50 dark:border-zinc-800/60 dark:text-rose-300 dark:hover:bg-rose-950/40"
+        className="block w-full border-zinc-200/60 border-t px-3 py-2 text-left text-rose-700 text-xs hover:bg-rose-50 dark:border-zinc-800/60 dark:text-rose-300 dark:hover:bg-rose-950/40"
         title="Delete this venue_event row entirely. No queue changes. Use when the venue declined this specific crawl but you don't want to re-route it anywhere (e.g. it's still on another day's crawl)."
       >
         <span className="font-medium">Delete from this crawl only</span>

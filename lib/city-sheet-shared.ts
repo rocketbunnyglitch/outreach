@@ -27,6 +27,10 @@ export interface SlotRow {
   role: SlotRole;
   slotPosition: number;
   status: string | null;
+  /** Temporary in-crawl disable: a confirmed middle venue the operator pulled
+   *  so the slot reopens, kept on the row so it can be restored. Always false
+   *  for empty slots. */
+  temporarilyDisabled: boolean;
   venueId: string | null;
   venueName: string | null;
   venueEmail: string | null;

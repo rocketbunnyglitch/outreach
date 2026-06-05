@@ -409,6 +409,68 @@ export async function demoteVenueFromCrawl(input: {
   }
 }
 
+const setDisabledSchema = z.object({
+  venueEventId: uuid,
+  cityCampaignId: uuid,
+  disabled: z.boolean(),
+});
+
+/**
+ * Temporarily disable (or restore) a confirmed MIDDLE venue on a crawl.
+ *
+ * The booking row is preserved -- disabling just reopens the slot in the
+ * outreach slot lists (the merge context treats a disabled venue_event as not
+ * filling its slot), and restoring puts it straight back. Middle role only:
+ * wristband/final are too central to "pause" and get fully replaced instead.
+ */
+export async function setVenueEventDisabled(input: {
+  venueEventId: string;
+  cityCampaignId: string;
+  disabled: boolean;
+}): Promise<ActionResult<{ disabled: boolean }>> {
+  const { staff } = await requireStaff();
+  const parsed = setDisabledSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  const { venueEventId, cityCampaignId, disabled } = parsed.data;
+  try {
+    const [row] = await db
+      .select({ role: venueEvents.role })
+      .from(venueEvents)
+      .where(eq(venueEvents.id, venueEventId))
+      .limit(1);
+    if (!row) return { ok: false, error: "Slot not found." };
+    if (row.role !== "middle") {
+      return {
+        ok: false,
+        error: "Only middle venues can be temporarily disabled -- replace wristband/final instead.",
+      };
+    }
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(venueEvents)
+        .set(
+          disabled
+            ? {
+                temporarilyDisabled: true,
+                temporarilyDisabledAt: new Date(),
+                temporarilyDisabledBy: staff.id,
+              }
+            : {
+                temporarilyDisabled: false,
+                temporarilyDisabledAt: null,
+                temporarilyDisabledBy: null,
+              },
+        )
+        .where(eq(venueEvents.id, venueEventId));
+    });
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { disabled } };
+  } catch (err) {
+    logger.error({ err, venueEventId, disabled }, "setVenueEventDisabled failed");
+    return { ok: false, error: "Couldn't update the venue." };
+  }
+}
+
 const extraSlotSchema = z.object({
   eventId: uuid,
   role: z.enum(["middle", "alt_final"]),

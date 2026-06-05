@@ -174,6 +174,7 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
             role: venueEvents.role,
             slotPosition: venueEvents.slotPosition,
             status: venueEvents.status,
+            temporarilyDisabled: venueEvents.temporarilyDisabled,
             agreedHoursText: venueEvents.agreedHoursText,
             drinkSpecials: venueEvents.drinkSpecials,
             nightOfContactName: venueEvents.nightOfContactName,
@@ -470,6 +471,7 @@ type VenueEventRow = {
   role: string;
   slotPosition: number | null;
   status: string;
+  temporarilyDisabled: boolean;
   agreedHoursText: string | null;
   drinkSpecials: string | null;
   nightOfContactName: string | null;
@@ -494,6 +496,7 @@ function slotRowFrom(
       role,
       slotPosition: position,
       status: null,
+      temporarilyDisabled: false,
       venueId: null,
       venueName: null,
       venueEmail: null,
@@ -512,6 +515,7 @@ function slotRowFrom(
     role,
     slotPosition: position,
     status: ve.status,
+    temporarilyDisabled: ve.temporarilyDisabled,
     venueId: ve.venueId,
     venueName: ve.venueName,
     venueEmail: ve.venueEmail,
