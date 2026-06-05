@@ -15,6 +15,7 @@ import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { AlertTriangle, Calendar, CheckCircle2, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { AddTaskRow } from "./_components/AddTaskRow";
+import { BulkClearTasksButton } from "./_components/bulk-clear-button";
 
 export const metadata = { title: "Tasks" };
 export const dynamic = "force-dynamic";
@@ -131,6 +132,18 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const total = countRow?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Admin-only: how many pending auto-generated tasks could be swept.
+  // Drives the "Clear N auto tasks" button (the pre-campaign AI email
+  // backlog). Manual tasks are excluded.
+  let clearableCount = 0;
+  if (isAdmin) {
+    const [clearRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(tasks)
+      .where(and(eq(tasks.status, "pending"), inArray(tasks.source, ["auto", "smart_note"])));
+    clearableCount = clearRow?.count ?? 0;
+  }
+
   return (
     <div className="flex animate-[fade-in_300ms_ease-out] flex-col gap-8">
       <header className="flex items-baseline justify-between gap-4">
@@ -138,13 +151,16 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           <p className="font-mono text-xs text-zinc-500 uppercase tracking-widest">Operations</p>
           <h1 className="mt-1 font-semibold text-4xl tracking-tight">Tasks</h1>
         </div>
-        <Link
-          href="/tasks/new"
-          className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          <Plus className="h-4 w-4" />
-          New task
-        </Link>
+        <div className="flex items-center gap-2">
+          {isAdmin && <BulkClearTasksButton clearableCount={clearableCount} />}
+          <Link
+            href="/tasks/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 font-medium text-sm text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            <Plus className="h-4 w-4" />
+            New task
+          </Link>
+        </div>
       </header>
 
       {/* Quick visibility chips */}

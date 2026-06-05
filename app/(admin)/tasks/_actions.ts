@@ -24,7 +24,7 @@ import {
   taskCreateSchema,
   taskUpdateSchema,
 } from "@/lib/validation/tasks";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { DatabaseError } from "pg";
@@ -195,6 +195,53 @@ export async function completeTask(
     return { ok: true, data: { id: input.id } };
   } catch (err) {
     return wrapDbError(err, "completeTask");
+  }
+}
+
+// === Bulk clear (admin only) ===
+
+/** The non-manual task sources an admin can sweep in bulk. We never
+ *  bulk-touch `manual` tasks (a human typed those). `smart_note` =
+ *  the AI inbox promise-extractor (the pre-campaign email backlog the
+ *  operator wants gone); `auto` = cascade/graphics tasks. */
+const CLEARABLE_TASK_SOURCES = ["auto", "smart_note"] as const;
+
+/**
+ * Cancel (not delete) pending auto-generated tasks in bulk. Terminal
+ * state is `cancelled` so the rows + audit history survive -- `completed`
+ * would wrongly imply the work was done. Admin only. Optional
+ * `createdBefore` lets the operator clear only the old backlog.
+ */
+export async function bulkClearTasks(input: {
+  sources?: Array<(typeof CLEARABLE_TASK_SOURCES)[number]>;
+  createdBefore?: string;
+}): Promise<ActionResult<{ cleared: number }>> {
+  const { staff } = await requireAdmin();
+  const sources =
+    input.sources && input.sources.length > 0 ? input.sources : [...CLEARABLE_TASK_SOURCES];
+  const conds = [eq(tasks.status, "pending"), inArray(tasks.source, sources)];
+  if (input.createdBefore) {
+    const cutoff = new Date(input.createdBefore);
+    if (!Number.isNaN(cutoff.getTime())) conds.push(lt(tasks.createdAt, cutoff));
+  }
+  try {
+    const cleared = await withAuditContext(staff.id, async (tx) => {
+      const rows = await tx
+        .update(tasks)
+        .set({
+          status: "cancelled",
+          completedAt: new Date(),
+          version: sql`${tasks.version} + 1`,
+        })
+        .where(and(...conds))
+        .returning({ id: tasks.id });
+      return rows.length;
+    });
+    revalidatePath("/tasks");
+    revalidatePath("/");
+    return { ok: true, data: { cleared } };
+  } catch (err) {
+    return wrapDbError(err, "bulkClearTasks");
   }
 }
 

@@ -3,7 +3,7 @@ import { requireStaff } from "@/lib/auth";
 import { type CalendarItemType, loadCalendarItems } from "@/lib/calendar";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Users } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { rescheduleTask } from "./_actions";
 import { CalendarGrid } from "./_components/calendar-grid";
@@ -140,6 +140,16 @@ export default async function CalendarPage({ searchParams }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Add to calendar -- a calendar entry IS a task with an
+              assignee + due date, so this opens the task creator where
+              you pick the user and the date. */}
+          <Link
+            href="/tasks/new"
+            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-xs text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add to calendar
+          </Link>
           {teamScope ? (
             <Link
               href={`/calendar?${buildQs({ scope: null, staff: null })}`}
