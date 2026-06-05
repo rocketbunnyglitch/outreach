@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
+import { SignatureEditor } from "../../settings/inboxes/_components/signature-editor";
 import {
   setInboxAlias,
   setInboxBrand,
@@ -34,6 +35,7 @@ interface InboxRow {
   outreachBrandId: string | null;
   outreachBrandName: string | null;
   aliasName: string | null;
+  signatureHtml: string | null;
 }
 
 interface TeamMember {
@@ -74,6 +76,7 @@ export function CampaignInfoTable({
             <th className="px-4 py-2.5">Assigned to campaign</th>
             <th className="px-4 py-2.5">Brand (company name)</th>
             <th className="px-4 py-2.5">Alias (sender name)</th>
+            <th className="px-4 py-2.5">Signature</th>
           </tr>
         </thead>
         <tbody>
@@ -344,6 +347,9 @@ function Row({
         ) : (
           <span className="text-xs text-zinc-500">User's name</span>
         )}
+      </td>
+      <td className="px-4 py-2.5 align-top">
+        <SignatureEditor connectedAccountId={row.id} initialSignatureHtml={row.signatureHtml} />
       </td>
     </tr>
   );

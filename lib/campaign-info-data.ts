@@ -39,6 +39,9 @@ export interface CampaignInboxRow {
   /** Sender persona for this email + campaign (drives {{your_name}} + the From
    *  display name). NULL = falls back to the sending user's display name. */
   aliasName: string | null;
+  /** Per-inbox HTML signature appended to outbound mail. Editable here + on
+   *  Settings -> Inboxes. NULL = no signature. */
+  signatureHtml: string | null;
 }
 
 export interface TeamMemberOption {
@@ -73,6 +76,7 @@ export async function loadCampaignInfo(opts: {
       emailAddress: staffOutreachEmails.emailAddress,
       status: staffOutreachEmails.status,
       ownerUserId: staffOutreachEmails.ownerUserId,
+      signatureHtml: staffOutreachEmails.signatureHtml,
     })
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.teamId, opts.teamId))
@@ -138,6 +142,7 @@ export async function loadCampaignInfo(opts: {
       outreachBrandId: brandId,
       outreachBrandName: brandId ? (brandName.get(brandId) ?? null) : null,
       aliasName: aliasByAccount.get(r.id) ?? null,
+      signatureHtml: r.signatureHtml ?? null,
     };
   });
 
