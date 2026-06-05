@@ -99,6 +99,11 @@ export interface ComposerInstance {
    *  pick and clobbers the operator's chosen template. Restored drafts set
    *  this true (they already had their chance); fresh drafts start false. */
   enginePickAttempted: boolean;
+  /** True once the operator has actually typed into this composer (To/
+   *  subject/body). Engine prefill + template apply do NOT set it. The
+   *  beforeunload "you have unsaved changes" guard checks this so opening
+   *  a composer with an auto-filled-but-untouched draft never warns. */
+  userEdited: boolean;
 }
 
 export interface OpenComposerInput {
@@ -245,6 +250,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       quotedHtml: null,
       // Fresh draft -> eligible for exactly one engine auto-pick.
       enginePickAttempted: false,
+      userEdited: false,
     };
     dispatch({ type: "open", payload: { id, instance } });
     return id;
@@ -282,8 +288,12 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
           hasContent = true;
           break;
         }
-        if (c.bodyText.trim() || c.subject.trim() || c.to.trim()) {
-          if (c.draftStatus !== "saved") {
+        // Only warn about losing work the operator actually TYPED. An
+        // engine-prefilled-but-untouched draft (opened from the cold-
+        // outreach email button) has body/subject/to but userEdited=false,
+        // so it never triggers the "leave site?" prompt.
+        if (c.userEdited && c.draftStatus !== "saved") {
+          if (c.bodyText.trim() || c.subject.trim() || c.to.trim()) {
             hasContent = true;
             break;
           }
@@ -377,6 +387,9 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             pendingLabelIds: row.pendingLabelIds ?? [],
             quotedHtml: row.quotedHtml ?? null,
             enginePickAttempted,
+            // A freshly-hydrated draft is "saved" already; treat as
+            // not-yet-edited this session so beforeunload stays quiet.
+            userEdited: false,
           },
         ]);
       }

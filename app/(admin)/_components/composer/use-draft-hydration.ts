@@ -67,6 +67,8 @@ export function useDraftHydration() {
           quotedHtml: r.quotedHtml ?? null,
           // Restored existing draft: never auto-pick (operators work is preserved).
           enginePickAttempted: true,
+          // Restored draft is already saved; not edited this session.
+          userEdited: false,
         }));
         hydrate(instances);
       })

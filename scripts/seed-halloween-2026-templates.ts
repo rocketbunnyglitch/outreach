@@ -233,13 +233,6 @@ A few quick things to set up:
 3. Any drink special you'd like featured? Totally optional, we'll just list it on our digital crawl map if you want one.
 {{wristband_shipping_note}}
 
-Here's what to expect from us leading up to the event:
-
-About 4 weeks out: a social media graphic you can use to promote.
-3 weeks out: a staff info sheet for your team.
-2 weeks out: final logistics check-in.
-Week of: a quick day-before confirmation.
-
 Let me know if you have any questions.
 
 Thanks,

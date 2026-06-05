@@ -10,12 +10,11 @@ import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
 import type { CityStatusPill } from "@/lib/tracker-status";
 import { asc, count, eq } from "drizzle-orm";
-import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
-import { goToCampaignDashboard } from "../../_actions";
 import { ClientOnly } from "../../_components/client-only";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
+import { SmartBackButton } from "../../_components/smart-back-button";
 import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { loadEscalationTargets } from "../_actions/escalation-actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
@@ -206,15 +205,11 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           (sets the current-campaign cookie + redirects to /). Operators
           flagged that this previously went to the campaign SETUP page;
           the ops dashboard is the expected destination (session 12). */}
-      <form action={goToCampaignDashboard} className="w-fit">
-        <input type="hidden" name="campaignId" value={cc.campaign.id} />
-        <button
-          type="submit"
-          className="inline-flex w-fit items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          <ChevronLeft className="h-3 w-3" /> {cc.campaign.name}
-        </button>
-      </form>
+      <SmartBackButton
+        fallbackHref="/"
+        label={cc.campaign.name}
+        className="inline-flex w-fit items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] hover:text-zinc-900 dark:hover:text-zinc-100"
+      />
 
       {/* Current time in the city + viewer's local time.
           Helps avoid "scheduling a call at 3pm without realizing that's

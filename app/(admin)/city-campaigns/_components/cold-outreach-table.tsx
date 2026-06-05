@@ -1028,6 +1028,7 @@ export function ColdOutreachTable({
                 zebra={i % 2 === 1}
                 rowIndex={i}
                 layout="table"
+                mode={mode}
                 escalationTargets={escalationTargets}
                 crawlsForPromote={crawlsForPromote}
                 isActive={i === activeRowIndex}
@@ -1072,6 +1073,7 @@ export function ColdOutreachTable({
                 onToggleSelect={() => toggleOne(e.entryId)}
                 zebra={false}
                 layout="card"
+                mode={mode}
                 escalationTargets={escalationTargets}
                 crawlsForPromote={crawlsForPromote}
               />
@@ -1135,6 +1137,7 @@ function ColdRow({
   zebra,
   rowIndex,
   layout,
+  mode,
   escalationTargets,
   crawlsForPromote,
   isActive = false,
@@ -1155,6 +1158,8 @@ function ColdRow({
    */
   rowIndex?: number;
   layout: "table" | "card";
+  /** Cold vs warm table -- drives the promote button's warm-first chooser. */
+  mode: "cold" | "warm";
   /** Escalation targets list — passed through to the popover. */
   escalationTargets: Array<{
     id: string;
@@ -1621,6 +1626,8 @@ function ColdRow({
                   venueName={entry.venueName}
                   cityCampaignId={cityCampaignId}
                   crawls={crawlsForPromote}
+                  entryId={entry.entryId}
+                  mode={mode}
                 />
               )}
             </div>
@@ -1700,6 +1707,8 @@ function ColdRow({
                 venueName={entry.venueName}
                 cityCampaignId={cityCampaignId}
                 crawls={crawlsForPromote}
+                entryId={entry.entryId}
+                mode={mode}
               />
             )}
             <ActivityHistoryButton

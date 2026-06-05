@@ -1,8 +1,9 @@
 "use client";
 import { cn } from "@/lib/cn";
-import { ChevronRight, Loader2, Sparkles, X } from "lucide-react";
+import { ChevronRight, Flame, Loader2, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { bulkSetWarmFlag } from "../city-campaigns/_cold-outreach-actions";
 import { assignSlotVenue } from "../city-campaigns/_slot-actions";
 
 import { formatDayPart } from "@/lib/tracker-status-types";
@@ -33,6 +34,12 @@ interface Props {
   venueName: string;
   cityCampaignId: string;
   crawls: CrawlOption[];
+  /** The cold_outreach_entries row id, for the "Move to warm leads" option.
+   *  Only needed in cold mode (the choose step); optional otherwise. */
+  entryId?: string;
+  /** "cold" -> offer "Move to warm leads" first (then direct-to-crawl);
+   *  "warm" -> the lead is already warm, go straight to the crawl picker. */
+  mode?: "cold" | "warm";
 }
 
 // DAY_LABEL was previously a hard-coded 3-value object that broke
@@ -72,9 +79,19 @@ const ROLE_OPTIONS: Array<{
  * Filled slots are visible but pre-selected with a 'replace' affordance
  * so the operator knows what they'd overwrite before tapping.
  */
-export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, crawls }: Props) {
+export function WarmLeadPromoteButton({
+  venueId,
+  venueName,
+  cityCampaignId,
+  crawls,
+  entryId,
+  mode = "warm",
+}: Props) {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"crawl" | "role">("crawl");
+  // Cold rows start on the choose step (warm vs direct-to-crawl); warm
+  // rows are already warm, so they jump straight to the crawl picker.
+  const initialStep: "choose" | "crawl" | "role" = mode === "cold" ? "choose" : "crawl";
+  const [step, setStep] = useState<"choose" | "crawl" | "role">(initialStep);
   const [selectedCrawl, setSelectedCrawl] = useState<CrawlOption | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -99,10 +116,25 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
 
   function close() {
     setOpen(false);
-    setStep("crawl");
+    setStep(initialStep);
     setSelectedCrawl(null);
     setError(null);
     setSuccess(false);
+  }
+
+  function moveToWarm() {
+    if (!entryId) return;
+    setError(null);
+    setSuccess(false);
+    startTx(async () => {
+      const result = await bulkSetWarmFlag({ entryIds: entryId, isWarm: true, cityCampaignId });
+      if (result.ok) {
+        setSuccess(true);
+        setTimeout(close, 1400);
+      } else {
+        setError(result.error ?? "Couldn't move to warm leads.");
+      }
+    });
   }
 
   function pickCrawl(c: CrawlOption) {
@@ -181,11 +213,13 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
             </p>
             <h2 className="mt-1 font-semibold text-lg tracking-tight">{venueName}</h2>
             <p className="mt-0.5 text-xs text-zinc-500">
-              {step === "crawl"
-                ? "Pick a crawl below; you'll then pick the slot role."
-                : selectedCrawl
-                  ? `Picking a slot in ${formatDayPart(selectedCrawl.dayPart)} crawl ${selectedCrawl.crawlNumber}.`
-                  : "Pick a slot role."}
+              {step === "choose"
+                ? "Move this lead to warm, or assign it straight to a crawl."
+                : step === "crawl"
+                  ? "Pick a crawl below; you'll then pick the slot role."
+                  : selectedCrawl
+                    ? `Picking a slot in ${formatDayPart(selectedCrawl.dayPart)} crawl ${selectedCrawl.crawlNumber}.`
+                    : "Pick a slot role."}
             </p>
           </div>
           <button
@@ -202,8 +236,42 @@ export function WarmLeadPromoteButton({ venueId, venueName, cityCampaignId, craw
           <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 px-3 py-3 text-emerald-700 text-sm dark:bg-emerald-500/15 dark:text-emerald-300">
             <Sparkles className="h-4 w-4" />
             <span>
-              Promoted <strong>{venueName}</strong> — refresh to see it in the crawl table.
+              Done. <strong>{venueName}</strong> updated -- refresh to see the change.
             </span>
+          </div>
+        )}
+
+        {!success && step === "choose" && (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={moveToWarm}
+              disabled={pending}
+              className="flex w-full items-center gap-3 rounded-md border border-emerald-300 bg-emerald-500/[0.06] px-3 py-3 text-left text-sm transition-colors hover:bg-emerald-500/[0.12] disabled:opacity-50 dark:border-emerald-700"
+            >
+              <Flame className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <span className="flex-1">
+                <span className="font-medium">Move to warm leads</span>
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  Keeps it in cold outreach too; collects in the warm-leads table.
+                </span>
+              </span>
+              {pending && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep("crawl")}
+              disabled={pending}
+              className="flex w-full items-center gap-3 rounded-md border border-zinc-200/60 bg-white px-3 py-3 text-left text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-500/[0.04] disabled:opacity-50 dark:border-zinc-800/60 dark:bg-zinc-950 dark:hover:border-emerald-700"
+            >
+              <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
+              <span className="flex-1">
+                <span className="font-medium">Assign directly to a crawl</span>
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  Skip warm; place it on a crawl slot now.
+                </span>
+              </span>
+            </button>
           </div>
         )}
 

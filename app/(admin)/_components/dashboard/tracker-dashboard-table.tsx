@@ -820,10 +820,11 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 sortKey="notes"
                 sort={sort}
                 onSort={toggleSort}
-                // Notes claims all leftover width (w-full in a table-auto
-                // table) so every other column shrinks to its content's
-                // min width; min-w keeps Notes usable on narrow viewports.
-                className="w-full min-w-[16rem]"
+                // Notes gets a generous min-width (so it's the widest column)
+                // but NOT w-full -- w-full made it grab ALL leftover space and
+                // cramped the rest. Without it, table-auto shares slack so
+                // nothing is cramped and Notes still stays comfortably wide.
+                className="min-w-[18rem]"
                 tooltip="A quick dashboard note for this city. Click the cell to edit inline."
               />
             </tr>
@@ -1421,7 +1422,7 @@ function CityRow({
           <AssignSelect row={row} staff={staff} />
         </td>
 
-        <td className="px-2 py-2 align-middle sm:py-2.5">
+        <td className="px-2 py-2 align-middle text-xs sm:py-2.5">
           <NoteInput row={row} gridRow={stripeIndex} />
         </td>
       </tr>

@@ -1149,7 +1149,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           <span className="w-12 shrink-0 pt-0.5 text-zinc-500">To</span>
           <RecipientChips
             value={toList}
-            onChange={(next) => setField(instance.id, { to: next.join(", ") })}
+            onChange={(next) => setField(instance.id, { to: next.join(", "), userEdited: true })}
             placeholder="recipient@example.com"
             ariaLabel="To recipients"
             suggestions={fetchSuggestions}
@@ -1182,7 +1182,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             <span className="w-12 shrink-0 pt-0.5 text-zinc-500">Cc</span>
             <RecipientChips
               value={ccList}
-              onChange={(next) => setField(instance.id, { cc: next.join(", ") })}
+              onChange={(next) => setField(instance.id, { cc: next.join(", "), userEdited: true })}
               ariaLabel="Cc recipients"
               suggestions={fetchSuggestions}
               pendingRef={pendingCcRef}
@@ -1195,7 +1195,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             <span className="w-12 shrink-0 pt-0.5 text-zinc-500">Bcc</span>
             <RecipientChips
               value={bccList}
-              onChange={(next) => setField(instance.id, { bcc: next.join(", ") })}
+              onChange={(next) => setField(instance.id, { bcc: next.join(", "), userEdited: true })}
               ariaLabel="Bcc recipients"
               suggestions={fetchSuggestions}
               pendingRef={pendingBccRef}
@@ -1236,7 +1236,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           <input
             type="text"
             value={instance.subject}
-            onChange={(e) => setField(instance.id, { subject: e.target.value })}
+            onChange={(e) => setField(instance.id, { subject: e.target.value, userEdited: true })}
             placeholder="Subject"
             className="min-w-0 flex-1 bg-transparent font-medium text-xs outline-none"
           />
@@ -1313,7 +1313,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         <RichTextEditor
           valueHtml={instance.bodyHtml}
           valueText={instance.bodyText}
-          onChange={({ text, html }) => setField(instance.id, { bodyText: text, bodyHtml: html })}
+          onChange={({ text, html }) =>
+            setField(instance.id, { bodyText: text, bodyHtml: html, userEdited: true })
+          }
           // min height keeps the reply field usable when the (now scrollable)
           // body also shows the expanded original below it.
           className="min-h-[10rem] flex-1"

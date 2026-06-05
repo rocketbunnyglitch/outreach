@@ -14,6 +14,7 @@
 
 import {
   events,
+  coldOutreachEntries,
   connectedAccounts,
   emailDrafts,
   emailMessages,
@@ -1931,6 +1932,50 @@ export async function applyQuickAction(
           WHERE id = ${threadId}`);
         break;
     }
+
+    // Sync the cold-outreach pipeline row so an inbox decision is reflected
+    // on the cold/warm tables: engaged -> interested + moved to warm leads;
+    // soft_no -> declined; hard_no -> do_not_contact. Best-effort + campaign-
+    // scoped (skipped when the thread has no venue/campaign link).
+    if (action === "engaged" || action === "soft_no" || action === "hard_no") {
+      try {
+        const [link] = await db
+          .select({ venueId: emailThreads.venueId, cityCampaignId: emailThreads.cityCampaignId })
+          .from(emailThreads)
+          .where(eq(emailThreads.id, threadId))
+          .limit(1);
+        if (link?.venueId && link.cityCampaignId) {
+          const coldStatus =
+            action === "engaged"
+              ? "interested"
+              : action === "soft_no"
+                ? "declined"
+                : "do_not_contact";
+          await db
+            .update(coldOutreachEntries)
+            .set({ status: coldStatus, isWarm: action === "engaged", updatedBy: staff.id })
+            .where(
+              and(
+                eq(coldOutreachEntries.cityCampaignId, link.cityCampaignId),
+                eq(coldOutreachEntries.venueId, link.venueId),
+              ),
+            );
+          publishRealtime({
+            table: `cold-outreach-${link.cityCampaignId}`,
+            type: "update",
+            byStaffId: staff.id,
+            byStaffName: staff.displayName,
+          });
+          revalidatePath(`/city-campaigns/${link.cityCampaignId}`);
+        }
+      } catch (syncErr) {
+        logger.error(
+          { err: syncErr, threadId, action },
+          "inbox quick-action cold-outreach sync failed",
+        );
+      }
+    }
+
     publishRealtime({
       table: "email_threads",
       id: threadId,

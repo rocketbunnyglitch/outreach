@@ -151,6 +151,12 @@ async function derivePickContext(input: EnginePickInput): Promise<PickContext | 
     // opener (a big open ask); anything later is a slot-detail follow-up.
     // [ReferenceDoc Section 7] openers vs detail follow-ups.
     if (chosen.status === "lead") ctx.askSize = "big_open";
+  } else {
+    // No booking for this venue in the campaign -> it's a fresh cold lead,
+    // so the composer should open the cold opener (T1), NOT a slot-detail
+    // follow-up (T4). Without this, a never-booked venue has no askSize and
+    // deriveDesired defaults the stage to "detail", which scores T4 over T1.
+    ctx.askSize = "big_open";
   }
   return ctx;
 }

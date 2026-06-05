@@ -26,12 +26,11 @@ import {
   loadVenueConfirmationMessages,
 } from "@/lib/venue-communication";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { ChevronLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { HardDeleteButton } from "../../_components/hard-delete-button";
 import { createNote, deleteNote } from "../../_components/notes-actions";
 import { NotesSection } from "../../_components/notes-section";
+import { SmartBackButton } from "../../_components/smart-back-button";
 import type { WristbandRowData } from "../../wristbands/_components/wristband-shipping-row";
 import {
   archiveVenue,
@@ -133,6 +132,33 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     logger.error({ err, venueId: id }, "loadVenueConfirmationCalls failed");
     return [];
   });
+
+  // "Last contact" for the summary strip must reflect ANY touch. Emails
+  // sent/received land in email_messages (surfaced via venueCommunication
+  // summary), NOT outreach_log -- so a venue we just emailed showed "-".
+  // Take the most recent of: logged call/outreach, last outbound email,
+  // last inbound email.
+  const touchCandidates: Array<{ at: Date; channel: string }> = [];
+  const _logTouch = outreachEntries[0]?.createdAt ?? null;
+  if (_logTouch)
+    touchCandidates.push({
+      at: new Date(_logTouch),
+      channel: outreachEntries[0]?.channel ?? "log",
+    });
+  if (venueCommunication.summary.lastOutboundAt)
+    touchCandidates.push({
+      at: new Date(venueCommunication.summary.lastOutboundAt),
+      channel: "email",
+    });
+  if (venueCommunication.summary.lastInboundAt)
+    touchCandidates.push({
+      at: new Date(venueCommunication.summary.lastInboundAt),
+      channel: "email",
+    });
+  touchCandidates.sort((a, b) => b.at.getTime() - a.at.getTime());
+  const effectiveLastTouch = touchCandidates[0] ?? null;
+  const effectiveTouchCount =
+    outreachEntries.length + (venueCommunication.summary.totalMessages ?? 0);
 
   // Smart-note suggestions for these notes
   const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
@@ -331,12 +357,11 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
       {/* Header -- breadcrumb + name + address. The old top-right quick links +
           enrich live in the right "Quick actions" column now. */}
       <header className="flex flex-col gap-1">
-        <Link
-          href="/venues"
-          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          <ChevronLeft className="h-3 w-3" /> All venues
-        </Link>
+        <SmartBackButton
+          fallbackHref="/venues"
+          label="Back"
+          className="inline-flex w-fit items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+        />
         <h1 className="mt-2 truncate font-semibold text-3xl tracking-tight">{venue.name}</h1>
         {venue.address && <p className="text-sm text-zinc-500">{venue.address}</p>}
       </header>
@@ -348,9 +373,9 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         left={
           <>
             <VenueSummaryStrip
-              lastTouchAt={outreachEntries[0]?.createdAt ?? null}
-              lastTouchChannel={outreachEntries[0]?.channel ?? null}
-              touchCount={outreachEntries.length}
+              lastTouchAt={effectiveLastTouch?.at ?? null}
+              lastTouchChannel={effectiveLastTouch?.channel ?? null}
+              touchCount={effectiveTouchCount}
               crawlsCount={crawlHistory.length}
               doNotContact={venue.doNotContact}
               doNotContactReason={venue.doNotContactReason}
