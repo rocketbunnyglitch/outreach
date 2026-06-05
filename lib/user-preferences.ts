@@ -20,10 +20,16 @@ import { eq, sql } from "drizzle-orm";
 
 export type InboxDensity = "compact" | "default" | "comfortable";
 export type ReadingPanePosition = "right" | "bottom" | "none";
+export type InboxView = "outlook" | "gmail";
+export type ThemePref = "light" | "dark";
 
 export interface UserPrefs {
   inboxDensity: InboxDensity | null;
   inboxReadingPane: ReadingPanePosition | null;
+  /** 'outlook' (3-pane) | 'gmail' (list + full-screen). null = outlook. */
+  inboxView: InboxView | null;
+  /** 'light' | 'dark'. null = follow localStorage / OS. */
+  themePref: ThemePref | null;
   /** Per-campaign account-visibility scope. Key is campaign id or
    *  "_default" for the no-campaign / all-campaigns view. Value is
    *  the list of connected_account ids the operator explicitly
@@ -42,6 +48,8 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
     .select({
       inboxDensity: userPreferences.inboxDensity,
       inboxReadingPane: userPreferences.inboxReadingPane,
+      inboxView: userPreferences.inboxView,
+      themePref: userPreferences.themePref,
       inboxAccountFilters: userPreferences.inboxAccountFilters,
       dailyDigestEnabled: userPreferences.dailyDigestEnabled,
     })
@@ -52,6 +60,8 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
   return {
     inboxDensity: (row.inboxDensity as InboxDensity | null) ?? null,
     inboxReadingPane: (row.inboxReadingPane as ReadingPanePosition | null) ?? null,
+    inboxView: (row.inboxView as InboxView | null) ?? null,
+    themePref: (row.themePref as ThemePref | null) ?? null,
     inboxAccountFilters: (row.inboxAccountFilters as Record<string, string[]> | null) ?? {},
     dailyDigestEnabled: row.dailyDigestEnabled ?? null,
   };
@@ -73,6 +83,8 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
   const pane = isReadingPanePosition(patch.inboxReadingPane ?? null)
     ? patch.inboxReadingPane
     : undefined;
+  const view = isInboxView(patch.inboxView ?? null) ? patch.inboxView : undefined;
+  const theme = isThemePref(patch.themePref ?? null) ? patch.themePref : undefined;
   // dailyDigestEnabled: only accept actual booleans or explicit
   // null. Undefined (key not present in patch) means "don't touch."
   // We can't use `patch.dailyDigestEnabled === undefined` cleanly
@@ -84,7 +96,14 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
       : undefined
     : undefined;
 
-  if (density === undefined && pane === undefined && digest === undefined && !digestProvided) {
+  if (
+    density === undefined &&
+    pane === undefined &&
+    view === undefined &&
+    theme === undefined &&
+    digest === undefined &&
+    !digestProvided
+  ) {
     return;
   }
 
@@ -94,6 +113,8 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
       userId,
       inboxDensity: density ?? null,
       inboxReadingPane: pane ?? null,
+      inboxView: view ?? null,
+      themePref: theme ?? null,
       // dailyDigestEnabled column default is TRUE; an explicit
       // false here records the opt-out. NULL here means "not set
       // by this insert", which on a fresh row falls back to the
@@ -105,6 +126,8 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
       set: {
         ...(density !== undefined ? { inboxDensity: density ?? null } : {}),
         ...(pane !== undefined ? { inboxReadingPane: pane ?? null } : {}),
+        ...(view !== undefined ? { inboxView: view ?? null } : {}),
+        ...(theme !== undefined ? { themePref: theme ?? null } : {}),
         ...(digestProvided ? { dailyDigestEnabled: digest ?? null } : {}),
         updatedAt: sql`NOW()`,
       },
@@ -117,6 +140,14 @@ function isInboxDensity(v: unknown): v is InboxDensity | null {
 
 function isReadingPanePosition(v: unknown): v is ReadingPanePosition | null {
   return v === null || v === "right" || v === "bottom" || v === "none";
+}
+
+function isInboxView(v: unknown): v is InboxView | null {
+  return v === null || v === "outlook" || v === "gmail";
+}
+
+function isThemePref(v: unknown): v is ThemePref | null {
+  return v === null || v === "light" || v === "dark";
 }
 
 /**

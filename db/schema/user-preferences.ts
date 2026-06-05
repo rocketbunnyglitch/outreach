@@ -23,6 +23,10 @@ export const userPreferences = pgTable("user_preferences", {
   inboxDensity: text("inbox_density"),
   /** 'right' | 'bottom' | 'none' — reading-pane position. */
   inboxReadingPane: text("inbox_reading_pane"),
+  /** 'outlook' (3-pane, default) | 'gmail' (list + full-screen open). */
+  inboxView: text("inbox_view"),
+  /** 'light' | 'dark' -- theme, synced across devices (migration 0115). */
+  themePref: text("theme_pref"),
   /** Per-campaign account-visibility scope from the AccountSwitcher.
    *  Shape: { "<campaign_id>": ["<connected_account_id>", ...] }
    *  Empty arrays + missing keys both mean "default to every account

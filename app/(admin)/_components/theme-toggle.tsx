@@ -18,6 +18,7 @@
 import { cn } from "@/lib/cn";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { updateUserPreferences } from "../_actions/user-preferences";
 
 type ThemePref = "light" | "dark";
 
@@ -56,6 +57,9 @@ export function ThemeToggle() {
       // localStorage can throw in private windows; ignore
     }
     window.dispatchEvent(new Event("theme-pref-change"));
+    // Persist to the profile so the choice follows the operator across
+    // devices. Best-effort -- localStorage already drives this device.
+    void updateUserPreferences({ themePref: next }).catch(() => {});
   }
 
   return (

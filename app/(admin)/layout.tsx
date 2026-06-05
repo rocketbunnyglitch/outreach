@@ -4,6 +4,7 @@ import { ToastProvider } from "@/components/ui/toast";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { getCurrentCampaign } from "@/lib/current-campaign";
+import { getUserPreferences } from "@/lib/user-preferences";
 import { ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -19,6 +20,7 @@ import { PrimeTimePill } from "./_components/prime-time-pill";
 import { RealtimeRefresh } from "./_components/realtime-refresh";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
+import { ThemePrefHydrator } from "./_components/theme-pref-hydrator";
 import { ThemeToggle } from "./_components/theme-toggle";
 import { TimezonePicker } from "./_components/timezone-picker";
 import { UserMenu } from "./_components/user-menu";
@@ -46,12 +48,15 @@ export default async function AdminLayout({
   // is scoped — admin views are usually irrelevant per-campaign.
   const currentCampaign = await getCurrentCampaign();
   const hasCurrentCampaign = !!currentCampaign;
+  // Theme pref (saved to profile) -- seeds a fresh device's localStorage.
+  const myPrefs = await getUserPreferences(staff.id).catch(() => null);
 
   return (
     <ToastProvider>
       <ShortcutProvider>
         <ComposerProvider>
           <GlobalPresence staffId={staff.id} />
+          <ThemePrefHydrator dbTheme={myPrefs?.themePref ?? null} />
           <div className="flex min-h-screen flex-col">
             {isDevImpersonation && <DevModeBanner />}
             <TopBar staff={staff} provider={provider} />
