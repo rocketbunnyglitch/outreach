@@ -88,6 +88,7 @@ export const MERGE_FIELD_KEYS = [
   "contact_first_name",
   "company_name",
   "campaign_name",
+  "signature_block",
   "venue_manager_name",
   "venue_manager_phone",
   "operator_cell",
@@ -638,6 +639,22 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
 
   // cancellation_reason_phrase + host_info_note are operator/engine-supplied
   // at send time; left blank here so they never show a broken marker.
+
+  // --- Signature block ---
+  // The 3-line sign-off the operator asked for:
+  //   {your_name}                          (the inbox alias / persona)
+  //   {company_name} | Lead Events Manager (brand + title)
+  //   {phone}                              (only when the sender has one --
+  //                                         JC & Yesu do, Bryle & Gela don't)
+  // Templates end with {{signature_block}} instead of name + brand.
+  {
+    const titleLine = fields.company_name
+      ? `${fields.company_name} | Lead Events Manager`
+      : "Lead Events Manager";
+    const sigLines = [fields.your_name, titleLine];
+    if (fields.operator_cell) sigLines.push(fields.operator_cell);
+    fields.signature_block = sigLines.filter(Boolean).join("\n");
+  }
 
   return fields;
 }

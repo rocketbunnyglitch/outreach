@@ -53,8 +53,7 @@ Saturday, October 31st
 We typically run from 7:30 PM to 2:00 AM with a few different time slots to choose from. Would you be open to having our guests come through on any of those nights? If so, I can send over the time slots, terms and how it works.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "cold", stage: "first_touch", event_type: "night", ask_size: "big_open" },
   },
   {
@@ -70,8 +69,7 @@ We're scheduling our timeslots now and thought {{venue_name}} would be a great f
 If you're interested in being one of our stops please let me know and I'll send over further details and the time slots.
 
 All the best,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "cold", stage: "first_touch", event_type: "day_party" },
   },
   {
@@ -94,8 +92,7 @@ It would be the same terms as last time, we keep ticket sales, you keep 100% of 
 Just let us know which slots you want and we'll book you in.
 
 Thanks again,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "warm", stage: "first_touch", prior_relationship: true },
   },
   {
@@ -127,8 +124,7 @@ Your venue keeps 100% of bar sales, and we handle all the ticketing, marketing, 
 Let me know what works and I'll get you confirmed.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { stage: "detail", event_type: "night", crawls: "multiple" },
   },
   {
@@ -152,8 +148,7 @@ Terms are simple: Your venue keeps 100% of bar sales, and we handle all the tick
 Let me know what time you're interested in and I can book you guys in.
 
 Cheers,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { stage: "detail", event_type: "night", crawls: "single" },
   },
   {
@@ -177,8 +172,7 @@ You would keep 100% of bar sales, and we handle all the ticketing, marketing, an
 Let me know what time you're interested in and I can book you guys in.
 
 Cheers,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { stage: "detail", event_type: "day_party" },
   },
   {
@@ -219,8 +213,7 @@ You keep 100% of bar sales and we handle ticketing, marketing, and promotion. We
 Let me know if you're interested and I can book you guys in.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "cold", stage: "first_touch", ask_size: "small_specific" },
   },
   {
@@ -250,8 +243,7 @@ Week of: a quick day-before confirmation.
 Let me know if you have any questions.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "post_confirm", stage: "confirmation", min_days_to_event: 21 },
   },
   {
@@ -283,8 +275,7 @@ We'll send one more quick check-in the day before the event, but otherwise you s
 Let me know if you have any questions.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "post_confirm", stage: "confirmation", max_days_to_event: 21 },
   },
   {
@@ -298,8 +289,7 @@ Attached is the social media graphic for the {{city}} Halloween crawl. Feel free
 Let me know if you want it resized or in a different format and I can sort that out.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "lifecycle", stage: "graphic" },
   },
   {
@@ -325,8 +315,7 @@ Quick reminder: the wristband pickup window is {{wristband_window}}, and your sl
 Let me know if anything looks off, or if you have any questions.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "lifecycle", stage: "info_sheets", wristband_only: true },
   },
   {
@@ -348,8 +337,7 @@ Just a reminder, your slot is {{slot_summary}}.
 Let me know if anything's changed on your end or if you have questions.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "lifecycle", stage: "info_sheets", wristband_only: false },
   },
   {
@@ -374,8 +362,7 @@ A couple things to confirm:
 Otherwise everything's on track on our end. We'll do one more check-in the day before the event.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: {
       channel: "lifecycle",
       stage: "pre_event",
@@ -400,8 +387,7 @@ A few things heading your way before the event: the staff info sheet, your parti
 Anything you'd like us to flag to your guests (drink specials, etc.)? Otherwise you're all set, and we'll be in touch with the final numbers.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: {
       channel: "lifecycle",
       stage: "pre_event",
@@ -429,8 +415,7 @@ A couple of last things:
 If anything comes up tomorrow, just call or text. Otherwise looking forward to a great night!
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: {
       channel: "lifecycle",
       stage: "day_before",
@@ -453,8 +438,7 @@ Your slot: {{slot_summary}}
 If anything comes up tonight, just call or text {{operator_cell}} directly. Otherwise have a great night!
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "lifecycle", stage: "day_of", max_days_to_event: 0 },
   },
   {
@@ -472,8 +456,7 @@ I know this isn't ideal and I'm really sorry for the disruption. We'd love to ke
 If you have any questions, just reply or give us a call.
 
 Thanks for being patient with us,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "cancellation" },
   },
   {
@@ -495,8 +478,7 @@ Same terms as Halloween - you keep 100% of bar sales, we handle ticketing, marke
 Let me know if you're interested in any slot and I'll get you locked in.
 
 Thanks,
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "post_event" },
   },
   {
@@ -517,8 +499,7 @@ We'll send over the wristband venue address, the full lineup, and the wristband 
 If anything changes on your end before then, please let us know as soon as possible so we can find a backup.
 
 Thanks for working with us!
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "host_brief", stage: "hire_time" },
   },
   {
@@ -553,8 +534,7 @@ Attached: wristband image (so you know what you're handing out).
 If anything goes wrong, contact your host manager {{host_manager_name}} at {{host_manager_phone}}. They're your direct line for any issues that come up.
 
 Thanks!
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "host_brief", stage: "week_of" },
   },
   {
@@ -572,8 +552,7 @@ Wristbands should have arrived by now - let me know if you haven't received them
 If anything's changed, give me a heads-up so we can sort it out.
 
 Thanks!
-{{your_name}}
-{{company_name}}`,
+{{signature_block}}`,
     trigger: { channel: "venue_confirm_internal", stage: "week_of" },
   },
 ];
