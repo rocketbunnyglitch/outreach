@@ -13,6 +13,7 @@
  */
 
 import {
+  events,
   connectedAccounts,
   emailDrafts,
   emailMessages,
@@ -20,9 +21,11 @@ import {
   emailThreads,
   staffOutreachEmails,
   teamLabels,
+  venueEvents,
 } from "@/db/schema";
 import { draftReply } from "@/lib/ai-reply";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
+import { triggerVenueCancellation } from "@/lib/cancellation-flow";
 import { db, withAuditContext } from "@/lib/db";
 import { extractEmailAddress } from "@/lib/email-address";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
@@ -1883,6 +1886,41 @@ export async function applyQuickAction(
               cadence_state = 'cancelled_by_them'::cadence_state, cadence_next_due_at = NULL,
               updated_at = NOW(), updated_by = ${staff.id}
           WHERE id = ${threadId}`);
+        // Phase 4: the operator confirming "cancelled" fires the cancellation
+        // flow for this venue's confirmed bookings in the thread's campaign --
+        // stops downstream emails, drafts T16, notifies the lead. Best-effort
+        // and campaign-scoped (skipped when the thread has no campaign link, so
+        // we never cancel bookings in some other campaign).
+        try {
+          const [thr] = await db
+            .select({ venueId: emailThreads.venueId, cityCampaignId: emailThreads.cityCampaignId })
+            .from(emailThreads)
+            .where(eq(emailThreads.id, threadId))
+            .limit(1);
+          if (thr?.venueId && thr.cityCampaignId) {
+            const confirmedVes = await db
+              .select({ id: venueEvents.id })
+              .from(venueEvents)
+              .innerJoin(events, eq(events.id, venueEvents.eventId))
+              .where(
+                and(
+                  eq(venueEvents.venueId, thr.venueId),
+                  eq(venueEvents.status, "confirmed"),
+                  eq(events.cityCampaignId, thr.cityCampaignId),
+                ),
+              );
+            for (const v of confirmedVes) {
+              await triggerVenueCancellation({
+                venueEventId: v.id,
+                reason: "Venue cancelled (marked from inbox).",
+                byStaffId: staff.id,
+                teamId: staff.teamId,
+              });
+            }
+          }
+        } catch (cancErr) {
+          logger.error({ err: cancErr, threadId }, "inbox cancelled quick-action: flow failed");
+        }
         break;
       case "snooze_5d":
         await db.execute(sql`

@@ -1487,6 +1487,15 @@ Default behavior:
 
 This applies to the relationship flag (Section 3.3). It does NOT change the operational urgency of the cancellation alert flow (Section 7.16.8) — staff still need to be notified immediately so replacement outreach can start. The flag is about future re-engagement; the alert flow is about right-now operations.
 
+##### [ENGINE - current behavior] (Phase 4.1/4.3/4.4/4.5)
+
+`lib/cancellation-flow.ts` `triggerVenueCancellation({ venueEventId, reason, byStaffId, teamId })`. Operator-initiated -- it fires from the inbox "Cancelled" quick-action (the human confirming `cancelled_by_them`), which cancels the venue's confirmed bookings in that thread's campaign (campaign-scoped so it never touches another campaign's bookings). It:
+- marks the `venue_events` row `status='cancelled'` + stamps `cancelled_at` / `cancellation_reason` / `cancelled_by` (migration 0112);
+- **stops downstream** -- deletes the venue's unsent SCHEDULED lifecycle drafts (T13-T17) and cancels the pending AUTO tasks for the event;
+- **drafts T16** to the venue with `cancellation_reason_phrase` = the operator's reason, `scheduled_for = null` (review + send, never auto-sent);
+- **notifies** the city lead.
+Consistent with 7.16.4, it does NOT touch the relationship flag (no auto-bad on cancellation). Not yet built: acknowledgment tracking + auto-escalation (4.6), comeback flow (4.8), misrouted-positive-reply routing (4.9), and the dedicated cancelled-venues view (4.7).
+
 #### 7.16.5 Engine state for the cancelled venue × campaign
 
 When a venue cancels post-confirm:

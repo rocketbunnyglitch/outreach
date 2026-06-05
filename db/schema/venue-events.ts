@@ -76,6 +76,11 @@ export const venueEvents = pgTable(
     // night-of (e.g. personal cell vs Quo line).
     ourContactOverridePhoneE164: text("our_contact_override_phone_e164"),
 
+    // Cancellation tracking (Phase 4.1). status='cancelled' + when/why/who.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancellationReason: text("cancellation_reason"),
+    cancelledBy: uuid("cancelled_by").references(() => staffMembers.id, { onDelete: "set null" }),
+
     // Cadence checkpoints (Phase 7 automation populates these on success)
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     twoWeekEmailSentAt: timestamp("two_week_email_sent_at", { withTimezone: true }),
