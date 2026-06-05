@@ -15,12 +15,14 @@
 import { requireStaff } from "@/lib/auth";
 import {
   loadWorklistCalls,
+  loadWorklistComebacks,
   loadWorklistDrafts,
   loadWorklistFollowUps,
   loadWorklistRelationshipFlags,
   loadWorklistReplies,
 } from "@/lib/worklist-data";
 import { CallsSection } from "./_components/calls-section";
+import { ComebacksSection } from "./_components/comebacks-section";
 import { DraftsSection } from "./_components/drafts-section";
 import { FollowUpsSection } from "./_components/follow-ups-section";
 import { RelationshipFlagsSection } from "./_components/relationship-flags-section";
@@ -35,19 +37,21 @@ export default async function WorklistPage() {
 
   // Load all four queues once so we can detect the all-empty state without
   // double-querying; the sections render the data passed in.
-  const [drafts, replies, followUps, calls, relationshipFlags] = await Promise.all([
+  const [drafts, replies, followUps, calls, relationshipFlags, comebacks] = await Promise.all([
     loadWorklistDrafts({ staffId: staff.id }),
     loadWorklistReplies({ staffId: staff.id }),
     loadWorklistFollowUps({ staffId: staff.id }),
     loadWorklistCalls({ staffId: staff.id }),
     loadWorklistRelationshipFlags({ staffId: staff.id }),
+    loadWorklistComebacks({ staffId: staff.id }),
   ]);
   const allEmpty =
     drafts.length === 0 &&
     replies.length === 0 &&
     followUps.length === 0 &&
     calls.length === 0 &&
-    relationshipFlags.length === 0;
+    relationshipFlags.length === 0 &&
+    comebacks.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,6 +67,7 @@ export default async function WorklistPage() {
         <WorklistAllCaughtUp staffId={staff.id} />
       ) : (
         <div className="flex flex-col gap-4">
+          <ComebacksSection comebacks={comebacks} />
           <RelationshipFlagsSection flags={relationshipFlags} />
           <DraftsSection drafts={drafts} />
           <RepliesSection replies={replies} />

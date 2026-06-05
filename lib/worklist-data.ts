@@ -621,6 +621,68 @@ export async function loadWorklistRelationshipFlags(opts: {
 }
 
 // =========================================================================
+// Comebacks (Phase 4.8). A venue that cancelled but then replied again (after
+// the cancellation) may want back in. Surface it so the lead can re-confirm if
+// the slot is still open. Detected as: a cancelled venue_event in a led city
+// whose venue has an inbound reply AFTER cancelled_at.
+// =========================================================================
+
+export interface WorklistComebackRow {
+  venueEventId: string;
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  cancelledAt: string | null;
+  threadId: string;
+}
+
+export async function loadWorklistComebacks(opts: {
+  staffId: string;
+}): Promise<WorklistComebackRow[]> {
+  const rows = await db
+    .select({
+      venueEventId: venueEvents.id,
+      venueId: venues.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      cancelledAt: venueEvents.cancelledAt,
+      threadId: emailThreads.id,
+      lastInboundAt: emailThreads.lastInboundAt,
+    })
+    .from(venueEvents)
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .innerJoin(emailThreads, eq(emailThreads.venueId, venues.id))
+    .where(
+      and(
+        eq(venueEvents.status, "cancelled"),
+        eq(cityCampaigns.leadStaffId, opts.staffId),
+        sql`${venueEvents.cancelledAt} IS NOT NULL`,
+        sql`${emailThreads.lastInboundAt} > ${venueEvents.cancelledAt}`,
+      ),
+    )
+    .orderBy(desc(emailThreads.lastInboundAt));
+
+  const seen = new Set<string>();
+  const out: WorklistComebackRow[] = [];
+  for (const r of rows) {
+    if (seen.has(r.venueEventId)) continue;
+    seen.add(r.venueEventId);
+    out.push({
+      venueEventId: r.venueEventId,
+      venueId: r.venueId,
+      venueName: r.venueName,
+      cityName: r.cityName ?? null,
+      cancelledAt: r.cancelledAt ? r.cancelledAt.toISOString() : null,
+      threadId: r.threadId,
+    });
+  }
+  return out;
+}
+
+// =========================================================================
 // Today's completion stats (Phase 2.6) -- powers the worklist's "all caught
 // up" empty state. Three real, operator-attributable counters for the current
 // day. "Today" is bounded in America/Toronto entirely in SQL so the day rolls

@@ -9,11 +9,19 @@
  * surfaces in the Drafts section.
  */
 
-import { connectedAccounts, emailThreads, venueDomainRelationships } from "@/db/schema";
+import {
+  connectedAccounts,
+  emailThreads,
+  venueDomainRelationships,
+  venueEvents,
+} from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { generateCadenceDraftForThread } from "@/lib/cadence-advance";
+import { generateConfirmationCascade } from "@/lib/confirmation-cascade";
 import { db, withAuditContext } from "@/lib/db";
+import { resolveEngineRole } from "@/lib/engine-roles";
 import type { ActionResult } from "@/lib/form-utils";
+import { scheduleLifecycle } from "@/lib/lifecycle-scheduler";
 import { logger } from "@/lib/logger";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -108,5 +116,49 @@ export async function setPostEventRelationshipFlag(input: {
   } catch (err) {
     logger.error({ err, venueId: input.venueId }, "setPostEventRelationshipFlag failed");
     return { ok: false, error: "Couldn't save the flag." };
+  }
+}
+
+/**
+ * Phase 4.8: re-confirm a venue that cancelled but came back (operator decided
+ * the slot is still theirs). Flips the venue_event back to confirmed, clears the
+ * cancellation, re-fires the confirmation cascade (tasks) + lifecycle (emails).
+ * The operator is responsible for checking the slot is actually still open.
+ */
+export async function reconfirmCancelledVenue(input: {
+  venueEventId: string;
+}): Promise<ActionResult<{ ok: true }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(input.venueEventId)) return { ok: false, error: "Invalid id." };
+  try {
+    const [graphicsDesignerId, lifecycleOwnerId] = await Promise.all([
+      resolveEngineRole(staff.teamId, "graphics_designer"),
+      resolveEngineRole(staff.teamId, "lifecycle_owner"),
+    ]);
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(venueEvents)
+        .set({
+          status: "confirmed",
+          confirmedAt: new Date(),
+          cancelledAt: null,
+          cancellationReason: null,
+          cancelledBy: null,
+          updatedBy: staff.id,
+        })
+        .where(eq(venueEvents.id, input.venueEventId));
+      await generateConfirmationCascade(tx, input.venueEventId, { graphicsDesignerId });
+    });
+    // Re-schedule the post-confirm emails (best-effort, outside the tx).
+    await scheduleLifecycle({
+      venueEventId: input.venueEventId,
+      ownerStaffId: lifecycleOwnerId ?? staff.id,
+      teamId: staff.teamId,
+    }).catch((err) => logger.error({ err }, "reconfirm: lifecycle scheduling failed"));
+    revalidatePath("/worklist");
+    return { ok: true, data: { ok: true } };
+  } catch (err) {
+    logger.error({ err, venueEventId: input.venueEventId }, "reconfirmCancelledVenue failed");
+    return { ok: false, error: "Couldn't re-confirm the venue." };
   }
 }
