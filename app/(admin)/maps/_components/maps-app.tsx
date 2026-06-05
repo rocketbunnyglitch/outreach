@@ -46,10 +46,18 @@ export function MapsApp({
   googleMapsApiKey,
   cities,
   defaultCenter,
+  attachCityCampaignId,
+  heightClassName = "h-[calc(100vh-14rem)]",
 }: {
   googleMapsApiKey: string;
   cities: City[];
   defaultCenter: { lat: number; lng: number };
+  /** When set, "Add to venues" also attaches the place to this
+   *  campaign's cold-outreach list (city-page mount). */
+  attachCityCampaignId?: string;
+  /** Root height. Defaults to the full standalone /maps height; the
+   *  city-page mount passes a shorter fixed height. */
+  heightClassName?: string;
 }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
@@ -191,6 +199,7 @@ export function MapsApp({
       const res = await mapsAddPlaceAsVenue({
         placeId: selected.placeId,
         cityId: chosenCityId,
+        cityCampaignId: attachCityCampaignId,
       });
       if (!res.ok) {
         setAddError(res.error ?? "Couldn't add.");
@@ -227,7 +236,7 @@ export function MapsApp({
   }
 
   return (
-    <div className="grid h-[calc(100vh-14rem)] grid-cols-1 gap-4 md:grid-cols-[360px_1fr]">
+    <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-[360px_1fr]", heightClassName)}>
       {/* Results column */}
       <div className="flex flex-col gap-3 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <form

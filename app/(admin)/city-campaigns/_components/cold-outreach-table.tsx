@@ -40,7 +40,6 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
-  acceptLeadSuggestions,
   archiveColdOutreachEntry,
   bulkArchiveColdOutreach,
   bulkAssignColdOutreach,
@@ -49,7 +48,6 @@ import {
   bulkUpdateColdOutreachStatus,
   commitVenueField,
   createFollowUpFromRemark,
-  generateVenueLeads,
   unarchiveColdOutreachEntry,
   updateColdOutreachField,
   upsertColdOutreachEntry,
@@ -816,13 +814,7 @@ export function ColdOutreachTable({
         </section>
       );
     }
-    return (
-      <EmptyState
-        cityCampaignId={cityCampaignId}
-        cityId={cityId}
-        onManualAdd={() => setAdding(true)}
-      />
-    );
+    return <EmptyState onManualAdd={() => setAdding(true)} />;
   }
 
   const allSelected = selected.size > 0 && selected.size === displayed.length;
@@ -1109,7 +1101,6 @@ export function ColdOutreachTable({
           <ClipboardPaste className="mr-1 h-3 w-3" />
           Or paste rows from Sheets
         </span>
-        <GenerateLeadsButton cityCampaignId={cityCampaignId} cityId={cityId} compact />
       </footer>
 
       <AiSuggestVenuesModal
@@ -2300,283 +2291,22 @@ function AddVenueRow({
   );
 }
 
-function EmptyState({
-  cityCampaignId,
-  cityId,
-  onManualAdd,
-}: {
-  cityCampaignId: string;
-  cityId: string;
-  onManualAdd: () => void;
-}) {
+function EmptyState({ onManualAdd }: { onManualAdd: () => void }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-8 text-center shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:bg-zinc-950/60 dark:shadow-none">
       <Mail className="mx-auto h-6 w-6 text-zinc-400" />
       <h2 className="mt-3 font-semibold text-lg tracking-tight">No cold outreach yet</h2>
       <p className="mx-auto mt-1.5 max-w-md text-xs text-zinc-600 leading-relaxed dark:text-zinc-400">
-        Generate a starting list of bars / clubs / restaurants in this city's nightlife cluster, or
-        add venues one at a time.
+        Add venues one at a time, paste rows from Sheets, or use the discovery map below to search
+        bars / clubs / restaurants in this city and add them.
       </p>
       <div className="mt-5 flex items-center justify-center gap-2">
-        <GenerateLeadsButton cityCampaignId={cityCampaignId} cityId={cityId} />
         <Button type="button" variant="outline" onClick={onManualAdd}>
           <Plus className="h-3.5 w-3.5" />
           Add venue manually
         </Button>
       </div>
-      <p className="mt-4 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em]">
-        cityId · {cityId.slice(0, 8)}…
-      </p>
     </section>
-  );
-}
-
-function GenerateLeadsButton({
-  cityCampaignId,
-  cityId,
-  compact = false,
-}: {
-  cityCampaignId: string;
-  cityId?: string;
-  compact?: boolean;
-}) {
-  const [pending, startTx] = useTransition();
-  const [importing, startImport] = useTransition();
-  const [suggestions, setSuggestions] = useState<Array<{
-    placeId: string;
-    name: string;
-    address: string | null;
-    phone: string | null;
-    website: string | null;
-    rating: number | null;
-    userRatingCount: number | null;
-  }> | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [notConfigured, setNotConfigured] = useState(false);
-  const [zeroSuggestions, setZeroSuggestions] = useState<{
-    searchedCount: number;
-    searchedRadiusKm: number;
-  } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  function close() {
-    setSuggestions(null);
-    setSelected(new Set());
-    setNotConfigured(false);
-    setZeroSuggestions(null);
-  }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: close is stable
-  useEffect(() => {
-    const hasPopover = !!suggestions || notConfigured || !!zeroSuggestions;
-    if (!hasPopover) return;
-    function onPointer(e: PointerEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        close();
-      }
-    }
-    document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
-  }, [suggestions, notConfigured, zeroSuggestions]);
-
-  function run() {
-    close();
-    const fd = new FormData();
-    fd.set("cityCampaignId", cityCampaignId);
-    startTx(async () => {
-      const result = await generateVenueLeads(null, fd);
-      if (!result.ok || !result.data) return;
-      if (result.data.notConfigured) {
-        setNotConfigured(true);
-        return;
-      }
-      if (result.data.suggestions.length === 0) {
-        setZeroSuggestions({
-          searchedCount: result.data.searchedCount ?? 0,
-          searchedRadiusKm: result.data.searchedRadiusKm ?? 0,
-        });
-        return;
-      }
-      setSuggestions(result.data.suggestions);
-      // Pre-select all by default — operator unchecks any rejects
-      setSelected(new Set(result.data.suggestions.map((s) => s.placeId)));
-    });
-  }
-
-  async function importSelected() {
-    if (!suggestions || !cityId || selected.size === 0) return;
-    const chosen = suggestions.filter((s) => selected.has(s.placeId));
-    const fd = new FormData();
-    fd.set("cityCampaignId", cityCampaignId);
-    fd.set("cityId", cityId);
-    fd.set("suggestionsJson", JSON.stringify(chosen));
-    startImport(async () => {
-      const result = await acceptLeadSuggestions(null, fd);
-      if (result.ok) {
-        close();
-      }
-    });
-  }
-
-  function toggle(placeId: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(placeId)) next.delete(placeId);
-      else next.add(placeId);
-      return next;
-    });
-  }
-
-  const Trigger = compact ? (
-    <button
-      type="button"
-      onClick={run}
-      disabled={pending}
-      className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.1em] transition-colors hover:bg-emerald-500/[0.08] hover:text-emerald-700 dark:text-zinc-400 dark:hover:text-emerald-300"
-    >
-      {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-      Generate leads
-    </button>
-  ) : (
-    <Button type="button" onClick={run} disabled={pending}>
-      {pending ? (
-        <>
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…
-        </>
-      ) : (
-        <>
-          <Sparkles className="h-3.5 w-3.5" /> Generate venue leads
-        </>
-      )}
-    </Button>
-  );
-
-  return (
-    <div ref={containerRef} className="relative inline-block">
-      {Trigger}
-
-      {notConfigured && (
-        <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-rose-200/80 bg-rose-50/95 p-3 text-xs shadow-lg dark:border-rose-900/40 dark:bg-rose-950/80">
-          <p className="font-medium text-rose-900 dark:text-rose-200">
-            Lead generation isn't configured yet
-          </p>
-          <p className="mt-1 text-rose-800/80 dark:text-rose-300/80">
-            Add{" "}
-            <code className="rounded bg-rose-100 px-1 py-0.5 font-mono text-[10px] dark:bg-rose-900/40">
-              GOOGLE_MAPS_API_KEY
-            </code>{" "}
-            to the server env and Places nearby-search will populate suggestions automatically.
-          </p>
-        </div>
-      )}
-
-      {zeroSuggestions && (
-        <div className="absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
-          {zeroSuggestions.searchedCount === 0 ? (
-            <>
-              <p className="font-medium text-zinc-900 dark:text-zinc-100">
-                Google returned nothing nearby.
-              </p>
-              <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-                Searched bars / nightclubs / restaurants within {zeroSuggestions.searchedRadiusKm}km
-                of the city's recorded center. Either the city has no matching venues (unlikely) or
-                the city's coordinates are wrong. Open the master city record and verify the lat/lng
-                pin.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="font-medium text-zinc-900 dark:text-zinc-100">
-                {zeroSuggestions.searchedCount} found, all already in your directory.
-              </p>
-              <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-                Google returned {zeroSuggestions.searchedCount} venues within{" "}
-                {zeroSuggestions.searchedRadiusKm}km, but each matched a venue already in your
-                venues table (by place_id). Add venues from a different city, or widen your search
-                by moving the city's center pin.
-              </p>
-            </>
-          )}
-        </div>
-      )}
-
-      {suggestions && (
-        <div className="absolute top-full right-0 z-50 mt-1 w-[28rem] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
-          <header className="flex items-baseline justify-between border-zinc-200/60 border-b px-4 py-2.5 dark:border-zinc-800/40">
-            <h3 className="font-semibold text-sm tracking-tight">
-              {suggestions.length} candidate{suggestions.length === 1 ? "" : "s"}
-            </h3>
-            <button
-              type="button"
-              onClick={() => {
-                if (selected.size === suggestions.length) setSelected(new Set());
-                else setSelected(new Set(suggestions.map((s) => s.placeId)));
-              }}
-              className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] underline-offset-4 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
-            >
-              {selected.size === suggestions.length ? "Deselect all" : "Select all"}
-            </button>
-          </header>
-          <ul className="max-h-80 divide-y divide-zinc-200/40 overflow-auto dark:divide-zinc-800/30">
-            {suggestions.map((s) => (
-              <li key={s.placeId}>
-                <label className="flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(s.placeId)}
-                    onChange={() => toggle(s.placeId)}
-                    className="mt-1 h-3.5 w-3.5"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-sm text-zinc-900 dark:text-zinc-100">
-                      {s.name}
-                    </p>
-                    <p className="mt-0.5 truncate text-[11px] text-zinc-500">
-                      {s.address ?? "no address"}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
-                      {s.rating != null && (
-                        <span className="text-amber-600 dark:text-amber-400">
-                          ★ {s.rating.toFixed(1)}
-                          {s.userRatingCount != null && ` · ${s.userRatingCount}`}
-                        </span>
-                      )}
-                      {s.phone && <span>{s.phone}</span>}
-                    </div>
-                  </div>
-                </label>
-              </li>
-            ))}
-          </ul>
-          <footer className="flex items-center justify-between border-zinc-200/60 border-t px-4 py-2.5 dark:border-zinc-800/40">
-            <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em]">
-              {selected.size} of {suggestions.length} selected
-            </p>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={close}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={importSelected}
-                disabled={selected.size === 0 || importing || !cityId}
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" /> Importing…
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-3 w-3" /> Import {selected.size}
-                  </>
-                )}
-              </Button>
-            </div>
-          </footer>
-        </div>
-      )}
-    </div>
   );
 }
 

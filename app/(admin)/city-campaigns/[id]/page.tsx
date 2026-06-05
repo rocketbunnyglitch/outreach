@@ -1,3 +1,4 @@
+import { MapsApp } from "@/app/(admin)/maps/_components/maps-app";
 import { Button } from "@/components/ui/button";
 import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } from "@/db/schema";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
@@ -19,7 +20,6 @@ import { removeCityCampaign, updateCityCampaign } from "../_actions";
 import { loadEscalationTargets } from "../_actions/escalation-actions";
 import { loadColdOutreach } from "../_cold-outreach-actions";
 import { CityTime } from "../_components/CityTime";
-import { CityVenueMap } from "../_components/CityVenueMap";
 import { AddCrawlRow } from "../_components/add-crawl-row";
 import { CityCampaignForm } from "../_components/city-campaign-form";
 import { CityPresence } from "../_components/city-presence";
@@ -67,6 +67,23 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     listNotes("city_campaign", id, currentStaff.id),
   ]);
   if (!cc) notFound();
+
+  // City centroid for the discovery map (PostGIS geography -> lat/lng).
+  // Falls back to Toronto if the city has no stored location.
+  const { sql } = await import("drizzle-orm");
+  const coordResult = await db.execute<{ lat: number | null; lng: number | null }>(sql`
+    SELECT CASE WHEN location IS NULL THEN NULL ELSE ST_Y(location::geometry) END AS lat,
+           CASE WHEN location IS NULL THEN NULL ELSE ST_X(location::geometry) END AS lng
+      FROM cities WHERE id = ${cc.city.id} LIMIT 1
+  `);
+  const coordRow = Array.isArray(coordResult)
+    ? (coordResult as unknown as Array<{ lat: number | null; lng: number | null }>)[0]
+    : (coordResult as unknown as { rows: Array<{ lat: number | null; lng: number | null }> })
+        .rows?.[0];
+  const cityCenter = {
+    lat: coordRow?.lat != null ? Number(coordRow.lat) : 43.6532,
+    lng: coordRow?.lng != null ? Number(coordRow.lng) : -79.3832,
+  };
 
   // Smart-note suggestions
   const suggestionsMap = await loadPendingSuggestionsForNotes(notesList.map((n) => n.id));
@@ -316,16 +333,29 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
       {/* Paste a Google Maps URL → directory + cold-outreach entry */}
       {process.env.GOOGLE_MAPS_API_KEY && <PasteMapsUrl cityCampaignId={id} />}
 
-      {/* Visual venue discovery — pin-tap any bar/restaurant/club to add.
-          Uses the BROWSER key (referrer-restricted, Maps JS only). Falls
-          back to the server key only if the browser key isn't set. */}
+      {/* Visual venue discovery -- the full Google Maps surface from the
+          Maps tab, centered on this city with an empty search box (staff
+          type "bars"/"clubs"/"restaurants"). Adding a place attaches it to
+          this campaign's cold-outreach list. Uses the BROWSER key
+          (referrer-restricted, Maps JS only), falling back to the server
+          key. */}
       {(process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_API_KEY) && (
-        <CityVenueMap
-          cityCampaignId={id}
-          cityId={cc.city.id}
+        <MapsApp
           googleMapsApiKey={
             process.env.GOOGLE_MAPS_BROWSER_KEY ?? process.env.GOOGLE_MAPS_API_KEY ?? ""
           }
+          cities={[
+            {
+              id: cc.city.id,
+              name: cc.city.name,
+              region: cc.city.region,
+              lat: cityCenter.lat,
+              lng: cityCenter.lng,
+            },
+          ]}
+          defaultCenter={cityCenter}
+          attachCityCampaignId={id}
+          heightClassName="h-[32rem]"
         />
       )}
 

@@ -8,7 +8,7 @@
  * what CityVenueMap is for).
  */
 
-import { venues } from "@/db/schema";
+import { coldOutreachEntries, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { fetchPlaceDetails, isGoogleMapsConfigured, textSearchPlaces } from "@/lib/google-places";
@@ -113,6 +113,11 @@ export async function mapsLoadPlaceDetails(placeId: string): Promise<{
 export async function mapsAddPlaceAsVenue(input: {
   placeId: string;
   cityId: string;
+  /** When set (the map is mounted on a city-campaign page), the added
+   *  venue is also attached to that campaign's cold-outreach pipeline,
+   *  matching the old CityVenueMap behavior. Omitted on the global /maps
+   *  surface, which only adds to the directory. */
+  cityCampaignId?: string;
 }): Promise<{
   ok: boolean;
   venueId?: string;
@@ -121,6 +126,25 @@ export async function mapsAddPlaceAsVenue(input: {
 }> {
   const { staff } = await requireStaff();
 
+  // Attach a venue to the campaign's cold-outreach list (idempotent).
+  async function attachToCampaign(venueId: string): Promise<void> {
+    if (!input.cityCampaignId) return;
+    try {
+      await db
+        .insert(coldOutreachEntries)
+        .values({
+          cityCampaignId: input.cityCampaignId,
+          venueId,
+          status: "not_contacted",
+          assignedStaffId: staff.id,
+        })
+        .onConflictDoNothing();
+      revalidatePath(`/city-campaigns/${input.cityCampaignId}`);
+    } catch (err) {
+      console.error("[maps] cold-outreach attach skipped", { err, venueId });
+    }
+  }
+
   // Dedup first — never create twice for the same google_place_id.
   const existing = await db
     .select({ id: venues.id })
@@ -128,6 +152,7 @@ export async function mapsAddPlaceAsVenue(input: {
     .where(eq(venues.googlePlaceId, input.placeId))
     .limit(1);
   if (existing[0]) {
+    await attachToCampaign(existing[0].id);
     return { ok: true, venueId: existing[0].id, alreadyExisted: true };
   }
 
@@ -159,6 +184,7 @@ export async function mapsAddPlaceAsVenue(input: {
     );
     if (!created) return { ok: false, error: "Insert returned no row." };
 
+    await attachToCampaign(created.id);
     try {
       revalidatePath("/venues");
     } catch {
