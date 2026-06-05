@@ -17,11 +17,13 @@ import {
   loadWorklistCalls,
   loadWorklistDrafts,
   loadWorklistFollowUps,
+  loadWorklistRelationshipFlags,
   loadWorklistReplies,
 } from "@/lib/worklist-data";
 import { CallsSection } from "./_components/calls-section";
 import { DraftsSection } from "./_components/drafts-section";
 import { FollowUpsSection } from "./_components/follow-ups-section";
+import { RelationshipFlagsSection } from "./_components/relationship-flags-section";
 import { RepliesSection } from "./_components/replies-section";
 import { WorklistAllCaughtUp } from "./_components/worklist-all-caught-up";
 
@@ -33,14 +35,19 @@ export default async function WorklistPage() {
 
   // Load all four queues once so we can detect the all-empty state without
   // double-querying; the sections render the data passed in.
-  const [drafts, replies, followUps, calls] = await Promise.all([
+  const [drafts, replies, followUps, calls, relationshipFlags] = await Promise.all([
     loadWorklistDrafts({ staffId: staff.id }),
     loadWorklistReplies({ staffId: staff.id }),
     loadWorklistFollowUps({ staffId: staff.id }),
     loadWorklistCalls({ staffId: staff.id }),
+    loadWorklistRelationshipFlags({ staffId: staff.id }),
   ]);
   const allEmpty =
-    drafts.length === 0 && replies.length === 0 && followUps.length === 0 && calls.length === 0;
+    drafts.length === 0 &&
+    replies.length === 0 &&
+    followUps.length === 0 &&
+    calls.length === 0 &&
+    relationshipFlags.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -56,6 +63,7 @@ export default async function WorklistPage() {
         <WorklistAllCaughtUp staffId={staff.id} />
       ) : (
         <div className="flex flex-col gap-4">
+          <RelationshipFlagsSection flags={relationshipFlags} />
           <DraftsSection drafts={drafts} />
           <RepliesSection replies={replies} />
           <FollowUpsSection followUps={followUps} />

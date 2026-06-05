@@ -15,7 +15,9 @@ import {
   emailDrafts,
   emailTemplates,
   emailThreads,
+  outreachBrands,
   outreachLog,
+  venueEvents,
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
@@ -545,6 +547,77 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
     if (rows.length >= CALL_CAP) break;
   }
   return rows;
+}
+
+// =========================================================================
+// Post-event relationship-flag prompts (Phase 3.12). After an event runs, the
+// operator who led the city is prompted to flag how the venue x brand
+// relationship went (good / neutral / bad), feeding future re-engagement.
+// Query-based (no task rows): a venue shows until a post_event_flag relationship
+// is recorded for it, within a 14-day post-event window.
+// =========================================================================
+
+export interface WorklistRelationshipFlagRow {
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  brandId: string;
+  brandName: string;
+  eventDate: string;
+}
+
+export async function loadWorklistRelationshipFlags(opts: {
+  staffId: string;
+}): Promise<WorklistRelationshipFlagRow[]> {
+  const rows = await db
+    .select({
+      venueId: venues.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      brandId: outreachBrands.id,
+      brandName: outreachBrands.displayName,
+      eventDate: events.eventDate,
+    })
+    .from(venueEvents)
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .innerJoin(outreachBrands, eq(outreachBrands.id, campaigns.outreachBrandId))
+    .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .where(
+      and(
+        eq(venueEvents.status, "confirmed"),
+        eq(cityCampaigns.leadStaffId, opts.staffId),
+        sql`${events.eventDate} < now()::date`,
+        sql`${events.eventDate} >= (now() - interval '14 days')::date`,
+        sql`NOT EXISTS (
+          SELECT 1 FROM venue_domain_relationships vdr
+          WHERE vdr.venue_id = ${venues.id}
+            AND vdr.outreach_brand_id = ${campaigns.outreachBrandId}
+            AND vdr.set_by = 'post_event_flag'
+        )`,
+      ),
+    )
+    .orderBy(desc(events.eventDate));
+
+  // Dedupe by venue x brand (a multi-night venue has several venue_events).
+  const seen = new Set<string>();
+  const out: WorklistRelationshipFlagRow[] = [];
+  for (const r of rows) {
+    const key = `${r.venueId}:${r.brandId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      venueId: r.venueId,
+      venueName: r.venueName,
+      cityName: r.cityName ?? null,
+      brandId: r.brandId,
+      brandName: r.brandName,
+      eventDate: r.eventDate,
+    });
+  }
+  return out;
 }
 
 // =========================================================================
