@@ -1145,6 +1145,13 @@ The purpose of H0a is to lock the host in and give them their escalation contact
 - New for 2026: visit each participating venue ~1 hour before crawl start to introduce themselves
 - Host manager's name + cell as the escalation contact
 
+##### [ENGINE - current behavior] (Phase 3.6/3.7)
+
+`lib/host-briefing.ts` `scheduleHostBriefings({ crawlHostId, externalHostId, staffId, teamId })` runs from `assignExternalHostToCrawl` (the hire/link trigger -- a host links to a CRAWL via `crawl_hosts.event_id`, not a venue_event). It drafts both briefings as `email_drafts` rendered through the real merge engine, addressed to `external_hosts.email`:
+- **H0a** -> `scheduled_for = null` (review-and-send now, so the host manager confirms pay/identity before it goes out).
+- **H0b** -> `scheduled_for` = Monday 13:00 UTC of the event week.
+The wristband venue of the crawl supplies the venue address + lineup merge fields; host identity/pay/shift fields come from `external_hosts` via `hostExternalId`. Idempotent on re-assign (drops the prior unsent draft to the same host email per template). Internal-staff hosts get nothing here (their info flows through T11/T13/T14, per above).
+
 ##### Lineup-change update (between H0b and the event)
 
 If the lineup changes after H0b is sent (a confirmed venue drops, a new one is added), the engine sends a brief SMS update to the host:

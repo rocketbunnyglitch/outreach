@@ -9,6 +9,7 @@ import { events, campaigns, cities, cityCampaigns, crawlHosts, externalHosts } f
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
+import { scheduleHostBriefings } from "@/lib/host-briefing";
 import { logger } from "@/lib/logger";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -203,7 +204,26 @@ export async function assignExternalHostToCrawl(
         .set({ externalHostId, updatedBy: staff.id })
         .where(and(eq(crawlHosts.id, crawlHostId), eq(crawlHosts.hostType, "external"))),
     );
+
+    // Phase 3.6/3.7: draft the host briefings (H0a now, H0b for event week).
+    // Best-effort + outside the tx so a drafting hiccup never blocks the assign.
+    try {
+      const briefings = await scheduleHostBriefings({
+        crawlHostId,
+        externalHostId,
+        staffId: staff.id,
+        teamId: staff.teamId,
+      });
+      logger.info({ crawlHostId, ...briefings }, "host briefings drafted on assign");
+    } catch (briefingErr) {
+      logger.error(
+        { err: briefingErr, crawlHostId },
+        "host briefing drafting failed (assignment committed anyway)",
+      );
+    }
+
     revalidatePath("/external-hosts");
+    revalidatePath("/worklist");
     return { ok: true, data: { id: crawlHostId } };
   } catch (err) {
     logger.error({ err, crawlHostId }, "assignExternalHostToCrawl failed");
