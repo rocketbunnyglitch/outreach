@@ -272,6 +272,20 @@ This way operators understand WHY a city is being deprioritized + can override i
 
 **Phase 2 engine build item:** Effective-priority computation. New helper `lib/effective-priority.ts` that takes static priority + current ticket sales + days-to-event, returns an adjusted priority. Wire into worklist sorting + cold-outreach table sorting from day -21 of each event.
 
+#### [ENGINE - current behavior] (Phase 2.15)
+
+`lib/effective-priority.ts` `computeEffectivePriority({ staticPriority, ticketsSold, daysToEvent })` returns `{ effective, reason, pivotActive }`. Priority range is the real `city_campaigns.priority` scale, **1 (highest) .. 10 (lowest)** (not 1-6); results clamp to that range. Concrete bands (calibrated to the LOCKED example above -- Toronto 1/0 sold/14d -> 3, Detroit 4/35 sold/14d -> 2):
+
+- `daysToEvent > 21`: pivot inactive, `effective = static`.
+- Inside the window (`<= 21` days), by ticket sales:
+  - `> 30` sold -> up 2 tiers; `> 20` sold -> up 1 tier (up = lower number = more important).
+  - `0` sold and `<= 14` days out -> down 2 tiers; `0` sold and `15-21` days out -> down 1 tier.
+  - `1-20` sold inside the window -> no tier change.
+
+Sales source = `SUM(events.ticket_sales_count)` per city campaign; `daysToEvent` = earliest upcoming `events.event_date`. With no events / no sales the pivot stays inactive, so this is safe before any ticketing integration is live.
+
+Wired into the **worklist Calls queue** (`lib/worklist-data.ts` `loadWorklistCalls` re-ranks by effective priority before the 8-row cap; the badge shows `P{static}->{effective}` with the reason on hover). The cold-outreach table is scoped to a **single** city campaign, so every row shares the same effective priority -- a per-row sort there is a no-op; the cross-city pivot lives in the worklist instead.
+
 ---
 
 ## 2. Hosts [LOCKED]

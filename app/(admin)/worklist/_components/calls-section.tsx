@@ -22,13 +22,18 @@ function priorityBadgeClass(priority: number): string {
 }
 
 function CallRow({ call }: { call: WorklistCallRow }) {
+  // Inside the 21-day window the call queue ranks by EFFECTIVE priority (sales
+  // pivot, Phase 2.15); the badge colours by it and shows both numbers when the
+  // sales signal has moved the city off its static priority.
+  const shifted = call.effectivePriority !== call.priority;
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
       <div className="flex min-w-0 items-center gap-3">
         <span
-          className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] ${priorityBadgeClass(call.priority)}`}
+          className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] ${priorityBadgeClass(call.effectivePriority)}`}
+          title={shifted ? call.effectiveReason : undefined}
         >
-          P{call.priority}
+          {shifted ? `P${call.priority}->${call.effectivePriority}` : `P${call.priority}`}
         </span>
         <div className="min-w-0">
           <p className="truncate font-medium text-sm">

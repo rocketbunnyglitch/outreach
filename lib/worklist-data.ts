@@ -7,6 +7,7 @@
 
 import "server-only";
 import {
+  events,
   campaigns,
   cities,
   cityCampaigns,
@@ -20,6 +21,49 @@ import {
 import { db } from "@/lib/db";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { planFromState } from "./cadence-engine-core";
+import { computeEffectivePriority } from "./effective-priority";
+
+/**
+ * Effective priority per city campaign (Phase 2.15). Sums ticket sales and
+ * finds the earliest upcoming event date so the sales pivot can blend static
+ * priority with real demand. Returns a map keyed by cityCampaignId.
+ * [ReferenceDoc 1.6]
+ */
+async function loadEffectivePriorityByCityCampaign(
+  cityCampaignIds: string[],
+  staticByCc: Map<string, number>,
+  now: Date,
+): Promise<Map<string, { effective: number; static: number; reason: string }>> {
+  const out = new Map<string, { effective: number; static: number; reason: string }>();
+  if (cityCampaignIds.length === 0) return out;
+  const agg = await db
+    .select({
+      cityCampaignId: events.cityCampaignId,
+      ticketsSold: sql<number>`COALESCE(SUM(${events.ticketSalesCount}), 0)::int`,
+      earliestEvent: sql<
+        string | null
+      >`MIN(${events.eventDate}) FILTER (WHERE ${events.eventDate} >= ${now}::date)`,
+    })
+    .from(events)
+    .where(inArray(events.cityCampaignId, cityCampaignIds))
+    .groupBy(events.cityCampaignId);
+  const aggByCc = new Map(agg.map((a) => [a.cityCampaignId, a]));
+  for (const ccId of cityCampaignIds) {
+    const staticPriority = staticByCc.get(ccId) ?? 5;
+    const a = aggByCc.get(ccId);
+    // No upcoming event -> pivot inactive (effective == static).
+    const daysToEvent = a?.earliestEvent
+      ? Math.floor((new Date(a.earliestEvent).getTime() - now.getTime()) / DAY_MS)
+      : Number.POSITIVE_INFINITY;
+    const r = computeEffectivePriority({
+      staticPriority,
+      ticketsSold: a?.ticketsSold ?? 0,
+      daysToEvent,
+    });
+    out.set(ccId, { effective: r.effective, static: staticPriority, reason: r.reason });
+  }
+  return out;
+}
 
 export interface WorklistDraftRow {
   id: string;
@@ -334,7 +378,12 @@ export interface WorklistCallRow {
   cityName: string | null;
   cityCampaignId: string;
   outreachBrandId: string | null;
+  /** Static city priority (1 = highest). */
   priority: number;
+  /** Sales-blended priority (Phase 2.15); equals `priority` outside the window. */
+  effectivePriority: number;
+  /** Why effective differs from static, for the badge tooltip. */
+  effectiveReason: string;
   phoneE164: string | null;
   venueHours: string | null;
   venueTimezone: string | null;
@@ -424,11 +473,33 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
     lastCalls.map((r) => [r.venueId, r.lastCallAt ? new Date(r.lastCallAt) : null]),
   );
 
+  // Effective priority per city campaign (Phase 2.15) -- inside the 21-day
+  // window the call queue follows sales velocity, not static priority, so a
+  // converting lower-priority city outranks a higher-priority city that's quiet.
+  const staticByCc = new Map(candidates.map((c) => [c.cityCampaignId, c.priority]));
+  const effByCc = await loadEffectivePriorityByCityCampaign(
+    [...staticByCc.keys()],
+    staticByCc,
+    now,
+  );
+  const effOf = (ccId: string) => effByCc.get(ccId)?.effective ?? 5;
+
+  // Re-rank by effective priority (then stalest-first) BEFORE the cap so the
+  // top 8 reflect the sales pivot, not the DB's static-priority order.
+  const ranked = [...candidates].sort((a, b) => {
+    const ep = effOf(a.cityCampaignId) - effOf(b.cityCampaignId);
+    if (ep !== 0) return ep;
+    const at = a.lastTouchAt ? a.lastTouchAt.getTime() : 0;
+    const bt = b.lastTouchAt ? b.lastTouchAt.getTime() : 0;
+    return at - bt;
+  });
+
   const rows: WorklistCallRow[] = [];
-  for (const c of candidates) {
+  for (const c of ranked) {
     const lastCallAt = lastCallByVenue.get(c.venueId) ?? null;
     // Skip venues called within the last 2 days.
     if (lastCallAt && lastCallAt.getTime() > twoDaysAgo.getTime()) continue;
+    const eff = effByCc.get(c.cityCampaignId);
     rows.push({
       coldEntryId: c.coldEntryId,
       venueId: c.venueId,
@@ -437,6 +508,8 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
       cityCampaignId: c.cityCampaignId,
       outreachBrandId: c.outreachBrandId ?? null,
       priority: c.priority,
+      effectivePriority: eff?.effective ?? c.priority,
+      effectiveReason: eff?.reason ?? "",
       phoneE164: c.phoneE164 ?? null,
       venueHours: c.venueHours ?? null,
       venueTimezone: c.cityTimezone ?? null,
