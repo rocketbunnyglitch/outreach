@@ -164,7 +164,10 @@ export async function loadInboxDailyStats(
       bounces,
       stale_threads_at_eod        AS stale
     FROM inbox_daily_stats
-    WHERE connected_account_id = ANY (${accountIds}::uuid[])
+    WHERE connected_account_id = ANY (ARRAY[${sql.join(
+      accountIds.map((x) => sql`${x}`),
+      sql`, `,
+    )}]::uuid[])
       AND stat_date >= (CURRENT_DATE - ${days}::int)
     ORDER BY connected_account_id, stat_date ASC
   `);
