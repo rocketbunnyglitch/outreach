@@ -1261,6 +1261,15 @@ async function ingestMessage(opts: {
       ${shouldSetStar ? sql`is_starred = true,` : sql``}
       snippet = ${snippet},
       last_sender_name = ${extractSenderName(fromHeader)},
+      -- Promote to 'mixed' once a thread carries BOTH directions. Without this
+      -- a thread staff started (direction='outbound') stays outbound forever
+      -- after the venue replies, so the reply is hidden from the Inbox folder
+      -- (direction IN inbound/mixed) and only shows in Sent. Symmetric for an
+      -- inbound thread we later reply to from Gmail directly.
+      direction = CASE
+        WHEN direction = ${direction}::thread_direction THEN direction
+        ELSE 'mixed'::thread_direction
+      END,
       state = CASE
         WHEN ${direction} = 'inbound' THEN 'needs_reply'::thread_state
         ELSE state
