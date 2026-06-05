@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   type NotificationListing,
   type NotificationRow,
+  acknowledgeNotification,
   listMyNotifications,
   markNotificationsRead,
 } from "../_actions/notifications";
@@ -283,6 +284,16 @@ function NotificationItem({
   const Icon = KIND_ICONS[item.kind] ?? Bell;
   const tone = KIND_TONES[item.kind] ?? "text-zinc-500";
   const isUnread = !item.readAt;
+  // Phase 4.6: escalatable alerts (cancellations) get an Acknowledge pill.
+  const [acked, setAcked] = useState(false);
+  const [ackPending, startAck] = useTransition();
+  const showAck = !!item.escalateAfter && !item.acknowledgedAt && !acked;
+  function ack() {
+    startAck(async () => {
+      const res = await acknowledgeNotification(item.id);
+      if (res.ok) setAcked(true);
+    });
+  }
 
   const content = (
     <div className="flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
@@ -312,6 +323,24 @@ function NotificationItem({
         <p className="mt-0.5 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.08em]">
           {formatRelativeTime(item.createdAt)}
         </p>
+        {showAck ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              ack();
+            }}
+            disabled={ackPending}
+            className="mt-1 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] text-amber-800 uppercase tracking-[0.08em] hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+          >
+            Acknowledge
+          </button>
+        ) : item.acknowledgedAt || acked ? (
+          <p className="mt-0.5 font-mono text-[9px] text-emerald-600 uppercase tracking-[0.08em]">
+            acknowledged
+          </p>
+        ) : null}
       </div>
       {isUnread && (
         <button

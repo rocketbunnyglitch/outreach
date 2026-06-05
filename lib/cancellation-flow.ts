@@ -59,6 +59,7 @@ export async function triggerVenueCancellation(
       cityCampaignId: events.cityCampaignId,
       campaignId: cityCampaigns.campaignId,
       leadStaffId: cityCampaigns.leadStaffId,
+      eventDate: events.eventDate,
     })
     .from(venueEvents)
     .innerJoin(events, eq(events.id, venueEvents.eventId))
@@ -159,9 +160,17 @@ export async function triggerVenueCancellation(
   }
 
   // 5. (4.5) Notify the city lead (when it's not the operator who cancelled).
+  // Escalation tier by urgency (4.6): day-of cancellations escalate in 15 min,
+  // event-week in 2 hours, otherwise 24 hours.
   let notified = 0;
   if (ve.leadStaffId && ve.leadStaffId !== args.byStaffId) {
     try {
+      const now = new Date();
+      const daysToEvent = ve.eventDate
+        ? Math.floor((new Date(`${ve.eventDate}T00:00:00Z`).getTime() - now.getTime()) / 86_400_000)
+        : 999;
+      const escalateMs =
+        daysToEvent <= 0 ? 15 * 60_000 : daysToEvent <= 7 ? 2 * 3_600_000 : 24 * 3_600_000;
       const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
       await emitNotification({
         staffId: ve.leadStaffId,
@@ -169,6 +178,7 @@ export async function triggerVenueCancellation(
         title: `Venue cancelled: ${ve.venueName}`,
         body: `${ve.venueName} cancelled (${args.reason}). Downstream emails stopped; a T16 draft is ready to review.`,
         linkPath: `/venues/${ve.venueId}`,
+        escalateAfter: new Date(now.getTime() + escalateMs),
       });
       notified = 1;
     } catch (err) {

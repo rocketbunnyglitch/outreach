@@ -30,6 +30,10 @@ export interface NotificationRow {
   readAt: string | null;
   createdAt: string;
   metadata: Record<string, unknown>;
+  /** Phase 4.6: escalatable alerts (e.g. cancellations) carry a deadline; once
+   *  acknowledged the escalation cron leaves them alone. */
+  escalateAfter: string | null;
+  acknowledgedAt: string | null;
 }
 
 interface ActionResult<T = unknown> {
@@ -63,6 +67,8 @@ export async function listMyNotifications(limit = 25): Promise<NotificationListi
         readAt: notifications.readAt,
         createdAt: notifications.createdAt,
         metadata: notifications.metadata,
+        escalateAfter: notifications.escalateAfter,
+        acknowledgedAt: notifications.acknowledgedAt,
       })
       .from(notifications)
       .where(eq(notifications.staffId, staff.id))
@@ -84,6 +90,8 @@ export async function listMyNotifications(limit = 25): Promise<NotificationListi
       readAt: r.readAt ? r.readAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
       metadata: (r.metadata ?? {}) as Record<string, unknown>,
+      escalateAfter: r.escalateAfter ? r.escalateAfter.toISOString() : null,
+      acknowledgedAt: r.acknowledgedAt ? r.acknowledgedAt.toISOString() : null,
     })),
     unreadCount: Number(unreadCountResult[0]?.count ?? 0),
   };
@@ -167,6 +175,9 @@ export async function emitNotification(input: {
       the last N minutes. Prevents 'ZeroBounce invalid' spam when the
       same email is re-validated multiple times. Default 30. */
   dedupeMinutes?: number;
+  /** Phase 4.6: when set, the escalation cron bumps this alert to the campaign
+      manager if it isn't acknowledged by this time. */
+  escalateAfter?: Date | null;
 }): Promise<{ created: boolean; id: string | null }> {
   if (!uuidPattern.test(input.staffId)) return { created: false, id: null };
 
@@ -200,6 +211,7 @@ export async function emitNotification(input: {
         body: input.body ?? null,
         linkPath: input.linkPath ?? null,
         metadata: input.metadata ?? {},
+        escalateAfter: input.escalateAfter ?? null,
       })
       .returning({ id: notifications.id });
 
@@ -207,5 +219,30 @@ export async function emitNotification(input: {
   } catch (err) {
     logger.error({ err, input }, "emitNotification failed");
     return { created: false, id: null };
+  }
+}
+
+/**
+ * Phase 4.6: acknowledge a notification ("I've got this"). Stronger than read;
+ * stops the escalation cron from bumping it to the campaign manager. Scoped to
+ * the recipient.
+ */
+export async function acknowledgeNotification(id: string): Promise<{ ok: boolean }> {
+  const { staff } = await requireStaff();
+  if (!uuidPattern.test(id)) return { ok: false };
+  try {
+    await db
+      .update(notifications)
+      .set({
+        acknowledgedAt: new Date(),
+        acknowledgedBy: staff.id,
+        readAt: sql`COALESCE(read_at, now())`,
+      })
+      .where(and(eq(notifications.id, id), eq(notifications.staffId, staff.id)));
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    logger.error({ err, id }, "acknowledgeNotification failed");
+    return { ok: false };
   }
 }

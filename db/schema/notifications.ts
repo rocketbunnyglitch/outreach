@@ -43,6 +43,17 @@ export const notifications = pgTable(
     metadata: jsonb("metadata").notNull().default({}),
 
     readAt: timestamp("read_at", { withTimezone: true }),
+
+    // Acknowledgment + escalation (Phase 4.6). acknowledged_* is the stronger
+    // "I've got this" for cancellation alerts; escalate_after/escalated_at drive
+    // the escalation cron.
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedBy: uuid("acknowledged_by").references(() => staffMembers.id, {
+      onDelete: "set null",
+    }),
+    escalateAfter: timestamp("escalate_after", { withTimezone: true }),
+    escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
