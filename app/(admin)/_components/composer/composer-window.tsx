@@ -315,8 +315,11 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     return () => {
       cancelled = true;
     };
+    // Re-fetch when the From inbox changes too, so the render context
+    // ({{your_name}}/{{company_name}}/{{signature_block}}) reflects the
+    // selected inbox's alias + brand instead of the default inbox's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instance.venueId]);
+  }, [instance.venueId, instance.fromAccountId]);
 
   // -------------------------------------------------------------
   // Engine template auto-pick (Phase 1.5).
@@ -380,6 +383,26 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templates, renderContext]);
+
+  // Re-render the loaded template when the render context changes because
+  // the operator switched the From inbox -> {{your_name}}/{{company_name}}/
+  // {{signature_block}} now resolve to that inbox's alias + brand. Scoped to
+  // a NEW, templated, not-yet-hand-edited compose so we never clobber the
+  // operator's writing or a reply's quoted thread. The key guards against
+  // redundant re-applies (it only fires when From or the template changes).
+  const reapplyKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (instance.composeMode !== "new") return;
+    if (instance.userEdited) return;
+    if (!instance.templateId || !templates) return;
+    const key = `${instance.fromAccountId}|${instance.templateId}`;
+    if (reapplyKeyRef.current === key) return;
+    reapplyKeyRef.current = key;
+    void applyTemplate(instance.templateId, templates, renderContext, (patch) =>
+      setField(instance.id, patch),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderContext, instance.templateId, instance.fromAccountId, instance.userEdited, templates]);
 
   // Swap the loaded template to one of the engine's alternatives. The
   // recorded enginePickedTemplateId stays the engine's ORIGINAL pick so the
