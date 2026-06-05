@@ -1173,6 +1173,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
      *  cadence_state for this campaign (rich) or the cold-outreach status
      *  (fallback), with relative timing. */
     cadenceLabel: string;
+    /** Phase 2.14: the venue's cold sequence is exhausted (3 touches, no
+     *  reply) and ready for a cross-domain handoff to another brand. */
+    readyForHandoff: boolean;
   }>
 > {
   await requireStaff();
@@ -1338,6 +1341,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       lastTouchAt: r.lastTouchAt,
       now,
     }),
+    readyForHandoff: cadenceMap.get(r.venueId)?.cadenceState === "cold_exhausted_ready_for_handoff",
   }));
 }
 

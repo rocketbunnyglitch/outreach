@@ -61,6 +61,7 @@ import { BulkPasteModal } from "./bulk-paste-modal";
 import { EscalationPopover } from "./escalation-popover";
 import { EscalationStatusPopover } from "./escalation-status-popover";
 import { FindEmailButton } from "./find-email-button";
+import { HandoffButton } from "./handoff-modal";
 import { LeadScoreChip, ScoreAllButton } from "./lead-score-ui";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
@@ -130,6 +131,8 @@ interface ColdEntry {
   /** Cadence-aware row state label (Phase 2.12): thread cadence_state for this
    *  campaign (rich) or the cold-outreach status, with relative timing. */
   cadenceLabel: string;
+  /** Phase 2.14: cold sequence exhausted -> offer cross-domain handoff. */
+  readyForHandoff: boolean;
 }
 
 interface Props {
@@ -1845,9 +1848,18 @@ function ColdRow({
         />
       </td>
 
-      {/* Cadence (Phase 2.12) -- read-only cadence-aware row state. */}
+      {/* Cadence (Phase 2.12) + cross-domain handoff on exhausted rows (2.14). */}
       <td className="w-44 px-2 py-2 align-middle text-[11px] text-zinc-600 leading-snug dark:text-zinc-400">
-        {entry.cadenceLabel}
+        <div>{entry.cadenceLabel}</div>
+        {entry.readyForHandoff && (
+          <HandoffButton
+            entryId={entry.entryId}
+            venueId={entry.venueId}
+            venueName={entry.venueName}
+            venueEmail={entry.venueEmail}
+            cityCampaignId={cityCampaignId}
+          />
+        )}
       </td>
 
       {/* Assigned */}
