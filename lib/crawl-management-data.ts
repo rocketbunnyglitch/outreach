@@ -57,6 +57,33 @@ export interface CrawlMgmtVenueRow {
   };
 }
 
+export type CrawlDeliverableType =
+  | "social_media_graphics"
+  | "staff_sheet"
+  | "participant_poster"
+  | "wristbands"
+  | "week_of_confirmation";
+
+export const CRAWL_DELIVERABLE_TYPES: CrawlDeliverableType[] = [
+  "social_media_graphics",
+  "staff_sheet",
+  "participant_poster",
+  "wristbands",
+  "week_of_confirmation",
+];
+
+export type PendingByType = Record<CrawlDeliverableType, number>;
+
+function zeroPendingByType(): PendingByType {
+  return {
+    social_media_graphics: 0,
+    staff_sheet: 0,
+    participant_poster: 0,
+    wristbands: 0,
+    week_of_confirmation: 0,
+  };
+}
+
 export interface CrawlMgmtCrawlRow {
   eventId: string;
   crawlDate: string;
@@ -76,6 +103,9 @@ export interface CrawlMgmtCity {
   /** Sum of pending deliverables across all venues in all crawls in
    *  this city. Drives the city-row count badge. */
   pendingCount: number;
+  /** Pending count broken out per deliverable type -- drives the
+   *  per-type pending filters + progress on /crawl-management. */
+  pendingByType: PendingByType;
 }
 
 const DEFAULT_STATE: DeliverableState = {
@@ -128,6 +158,7 @@ export async function loadCrawlManagement(opts: {
       priority: c.priority,
       crawls: [],
       pendingCount: 0,
+      pendingByType: zeroPendingByType(),
     }));
   }
 
@@ -171,6 +202,7 @@ export async function loadCrawlManagement(opts: {
       priority: c.priority,
       crawls: byCcEmpty.get(c.cityCampaignId) ?? [],
       pendingCount: 0,
+      pendingByType: zeroPendingByType(),
     }));
   }
 
@@ -257,10 +289,14 @@ export async function loadCrawlManagement(opts: {
   return ccRows.map((c) => {
     const crawls = byCc.get(c.cityCampaignId) ?? [];
     let pendingCount = 0;
+    const pendingByType = zeroPendingByType();
     for (const cr of crawls) {
       for (const v of cr.venues) {
-        for (const d of Object.values(v.deliverables)) {
-          if (d.status === "pending") pendingCount++;
+        for (const [type, d] of Object.entries(v.deliverables)) {
+          if (d.status === "pending") {
+            pendingCount++;
+            pendingByType[type as CrawlDeliverableType]++;
+          }
         }
       }
     }
@@ -271,6 +307,7 @@ export async function loadCrawlManagement(opts: {
       priority: c.priority,
       crawls,
       pendingCount,
+      pendingByType,
     };
   });
 }

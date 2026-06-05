@@ -257,11 +257,17 @@ function CrawlHeader({
           </button>
         </span>
       </div>
-      <Slot1HostControl
-        eventId={crawl.eventId}
-        cityCampaignId={cityCampaignId}
-        slot1={crawl.hosts.find((h) => h.slot === 1)}
-      />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Slot1HostControl
+          eventId={crawl.eventId}
+          cityCampaignId={cityCampaignId}
+          slot1={crawl.hosts.find((h) => h.slot === 1)}
+        />
+        <WristbandStatusChip
+          ship={crawl.wristbandShip}
+          venueEventId={crawl.wristbandVenueEventId}
+        />
+      </div>
       <CrawlNotesControl eventId={crawl.eventId} cityCampaignId={cityCampaignId} />
     </div>
   );
@@ -308,6 +314,60 @@ function WristbandShipDot({
       className="inline-flex rounded-full p-0.5 transition-transform hover:scale-125"
     >
       {dot}
+    </Link>
+  );
+}
+
+/**
+ * Labeled wristband shipping status chip -- the wristband icon + a
+ * "Not Shipped" / "Shipped" / "Received" label, color-coded red/amber/
+ * green like the tracker table. Sits beside the slot-1 host selector so
+ * operators see ship status without opening the wristband sheet. Hidden
+ * when the crawl has no wristband venue yet (nothing to ship). Clicking
+ * opens the wristband sheet for this crawl.
+ */
+function WristbandStatusChip({
+  ship,
+  venueEventId,
+}: {
+  ship: CrawlCard["wristbandShip"];
+  venueEventId: string | null;
+}) {
+  if (ship === "none") return null;
+  const { tone, label } =
+    ship === "received"
+      ? { tone: "text-green-500 dark:text-green-400", label: "Received" }
+      : ship === "shipped"
+        ? { tone: "text-amber-500 dark:text-amber-400", label: "Shipped" }
+        : { tone: "text-red-500 dark:text-red-400", label: "Not Shipped" };
+  const inner = (
+    <span className={cn("inline-flex items-center gap-1 font-medium text-[11px]", tone)}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="2.5" y="8.5" width="19" height="7" rx="3.5" fill="currentColor" opacity="0.2" />
+        <rect
+          x="2.5"
+          y="8.5"
+          width="19"
+          height="7"
+          rx="3.5"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+      </svg>
+      {label}
+    </span>
+  );
+  if (!venueEventId) {
+    return <span title={`Wristbands: ${label}`}>{inner}</span>;
+  }
+  return (
+    <Link
+      href={`/wristbands?ve=${venueEventId}`}
+      title={`Wristbands: ${label} -- open wristband sheet`}
+      className="inline-flex rounded-md px-1 py-0.5 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+    >
+      {inner}
     </Link>
   );
 }

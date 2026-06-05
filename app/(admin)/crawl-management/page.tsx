@@ -2,7 +2,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { requireStaff } from "@/lib/auth";
 import { type CancelledVenueRow, loadCancelledVenues } from "@/lib/cancelled-venues-data";
 import { cn } from "@/lib/cn";
-import { loadCrawlManagement, loadGraphicsQueue } from "@/lib/crawl-management-data";
+import {
+  CRAWL_DELIVERABLE_TYPES,
+  type CrawlDeliverableType,
+  loadCrawlManagement,
+  loadGraphicsQueue,
+} from "@/lib/crawl-management-data";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { ClipboardCheck, XCircle } from "lucide-react";
 import Link from "next/link";
@@ -78,19 +83,61 @@ export const dynamic = "force-dynamic";
  * delivered / issue) so the team sees shipping state at a glance
  * alongside the operational handoff checkbox.
  */
+const DELIVERABLE_LABELS: Record<CrawlDeliverableType, string> = {
+  social_media_graphics: "Social media",
+  staff_sheet: "Staff sheet",
+  participant_poster: "Poster",
+  wristbands: "Wristbands",
+  week_of_confirmation: "Week of",
+};
+
 export default async function CrawlManagementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; city?: string; pending?: string }>;
 }) {
   await requireStaff();
-  const { tab } = await searchParams;
+  const { tab, city, pending } = await searchParams;
   const activeTab =
     tab === "graphics" ? "graphics" : tab === "cancelled" ? "cancelled" : "deliverables";
   const currentCampaign = await getCurrentCampaign();
   const campaignId = currentCampaign ? currentCampaign.campaign.id : null;
 
   const cities = campaignId ? await loadCrawlManagement({ campaignId }).catch(() => []) : [];
+
+  // Filters (deliverables tab only): city + per-type pending.
+  const selectedCity = city && city !== "all" ? city : null;
+  const selectedPending =
+    pending && CRAWL_DELIVERABLE_TYPES.includes(pending as CrawlDeliverableType)
+      ? (pending as CrawlDeliverableType)
+      : null;
+
+  // Campaign-wide pending tally per type (drives the filter chip counts).
+  const campaignPendingByType = CRAWL_DELIVERABLE_TYPES.reduce(
+    (acc, t) => {
+      acc[t] = cities.reduce((s, c) => s + c.pendingByType[t], 0);
+      return acc;
+    },
+    {} as Record<CrawlDeliverableType, number>,
+  );
+
+  let visibleCities = cities;
+  if (selectedCity) visibleCities = visibleCities.filter((c) => c.cityCampaignId === selectedCity);
+  if (selectedPending) {
+    visibleCities = visibleCities.filter((c) => c.pendingByType[selectedPending] > 0);
+  }
+
+  // Build a /crawl-management href preserving the active city + pending
+  // filters, applying overrides (null clears a filter).
+  function filterHref(over: { city?: string | null; pending?: string | null }): string {
+    const q = new URLSearchParams();
+    const c = over.city === undefined ? selectedCity : over.city;
+    const p = over.pending === undefined ? selectedPending : over.pending;
+    if (c) q.set("city", c);
+    if (p) q.set("pending", p);
+    const s = q.toString();
+    return s ? `/crawl-management?${s}` : "/crawl-management";
+  }
   const graphicsRows =
     campaignId && activeTab === "graphics"
       ? await loadGraphicsQueue({ campaignId }).catch(() => [])
@@ -146,6 +193,60 @@ export default async function CrawlManagementPage({
         />
       </nav>
 
+      {/* Filters (deliverables tab only): city + per-type pending. */}
+      {activeTab === "deliverables" && campaignId && cities.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <form method="get" className="flex items-center gap-2">
+            {selectedPending && <input type="hidden" name="pending" value={selectedPending} />}
+            <select
+              name="city"
+              defaultValue={selectedCity ?? "all"}
+              className="rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <option value="all">All cities ({totalPending} pending)</option>
+              {cities.map((c) => (
+                <option key={c.cityCampaignId} value={c.cityCampaignId}>
+                  {c.cityName} ({c.pendingCount})
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Filter
+            </button>
+          </form>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <PendingChip
+              label="All types"
+              count={totalPending}
+              active={!selectedPending}
+              href={filterHref({ pending: null })}
+            />
+            {CRAWL_DELIVERABLE_TYPES.map((t) => (
+              <PendingChip
+                key={t}
+                label={DELIVERABLE_LABELS[t]}
+                count={campaignPendingByType[t]}
+                active={selectedPending === t}
+                href={filterHref({ pending: selectedPending === t ? null : t })}
+              />
+            ))}
+          </div>
+
+          {(selectedCity || selectedPending) && (
+            <Link
+              href="/crawl-management"
+              className="text-xs text-zinc-500 underline-offset-2 hover:underline"
+            >
+              Clear
+            </Link>
+          )}
+        </div>
+      )}
+
       {!campaignId ? (
         <EmptyState
           icon={ClipboardCheck}
@@ -166,8 +267,15 @@ export default async function CrawlManagementPage({
             href: `/campaigns/${campaignId}`,
           }}
         />
+      ) : visibleCities.length === 0 ? (
+        <EmptyState
+          icon={ClipboardCheck}
+          title="No matches"
+          description="No cities match the current filters."
+          action={{ label: "Clear filters", href: "/crawl-management" }}
+        />
       ) : (
-        <CrawlManagementTree cities={cities} />
+        <CrawlManagementTree cities={visibleCities} />
       )}
 
       <p className="text-[10px] text-zinc-400">
@@ -178,6 +286,40 @@ export default async function CrawlManagementPage({
         </Link>
       </p>
     </div>
+  );
+}
+
+function PendingChip({
+  label,
+  count,
+  active,
+  href,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-wider ring-1 ring-inset transition-colors",
+        active
+          ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-white dark:text-zinc-900 dark:ring-white"
+          : "text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:ring-zinc-700 dark:hover:bg-zinc-900",
+      )}
+    >
+      {label}
+      <span
+        className={cn(
+          "tabular-nums",
+          count === 0 ? "opacity-40" : active ? "" : "text-amber-600 dark:text-amber-400",
+        )}
+      >
+        {count}
+      </span>
+    </Link>
   );
 }
 
