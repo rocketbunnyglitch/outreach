@@ -23,6 +23,7 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  emailMessages,
   emailTemplates,
   externalHosts,
   outreachBrands,
@@ -32,7 +33,7 @@ import {
   wristbands,
 } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   type DayPart,
   STANDARD_SLOT_TIME,
@@ -566,6 +567,28 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
  * accounts) wins; company_name falls back to the campaign's brand and your_name
  * falls back to the sending user's display name (already set from staff).
  */
+/**
+ * The Google account's display name for an inbox, read from the From header of
+ * its most recent outbound message (email_messages.from_name). Gmail stamps the
+ * account's real name there, so this gives the sender name with no extra OAuth
+ * scope. Null when the inbox hasn't sent anything yet.
+ */
+async function latestSenderName(connectedAccountId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ fromName: emailMessages.fromName })
+    .from(emailMessages)
+    .where(
+      and(
+        eq(emailMessages.staffOutreachEmailId, connectedAccountId),
+        eq(emailMessages.direction, "outbound"),
+      ),
+    )
+    .orderBy(desc(emailMessages.sentAt))
+    .limit(1);
+  const name = row?.fromName?.trim();
+  return name && name.length > 0 ? name : null;
+}
+
 async function resolveCompanyName(fields: MergeFields, input: MergeContextInput): Promise<void> {
   if (input.sendingAccountId && input.campaignId) {
     const [row] = await db
@@ -582,8 +605,17 @@ async function resolveCompanyName(fields: MergeFields, input: MergeContextInput)
         ),
       )
       .limit(1);
-    // The alias persona overrides the sender's real name in {{your_name}}.
-    if (row?.aliasName) fields.your_name = row.aliasName;
+    // {{your_name}} resolution, most-specific first:
+    //   1. explicit alias persona (set on /campaign-info), else
+    //   2. the inbox's own Google account name (from its sent mail), else
+    //   3. the operator's profile name (already set from staff, above).
+    // (2) means a shared "Dan" inbox reads as Dan even when Bryle is sending.
+    if (row?.aliasName) {
+      fields.your_name = row.aliasName;
+    } else {
+      const googleName = await latestSenderName(input.sendingAccountId);
+      if (googleName) fields.your_name = googleName;
+    }
     if (row?.brand) {
       fields.company_name = row.brand;
       return;
