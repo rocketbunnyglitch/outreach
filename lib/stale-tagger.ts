@@ -37,7 +37,10 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, eq, or, sql } from "drizzle-orm";
 
-const NEEDS_REPLY_HOURS = 4;
+// Operators get a full day before a venue reply reads as "Overdue" -- the team
+// works city queues, not a 24/7 support desk, so a same-day reply shouldn't be
+// flagged within hours. (Was 4h; bumped to 24h per operator.)
+const NEEDS_REPLY_HOURS = 24;
 const WAITING_DAYS = 7;
 const FOLLOW_UP_DAYS = 4;
 /**
@@ -78,7 +81,10 @@ const HIGH_INTENT_WAITING_HOURS = 24;
  * stale_since branch (CASE WHEN is_stale THEN stale_since ELSE
  * NOW() END) works correctly across rule transitions.
  */
-const UNASSIGNED_INBOUND_HOURS = 1;
+// Unassigned inbound used to flag at 1h, but the team works city queues where
+// threads stay unassigned by design, so that flagged almost everything within
+// the hour. Aligned to the same 1-day grace as Rule 1 per operator.
+const UNASSIGNED_INBOUND_HOURS = 24;
 
 export interface StaleTaggerResult {
   /** Threads newly flagged as stale (was false → true). */
@@ -198,10 +204,10 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
               'Unassigned inbound '
               || CASE WHEN v.name IS NOT NULL THEN 'from ' || v.name || ' ' ELSE '' END
               || 'sitting '
-              || EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 60
-              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 60 = 1
-                     THEN ' minute; assign an owner.'
-                     ELSE ' minutes; assign an owner.'
+              || EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 3600
+              || CASE WHEN EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at))::int / 3600 = 1
+                     THEN ' hour; assign an owner.'
+                     ELSE ' hours; assign an owner.'
                   END
 
           -- Rule 1 reason: "Mike from Lavelle replied 26 hours ago;

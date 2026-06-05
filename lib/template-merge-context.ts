@@ -25,6 +25,7 @@ import {
   cityCampaigns,
   emailMessages,
   emailTemplates,
+  emailThreads,
   externalHosts,
   outreachBrands,
   staffMembers,
@@ -73,6 +74,9 @@ export interface MergeContextInput {
   sendingAccountId?: string | null;
   /** External host recipient (H0a/H0b host briefs). */
   hostExternalId?: string | null;
+  /** Reply context: when set, contact_first_name is taken from the name of the
+   *  person who last replied on this thread, not the venue's stored contact. */
+  threadId?: string | null;
 }
 
 /** Every flat field the engine knows about. All default to "" so a field that
@@ -275,6 +279,42 @@ export async function buildFlatMergeContext(input: MergeContextInput): Promise<M
       fields.venue_manager_phone = v.phone ?? "";
       fields.contact_first_name = (v.contactName ?? "").trim().split(/\s+/)[0] ?? "";
       venueCityId = v.cityId ?? null;
+    }
+  }
+
+  // --- Reply context: address the person who actually replied ---
+  // The venue's stored contact is often stale or generic (or just the first
+  // person we ever found). Once a venue has written back, the human who replied
+  // is the right one to greet, so override contact_first_name with the latest
+  // INBOUND sender's name -- from the specific thread when given, else the
+  // venue's most recent inbound across all its threads. Cold venues (no inbound
+  // yet) keep the stored-contact fallback above.
+  if (input.threadId || input.venueId) {
+    const [m] = input.threadId
+      ? await db
+          .select({ fromName: emailMessages.fromName })
+          .from(emailMessages)
+          .where(
+            and(eq(emailMessages.threadId, input.threadId), eq(emailMessages.direction, "inbound")),
+          )
+          .orderBy(desc(emailMessages.receivedAt), desc(emailMessages.sentAt))
+          .limit(1)
+      : await db
+          .select({ fromName: emailMessages.fromName })
+          .from(emailMessages)
+          .innerJoin(emailThreads, eq(emailThreads.id, emailMessages.threadId))
+          .where(
+            and(
+              eq(emailThreads.venueId, input.venueId as string),
+              eq(emailMessages.direction, "inbound"),
+            ),
+          )
+          .orderBy(desc(emailMessages.receivedAt), desc(emailMessages.sentAt))
+          .limit(1);
+    const replier = m?.fromName?.trim();
+    if (replier) {
+      fields.venue_manager_name = replier;
+      fields.contact_first_name = replier.split(/\s+/)[0] ?? "";
     }
   }
 

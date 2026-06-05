@@ -204,12 +204,24 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
     .leftJoin(cities, eq(cities.id, venues.cityId))
     .where(
       and(
-        eq(emailThreads.assignedStaffId, opts.staffId),
+        // Assigned to the operator OR in a city campaign they lead. Threads
+        // mostly aren't individually assigned (work is owned at the city
+        // level), so a city lead sees their cities' replies via the thread's
+        // campaign or the venue's city. [worklist by city leadership]
+        or(
+          eq(emailThreads.assignedStaffId, opts.staffId),
+          sql`EXISTS (
+            SELECT 1 FROM city_campaigns cc
+            WHERE cc.lead_staff_id = ${opts.staffId}
+              AND (cc.id = ${emailThreads.cityCampaignId} OR cc.city_id = ${venues.cityId})
+          )`,
+        ),
         inArray(emailThreads.state, ["needs_reply", "follow_up_due"]),
         isNull(emailThreads.deletedAt),
       ),
     )
-    .orderBy(desc(emailThreads.lastMessageAt));
+    .orderBy(desc(emailThreads.lastMessageAt))
+    .limit(60);
 
   const mapped: WorklistReplyRow[] = rows.map((r) => {
     const confirmed =
@@ -304,7 +316,15 @@ export async function loadWorklistFollowUps(opts: {
     .leftJoin(cities, eq(cities.id, venues.cityId))
     .where(
       and(
-        eq(emailThreads.assignedStaffId, opts.staffId),
+        // Assigned to the operator OR in a city campaign they lead.
+        or(
+          eq(emailThreads.assignedStaffId, opts.staffId),
+          sql`EXISTS (
+            SELECT 1 FROM city_campaigns cc
+            WHERE cc.lead_staff_id = ${opts.staffId}
+              AND (cc.id = ${emailThreads.cityCampaignId} OR cc.city_id = ${venues.cityId})
+          )`,
+        ),
         gt(emailThreads.cadenceNextDueAt, now),
         lte(emailThreads.cadenceNextDueAt, horizon),
         isNull(emailThreads.deletedAt),
@@ -439,7 +459,14 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
     .leftJoin(cities, eq(cities.id, venues.cityId))
     .where(
       and(
-        eq(coldOutreachEntries.assignedStaffId, opts.staffId),
+        // The operator owns the entry directly OR leads its city campaign.
+        // Work is assigned at the city level (city_campaigns.lead_staff_id),
+        // so a city lead sees every due call in their cities even when the
+        // individual entries were never personally assigned.
+        or(
+          eq(coldOutreachEntries.assignedStaffId, opts.staffId),
+          eq(cityCampaigns.leadStaffId, opts.staffId),
+        ),
         lte(cityCampaigns.priority, 3),
         or(
           and(
