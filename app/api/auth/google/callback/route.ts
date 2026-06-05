@@ -3,7 +3,7 @@ import { requireStaff } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { withAuditContext } from "@/lib/db";
 import { env } from "@/lib/env";
-import { exchangeCodeForTokens, fetchUserEmail, isGmailOAuthConfigured } from "@/lib/gmail";
+import { exchangeCodeForTokens, fetchGoogleProfile, isGmailOAuthConfigured } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
 import { and, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -114,10 +114,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(publicUrl("/settings/inboxes?error=no_refresh_token"));
   }
 
-  // Identify the connected Gmail account
+  // Identify the connected Gmail account (+ name/picture when the profile
+  // scope was granted; null otherwise).
   let connectedEmail: string;
+  let avatarUrl: string | null = null;
   try {
-    connectedEmail = await fetchUserEmail(tokens.access_token);
+    const profile = await fetchGoogleProfile(tokens.access_token);
+    connectedEmail = profile.email;
+    avatarUrl = profile.picture;
   } catch (err) {
     logger.error({ err }, "gmail userinfo fetch failed");
     return NextResponse.redirect(publicUrl("/settings/inboxes?error=userinfo"));
@@ -155,6 +159,9 @@ export async function GET(req: NextRequest) {
             gmailOauthScopes: scopesGranted,
             status: "connected",
             lastSyncedAt: new Date(),
+            // Only overwrite the avatar when this connect actually returned one
+            // (profile scope granted) -- don't wipe a stored avatar otherwise.
+            ...(avatarUrl ? { avatarUrl } : {}),
             updatedBy: staff.id,
           })
           .where(eq(connectedAccounts.id, existing[0].id));
@@ -167,6 +174,7 @@ export async function GET(req: NextRequest) {
           gmailOauthScopes: scopesGranted,
           status: "connected",
           lastSyncedAt: new Date(),
+          avatarUrl,
           createdBy: staff.id,
           updatedBy: staff.id,
         });

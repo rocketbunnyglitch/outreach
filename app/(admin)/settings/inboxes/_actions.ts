@@ -4,11 +4,19 @@ import { connectedAccounts } from "@/db/schema";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
+import {
+  GmailScopeError,
+  fetchGmailSignature,
+  fetchGoogleProfile,
+  refreshAccessToken,
+} from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { pollOneInbox } from "@/lib/gmail-poll-worker";
 import { logger } from "@/lib/logger";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Disconnect a Gmail inbox by NULL-ing the refresh token and flipping
@@ -517,5 +525,98 @@ export async function deepResyncInbox(
     logger.error({ err, inboxId: id, daysBack }, "deepResyncInbox failed");
     const msg = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `Deep resync failed: ${msg}` };
+  }
+}
+
+/**
+ * Pull the inbox's Gmail signature into the engine (connected_accounts.
+ * signature_html). Team-scoped. Returns a "reconnect" error when the account
+ * was connected before the gmail.settings.basic scope was added.
+ */
+export async function syncSignatureFromGmail(
+  connectedAccountId: string,
+): Promise<ActionResult<{ signatureHtml: string }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(connectedAccountId)) return { ok: false, error: "Invalid inbox." };
+  try {
+    const [acct] = await db
+      .select({
+        refresh: connectedAccounts.gmailOauthRefreshToken,
+        email: connectedAccounts.emailAddress,
+        teamId: connectedAccounts.teamId,
+      })
+      .from(connectedAccounts)
+      .where(eq(connectedAccounts.id, connectedAccountId))
+      .limit(1);
+    if (!acct) return { ok: false, error: "Inbox not found." };
+    if (acct.teamId !== staff.teamId) return { ok: false, error: "Not allowed." };
+    if (!acct.refresh) return { ok: false, error: "This inbox isn't connected. Reconnect Gmail." };
+
+    const signature = await fetchGmailSignature(acct.refresh, acct.email);
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(connectedAccounts)
+        .set({ signatureHtml: signature || null, updatedBy: staff.id })
+        .where(eq(connectedAccounts.id, connectedAccountId));
+    });
+    revalidatePath("/campaign-info");
+    revalidatePath("/settings/inboxes");
+    return { ok: true, data: { signatureHtml: signature } };
+  } catch (err) {
+    if (err instanceof GmailScopeError) {
+      return {
+        ok: false,
+        error: "Reconnect this Gmail inbox to enable signature sync (new permission needed).",
+      };
+    }
+    logger.error({ err, connectedAccountId }, "syncSignatureFromGmail failed");
+    return { ok: false, error: "Couldn't sync the signature from Gmail." };
+  }
+}
+
+/**
+ * Pull the inbox's Google profile picture into connected_accounts.avatar_url.
+ * Team-scoped. Returns a "reconnect" error when the account lacks the
+ * userinfo.profile scope (no picture comes back).
+ */
+export async function syncProfilePhotoFromGmail(
+  connectedAccountId: string,
+): Promise<ActionResult<{ avatarUrl: string | null }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(connectedAccountId)) return { ok: false, error: "Invalid inbox." };
+  try {
+    const [acct] = await db
+      .select({
+        refresh: connectedAccounts.gmailOauthRefreshToken,
+        teamId: connectedAccounts.teamId,
+      })
+      .from(connectedAccounts)
+      .where(eq(connectedAccounts.id, connectedAccountId))
+      .limit(1);
+    if (!acct) return { ok: false, error: "Inbox not found." };
+    if (acct.teamId !== staff.teamId) return { ok: false, error: "Not allowed." };
+    if (!acct.refresh) return { ok: false, error: "This inbox isn't connected. Reconnect Gmail." };
+
+    const accessToken = await refreshAccessToken(acct.refresh);
+    const profile = await fetchGoogleProfile(accessToken);
+    if (!profile.picture) {
+      return {
+        ok: false,
+        error:
+          "No picture available -- reconnect this Gmail inbox to grant the profile permission.",
+      };
+    }
+    await withAuditContext(staff.id, async (tx) => {
+      await tx
+        .update(connectedAccounts)
+        .set({ avatarUrl: profile.picture, updatedBy: staff.id })
+        .where(eq(connectedAccounts.id, connectedAccountId));
+    });
+    revalidatePath("/campaign-info");
+    revalidatePath("/settings/inboxes");
+    return { ok: true, data: { avatarUrl: profile.picture } };
+  } catch (err) {
+    logger.error({ err, connectedAccountId }, "syncProfilePhotoFromGmail failed");
+    return { ok: false, error: "Couldn't sync the profile picture from Gmail." };
   }
 }

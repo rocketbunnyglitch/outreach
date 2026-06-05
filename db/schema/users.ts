@@ -187,6 +187,11 @@ export const connectedAccounts = pgTable(
      *  Added in migration 0056. */
     signatureHtml: text("signature_html"),
 
+    /** Google profile picture URL for this inbox, synced from the account's
+     *  userinfo `picture` (migration 0109). NULL until the account connects/
+     *  reconnects with the userinfo.profile scope. */
+    avatarUrl: text("avatar_url"),
+
     ...auditColumns,
     ...versionColumn,
   },

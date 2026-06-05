@@ -47,6 +47,9 @@ export interface CampaignInboxRow {
   /** Per-inbox HTML signature appended to outbound mail. Editable here + on
    *  Settings -> Inboxes. NULL = no signature. */
   signatureHtml: string | null;
+  /** Google profile picture URL for this inbox (synced from Gmail). NULL until
+   *  the account reconnects with the profile scope. */
+  avatarUrl: string | null;
 }
 
 export interface TeamMemberOption {
@@ -82,6 +85,7 @@ export async function loadCampaignInfo(opts: {
       status: staffOutreachEmails.status,
       ownerUserId: staffOutreachEmails.ownerUserId,
       signatureHtml: staffOutreachEmails.signatureHtml,
+      avatarUrl: staffOutreachEmails.avatarUrl,
     })
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.teamId, opts.teamId))
@@ -177,6 +181,7 @@ export async function loadCampaignInfo(opts: {
       outreachBrandName: brandId ? (brandName.get(brandId) ?? null) : null,
       aliasName: aliasByAccount.get(r.id) ?? null,
       signatureHtml: r.signatureHtml ?? null,
+      avatarUrl: r.avatarUrl ?? null,
     };
   });
 

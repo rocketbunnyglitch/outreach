@@ -15,8 +15,9 @@
 
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, RefreshCw } from "lucide-react";
 import { useState, useTransition } from "react";
+import { syncProfilePhotoFromGmail } from "../../settings/inboxes/_actions";
 import { SignatureEditor } from "../../settings/inboxes/_components/signature-editor";
 import {
   setInboxAlias,
@@ -37,6 +38,7 @@ interface InboxRow {
   aliasName: string | null;
   signatureHtml: string | null;
   googleDisplayName: string | null;
+  avatarUrl: string | null;
 }
 
 interface TeamMember {
@@ -126,6 +128,18 @@ function Row({
 }) {
   const [isPending, startTx] = useTransition();
   const toast = useToast();
+
+  function syncPhoto() {
+    startTx(async () => {
+      const res = await syncProfilePhotoFromGmail(row.id);
+      if (!res.ok) {
+        toast.show({ kind: "error", message: res.error ?? "Couldn't sync photo." });
+        return;
+      }
+      onUpdate({ ...row, avatarUrl: res.data.avatarUrl });
+      toast.show({ kind: "success", message: "Profile picture synced from Gmail." });
+    });
+  }
 
   function changeOwner(ownerUserId: string) {
     const previous = row;
@@ -232,7 +246,34 @@ function Row({
 
   return (
     <tr>
-      <td className="px-4 py-2.5 font-mono text-xs">{row.emailAddress}</td>
+      <td className="px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          {row.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.avatarUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-6 w-6 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 font-medium text-[10px] text-zinc-600 uppercase dark:bg-zinc-700 dark:text-zinc-300">
+              {(row.googleDisplayName ?? row.emailAddress).charAt(0)}
+            </span>
+          )}
+          <span className="font-mono text-xs">{row.emailAddress}</span>
+          <button
+            type="button"
+            onClick={syncPhoto}
+            disabled={isPending}
+            title="Sync profile picture from Gmail"
+            aria-label={`Sync profile picture for ${row.emailAddress}`}
+            className="rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-800"
+          >
+            <RefreshCw className={cn("h-3 w-3", isPending && "animate-spin")} />
+          </button>
+        </div>
+      </td>
       <td className="px-4 py-2.5">
         <span
           className={cn(

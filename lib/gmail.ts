@@ -26,9 +26,16 @@ import { env, requireEnv } from "@/lib/env";
 export const GMAIL_OAUTH_SCOPES = [
   "openid",
   "https://www.googleapis.com/auth/userinfo.email",
+  // Profile -> the Google account's display name + picture URL, captured at
+  // connect time (drives the inbox avatar + sender-name fallback).
+  "https://www.googleapis.com/auth/userinfo.profile",
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.modify",
+  // Settings (basic) -> read the account's Gmail signature so operators can
+  // sync it into the engine instead of re-typing it. Sensitive scope; existing
+  // inboxes must reconnect to grant it (refresh tokens are scope-frozen).
+  "https://www.googleapis.com/auth/gmail.settings.basic",
   // People API — recipient autocomplete reads the operator's
   // contacts + "Other Contacts" (people they've emailed in the
   // past but haven't explicitly saved). Optional from a Gmail
@@ -198,6 +205,75 @@ export async function fetchUserEmail(accessToken: string): Promise<string> {
   if (!res.ok) throw new Error(`userinfo fetch failed (${res.status})`);
   const json = (await res.json()) as { email: string };
   return json.email;
+}
+
+export interface GoogleProfile {
+  email: string;
+  /** Full name on the Google account. Present only when the userinfo.profile
+   *  scope was granted (older connections won't have it until they reconnect). */
+  name: string | null;
+  /** Profile picture URL. Same scope caveat as `name`. */
+  picture: string | null;
+}
+
+/**
+ * Fetch the connected Google account's profile (email + full name + picture).
+ * name/picture come back only when userinfo.profile is granted; otherwise they
+ * are null and the caller falls back gracefully.
+ */
+export async function fetchGoogleProfile(accessToken: string): Promise<GoogleProfile> {
+  const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`userinfo fetch failed (${res.status})`);
+  const json = (await res.json()) as { email: string; name?: string; picture?: string };
+  return {
+    email: json.email,
+    name: json.name?.trim() || null,
+    picture: json.picture?.trim() || null,
+  };
+}
+
+/** Thrown when a Gmail call needs a scope the account hasn't granted yet
+ *  (i.e. the inbox connected before the scope was added). The caller turns
+ *  this into a "reconnect Gmail" prompt rather than a generic error. */
+export class GmailScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GmailScopeError";
+  }
+}
+
+/**
+ * Read the account's Gmail signature (HTML) via the settings.sendAs API. Picks
+ * the sendAs matching the inbox address, else the primary one. Returns "" when
+ * the account has no signature set. Throws GmailScopeError when the account
+ * lacks the gmail.settings.basic scope (needs a reconnect).
+ */
+export async function fetchGmailSignature(
+  encryptedRefreshToken: string,
+  emailAddress: string,
+): Promise<string> {
+  const accessToken = await refreshAccessToken(encryptedRefreshToken);
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (res.status === 403) {
+    throw new GmailScopeError("Gmail signature scope not granted; reconnect required.");
+  }
+  if (!res.ok) {
+    throw new Error(`sendAs fetch failed (${res.status}): ${await res.text()}`);
+  }
+  const json = (await res.json()) as {
+    sendAs?: Array<{ sendAsEmail?: string; isPrimary?: boolean; signature?: string }>;
+  };
+  const list = json.sendAs ?? [];
+  const lower = emailAddress.toLowerCase();
+  const match =
+    list.find((s) => (s.sendAsEmail ?? "").toLowerCase() === lower) ??
+    list.find((s) => s.isPrimary) ??
+    list[0];
+  return (match?.signature ?? "").trim();
 }
 
 /**

@@ -15,9 +15,10 @@
  */
 
 import { useToast } from "@/components/ui/toast";
-import { Loader2, Pencil, Save, X } from "lucide-react";
+import { DownloadCloud, Loader2, Pencil, Save, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { setInboxSignature } from "../../../_actions/compose-and-send";
+import { syncSignatureFromGmail } from "../_actions";
 
 interface Props {
   connectedAccountId: string;
@@ -56,6 +57,27 @@ export function SignatureEditor({ connectedAccountId, initialSignatureHtml }: Pr
       toast.show({
         kind: "success",
         message: willClear ? "Signature cleared." : "Signature saved.",
+      });
+    });
+  }
+
+  function syncFromGmail() {
+    setError(null);
+    startTx(async () => {
+      const res = await syncSignatureFromGmail(connectedAccountId);
+      if (!res.ok) {
+        setError(res.error ?? "Couldn't sync from Gmail.");
+        toast.show({ kind: "error", message: res.error ?? "Couldn't sync from Gmail." });
+        return;
+      }
+      // Pull the fetched signature into the editor (saved server-side already).
+      setSignature(res.data.signatureHtml);
+      setSaved(res.data.signatureHtml);
+      toast.show({
+        kind: "success",
+        message: res.data.signatureHtml
+          ? "Signature synced from Gmail."
+          : "Gmail has no signature set for this inbox.",
       });
     });
   }
@@ -101,10 +123,17 @@ export function SignatureEditor({ connectedAccountId, initialSignatureHtml }: Pr
         className="w-full rounded border border-zinc-200 bg-white px-2 py-1 font-mono text-[11px] dark:border-zinc-700 dark:bg-zinc-950"
       />
       {error && <p className="mt-1 text-[10px] text-rose-600">{error}</p>}
-      <div className="mt-1.5 flex items-center justify-between">
-        <p className="font-mono text-[9px] text-zinc-500">
-          Auto-appended on outbound mail from this inbox. Operators can edit per-draft.
-        </p>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={syncFromGmail}
+          disabled={pending}
+          title="Pull this inbox's signature from Gmail"
+          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 font-medium text-[10px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          <DownloadCloud className="h-2.5 w-2.5" />
+          Sync from Gmail
+        </button>
         <button
           type="button"
           onClick={save}
