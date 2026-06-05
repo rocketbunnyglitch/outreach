@@ -41,6 +41,8 @@ import { DomainAliasList } from "../_components/domain-alias-list";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
 import { VenueConfirmationSection } from "../_components/venue-confirmation-section";
+import { VenueDealRoom } from "../_components/venue-deal-room";
+import { VenueEmailButton } from "../_components/venue-email-button";
 import { VenueEnrichButton } from "../_components/venue-enrich-button";
 import { VenueForm } from "../_components/venue-form";
 import {
@@ -305,21 +307,49 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   }
 
   return (
-    <div className="flex flex-col gap-10">
-      {/* Header — name, breadcrumb, at-a-glance summary, quick links */}
-      <header className="flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <Link
-              href="/venues"
-              className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-            >
-              <ChevronLeft className="h-3 w-3" /> All venues
-            </Link>
-            <h1 className="mt-3 truncate font-semibold text-4xl tracking-tight">{venue.name}</h1>
-            {venue.address && <p className="mt-1 text-sm text-zinc-500">{venue.address}</p>}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+    <div className="flex flex-col gap-6">
+      {/* Header -- breadcrumb + name + address. The old top-right quick links +
+          enrich live in the right "Quick actions" column now. */}
+      <header className="flex flex-col gap-1">
+        <Link
+          href="/venues"
+          className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+        >
+          <ChevronLeft className="h-3 w-3" /> All venues
+        </Link>
+        <h1 className="mt-2 truncate font-semibold text-3xl tracking-tight">{venue.name}</h1>
+        {venue.address && <p className="text-sm text-zinc-500">{venue.address}</p>}
+      </header>
+
+      {/* Deal-room layout: venue info left, modules (email thread default)
+          center, quick actions right. All sections + their data/actions are
+          unchanged -- just rearranged into slots/tabs. */}
+      <VenueDealRoom
+        left={
+          <>
+            <VenueSummaryStrip
+              lastTouchAt={outreachEntries[0]?.createdAt ?? null}
+              lastTouchChannel={outreachEntries[0]?.channel ?? null}
+              touchCount={outreachEntries.length}
+              crawlsCount={crawlHistory.length}
+              doNotContact={venue.doNotContact}
+              doNotContactReason={venue.doNotContactReason}
+              archivedAt={venue.archivedAt}
+            />
+            <VenueRelationshipsSection
+              venueId={id}
+              brands={outreachBrandsList.map((b) => ({ id: b.id, displayName: b.displayName }))}
+              relationships={relationshipRows}
+              setAction={setVenueRelationship}
+              removeAction={removeVenueRelationship}
+            />
+          </>
+        }
+        right={
+          <div className="card-surface flex flex-col gap-3 p-4">
+            <h3 className="font-semibold text-sm tracking-tight">Quick actions</h3>
+            <VenueEmailButton venueId={venue.id} email={venue.email} />
+            <VenueEnrichButton venueId={venue.id} />
             <VenueQuickLinks
               venueId={venue.id}
               phoneE164={venue.phoneE164}
@@ -330,132 +360,132 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
               address={venue.address}
               venueName={venue.name}
             />
-            <VenueEnrichButton venueId={venue.id} />
           </div>
-        </div>
-        <VenueSummaryStrip
-          lastTouchAt={outreachEntries[0]?.createdAt ?? null}
-          lastTouchChannel={outreachEntries[0]?.channel ?? null}
-          touchCount={outreachEntries.length}
-          crawlsCount={crawlHistory.length}
-          doNotContact={venue.doNotContact}
-          doNotContactReason={venue.doNotContactReason}
-          archivedAt={venue.archivedAt}
-        />
-      </header>
-
-      {/* Activity-first: what staffers reach for the moment they open the page */}
-      <NotesSection
-        targetType="venue"
-        targetId={id}
-        notes={notesList}
-        suggestionsByNote={suggestionsByNote}
-        acceptSuggestionAction={acceptSuggestion}
-        dismissSuggestionAction={dismissSuggestion}
-        createAction={createNote}
-        deleteAction={deleteNote}
+        }
+        tabs={[
+          {
+            id: "email",
+            label: "Email thread",
+            count: venueCommunication.threads.length,
+            content: (
+              <div className="flex flex-col gap-6">
+                <VenueConfirmationSection venueId={id} messages={confirmationMessages} />
+                <VenueCommunicationSection data={venueCommunication} />
+              </div>
+            ),
+          },
+          {
+            id: "notes",
+            label: "Notes",
+            count: notesList.length,
+            content: (
+              <NotesSection
+                targetType="venue"
+                targetId={id}
+                notes={notesList}
+                suggestionsByNote={suggestionsByNote}
+                acceptSuggestionAction={acceptSuggestion}
+                dismissSuggestionAction={dismissSuggestion}
+                createAction={createNote}
+                deleteAction={deleteNote}
+              />
+            ),
+          },
+          {
+            id: "calls",
+            label: "Calls & log",
+            count: outreachEntries.length,
+            content: (
+              <OutreachLogSection
+                venueId={id}
+                outreachBrands={outreachBrandsList.map((b) => ({
+                  id: b.id,
+                  displayName: b.displayName,
+                }))}
+                entries={outreachEntries}
+                action={logOutreach}
+                defaultOutreachBrandId={currentCampaign?.outreachBrand.id}
+              />
+            ),
+          },
+          {
+            id: "crawls",
+            label: "Crawls",
+            count: crawlHistory.length,
+            content: (
+              <div className="flex flex-col gap-6">
+                <CrawlHistorySection rows={crawlHistory} />
+                <VenueWristbandSection rows={wristbandRows} />
+              </div>
+            ),
+          },
+          {
+            id: "details",
+            label: "Details",
+            content: (
+              <div className="flex flex-col gap-6">
+                <VenueForm
+                  mode="edit"
+                  initial={{
+                    id: venue.id,
+                    cityId: venue.cityId,
+                    name: venue.name,
+                    googlePlaceId: venue.googlePlaceId,
+                    address: venue.address,
+                    location: venue.location,
+                    phoneE164: venue.phoneE164,
+                    email: venue.email,
+                    contactName: venue.contactName,
+                    websiteUrl: venue.websiteUrl,
+                    instagramHandle: venue.instagramHandle,
+                    capacity: venue.capacity,
+                    servesAlcohol: venue.servesAlcohol,
+                    hours: venue.hours,
+                    internalNotes: venue.internalNotes,
+                    doNotContact: venue.doNotContact,
+                    doNotContactReason: venue.doNotContactReason,
+                  }}
+                  cities={citiesList}
+                  action={boundUpdate}
+                />
+                <DomainAliasList
+                  venueId={id}
+                  aliases={domainAliases}
+                  addAction={addDomainAlias}
+                  removeAction={removeDomainAlias}
+                />
+                <form
+                  action={boundArchive}
+                  className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
+                >
+                  <div>
+                    <p className="font-medium text-rose-900 text-sm dark:text-rose-200">
+                      Archive this venue
+                    </p>
+                    <p className="mt-1 text-rose-800 text-xs dark:text-rose-300">
+                      Existing outreach history is preserved. The venue stops appearing in pickers.
+                    </p>
+                  </div>
+                  <Button type="submit" variant="destructive">
+                    Archive
+                  </Button>
+                </form>
+                {superUser ? (
+                  <HardDeleteButton
+                    label={`venue "${venue.name}"`}
+                    matchText={venue.name}
+                    redirectTo="/venues"
+                    action={async () => {
+                      "use server";
+                      return hardDeleteVenue(id);
+                    }}
+                  />
+                ) : null}
+              </div>
+            ),
+          },
+        ]}
       />
-
-      {/* Per-brand relationship flags (Phase 3.8) -- how this venue feels about
-          each outreach brand. A 'bad' flag warns (and, in later phases, blocks)
-          sends from that brand. */}
-      <VenueRelationshipsSection
-        venueId={id}
-        brands={outreachBrandsList.map((b) => ({ id: b.id, displayName: b.displayName }))}
-        relationships={relationshipRows}
-        setAction={setVenueRelationship}
-        removeAction={removeVenueRelationship}
-      />
-
-      <OutreachLogSection
-        venueId={id}
-        outreachBrands={outreachBrandsList.map((b) => ({
-          id: b.id,
-          displayName: b.displayName,
-        }))}
-        entries={outreachEntries}
-        action={logOutreach}
-        defaultOutreachBrandId={currentCampaign?.outreachBrand.id}
-      />
-
-      {/* Email communication timeline — every thread tied to this
-          venue across every connected staff account, regardless of
-          Gmail subject. Renders nothing when the venue has no
-          email history yet (silent). */}
-      {/* Written-confirmation proof — flag the email where the venue agreed,
-          pulled up fast for dispute defense. Sits above the full timeline. */}
-      <VenueConfirmationSection venueId={id} messages={confirmationMessages} />
-
-      <VenueCommunicationSection data={venueCommunication} />
-
-      <CrawlHistorySection rows={crawlHistory} />
-
-      <VenueWristbandSection rows={wristbandRows} />
-
-      {/* Domain aliases -- mark parent-group / brand domains so inbound
-          mail from those domains attaches to this venue automatically,
-          even when the sender address differs from the venue's own.
-          Complements the per-address alternate_emails matching. */}
-      <DomainAliasList
-        venueId={id}
-        aliases={domainAliases}
-        addAction={addDomainAlias}
-        removeAction={removeDomainAlias}
-      />
-
-      {/* Edit form is moved below activity — staffers see/change the record's
-          fields when they need to, but the journal is the primary surface. */}
-      <VenueForm
-        mode="edit"
-        initial={{
-          id: venue.id,
-          cityId: venue.cityId,
-          name: venue.name,
-          googlePlaceId: venue.googlePlaceId,
-          address: venue.address,
-          location: venue.location,
-          phoneE164: venue.phoneE164,
-          email: venue.email,
-          contactName: venue.contactName,
-          websiteUrl: venue.websiteUrl,
-          instagramHandle: venue.instagramHandle,
-          capacity: venue.capacity,
-          servesAlcohol: venue.servesAlcohol,
-          hours: venue.hours,
-          internalNotes: venue.internalNotes,
-          doNotContact: venue.doNotContact,
-          doNotContactReason: venue.doNotContactReason,
-        }}
-        cities={citiesList}
-        action={boundUpdate}
-      />
-
-      <form
-        action={boundArchive}
-        className="flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900 dark:bg-rose-950"
-      >
-        <div>
-          <p className="font-medium text-rose-900 text-sm dark:text-rose-200">Archive this venue</p>
-          <p className="mt-1 text-rose-800 text-xs dark:text-rose-300">
-            Existing outreach history is preserved. The venue stops appearing in pickers.
-          </p>
-        </div>
-        <Button type="submit" variant="destructive">
-          Archive
-        </Button>
-      </form>
-
-      {superUser ? (
-        <HardDeleteButton
-          label={`venue "${venue.name}"`}
-          matchText={venue.name}
-          redirectTo="/venues"
-          action={async () => {
-            "use server";
-            return hardDeleteVenue(id);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
