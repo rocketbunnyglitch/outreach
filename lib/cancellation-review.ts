@@ -96,7 +96,9 @@ export async function runCancellationReview(): Promise<CancellationReviewResult>
       and(
         gte(events.eventDate, today),
         lte(events.eventDate, horizon),
-        inArray(events.status, ["planned", "confirmed", "contract_signed"]),
+        // event_status enum is {planned,confirmed,completed,cancelled} -- there
+        // is NO contract_signed on events (that value is venue_event_status).
+        inArray(events.status, ["planned", "confirmed"]),
         sql`${events.archivedAt} IS NULL`,
       ),
     );
