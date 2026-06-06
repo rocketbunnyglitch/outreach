@@ -50,12 +50,7 @@ export function DeepResyncButton({
   const [beforeDate, setBeforeDate] = useState("");
   const [result, setResult] = useState<
     | {
-        kind: "ok";
-        messagesIngested: number;
-        threadsCreated: number;
-        messagesFound: number;
-        duplicatesSkipped: number;
-        errors: number;
+        kind: "started";
         daysBack: number;
         afterDate: string | null;
         beforeDate: string | null;
@@ -85,12 +80,7 @@ export function DeepResyncButton({
         const r = await deepResyncInbox(null, fd);
         if (r.ok) {
           setResult({
-            kind: "ok",
-            messagesIngested: r.data.messagesIngested,
-            threadsCreated: r.data.threadsCreated,
-            messagesFound: r.data.messagesFound,
-            duplicatesSkipped: r.data.duplicatesSkipped,
-            errors: r.data.errors,
+            kind: "started",
             daysBack: r.data.daysBack,
             afterDate: r.data.afterDate,
             beforeDate: r.data.beforeDate,
@@ -206,14 +196,13 @@ export function DeepResyncButton({
           </div>
         </div>
       )}
-      {result?.kind === "ok" && (
+      {result?.kind === "started" && (
         <p className="max-w-xs text-right text-[10px] text-emerald-600 dark:text-emerald-400">
-          {`Ingested ${result.messagesIngested} new message${result.messagesIngested === 1 ? "" : "s"} ${
+          {`Deep resync started ${
             result.afterDate
-              ? `since ${result.afterDate} (~${result.daysBack} day${result.daysBack === 1 ? "" : "s"})`
-              : `from the last ${result.daysBack} day${result.daysBack === 1 ? "" : "s"}`
-          }${result.beforeDate ? ` through ${result.beforeDate}` : ""}. ${result.threadsCreated} new thread${result.threadsCreated === 1 ? "" : "s"}.`}
-          {` Scanned ${result.messagesFound}, ${result.duplicatesSkipped} already had${result.errors > 0 ? `, ${result.errors} error${result.errors === 1 ? "" : "s"}` : ""}.`}
+              ? `for ${result.afterDate}${result.beforeDate ? ` through ${result.beforeDate}` : ""} (~${result.daysBack} day${result.daysBack === 1 ? "" : "s"})`
+              : `for the last ${result.daysBack} day${result.daysBack === 1 ? "" : "s"}`
+          }. It runs in the background -- your mail appears over the next few minutes; no need to wait here.`}
         </p>
       )}
       {result?.kind === "err" && (

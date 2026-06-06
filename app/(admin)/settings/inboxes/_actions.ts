@@ -369,11 +369,7 @@ export async function deepResyncInbox(
   formData: FormData,
 ): Promise<
   ActionResult<{
-    messagesIngested: number;
-    threadsCreated: number;
-    messagesFound: number;
-    duplicatesSkipped: number;
-    errors: number;
+    started: true;
     daysBack: number;
     afterDate: string | null;
     beforeDate: string | null;
@@ -468,22 +464,25 @@ export async function deepResyncInbox(
   }
 
   try {
-    // Step 1: forget the incremental cursor so pollOneInbox enters
-    // the first-poll branch. This is the destructive part -- on
-    // failure, the next normal poll would also enter first-poll
-    // (with the default 7-day lookback); ingest dedupe makes that
-    // safe but wasteful. We restore the cursor at the end of
-    // pollOneInbox anyway, so the window is brief in practice.
+    // Step 1: forget the incremental cursor so pollOneInbox enters the
+    // first-poll branch. pollOneInbox restores last_history_id at the end so
+    // subsequent polls return to incremental mode.
     await db.execute(sql`
       UPDATE connected_accounts
       SET gmail_last_history_id = NULL
       WHERE id = ${inbox.id}
     `);
 
-    // Step 2: run the poll with the custom days-back. pollOneInbox
-    // sets last_history_id back to the current value at the end,
-    // so subsequent polls go back to incremental mode.
-    const result = await pollOneInbox(
+    // Step 2: run the backfill in the BACKGROUND. A large window can take
+    // several minutes + thousands of Gmail fetches; awaiting it blocks the
+    // request until the proxy times out and the operator sees "server error"
+    // (even though the sync actually succeeds). We detach it and return
+    // immediately. This is a long-lived Node server, so the promise keeps
+    // running after we respond (same pattern as the fire-and-forget AI
+    // enrichment in the poll worker). skipAiEnrichment avoids firing hundreds
+    // of model calls at once, which previously blew the Anthropic per-minute
+    // rate limit (429 flood) and degraded AI for every inbox.
+    void pollOneInbox(
       {
         id: inbox.id,
         refresh_token: inbox.refreshToken,
@@ -493,38 +492,38 @@ export async function deepResyncInbox(
       },
       {
         firstPollDaysBack: daysBack,
-        // The worker now honors an explicit date window: afterDate uses
-        // Gmail `after:` and beforeDate enforces a `before:` upper
-        // bound (no longer just a relative days-back).
         afterDate: afterDate ?? undefined,
         beforeDate: beforeDate ?? undefined,
+        skipAiEnrichment: true,
       },
-    );
-
-    // Bookkeeping (same as the normal resyncInbox path).
-    await db.execute(sql`
-      UPDATE connected_accounts SET gmail_last_polled_at = NOW() WHERE id = ${inbox.id}
-    `);
-    await db
-      .update(connectedAccounts)
-      .set({ lastSyncedAt: new Date() })
-      .where(eq(connectedAccounts.id, inbox.id));
-
-    logger.info(
-      { inboxId: id, daysBack, afterDate, beforeDate, beforeUnsupported, ...result },
-      "deepResyncInbox complete",
-    );
+    )
+      .then(async (result) => {
+        await db.execute(sql`
+          UPDATE connected_accounts SET gmail_last_polled_at = NOW() WHERE id = ${inbox.id}
+        `);
+        await db
+          .update(connectedAccounts)
+          .set({ lastSyncedAt: new Date() })
+          .where(eq(connectedAccounts.id, inbox.id));
+        logger.info(
+          { inboxId: id, daysBack, afterDate, beforeDate, ...result },
+          "deepResyncInbox (background) complete",
+        );
+      })
+      .catch((err) => {
+        logger.error({ err, inboxId: id, daysBack }, "deepResyncInbox (background) failed");
+      });
 
     revalidatePath("/settings/inboxes");
     revalidatePath("/inbox");
     return {
       ok: true,
-      data: { ...result, daysBack, afterDate, beforeDate, beforeUnsupported },
+      data: { started: true, daysBack, afterDate, beforeDate, beforeUnsupported },
     };
   } catch (err) {
-    logger.error({ err, inboxId: id, daysBack }, "deepResyncInbox failed");
+    logger.error({ err, inboxId: id, daysBack }, "deepResyncInbox kickoff failed");
     const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `Deep resync failed: ${msg}` };
+    return { ok: false, error: `Deep resync failed to start: ${msg}` };
   }
 }
 

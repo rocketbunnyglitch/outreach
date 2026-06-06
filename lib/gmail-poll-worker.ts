@@ -290,12 +290,21 @@ export async function pollOneInbox(
      * bounded historical window rather than everything-through-today.
      */
     beforeDate?: string;
+    /**
+     * Skip per-message AI enrichment (classify + extract-promises) during a
+     * bulk backfill (deep-resync). A large resync would otherwise fire
+     * hundreds of fire-and-forget model calls at once and blow the Anthropic
+     * per-minute rate limit (429s), degrading AI for every inbox. Re-ingested
+     * mail is deduped + historical; go-forward normal polling still enriches.
+     */
+    skipAiEnrichment?: boolean;
   },
 ): Promise<InboxPollResult> {
   const accessToken = await refreshAccessToken(inbox.refresh_token);
   let messageIds: string[] = [];
   let nextHistoryId: string | null = inbox.last_history_id;
   const firstPollDays = opts?.firstPollDaysBack ?? FIRST_POLL_NEWER_THAN_DAYS;
+  const skipAiEnrichment = opts?.skipAiEnrichment ?? false;
 
   // Threads whose STARRED label changed in Gmail since our last
   // poll. We sync these to email_threads.is_starred so unstarring
@@ -510,6 +519,7 @@ export async function pollOneInbox(
         messageId,
         accessToken,
         inbox,
+        skipAiEnrichment,
       });
       if (ingested) {
         messagesIngested++;
@@ -844,8 +854,10 @@ async function ingestMessage(opts: {
     email: string;
     staff_member_id: string;
   };
+  /** When true, skip fire-and-forget AI enrichment (bulk deep-resync). */
+  skipAiEnrichment?: boolean;
 }): Promise<IngestResult | null> {
-  const { messageId, accessToken, inbox } = opts;
+  const { messageId, accessToken, inbox, skipAiEnrichment } = opts;
 
   // Cheap dedup: if email_messages already has this gmail_message_id +
   // inbox combo, AND the existing row has a populated body, skip the
@@ -1390,6 +1402,7 @@ async function ingestMessage(opts: {
   if (
     direction === "inbound" &&
     insertedMessageId &&
+    !skipAiEnrichment &&
     process.env.AI_INBOX_CLASSIFY_ENABLED !== "0"
   ) {
     try {
