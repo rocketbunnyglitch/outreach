@@ -47,18 +47,20 @@ export const campaignStatus = pgEnum("campaign_status", [
   "archived",
 ]);
 
+// NOTE: contract_signed is NOT a value of city_campaign_status / event_status in
+// prod (only venue_event_status has it). It was a phantom schema value that
+// crashed any query writing/comparing it (see cancellation-review fix). Keep
+// these aligned to the live enums.
 export const cityCampaignStatus = pgEnum("city_campaign_status", [
   "planning",
   "active",
   "confirmed",
-  "contract_signed",
   "cancelled",
 ]);
 
 export const eventStatus = pgEnum("event_status", [
   "planned",
   "confirmed",
-  "contract_signed",
   "completed",
   "cancelled",
 ]);
@@ -129,7 +131,6 @@ export const outreachOutcome = pgEnum("outreach_outcome", [
   "declined",
   "interested",
   "confirmed",
-  "contract_signed",
   "wrong_number",
   "email_collected",
   "competing_event",

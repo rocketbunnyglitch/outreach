@@ -142,7 +142,9 @@ export async function updateCityCampaignStatus(
 
 const eventStatusSchema = z.object({
   eventId: uuidSchema,
-  status: z.enum(["planned", "confirmed", "contract_signed", "completed", "cancelled"]),
+  // event_status enum is {planned,confirmed,completed,cancelled} -- contract_signed
+  // is a venue_event_status value only, never valid for events.status.
+  status: z.enum(["planned", "confirmed", "completed", "cancelled"]),
 });
 
 export async function updateEventStatus(

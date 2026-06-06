@@ -30,6 +30,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
+import { isT11Touch } from "@/lib/send-mode-gate";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { composeAndSend } from "./compose-and-send";
@@ -95,7 +96,7 @@ async function t11BlockReason(
   touchType: string | null,
   venueEventId: string | null,
 ): Promise<string | null> {
-  if (!touchType || !touchType.startsWith("T11") || !venueEventId) return null;
+  if (!isT11Touch(touchType) || !venueEventId) return null;
   const [sheet] = await db
     .select({ id: staffInfoSheets.id })
     .from(staffInfoSheets)

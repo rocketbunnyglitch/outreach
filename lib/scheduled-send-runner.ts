@@ -31,6 +31,7 @@ import { composeAndSendImpl } from "@/lib/compose-send-impl";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { shouldBlockLifecycleSend } from "@/lib/relationship-send-gate";
+import { cronMaySendDraft } from "@/lib/send-mode-gate";
 import { and, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 export interface ScheduledSendResult {
@@ -84,6 +85,18 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
   let failed = 0;
 
   for (const { draft, owner } of candidates) {
+    // P0-1 defense-in-depth: re-check the send-mode boundary in code (the SQL
+    // filter above already excludes these, but this guarantees it + is unit-
+    // tested in lib/send-mode-gate.test.ts). review_required / unapproved drafts
+    // are never dispatched.
+    if (!cronMaySendDraft(draft, now)) {
+      logger.warn(
+        { draftId: draft.id, sendMode: draft.sendMode },
+        "scheduled send: draft not cron-sendable; skipping (defense-in-depth)",
+      );
+      continue;
+    }
+
     // T17 [ReferenceDoc 7.15.2]: never auto-send a relationship-gated lifecycle
     // template to a venue x outreach-brand pair flagged 'bad'. Re-check at
     // dispatch time (the flag may have been set after the draft was scheduled).
