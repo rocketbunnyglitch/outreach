@@ -660,6 +660,12 @@ async function sendDraftAsUser(input: {
   // City-campaign attribution - composeAndSendImpl derives the campaign +
   // brand from it to enforce the cadence floor (Phase 1.9).
   if (draft.cityCampaignId) fd.set("cityCampaignId", draft.cityCampaignId);
+  // Send-intent signals (P0): the draft's touch code + recipient type so
+  // composeAndSendImpl classifies the send and never processes a lifecycle /
+  // cancellation / host email as cold outreach. (templateId below is the
+  // primary signal; these refine it for non-template or ambiguous cases.)
+  if (draft.touchType) fd.set("touchType", draft.touchType);
+  if (draft.recipientType) fd.set("recipientType", draft.recipientType);
   // Reply/forward context — composeAndSendImpl branches on these to
   // attach the new message to the existing Gmail thread instead of
   // creating a fresh thread.

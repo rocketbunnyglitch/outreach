@@ -27,6 +27,7 @@ import {
   cityCampaigns,
   connectedAccounts,
   emailMessages,
+  emailTemplates,
   emailThreads,
 } from "@/db/schema";
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
@@ -38,7 +39,13 @@ import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
-import { preflightSend, recordSendEvent, startColdSendCooldown } from "@/lib/send-cap";
+import {
+  classifySend,
+  preflightSend,
+  recordSendEvent,
+  startColdSendCooldown,
+} from "@/lib/send-cap";
+import { type SendIntentResult, deriveSendIntent } from "@/lib/send-intent";
 import {
   type DuplicateWarning,
   describeBlock,
@@ -331,12 +338,65 @@ export async function composeAndSendImpl(
   // was always correct; only composeAndSendImpl was broken. Symptom:
   // an account at 30/30 cold sends could not reply to an inbound
   // warm thread without admin bypass.
+  // -----------------------------------------------------------------
+  // Send-intent classification (P0). Classify this send BEFORE the cold
+  // cap, cadence floor, cold-cadence seed, and cadence-touch logging --
+  // so a human-sent lifecycle / cancellation / post-event / host email
+  // can never be processed as cold outreach (seeded cold_pending_touch_1,
+  // counted against the cold cap, or floor-blocked). See lib/send-intent.ts.
+  // The signal is the draft's template_code (resolved from templateId,
+  // forwarded by both the interactive and cron send paths) + touch_type +
+  // recipient_type, with a reply-context fallback. Nothing is guessed as
+  // cold cadence -- a template-less new venue thread is "unknown".
+  // -----------------------------------------------------------------
+  const touchTypeRaw = String(formData.get("touchType") ?? "").trim();
+  const recipientTypeRaw = String(formData.get("recipientType") ?? "").trim();
+  const recipientType =
+    recipientTypeRaw === "host" ||
+    recipientTypeRaw === "internal" ||
+    recipientTypeRaw === "system" ||
+    recipientTypeRaw === "venue"
+      ? recipientTypeRaw
+      : null;
+  let templateCode: string | null = null;
+  if (templateId) {
+    const [tpl] = await db
+      .select({ code: emailTemplates.templateCode })
+      .from(emailTemplates)
+      .where(eq(emailTemplates.id, templateId))
+      .limit(1);
+    templateCode = tpl?.code ?? null;
+  }
+  const cadenceCategoryForIntent = await classifySend({ threadId: replyToThreadId });
+  const intent: SendIntentResult = deriveSendIntent({
+    templateCode,
+    touchType: touchTypeRaw || null,
+    recipientType,
+    isReply: Boolean(replyToThreadId),
+    cadenceCategory: cadenceCategoryForIntent,
+  });
+  logger.info(
+    {
+      fromAccountId,
+      venueId,
+      templateCode,
+      touchType: touchTypeRaw || null,
+      sendIntent: intent.sendIntent,
+      operationalForCap: intent.operationalForCap,
+      seedsColdCadence: intent.seedsColdCadence,
+    },
+    `send-intent: ${intent.sendIntent} (${intent.reason})`,
+  );
+
   const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
   const preflight = await preflightSend({
     connectedAccountId: fromAccountId,
     threadId: replyToThreadId,
   });
-  if (!preflight.ok) {
+  // Operational sends (lifecycle / cancellation / post-event / host /
+  // internal / system) are never cold outreach: skip the cold-cap block +
+  // cooldown entirely. Only genuine cold / unknown sends are gated here.
+  if (!preflight.ok && !intent.operationalForCap) {
     const canBypass = bypassCap && hasMinimumRole(staff, "admin");
     if (!canBypass) {
       // Cold-send pacing cooldown (migration 0106) gets its own block reason so
@@ -371,7 +431,7 @@ export async function composeAndSendImpl(
     );
   }
   const sendCategory = preflight.ok ? preflight.category : preflight.category;
-  const capBypassed = !preflight.ok && bypassCap;
+  const capBypassed = !preflight.ok && bypassCap && !intent.operationalForCap;
 
   // -------------------------------------------------------------------
   // Cadence floor enforcement (Phase 1.9). [ReferenceDoc Section 6]
@@ -442,36 +502,43 @@ export async function composeAndSendImpl(
         }
       }
 
-      const floor = await checkCadenceFloors({
-        venueId,
-        campaignId: cc.campaignId,
-        sendingAliasId: fromAccountId,
-        sendingOutreachBrandId: cc.outreachBrandId ?? "",
-      });
-      const gate = decideCadenceGate({
-        floor,
-        isAdmin: hasMinimumRole(staff, "admin"),
-        overrideReason: cadenceOverrideReasonRaw || null,
-      });
-      if (gate.blocked) {
-        return {
-          ok: false,
-          error: gate.errorMessage ?? "This venue is at its cadence floor.",
-          cadenceBlocked: true,
-          cadence: {
-            reason: floor.reason ?? null,
-            earliestAllowedAt: floor.earliestAllowedAt?.toISOString() ?? null,
-            totalTouchCount: floor.totalTouchCount,
-            hardCapReached: floor.hardCapReached,
-          },
-        };
-      }
-      if (gate.overrideApplied) {
-        cadenceOverrideToLog = gate.overrideReasonToLog ?? null;
-        logger.warn(
-          { fromAccountId, userId: staff.id, venueId, campaignId: cc.campaignId },
-          "composeAndSend: admin overrode cadence floor",
-        );
+      // The cadence floor (hard cap + cross-domain spacing) only applies
+      // to genuine cold/warm cadence touches. Lifecycle / cancellation /
+      // post-event / host / custom / unknown sends bypass it -- they are
+      // not cadence-managed (P0 send-intent). The bad-relationship hard
+      // block above stays unconditional.
+      if (intent.appliesCadenceFloor) {
+        const floor = await checkCadenceFloors({
+          venueId,
+          campaignId: cc.campaignId,
+          sendingAliasId: fromAccountId,
+          sendingOutreachBrandId: cc.outreachBrandId ?? "",
+        });
+        const gate = decideCadenceGate({
+          floor,
+          isAdmin: hasMinimumRole(staff, "admin"),
+          overrideReason: cadenceOverrideReasonRaw || null,
+        });
+        if (gate.blocked) {
+          return {
+            ok: false,
+            error: gate.errorMessage ?? "This venue is at its cadence floor.",
+            cadenceBlocked: true,
+            cadence: {
+              reason: floor.reason ?? null,
+              earliestAllowedAt: floor.earliestAllowedAt?.toISOString() ?? null,
+              totalTouchCount: floor.totalTouchCount,
+              hardCapReached: floor.hardCapReached,
+            },
+          };
+        }
+        if (gate.overrideApplied) {
+          cadenceOverrideToLog = gate.overrideReasonToLog ?? null;
+          logger.warn(
+            { fromAccountId, userId: staff.id, venueId, campaignId: cc.campaignId },
+            "composeAndSend: admin overrode cadence floor",
+          );
+        }
       }
     }
   }
@@ -751,13 +818,20 @@ export async function composeAndSendImpl(
           lastOutboundAt: now,
           lastSenderName: inbox.email,
           lastMessageAt: now,
-          // Cadence: a campaign-attributed first send seeds the cold sequence
-          // (recordTouch below advances it to cold_sent_touch_1 + sets next-due).
+          // Cadence: attribute the thread to the campaign + brand so the
+          // engine can act on it. Only a genuine COLD cadence opener
+          // (intent.seedsColdCadence) seeds the cold sequence; lifecycle /
+          // cancellation / post-event / host / custom / unknown sends get
+          // attributed but are NEVER stamped cold_pending_touch_1 (P0
+          // send-intent -- this is the line that used to mislabel a
+          // human-sent T9/T16 as cold outreach).
           ...(cadenceLinked
             ? {
                 cityCampaignId,
                 outreachBrandId: sendOutreachBrandId,
-                cadenceState: "cold_pending_touch_1" as const,
+                ...(intent.seedsColdCadence
+                  ? { cadenceState: "cold_pending_touch_1" as const }
+                  : {}),
               }
             : {}),
           createdBy: staff.id,
@@ -873,6 +947,13 @@ export async function composeAndSendImpl(
       templateId,
       teamId: staff.teamId,
       cadenceOverrideReason: cadenceOverrideToLog,
+      // Operational intents force send_type='operational' so they never
+      // consume the cold budget regardless of cold/warm category (P0).
+      intent: intent.operationalForCap ? "operational" : undefined,
+      // Explicit send intent + touch code on the audit row so "was this
+      // treated as cold?" is answerable without reverse-engineering.
+      sendIntent: intent.sendIntent,
+      touchType: touchTypeRaw || null,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
@@ -881,7 +962,7 @@ export async function composeAndSendImpl(
   // Start the randomized 5-8 min cold-send pacing cooldown on this inbox after
   // a cold send (migration 0106). Warm sends/replies are unaffected.
   // Best-effort: a missed cooldown just means no pacing on the next send.
-  if (sendCategory === "cold") {
+  if (sendCategory === "cold" && !intent.operationalForCap) {
     try {
       await startColdSendCooldown(fromAccountId);
     } catch (err) {
@@ -905,7 +986,11 @@ export async function composeAndSendImpl(
         .limit(1);
       const current = tRow?.cadenceState ?? null;
       const derived = current ? (planFromState(current, new Date())?.touchKind ?? null) : null;
-      if (derived && isCadenceTouchKind(derived)) {
+      // Two guards, both required: the thread's cadence_state must derive a
+      // real cadence touch kind AND the send's intent must be cadence-managed
+      // (cold/warm). Lifecycle / cancellation / post-event / host / custom /
+      // unknown sends never increment the cadence counters (P0 send-intent).
+      if (derived && isCadenceTouchKind(derived) && intent.recordsCadenceTouch) {
         await recordTouch({
           venueId,
           campaignId: sendCampaignId,
@@ -915,7 +1000,7 @@ export async function composeAndSendImpl(
         });
       } else {
         logger.warn(
-          { threadId, venueId, derived },
+          { threadId, venueId, derived, sendIntent: intent.sendIntent },
           "skipping cadence touch: not a cold/warm cadence send",
         );
       }

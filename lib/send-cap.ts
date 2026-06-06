@@ -287,6 +287,13 @@ export async function recordSendEvent(opts: {
   /** Reason an admin gave to override the cadence floor for this send
    *  (Phase 1.9). NULL/omitted = the send was within the floors. */
   cadenceOverrideReason?: string | null;
+  /** Explicit send intent (P0 -- lib/send-intent.ts): cold_cadence,
+   *  warm_cadence, lifecycle, cancellation, post_event, host, ... Stored
+   *  on the audit row so "was this treated as cold outreach?" is
+   *  answerable directly. NULL for legacy callers. */
+  sendIntent?: string | null;
+  /** Template/touch code for the send (T1..T17, H0a, V1). NULL = freeform. */
+  touchType?: string | null;
 }): Promise<void> {
   // send_type defaults to the cap category so existing callers (which
   // don't pass intent) record 'cold'/'warm' exactly as before.
@@ -313,5 +320,7 @@ export async function recordSendEvent(opts: {
     templateId: opts.templateId ?? null,
     teamId: opts.teamId,
     cadenceOverrideReason: opts.cadenceOverrideReason ?? null,
+    sendIntent: opts.sendIntent ?? null,
+    touchType: opts.touchType ?? null,
   });
 }

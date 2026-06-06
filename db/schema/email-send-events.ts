@@ -57,6 +57,14 @@ export const emailSendEvents = pgTable(
      *  send (Phase 1.9). NULL = the send was within the floors. See migration
      *  0099. */
     cadenceOverrideReason: text("cadence_override_reason"),
+    /** Explicit send intent (P0, migration 0120): cold_cadence,
+     *  warm_cadence, lifecycle, cancellation, post_event, host,
+     *  internal, system, custom_reply, unknown. NULL for legacy rows.
+     *  All the cap/cadence behavior booleans are derivable from this. */
+    sendIntent: text("send_intent"),
+    /** Template/touch code for the send (T1..T17, H0a, V1) -- migration
+     *  0120. NULL = freeform / no template. */
+    touchType: text("touch_type"),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

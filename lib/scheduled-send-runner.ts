@@ -165,6 +165,14 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       fd.set("bodyHtml", bodyPart + quotePart);
     }
     if (draft.venueId) fd.set("venueId", draft.venueId);
+    // Send-intent signals (P0): forward the draft's touch code + recipient
+    // type so a cron-dispatched lifecycle email (e.g. T14/T15) is classified
+    // operational -- never cap-blocked, never counted against the cold budget,
+    // never seeded as cold cadence. (cityCampaignId is intentionally NOT
+    // forwarded here so queued cold-send cadence behavior is unchanged; the
+    // intent classifier still works off touch_type / template_code.)
+    if (draft.touchType) fd.set("touchType", draft.touchType);
+    if (draft.recipientType) fd.set("recipientType", draft.recipientType);
     // Reply/forward context -- composeAndSendImpl branches on these to
     // attach the new message to the existing Gmail thread (keeps
     // threading + ensures the send classifies as warm) instead of
