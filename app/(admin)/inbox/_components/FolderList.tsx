@@ -82,57 +82,43 @@ export function FolderList({
   preservedQueryBase?: string;
 }) {
   return (
-    <nav aria-label="Inbox folders" className="flex flex-col gap-4">
-      <header className="flex items-start justify-between gap-2 px-2">
-        <div>
-          <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-            Operations
-          </p>
-          <h2 className="mt-0.5 font-semibold text-lg tracking-tight">Inbox</h2>
-        </div>
-        <Link
-          href="/settings/inboxes"
-          title="Email settings — connect & manage inboxes"
-          aria-label="Email settings"
-          className="mt-0.5 rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-        >
-          <Settings className="h-4 w-4" />
-        </Link>
-      </header>
+    <nav aria-label="Inbox folders" className="flex min-h-0 flex-1 flex-col gap-4">
+      {/* Fixed top -- identity, Compose, mailbox folders and Smart views
+          stay put while the Filters + Gmail labels below scroll. */}
+      <div className="flex shrink-0 flex-col gap-4">
+        <header className="flex items-start justify-between gap-2 px-2">
+          <div>
+            <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              Operations
+            </p>
+            <h2 className="mt-0.5 font-semibold text-lg tracking-tight">Inbox</h2>
+          </div>
+          <Link
+            href="/settings/inboxes"
+            title="Email settings -- connect & manage inboxes"
+            aria-label="Email settings"
+            className="mt-0.5 rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
+        </header>
 
-      {/* Compose CTA — Gmail's prominent top-left button. Opens the
+        {/* Compose CTA -- Gmail's prominent top-left button. Opens the
           global composer (same surface every other Compose entry
           point uses; cold outreach table, thread reply, etc all
           route through the same store + host). */}
-      <div className="px-2">
-        <ComposeEmailButton
-          ariaLabel="New email"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 font-medium text-sm text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md dark:bg-indigo-500 dark:hover:bg-indigo-400"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          <span>Compose</span>
-        </ComposeEmailButton>
-      </div>
+        <div className="px-2">
+          <ComposeEmailButton
+            ariaLabel="New email"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 font-medium text-sm text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md dark:bg-indigo-500 dark:hover:bg-indigo-400"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span>Compose</span>
+          </ComposeEmailButton>
+        </div>
 
-      <ul className="flex flex-col gap-0.5">
-        {GMAIL_MAILBOX_FOLDERS.map((folder) => (
-          <FolderLink
-            key={folder}
-            folder={folder}
-            activeFolder={activeFolder}
-            count={counts[folder] ?? 0}
-            mineOnly={mineOnly}
-            currentStaffId={currentStaffId}
-          />
-        ))}
-      </ul>
-
-      <div className="border-zinc-200/80 border-t pt-3 dark:border-zinc-800/60">
-        <p className="mb-1.5 px-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-          Smart views
-        </p>
         <ul className="flex flex-col gap-0.5">
-          {ENGINE_SMART_FOLDERS.map((folder) => (
+          {GMAIL_MAILBOX_FOLDERS.map((folder) => (
             <FolderLink
               key={folder}
               folder={folder}
@@ -143,9 +129,27 @@ export function FolderList({
             />
           ))}
         </ul>
+
+        <div className="border-zinc-200/80 border-t pt-3 dark:border-zinc-800/60">
+          <p className="mb-1.5 px-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+            Smart views
+          </p>
+          <ul className="flex flex-col gap-0.5">
+            {ENGINE_SMART_FOLDERS.map((folder) => (
+              <FolderLink
+                key={folder}
+                folder={folder}
+                activeFolder={activeFolder}
+                count={counts[folder] ?? 0}
+                mineOnly={mineOnly}
+                currentStaffId={currentStaffId}
+              />
+            ))}
+          </ul>
+        </div>
       </div>
 
-      <div className="border-zinc-200/80 border-t pt-3 dark:border-zinc-800/60">
+      <div className="min-h-0 flex-1 overflow-y-auto border-zinc-200/80 border-t pt-3 dark:border-zinc-800/60">
         <p className="px-2 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
           Filters
         </p>
@@ -163,7 +167,7 @@ export function FolderList({
               Mine only
             </ChipLink>
           </li>
-          {/* Brand + campaign chips — facets are scoped to threads
+          {/* Brand + campaign chips -- facets are scoped to threads
               with at least one open conversation, so a dead brand
               with 0 unread threads doesn't waste a row. Up to
               MAX_CHIPS per group; overflow folds into a "+N more"
