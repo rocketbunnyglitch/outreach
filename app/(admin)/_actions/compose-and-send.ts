@@ -609,6 +609,62 @@ export async function saveDraftAsTemplate(input: {
  * Auth: requireStaff. Team-scoped for non-venue results so we never
  * leak addresses across teams.
  */
+/**
+ * Resolve display names for recipient addresses, for the composer's
+ * Gmail-style "name <email>" chips. Returns lowercased-email -> name.
+ * A name comes from a matching venue (primary email) or, failing that,
+ * the most recent INBOUND message from that address (its from_name --
+ * "the name the email was received as"). Best-effort; addresses with no
+ * known name are omitted (the chip then shows the raw address).
+ */
+export async function resolveRecipientNames(emails: string[]): Promise<Record<string, string>> {
+  await requireStaff();
+  const original = Array.from(
+    new Set(emails.map((e) => e.trim()).filter((e) => e.includes("@"))),
+  ).slice(0, 50);
+  if (original.length === 0) return {};
+  const lower = original.map((e) => e.toLowerCase());
+  const out: Record<string, string> = {};
+
+  try {
+    const venueRows = await db
+      .select({ email: venues.email, name: venues.name })
+      .from(venues)
+      .where(inArray(venues.email, original))
+      .limit(200);
+    for (const v of venueRows) {
+      const key = v.email?.toLowerCase();
+      if (key && v.name?.trim()) out[key] = v.name.trim();
+    }
+  } catch (err) {
+    logger.warn({ err }, "resolveRecipientNames: venue lookup failed");
+  }
+
+  const stillUnnamed = lower.filter((e) => !out[e]);
+  if (stillUnnamed.length > 0) {
+    try {
+      const msgRows = await db
+        .select({ from: emailMessages.fromEmailNormalized, name: emailMessages.fromName })
+        .from(emailMessages)
+        .where(
+          and(
+            eq(emailMessages.direction, "inbound"),
+            inArray(emailMessages.fromEmailNormalized, stillUnnamed),
+          ),
+        )
+        .orderBy(desc(emailMessages.sentAt))
+        .limit(300);
+      for (const m of msgRows) {
+        const key = m.from?.toLowerCase();
+        if (key && !out[key] && m.name?.trim()) out[key] = m.name.trim();
+      }
+    } catch (err) {
+      logger.warn({ err }, "resolveRecipientNames: from_name lookup failed");
+    }
+  }
+  return out;
+}
+
 export async function suggestRecipients(input: {
   venueId?: string | null;
   query?: string;

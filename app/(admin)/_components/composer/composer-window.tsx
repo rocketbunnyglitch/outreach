@@ -57,6 +57,7 @@ import {
   type ComposeTemplate,
   type ConnectedAccountOption,
   listComposeContext,
+  resolveRecipientNames,
 } from "../../_actions/compose-and-send";
 import { deleteDraft, queueColdSend, sendDraft, upsertDraft } from "../../_actions/email-drafts";
 import { type EnginePickResult, pickTemplateForComposer } from "../../_actions/engine-pick";
@@ -243,6 +244,27 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const toList = useMemo(() => parseAddressList(instance.to), [instance.to]);
   const ccList = useMemo(() => parseAddressList(instance.cc), [instance.cc]);
   const bccList = useMemo(() => parseAddressList(instance.bcc), [instance.bcc]);
+
+  // Gmail-style: resolve a display name for each recipient address (venue
+  // name, or the name the mail came in as) so the chips read "Name" not a
+  // raw address. Best-effort, debounced via the memoized lists.
+  const [recipientNames, setRecipientNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const all = [...toList, ...ccList, ...bccList];
+    if (all.length === 0) {
+      setRecipientNames({});
+      return;
+    }
+    let cancelled = false;
+    void resolveRecipientNames(all)
+      .then((m) => {
+        if (!cancelled) setRecipientNames(m);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [toList, ccList, bccList]);
 
   // Mirrors of the not-yet-committed text in each recipient field. Reading
   // these on send means an address typed but not Entered (the operator clicks
@@ -1177,6 +1199,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             ariaLabel="To recipients"
             suggestions={fetchSuggestions}
             pendingRef={pendingToRef}
+            names={recipientNames}
           />
           <div className="flex shrink-0 items-center gap-1 pt-0.5">
             {!instance.showCc && (
@@ -1209,6 +1232,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               ariaLabel="Cc recipients"
               suggestions={fetchSuggestions}
               pendingRef={pendingCcRef}
+              names={recipientNames}
             />
           </div>
         )}
@@ -1222,6 +1246,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               ariaLabel="Bcc recipients"
               suggestions={fetchSuggestions}
               pendingRef={pendingBccRef}
+              names={recipientNames}
             />
           </div>
         )}

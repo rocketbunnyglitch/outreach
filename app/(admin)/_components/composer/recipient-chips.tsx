@@ -47,6 +47,10 @@ interface Props {
    *  clicking Send before committing the chip dropped the address ("add at
    *  least one recipient"). Kept in sync every render. */
   pendingRef?: { current: string };
+  /** Optional email -> display-name map. When an address has a known name
+   *  (venue / the name the mail came in as), the chip shows the NAME with
+   *  the email on hover, Gmail-style, instead of the raw address. */
+  names?: Record<string, string>;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -59,6 +63,7 @@ export function RecipientChips({
   ariaLabel,
   suggestions,
   pendingRef,
+  names,
 }: Props) {
   const [typed, setTyped] = useState("");
   // Keep the parent's mirror current with whatever is half-typed in the input.
@@ -161,18 +166,20 @@ export function RecipientChips({
       {value.map((addr) => {
         const valid = EMAIL_RE.test(addr);
         const idx = value.indexOf(addr);
+        const name = names?.[addr.toLowerCase()] ?? names?.[addr];
         return (
           <span
             key={addr}
-            title={valid ? addr : `Invalid email: ${addr}`}
+            title={valid ? (name ? `${name} <${addr}>` : addr) : `Invalid email: ${addr}`}
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10px]",
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px]",
+              name ? "font-sans" : "font-mono",
               valid
                 ? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
                 : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
             )}
           >
-            <span className="max-w-[180px] truncate">{addr}</span>
+            <span className="max-w-[180px] truncate">{name ?? addr}</span>
             <button
               type="button"
               onClick={(e) => {
