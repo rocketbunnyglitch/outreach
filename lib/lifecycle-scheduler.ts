@@ -61,7 +61,8 @@ const LIFECYCLE_TOUCHES: LifecycleTouch[] = [
   // {{turnout_quote_current}} figure -- which only made sense the day
   // before. No idempotency column: re-confirm dedups via delete-then-insert.
   { code: "T14", offsetDays: -1, hourUtc: 14 },
-  { code: "T15", offsetDays: 0, hourUtc: 13 },
+  // T15 (morning-of) is handled PER NIGHT below, not bundled -- a multi-night
+  // venue gets a day-of check-in for each confirmed night (P0-4).
   { code: "T17", offsetDays: 2, hourUtc: 14 },
 ];
 
@@ -124,7 +125,7 @@ export async function scheduleLifecycle(
   // names every night. T15 (day-of) still anchors here; per-night day-of splits
   // are a later refinement.
   const [earliest] = await db
-    .select({ eventDate: events.eventDate })
+    .select({ venueEventId: venueEvents.id, eventDate: events.eventDate })
     .from(venueEvents)
     .innerJoin(events, eq(events.id, venueEvents.eventId))
     .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
@@ -137,33 +138,61 @@ export async function scheduleLifecycle(
     )
     .orderBy(asc(events.eventDate))
     .limit(1);
-  const eventDate = new Date(`${earliest?.eventDate ?? ve.eventDate}T00:00:00Z`);
+  // Bundled touches (T9/T11/T13/T13W/T14/T17) anchor to the EARLIEST confirmed
+  // night and are owned by that night, so a multi-night venue gets ONE bundled
+  // set (named across nights via venue_nights_summary). T15 is PER NIGHT.
+  const anchorVenueEventId = earliest?.venueEventId ?? args.venueEventId;
+  const anchorDate = new Date(`${earliest?.eventDate ?? ve.eventDate}T00:00:00Z`);
+  const thisNightDate = new Date(`${ve.eventDate}T00:00:00Z`);
   const now = new Date();
 
   // T9 fires at confirm time as a REVIEW draft (scheduled_for null) -- the
   // operator reviews/edits/sends it (ReferenceDoc 7.2). Inside the 3-week window
   // the loaded T9-near variant replaces the sparse T9 and bundles the T11 info,
   // so the separate T11 (3 weeks out) is only scheduled for far confirms.
-  const daysToEvent = Math.floor((eventDate.getTime() - now.getTime()) / 86_400_000);
+  const daysToEvent = Math.floor((anchorDate.getTime() - now.getTime()) / 86_400_000);
   type PlannedTouch = {
     code: string;
     scheduledFor: Date | null;
     sentAtColumn?: "twoWeekEmailSentAt" | "oneWeekEmailSentAt";
+    /** The venue_event/night this draft belongs to. */
+    ownerVenueEventId: string;
+    /** Dedup scope: bundled touches dedup per venue; T15 per venue_event. */
+    dedupBy: "venue" | "venue_event";
   };
-  const plan: PlannedTouch[] = [{ code: daysToEvent > 21 ? "T9" : "T9-near", scheduledFor: null }];
+  const plan: PlannedTouch[] = [
+    {
+      code: daysToEvent > 21 ? "T9" : "T9-near",
+      scheduledFor: null,
+      ownerVenueEventId: anchorVenueEventId,
+      dedupBy: "venue",
+    },
+  ];
   if (daysToEvent > 21) {
     plan.push({
       code: "T11",
-      scheduledFor: scheduledForOf(eventDate, { code: "T11", offsetDays: -21, hourUtc: 14 }),
+      scheduledFor: scheduledForOf(anchorDate, { code: "T11", offsetDays: -21, hourUtc: 14 }),
+      ownerVenueEventId: anchorVenueEventId,
+      dedupBy: "venue",
     });
   }
   for (const t of LIFECYCLE_TOUCHES) {
     plan.push({
       code: t.code,
-      scheduledFor: scheduledForOf(eventDate, t),
+      scheduledFor: scheduledForOf(anchorDate, t),
       sentAtColumn: t.sentAtColumn,
+      ownerVenueEventId: anchorVenueEventId,
+      dedupBy: "venue",
     });
   }
+  // T15 per night (P0-4): this confirmed night's morning-of check-in, deduped by
+  // venue_event so each night of a multi-night venue keeps its own T15.
+  plan.push({
+    code: "T15",
+    scheduledFor: scheduledForOf(thisNightDate, { code: "T15", offsetDays: 0, hourUtc: 13 }),
+    ownerVenueEventId: args.venueEventId,
+    dedupBy: "venue_event",
+  });
 
   // Resolve every template the plan needs for this campaign.
   const codes = [...new Set(plan.map((p) => p.code))];
@@ -218,11 +247,15 @@ export async function scheduleLifecycle(
     // template that is still pending -- a future-scheduled one OR an unsent
     // review draft (scheduled_for null) -- so flipping confirmed off/on or
     // confirming another night doesn't pile up duplicates.
+    const dedupScope =
+      touch.dedupBy === "venue_event"
+        ? eq(emailDrafts.venueEventId, touch.ownerVenueEventId)
+        : eq(emailDrafts.venueId, ve.venueId);
     await db
       .delete(emailDrafts)
       .where(
         and(
-          eq(emailDrafts.venueId, ve.venueId),
+          dedupScope,
           eq(emailDrafts.templateId, tpl.id),
           isNull(emailDrafts.sentAt),
           or(isNull(emailDrafts.scheduledFor), gt(emailDrafts.scheduledFor, now)),
@@ -240,8 +273,16 @@ export async function scheduleLifecycle(
         bodyHtml,
         venueId: ve.venueId,
         cityCampaignId: ve.cityCampaignId,
+        venueEventId: touch.ownerVenueEventId,
         templateId: tpl.id,
         scheduledFor: touch.scheduledFor,
+        // P0-1: lifecycle drafts are ALWAYS review-required venue email. The
+        // scheduled_for is a SUGGESTED time; the cron will not send until an
+        // operator reviews + schedules it (sendMode -> operator_scheduled).
+        sendMode: "review_required",
+        requiresHumanApproval: true,
+        recipientType: "venue",
+        touchType: touch.code,
       })
       .returning({ id: emailDrafts.id });
     if (inserted) scheduledDraftIds.push(inserted.id);

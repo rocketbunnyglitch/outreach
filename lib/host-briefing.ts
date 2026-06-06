@@ -163,6 +163,12 @@ export async function scheduleHostBriefings(args: HostBriefingArgs): Promise<Hos
         cityCampaignId: ch.cityCampaignId,
         templateId: tpl.id,
         scheduledFor,
+        // P0-1: host briefing emails are review-required (a human reviews + sends).
+        // recipient_type='host' keeps them out of venue-send accounting.
+        sendMode: "review_required",
+        requiresHumanApproval: true,
+        recipientType: "host",
+        touchType: code,
       })
       .returning({ id: emailDrafts.id });
     if (inserted) createdDraftIds.push(inserted.id);

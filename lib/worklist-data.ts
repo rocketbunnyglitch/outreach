@@ -21,6 +21,7 @@ import {
   venues,
 } from "@/db/schema";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { planFromState } from "./cadence-engine-core";
 import { computeEffectivePriority } from "./effective-priority";
@@ -414,6 +415,11 @@ export interface WorklistCallRow {
 }
 
 const CALL_CAP = 8;
+// Pre-rank pool bound (perf guard) BEFORE the in-memory effective-priority
+// re-rank. Raised from 40 now that there is no static-priority prefilter -- the
+// pool spans all priorities, so it must be wide enough that selling/near-event
+// rows are not truncated before they can be re-ranked up. 120 is ~15x the cap.
+const PRE_RANK_LIMIT = 120;
 
 function callSummary(status: string, isWarm: boolean, lastTouchAt: Date | null, now: Date): string {
   const days = lastTouchAt ? Math.floor((now.getTime() - lastTouchAt.getTime()) / DAY_MS) : null;
@@ -426,10 +432,20 @@ function callSummary(status: string, isWarm: boolean, lastTouchAt: Date | null, 
 
 /**
  * High-priority calls for the operator today (Phase 2.5). Cold entries the
- * operator owns, in priority 1-3 cities, that are due for a call (emailed but
- * silent 5+ days, a warm lead gone quiet, or follow_up_due) and have NOT been
- * called in the last 2 days. Capped at 8 (more than an operator can realistically
- * make), ranked by city priority then stalest-first.
+ * operator owns (or leads the city campaign for) that are due for a call
+ * (emailed but silent 5+ days, a warm lead gone quiet, or follow_up_due) and
+ * have NOT been called in the last 2 days. Capped at 8 (more than an operator
+ * can realistically make).
+ *
+ * Ranking is by EFFECTIVE priority (lib/effective-priority), NOT static
+ * priority: inside the 21-day pre-event window the call queue follows sales
+ * velocity, so a converting Priority-4 city outranks a quiet Priority-1 one.
+ * To honour that there is NO static-priority prefilter -- all active assigned
+ * cities with unresolved call work enter the candidate pool (Phase 2.16). The
+ * pre-rank pool is capped at PRE_RANK_LIMIT to bound query cost; because the
+ * sales pivot can only IMPROVE a near-event city's rank, the pre-rank order is
+ * earliest-event-first (sales-relevant rows survive truncation) then
+ * stalest-first. Anything dropped by that cap is logged.
  *
  * "Last call attempt" reads outreach_log channel='call' (where click-to-call
  * logs every attempt). Phone dialling reuses QuoDialControls.
@@ -470,7 +486,9 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
           eq(coldOutreachEntries.assignedStaffId, opts.staffId),
           eq(cityCampaigns.leadStaffId, opts.staffId),
         ),
-        lte(cityCampaigns.priority, 3),
+        // NO static-priority prefilter: every priority enters the pool so the
+        // effective-priority re-rank below can let a selling lower-priority
+        // city outrank a quiet higher-priority one (Phase 2.16).
         or(
           and(
             eq(coldOutreachEntries.status, "email_sent"),
@@ -484,10 +502,32 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
         ),
       ),
     )
-    .orderBy(asc(cityCampaigns.priority), asc(coldOutreachEntries.lastTouchAt))
-    .limit(40);
+    // Pre-rank order (before the in-memory effective-priority sort): nearest
+    // upcoming event first (NULLs last), then stalest-first. The sales pivot can
+    // only raise a near-event city's rank, so ordering by event proximity keeps
+    // the rows that could win from being truncated by PRE_RANK_LIMIT.
+    .orderBy(
+      sql`(
+        SELECT MIN(${events.eventDate})
+        FROM ${events}
+        WHERE ${events.cityCampaignId} = ${cityCampaigns.id}
+          AND ${events.eventDate} >= now()::date
+      ) ASC NULLS LAST`,
+      asc(coldOutreachEntries.lastTouchAt),
+    )
+    .limit(PRE_RANK_LIMIT);
 
   if (candidates.length === 0) return [];
+
+  // If the pool hit the pre-rank cap, selling cities could have been truncated
+  // before the effective-priority re-rank. Surface it rather than silently
+  // dropping them (operators must not lose a converting city).
+  if (candidates.length >= PRE_RANK_LIMIT) {
+    logger.warn(
+      { staffId: opts.staffId, preRankLimit: PRE_RANK_LIMIT },
+      "loadWorklistCalls: pre-rank pool hit PRE_RANK_LIMIT; rows beyond the nearest-event/stalest boundary were not considered for the call queue",
+    );
+  }
 
   // Last call attempt per venue, from the click-to-call log.
   const venueIds = [...new Set(candidates.map((c) => c.venueId))];

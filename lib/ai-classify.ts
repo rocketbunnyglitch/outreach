@@ -304,13 +304,16 @@ export async function classifyInboundMessage(
   }
 
   // Phase 3.9: auto-update the venue x brand relationship flag from the
-  // classification (hard_no -> bad +1yr; engaged -> neutral when no prior row;
-  // cancellations never auto-flag bad). Best-effort; never blocks classification.
+  // classification (unsubscribe -> bad +1yr; interested/warm/confirmed ->
+  // neutral when no prior row; cancellations never auto-flag bad). The helper
+  // gates on >= 0.9 confidence via the pure mapping, so low-confidence runs are
+  // a no-op here. Best-effort; never blocks classification. [ReferenceDoc 8.4]
   if (ctx?.venueId && ctx.outreachBrandId) {
     await autoFlagRelationshipFromClassification({
       venueId: ctx.venueId,
       outreachBrandId: ctx.outreachBrandId,
       classification: parsed.classification,
+      confidence: parsed.confidence,
     });
   }
 

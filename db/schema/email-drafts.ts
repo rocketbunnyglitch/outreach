@@ -9,7 +9,7 @@
  *     (row deleted)
  */
 
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { teams } from "./teams";
 import { connectedAccounts, users } from "./users";
 
@@ -73,6 +73,35 @@ export const emailDrafts = pgTable(
      *  the recipient sees the full thread regardless of whether the
      *  operator expanded it. See migration 0065. */
     quotedHtml: text("quoted_html"),
+    // --- Send-safety boundary (P0-1). "Engine drafts. Humans send." ---
+    // The scheduled-send cron may ONLY dispatch a draft that is either
+    // operator_scheduled with approved_at set, OR auto_allowed for a non-venue
+    // recipient. Engine-generated drafts default to review_required and never
+    // auto-send. See migration 0119 + lib/scheduled-send-runner.ts.
+    /** review_required | operator_scheduled | auto_allowed */
+    sendMode: text("send_mode")
+      .$type<"review_required" | "operator_scheduled" | "auto_allowed">()
+      .notNull()
+      .default("review_required"),
+    requiresHumanApproval: boolean("requires_human_approval").notNull().default(true),
+    approvedByStaffId: uuid("approved_by_staff_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    scheduledByStaffId: uuid("scheduled_by_staff_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    autoSendAllowed: boolean("auto_send_allowed").notNull().default(false),
+    /** venue | host | internal | system. Only non-venue may ever be auto_allowed. */
+    recipientType: text("recipient_type")
+      .$type<"venue" | "host" | "internal" | "system">()
+      .notNull()
+      .default("venue"),
+    /** Template/touch code (e.g. T1, T9, T14) or category, for safety + analytics. */
+    touchType: text("touch_type"),
+    /** The specific venue_event/night this draft belongs to. Lets cancellation
+     *  scope cleanup to ONE night of a multi-night venue. FK in migration 0119. */
+    venueEventId: uuid("venue_event_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -80,6 +109,7 @@ export const emailDrafts = pgTable(
     ownerIdx: index("email_drafts_owner_open_idx").on(t.ownerUserId, t.updatedAt),
     scheduledIdx: index("email_drafts_scheduled_idx").on(t.scheduledFor),
     venueIdx: index("email_drafts_venue_idx").on(t.venueId),
+    venueEventIdx: index("email_drafts_venue_event_idx").on(t.venueEventId),
   }),
 );
 

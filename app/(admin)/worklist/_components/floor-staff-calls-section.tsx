@@ -58,12 +58,41 @@ function ReadinessPill({ readiness }: { readiness: EventReadiness }) {
   );
 }
 
+/**
+ * Talking points the lead reads while dialling the venue's frontline staff
+ * (Stage H / 7.14.3a floor-staff briefing intent). Terse, human, grounded in
+ * the row's own data -- confirm awareness, the slot role + window, the
+ * wristband/entry process, and the night-of contact. No new server data.
+ */
+function ScriptLines({
+  venueName,
+  roleLabel,
+  slot,
+  eventDate,
+}: { venueName: string; roleLabel: string; slot: string; eventDate: string }): string[] {
+  const window = slot ? `your ${roleLabel} window (${slot})` : `your ${roleLabel} window`;
+  return [
+    `Hi -- calling from the crawl team about the event at ${venueName} on ${eventDate}.`,
+    `Confirm the floor knows the crawl is on and the bar is the ${roleLabel} stop.`,
+    `Walk the crowd: groups arrive on wristbands during ${window} -- check the band, no re-entry stamp needed.`,
+    "Confirm who's working the door and who to call here night-of if anything comes up.",
+    "Ask: any concerns about volume, staffing, or the schedule before the night?",
+  ];
+}
+
 function Row({ c }: { c: WorklistFloorStaffCallRow }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTx] = useTransition();
+  const roleLabel = c.role === "alt_final" ? "final" : c.role;
   const slot =
     c.slotStartTime && c.slotEndTime ? `${fmtTime(c.slotStartTime)}-${fmtTime(c.slotEndTime)}` : "";
+  const scriptLines = ScriptLines({
+    venueName: c.venueName,
+    roleLabel,
+    slot,
+    eventDate: c.eventDate,
+  });
 
   function record(outcome: (typeof OUTCOMES)[number]["key"]) {
     startTx(async () => {
@@ -94,7 +123,7 @@ function Row({ c }: { c: WorklistFloorStaffCallRow }) {
             {c.cityName ? <span className="text-zinc-500"> &middot; {c.cityName}</span> : null}
           </p>
           <p className="font-mono text-[10px] text-zinc-400">
-            {c.role === "alt_final" ? "final" : c.role}
+            {roleLabel}
             {slot ? ` ${slot}` : ""} &middot; event {c.eventDate}
             {c.attempts > 0
               ? ` - ${c.attempts} attempt${c.attempts === 1 ? "" : "s"}${c.lastOutcome ? ` (${c.lastOutcome.replace(/_/g, " ")})` : ""}`
@@ -115,6 +144,19 @@ function Row({ c }: { c: WorklistFloorStaffCallRow }) {
           )}
         </div>
       </div>
+      <details className="group rounded-lg border border-zinc-200/70 bg-zinc-50/60 px-2.5 py-1.5 dark:border-zinc-800/70 dark:bg-zinc-900/40">
+        <summary className="cursor-pointer list-none font-mono text-[9px] text-zinc-500 uppercase tracking-[0.08em] hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200">
+          Call script
+        </summary>
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {scriptLines.map((line) => (
+            <li key={line} className="flex gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-300">
+              <span className="text-zinc-400 dark:text-zinc-600">-</span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
       <div className="flex flex-wrap items-center gap-1">
         {OUTCOMES.map((o) => (
           <button

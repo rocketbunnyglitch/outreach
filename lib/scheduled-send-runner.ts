@@ -31,7 +31,7 @@ import { composeAndSendImpl } from "@/lib/compose-send-impl";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { shouldBlockLifecycleSend } from "@/lib/relationship-send-gate";
-import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 export interface ScheduledSendResult {
   attempted: number;
@@ -63,6 +63,19 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         isNull(emailDrafts.sentAt),
         isNotNull(emailDrafts.scheduledFor),
         lte(emailDrafts.scheduledFor, now),
+        // P0-1 SEND-SAFETY GATE. "Engine drafts. Humans send." The cron may
+        // ONLY dispatch a draft a human approved (send_mode=operator_scheduled
+        // with approved_at set) OR an explicitly auto-allowed NON-venue
+        // transactional message (host/internal/system). Engine-generated
+        // drafts default to send_mode=review_required and are NEVER auto-sent;
+        // they surface in the operator worklist for review.
+        or(
+          and(eq(emailDrafts.sendMode, "operator_scheduled"), isNotNull(emailDrafts.approvedAt)),
+          and(
+            eq(emailDrafts.sendMode, "auto_allowed"),
+            inArray(emailDrafts.recipientType, ["host", "internal", "system"]),
+          ),
+        ),
       ),
     )
     .limit(100);

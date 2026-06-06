@@ -154,6 +154,29 @@ export async function handoffColdOutreach(input: {
       return { ok: false, error: `7-day cross-domain floor -- available ${when}.` };
     }
 
+    // Scope the handoff to the EXHAUSTED COLD thread only (P0-6). A handoff
+    // resets cadence to a fresh cold touch 1; doing that to warm/confirmed/
+    // lifecycle/declined threads for the same venue x campaign would corrupt
+    // their state. Pre-check the current state so we fail friendly instead of
+    // silently no-op'ing, then constrain the UPDATE to the exhausted-cold state.
+    const [thread] = await db
+      .select({ id: emailThreads.id, cadenceState: emailThreads.cadenceState })
+      .from(emailThreads)
+      .where(
+        and(
+          eq(emailThreads.venueId, entry.venueId),
+          eq(emailThreads.cityCampaignId, entry.cityCampaignId),
+          eq(emailThreads.cadenceState, "cold_exhausted_ready_for_handoff"),
+        ),
+      )
+      .limit(1);
+    if (!thread) {
+      return {
+        ok: false,
+        error: "This thread is not an exhausted cold sequence; nothing to hand off.",
+      };
+    }
+
     await db
       .update(emailThreads)
       .set({
@@ -165,8 +188,22 @@ export async function handoffColdOutreach(input: {
         and(
           eq(emailThreads.venueId, entry.venueId),
           eq(emailThreads.cityCampaignId, entry.cityCampaignId),
+          eq(emailThreads.cadenceState, "cold_exhausted_ready_for_handoff"),
         ),
       );
+
+    logger.info(
+      {
+        entryId: input.entryId,
+        threadId: thread.id,
+        venueId: entry.venueId,
+        cityCampaignId: entry.cityCampaignId,
+        targetBrandId: input.targetBrandId,
+        fromCadenceState: thread.cadenceState,
+        toCadenceState: "cold_pending_touch_1",
+      },
+      "handoffColdOutreach: handed off exhausted cold thread to target brand",
+    );
 
     revalidatePath(`/city-campaigns/${entry.cityCampaignId}`);
     return {

@@ -19,7 +19,7 @@
  *   drafts (intentional — drafts are private until sent).
  */
 
-import { type EmailDraftAttachment, emailDrafts } from "@/db/schema";
+import { type EmailDraftAttachment, emailDrafts, staffInfoSheets } from "@/db/schema";
 import {
   createSignedUpload,
   deleteAttachment,
@@ -84,6 +84,28 @@ export interface UpsertDraftResult {
  *
  * Returns the row's updatedAt so the UI can render "Saved at HH:MM".
  */
+/**
+ * P0-4 readiness gate: a T11 (staff info sheet) email must NOT go out before the
+ * venue_event actually has a generated staff info sheet. Scoped strictly to T11
+ * drafts -- returns null (no block) for every other touch type, so no other send
+ * is affected. T10 (graphics) is not auto-drafted as an email (graphics is a
+ * confirmation-cascade task), so there is no T10 draft to gate here.
+ */
+async function t11BlockReason(
+  touchType: string | null,
+  venueEventId: string | null,
+): Promise<string | null> {
+  if (!touchType || !touchType.startsWith("T11") || !venueEventId) return null;
+  const [sheet] = await db
+    .select({ id: staffInfoSheets.id })
+    .from(staffInfoSheets)
+    .where(eq(staffInfoSheets.venueEventId, venueEventId))
+    .limit(1);
+  return sheet
+    ? null
+    : "Staff info sheet isn't ready for this venue yet. Generate the info sheet before sending T11.";
+}
+
 export async function upsertDraft(
   input: UpsertDraftInput,
 ): Promise<ActionResult<UpsertDraftResult>> {
@@ -354,7 +376,17 @@ export async function queueColdSend(
 
     await db
       .update(emailDrafts)
-      .set({ scheduledFor, updatedAt: now })
+      .set({
+        scheduledFor,
+        // P0-1: the operator reviewed this draft and hit Queue -> a human-
+        // approved send the cron is allowed to dispatch.
+        sendMode: "operator_scheduled",
+        requiresHumanApproval: false,
+        approvedByStaffId: staff.id,
+        approvedAt: now,
+        scheduledByStaffId: staff.id,
+        updatedAt: now,
+      })
       .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)));
 
     revalidatePath("/email-queue");
@@ -363,6 +395,77 @@ export async function queueColdSend(
   } catch (err) {
     logger.error({ err, draftId }, "queueColdSend failed");
     return { ok: false, error: "Couldn't queue the email." };
+  }
+}
+
+/**
+ * P0-1 send-safety: explicitly approve a draft for scheduled sending (the
+ * composer "Schedule send" + cadence "Schedule for earliest" paths).
+ *
+ * This is the ONLY composer path that flips a draft to operator_scheduled --
+ * autosave (upsertDraft) never approves a send, so merely opening an
+ * engine-generated review_required draft can never make it auto-send. Passing
+ * scheduledFor=null clears the schedule and reverts the draft to
+ * review_required. "Engine drafts. Humans send."
+ */
+export async function scheduleDraftSend(
+  draftId: string,
+  scheduledForIso: string | null,
+): Promise<ActionResult<{ scheduledFor: string | null }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(draftId)) return { ok: false, error: "Invalid draft id." };
+  try {
+    const [draft] = await db
+      .select({
+        sentAt: emailDrafts.sentAt,
+        touchType: emailDrafts.touchType,
+        venueEventId: emailDrafts.venueEventId,
+      })
+      .from(emailDrafts)
+      .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)))
+      .limit(1);
+    if (!draft) return { ok: false, error: "Draft not found." };
+    if (draft.sentAt) return { ok: false, error: "This email has already been sent." };
+    // P0-4: don't let an operator approve/schedule a T11 before its info sheet
+    // exists (prevents a blocked draft from retrying every cron tick).
+    if (scheduledForIso) {
+      const t11Block = await t11BlockReason(draft.touchType, draft.venueEventId);
+      if (t11Block) return { ok: false, error: t11Block };
+    }
+
+    const now = new Date();
+    const scheduledFor = scheduledForIso ? new Date(scheduledForIso) : null;
+    await db
+      .update(emailDrafts)
+      .set(
+        scheduledFor
+          ? {
+              scheduledFor,
+              sendMode: "operator_scheduled",
+              requiresHumanApproval: false,
+              approvedByStaffId: staff.id,
+              approvedAt: now,
+              scheduledByStaffId: staff.id,
+              updatedAt: now,
+            }
+          : {
+              scheduledFor: null,
+              sendMode: "review_required",
+              requiresHumanApproval: true,
+              approvedByStaffId: null,
+              approvedAt: null,
+              scheduledByStaffId: null,
+              updatedAt: now,
+            },
+      )
+      .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)));
+
+    revalidatePath("/email-queue");
+    revalidatePath("/inbox");
+    return { ok: true, data: { scheduledFor: scheduledFor ? scheduledFor.toISOString() : null } };
+  } catch (err) {
+    logger.error({ err, draftId }, "scheduleDraftSend failed");
+    return { ok: false, error: "Couldn't schedule the email." };
   }
 }
 
@@ -523,6 +626,9 @@ async function sendDraftAsUser(input: {
   if (toAddresses.length === 0) {
     return { ok: false, error: "Add at least one recipient." };
   }
+  // P0-4: block T11 send (interactive AND cron) until the info sheet exists.
+  const t11Block = await t11BlockReason(draft.touchType, draft.venueEventId);
+  if (t11Block) return { ok: false, error: t11Block };
 
   const fd = new FormData();
   fd.set("fromAccountId", draft.connectedAccountId);

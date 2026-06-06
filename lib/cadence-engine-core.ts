@@ -29,6 +29,35 @@ export const DEFAULT_HARD_CAP = 6;
 
 const DAY_MS = 86_400_000;
 
+/**
+ * The six real cold/warm cadence touch kinds. These are the ONLY touch_kind
+ * values that represent an automated cadence touch and may be logged to
+ * venue_campaign_touch_log as a cadence touch. Anything else (a cadence_state
+ * like "cold_pending_touch_1", a lifecycle/operational/custom send, or an
+ * unknown string) is NOT a cadence touch and must not increment the counters.
+ * [ReferenceDoc 6.1 + 6.4]
+ */
+export const CADENCE_TOUCH_KINDS = [
+  "cold_touch_1",
+  "cold_touch_2",
+  "cold_touch_3",
+  "warm_nudge_1",
+  "warm_nudge_2",
+  "warm_nudge_3",
+] as const;
+
+export type CadenceTouchKind = (typeof CADENCE_TOUCH_KINDS)[number];
+
+const CADENCE_TOUCH_KIND_SET: ReadonlySet<string> = new Set(CADENCE_TOUCH_KINDS);
+
+/**
+ * True only for the six real cold/warm cadence touch kinds. Pure guard so the
+ * send path can refuse to log a cadence touch for an uncadenced send.
+ */
+export function isCadenceTouchKind(s: string): s is CadenceTouchKind {
+  return CADENCE_TOUCH_KIND_SET.has(s);
+}
+
 export function addDays(d: Date, days: number): Date {
   return new Date(d.getTime() + days * DAY_MS);
 }

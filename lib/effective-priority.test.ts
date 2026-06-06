@@ -55,4 +55,23 @@ describe("computeEffectivePriority", () => {
     expect(r.effective).toBe(5);
     expect(r.pivotActive).toBe(false);
   });
+
+  // Sales-pivot ranking contract (Phase 2.16): a selling Priority-4 city inside
+  // the window must outrank a quiet Priority-1 city -- i.e. a LOWER (better)
+  // effective number -- so the call queue works it first.
+  it("a selling Priority-4 city outranks a quiet Priority-1 city (lower effective)", () => {
+    const sellingP4 = computeEffectivePriority({
+      staticPriority: 4,
+      ticketsSold: 35,
+      daysToEvent: 14,
+    });
+    const quietP1 = computeEffectivePriority({
+      staticPriority: 1,
+      ticketsSold: 0,
+      daysToEvent: 14,
+    });
+    expect(sellingP4.effective).toBe(2);
+    expect(quietP1.effective).toBe(3);
+    expect(sellingP4.effective).toBeLessThan(quietP1.effective);
+  });
 });

@@ -2,6 +2,7 @@ import {
   CROSS_DOMAIN_FLOOR_DAYS,
   addDays,
   checkFloors,
+  isCadenceTouchKind,
   planFromState,
   terminalStateFor,
 } from "@/lib/cadence-engine-core";
@@ -45,6 +46,24 @@ describe("planFromState warm nudges [ReferenceDoc 6.4]", () => {
   it("nudge 3 sent -> stalled-warm (exhausted)", () => {
     expect(planFromState("warm_nudge_3_sent", T0)).toBeNull();
     expect(terminalStateFor("warm_nudge_3_sent")).toBe("stalled_warm");
+  });
+});
+
+describe("isCadenceTouchKind [P0-2 cadence-touch guard]", () => {
+  it("accepts the six real cold/warm cadence touch kinds", () => {
+    expect(isCadenceTouchKind("cold_touch_1")).toBe(true);
+    expect(isCadenceTouchKind("cold_touch_2")).toBe(true);
+    expect(isCadenceTouchKind("cold_touch_3")).toBe(true);
+    expect(isCadenceTouchKind("warm_nudge_1")).toBe(true);
+    expect(isCadenceTouchKind("warm_nudge_2")).toBe(true);
+    expect(isCadenceTouchKind("warm_nudge_3")).toBe(true);
+  });
+
+  it("rejects cadence_state values, unknown codes, and empty/operational strings", () => {
+    expect(isCadenceTouchKind("cold_pending_touch_1")).toBe(false);
+    expect(isCadenceTouchKind("T9")).toBe(false);
+    expect(isCadenceTouchKind("")).toBe(false);
+    expect(isCadenceTouchKind("lifecycle")).toBe(false);
   });
 });
 

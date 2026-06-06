@@ -59,7 +59,13 @@ import {
   listComposeContext,
   resolveRecipientNames,
 } from "../../_actions/compose-and-send";
-import { deleteDraft, queueColdSend, sendDraft, upsertDraft } from "../../_actions/email-drafts";
+import {
+  deleteDraft,
+  queueColdSend,
+  scheduleDraftSend,
+  sendDraft,
+  upsertDraft,
+} from "../../_actions/email-drafts";
 import { type EnginePickResult, pickTemplateForComposer } from "../../_actions/engine-pick";
 import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
@@ -823,11 +829,35 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     }).then((res) => {
       if (res.ok) setStatus(instance.id, "saved", res.data.updatedAt);
     });
+    // P0-1: explicitly approve the scheduled send (upsert/autosave never does).
+    void scheduleDraftSend(instance.id, iso);
     toast.show({
       kind: "success",
       message: `Scheduled to send ${new Date(iso).toLocaleString("en-US")}.`,
     });
     close(instance.id);
+  }
+
+  /**
+   * Composer "Schedule send ..." (and "Clear schedule"). Sets the store field,
+   * then explicitly approves (or clears) the scheduled send via the dedicated
+   * action -- autosave alone NEVER approves a send, so opening a review-required
+   * engine draft can't make it auto-send. (P0-1.)
+   */
+  function handleScheduleSend(iso: string | null) {
+    setField(instance.id, { scheduledFor: iso });
+    void scheduleDraftSend(instance.id, iso).then((res) => {
+      if (res.ok) {
+        toast.show({
+          kind: "success",
+          message: iso
+            ? `Scheduled to send ${new Date(iso).toLocaleString("en-US")}.`
+            : "Schedule cleared -- back to review required.",
+        });
+      } else {
+        toast.show({ kind: "error", message: res.error ?? "Couldn't schedule." });
+      }
+    });
   }
 
   function handleSaveAsDraft() {
@@ -1509,7 +1539,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             pending={sending || undoActive}
             scheduledFor={instance.scheduledFor}
             onSendNow={handleSendNow}
-            onSchedule={(iso) => setField(instance.id, { scheduledFor: iso })}
+            onSchedule={handleScheduleSend}
             onQueue={instance.composeMode === "new" ? handleQueue : undefined}
             onSendTest={handleSendTest}
             onSaveAsDraft={handleSaveAsDraft}

@@ -32,7 +32,7 @@ import {
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
 import { type StaffRole, hasMinimumRole } from "@/lib/auth";
 import { checkCadenceFloors, recordTouch } from "@/lib/cadence-engine";
-import { planFromState } from "@/lib/cadence-engine-core";
+import { isCadenceTouchKind, planFromState } from "@/lib/cadence-engine-core";
 import { decideCadenceGate } from "@/lib/cadence-gate";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
@@ -892,7 +892,10 @@ export async function composeAndSendImpl(
   // Record the cadence touch (Phase 1.11): logs venue_campaign_touch_log (the
   // floor's data source) and advances the thread's cadence_state. Best-effort;
   // only for venue-attributed campaign sends. The touch number is derived from
-  // the thread's current cadence_state (a fresh thread -> cold touch 1).
+  // the thread's current cadence_state. We log ONLY for genuine cold/warm
+  // cadence touches: a thread with no/unknown cadence_state, or a
+  // lifecycle/operational/custom send that happens to be venue+campaign
+  // attributed, must NOT increment the cadence counters (P0-2).
   if (venueId && sendCampaignId) {
     try {
       const [tRow] = await db
@@ -900,15 +903,22 @@ export async function composeAndSendImpl(
         .from(emailThreads)
         .where(eq(emailThreads.id, threadId))
         .limit(1);
-      const current = tRow?.cadenceState ?? "cold_pending_touch_1";
-      const touchKind = planFromState(current, new Date())?.touchKind ?? "cold_touch_1";
-      await recordTouch({
-        venueId,
-        campaignId: sendCampaignId,
-        sendingAliasId: fromAccountId,
-        sendingOutreachBrandId: sendOutreachBrandId ?? "",
-        touchKind,
-      });
+      const current = tRow?.cadenceState ?? null;
+      const derived = current ? (planFromState(current, new Date())?.touchKind ?? null) : null;
+      if (derived && isCadenceTouchKind(derived)) {
+        await recordTouch({
+          venueId,
+          campaignId: sendCampaignId,
+          sendingAliasId: fromAccountId,
+          sendingOutreachBrandId: sendOutreachBrandId ?? "",
+          touchKind: derived,
+        });
+      } else {
+        logger.warn(
+          { threadId, venueId, derived },
+          "skipping cadence touch: not a cold/warm cadence send",
+        );
+      }
     } catch (err) {
       logger.error({ err, threadId, venueId }, "composeAndSend: recordTouch failed");
     }

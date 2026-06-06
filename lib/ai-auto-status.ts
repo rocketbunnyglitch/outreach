@@ -24,14 +24,39 @@ import "server-only";
  *                                            thread now" is the
  *                                            operator's mental
  *                                            model)
- *   decline             → declined
+ *   decline             → declined            (this is the cold-pipeline
+ *                                            "declined-this-campaign"
+ *                                            signal; the venue stays
+ *                                            eligible next campaign --
+ *                                            we never set relationship
+ *                                            'bad' from a decline)
  *   unsubscribe         → do_not_contact
+ *   stalled_warm        → (no cold-status change — there is no cold
+ *                          status for "went quiet"; the cadence-level
+ *                          stop-this-campaign transition is the
+ *                          operator-gated applyQuickAction's job, and
+ *                          downgrade rules would block it anyway)
+ *   cancelled_by_them   → (no update — cancellation stays neutral;
+ *                          the cancellation flow + operator handle it.
+ *                          NEVER auto-bad. Reference Doc 7.16.4)
+ *   callback_requested  → called
  *   auto_reply          → (no update — vacation responder etc.)
  *   spam                → (no update — leave the row as-is so the
  *                          operator can decide)
  *   question            → (no update — questions don't change
  *                          status; the operator still needs to
  *                          reply and decide)
+ *
+ * SCOPE NOTE -- cadence_state vs cold_outreach_status:
+ *   email_threads.cadence_state ('declined_this_campaign',
+ *   'stalled_warm', 'cancelled_by_them', 'opt_out_permanent') is a
+ *   SEPARATE column from cold_outreach_entries.status. Reference Doc
+ *   8.3 marks those cadence transitions "surface for operator
+ *   confirmation," and CLAUDE.md keeps terminal flips human-gated --
+ *   they are written by the operator-driven applyQuickAction
+ *   (app/(admin)/inbox/_actions.ts), NOT auto. This module
+ *   deliberately does NOT auto-write cadence_state; it only mirrors
+ *   the classification onto the cold-pipeline status field.
  *
  * Guardrails:
  *   - AI_AUTO_STATUS_ENABLED env flag (kill switch)
@@ -40,8 +65,10 @@ import "server-only";
  *     we don't move it back. The mapping below ONLY applies when
  *     the entry's current status is "less progressed" than the
  *     suggested target.
- *   - Confidence threshold: 0.7. Below that, leave the status as
- *     is — the classification is too uncertain.
+ *   - Confidence threshold: 0.9 (Reference Doc 8.4 -- the engine
+ *     auto-acts only at >= 90% confidence; raised from 0.7 to align
+ *     the single auto-act floor across all auto state changes).
+ *     Below that, leave the status as is and let the operator triage.
  *   - Only one update per (entry, classification) — if the same
  *     classification arrives twice, the second is a no-op (status
  *     would already be the target).
@@ -74,8 +101,10 @@ const PROGRESSION_ORDER: Record<string, number> = {
   do_not_contact: 7,
 };
 
-/** Confidence below this leaves the status alone. */
-const MIN_CONFIDENCE = 0.7;
+/** Confidence below this leaves the status alone. Reference Doc 8.4: the
+ *  engine auto-acts only at >= 0.90 (raised from 0.7 so every auto state
+ *  change shares the single 90% floor). */
+const MIN_CONFIDENCE = 0.9;
 
 /** Classification → target cold-outreach status. Null = no change. */
 function mapClassificationToStatus(classification: string | null): string | null {
@@ -93,6 +122,11 @@ function mapClassificationToStatus(classification: string | null): string | null
     case "auto_reply":
     case "spam":
     case "question":
+    // stalled_warm + cancelled_by_them: no cold-status change. The cadence-level
+    // transitions are operator-gated (see SCOPE NOTE above); cancellation stays
+    // neutral and is never auto-bad (Reference Doc 7.16.4).
+    case "stalled_warm":
+    case "cancelled_by_them":
     case "unclassified":
     case null:
       return null;

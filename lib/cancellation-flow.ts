@@ -29,7 +29,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { renderTemplate } from "@/lib/template-render";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 export interface CancellationArgs {
   venueEventId: string;
@@ -86,18 +86,14 @@ export async function triggerVenueCancellation(
       })
       .where(eq(venueEvents.id, args.venueEventId));
 
-    // 2. (4.3) Stop downstream lifecycle emails -- delete this venue's unsent
-    // scheduled drafts (the T13-T17 sequence). Manual unscheduled drafts are
-    // left alone.
+    // 2. (4.3 + P0-5) Stop downstream lifecycle emails for THIS NIGHT ONLY --
+    // scope the delete to the cancelled venue_event so a multi-night venue keeps
+    // its other nights' drafts. Deletes this night's unsent lifecycle drafts
+    // (review + scheduled). Bundled drafts owned by the anchor night are rebuilt
+    // below if other nights remain. Drafts with no venue_event are left alone.
     const delDrafts = await tx
       .delete(emailDrafts)
-      .where(
-        and(
-          eq(emailDrafts.venueId, ve.venueId),
-          isNull(emailDrafts.sentAt),
-          sql`${emailDrafts.scheduledFor} IS NOT NULL`,
-        ),
-      )
+      .where(and(eq(emailDrafts.venueEventId, args.venueEventId), isNull(emailDrafts.sentAt)))
       .returning({ id: emailDrafts.id });
     draftsCancelled = delDrafts.length;
 
@@ -115,6 +111,22 @@ export async function triggerVenueCancellation(
       )
       .returning({ id: tasks.id });
     tasksCancelled = cancTasks.length;
+
+    // 3b. (P0-5) Open the slot for replacement. The freed slot is already "open"
+    // (the confirmed-filter excludes cancelled venue_events); this auto task is
+    // the needs-replacement signal in the city lead's worklist.
+    await tx.insert(tasks).values({
+      title: `Find replacement: ${ve.venueName}`,
+      description: `${ve.venueName} cancelled (${args.reason}). Its slot is open and needs a replacement venue.`,
+      source: "auto",
+      status: "pending",
+      targetType: "venue_event",
+      targetId: args.venueEventId,
+      assignedStaffId: ve.leadStaffId ?? null,
+      dueAt: new Date(),
+      createdBy: args.byStaffId,
+      updatedBy: args.byStaffId,
+    });
   });
 
   // 4. (4.4) Draft the T16 cancellation email to the venue (review + send).
@@ -152,11 +164,56 @@ export async function triggerVenueCancellation(
         bodyHtml: t16.bodyHtml ? renderTemplate(t16.bodyHtml, ctx).output : null,
         venueId: ve.venueId,
         cityCampaignId: ve.cityCampaignId,
+        venueEventId: args.venueEventId,
         templateId: t16.id,
         scheduledFor: null,
+        // P0-1: T16 is a venue email -- review-required (a human sends it).
+        sendMode: "review_required",
+        requiresHumanApproval: true,
+        recipientType: "venue",
+        touchType: "T16",
       })
       .returning({ id: emailDrafts.id });
     t16DraftId = inserted?.id ?? null;
+  }
+
+  // (P0-5) If other confirmed nights remain for this venue + campaign, rebuild
+  // the bundled lifecycle against the earliest remaining night -- so cancelling
+  // the night that anchored the bundled T9-T17 set does not strand the other
+  // nights. scheduleLifecycle is idempotent (delete-then-insert per template).
+  try {
+    const [remaining] = await db
+      .select({ venueEventId: venueEvents.id })
+      .from(venueEvents)
+      .innerJoin(events, eq(events.id, venueEvents.eventId))
+      .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+      .where(
+        and(
+          eq(venueEvents.venueId, ve.venueId),
+          eq(cityCampaigns.campaignId, ve.campaignId),
+          eq(venueEvents.status, "confirmed"),
+        ),
+      )
+      .orderBy(asc(events.eventDate))
+      .limit(1);
+    if (remaining) {
+      const { scheduleLifecycle } = await import("@/lib/lifecycle-scheduler");
+      const { resolveEngineRole } = await import("@/lib/engine-roles");
+      const ownerStaffId =
+        (await resolveEngineRole(args.teamId, "lifecycle_owner")) ??
+        ve.leadStaffId ??
+        args.byStaffId;
+      await scheduleLifecycle({
+        venueEventId: remaining.venueEventId,
+        ownerStaffId,
+        teamId: args.teamId,
+      });
+    }
+  } catch (err) {
+    logger.error(
+      { err, venueEventId: args.venueEventId },
+      "cancellation: lifecycle rebuild for remaining nights failed",
+    );
   }
 
   // 5. (4.5) Notify the city lead (when it's not the operator who cancelled).
