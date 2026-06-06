@@ -183,7 +183,11 @@ export default async function InboxPage({ searchParams }: Props) {
   // campaign" (?scope=campaign). Send authority is unaffected (own-only).
   const visScope: VisibilityScope =
     params.scope === "campaign" ? "campaign" : params.allCampaigns === "1" ? "team" : "mine";
-  const mine = visScope === "mine";
+  // The "mine" owner-restriction applies ONLY when the operator hasn't
+  // explicitly picked inboxes in the AccountSwitcher (?accounts=). An explicit
+  // pick (e.g. a teammate's inbox) wins, so viewing another person's inbox
+  // shows their threads instead of intersecting with "mine" to nothing.
+  const mine = visScope === "mine" && (accountIds?.length ?? 0) === 0;
   // Only resolve the global campaign when the user explicitly turned ON
   // campaign scope (and didn't already narrow to a specific city campaign via
   // ?campaign=). In the default team scope, no campaign filter is applied, so
@@ -253,11 +257,11 @@ export default async function InboxPage({ searchParams }: Props) {
     loadVisibleAccounts({
       currentUserId: currentStaff.id,
       currentTeamId: currentStaff.teamId,
-      // Visibility follows the top scope toggle, not role: in team /
-      // campaign mode every operator can SEE the team's accounts (to
-      // avoid duplicate outreach); in "mine" mode the switcher shows
-      // only their own. SEND authority stays role/ownership-gated below.
-      canSeeAllTeamAccounts: visScope !== "mine",
+      // The AccountSwitcher always lists EVERY team inbox so an operator can
+      // pick a teammate's inbox to view (the thread list still defaults to
+      // their own via `mine`; picking an inbox overrides that). Viewing is
+      // intentionally broad; SEND authority stays role/ownership-gated below.
+      canSeeAllTeamAccounts: true,
       // SEND authority is narrower than visibility: only admins get
       // the cross-inbox send override (lead visibility != send).
       isAdmin: hasMinimumRole(currentStaff, "admin"),
