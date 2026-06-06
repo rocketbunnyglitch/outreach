@@ -79,8 +79,18 @@ interface Props {
      * selected in the top-nav switcher, matching the rest of
      * the app. Operators who want the legacy "show everything"
      * behavior set `?allCampaigns=1`.
+     *
+     * NOTE: as of the "default scope off" change, the inbox DEFAULT is already
+     * all-campaigns/all-team -- `allCampaigns` is now just a legacy alias for
+     * that default. Narrowing to the global campaign is opt-in via `scope`.
      */
     allCampaigns?: string;
+    /**
+     * "campaign" -> opt IN to scoping the inbox to the global campaign
+     * switcher (the "This campaign" toggle). Absent (default) = no campaign
+     * scope; the inbox shows every campaign on the team.
+     */
+    scope?: string;
   }>;
 }
 
@@ -167,18 +177,24 @@ export default async function InboxPage({ searchParams }: Props) {
   // fetchInboxThreads + fetchFolderCounts. The data layer skips
   // the broad filter when the narrow one is also set (see
   // lib/inbox-data.ts).
-  const allCampaignsExplicit = params.allCampaigns === "1";
-  // Visibility scope for the top toggle. mine = own accounts only (the
-  // `mine` filter restricts to ownerUserId = me, so ?accounts= can't widen
-  // it); team = all team accounts, all campaigns; campaign = team accounts
-  // scoped to the active campaign. Send authority is unaffected (own-only).
-  const visScope: VisibilityScope = mine ? "mine" : allCampaignsExplicit ? "team" : "campaign";
-  // Hoist the full campaign context so we can use it for BOTH the
-  // scope filter AND the visible banner below. When the operator
-  // narrowed via ?campaign= or opted out via ?allCampaigns=1, we
-  // don't call getCurrentCampaign() at all — neither feature applies.
+  // Visibility scope (top toggle). DEFAULT = "team": every team inbox, ALL
+  // campaigns. The inbox no longer auto-scopes to the global campaign switcher
+  // -- a scope is OPT-IN. Users switch to "Mine" (?mine=1, own accounts) or
+  // "This campaign" (?scope=campaign, applies the global campaign). Send
+  // authority is unaffected (own-only). `?allCampaigns=1` is accepted as a
+  // legacy alias for the default team scope.
+  const visScope: VisibilityScope = mine
+    ? "mine"
+    : params.scope === "campaign"
+      ? "campaign"
+      : "team";
+  // Only resolve the global campaign when the user explicitly turned ON
+  // campaign scope (and didn't already narrow to a specific city campaign via
+  // ?campaign=). In the default team scope, no campaign filter is applied, so
+  // the inbox shows everything across all campaigns. The banner below keys off
+  // this context too (only shows when campaign scope is active).
   const currentCampaignContext =
-    !params.campaign && !allCampaignsExplicit ? await getCurrentCampaign() : null;
+    visScope === "campaign" && !params.campaign ? await getCurrentCampaign() : null;
   const scopeCampaignId: string | undefined = currentCampaignContext?.campaign.id;
 
   const [
