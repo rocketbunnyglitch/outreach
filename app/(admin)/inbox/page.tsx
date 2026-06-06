@@ -121,11 +121,10 @@ export default async function InboxPage({ searchParams }: Props) {
   const INBOX_PAGE_SIZE = 50;
   const pageNum = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
-  // "?mine=1" — show only threads flowing through MY OWN connected
-  // accounts (the new inbox owner toggle). Distinct from the
-  // existing "staff=mine" filter, which filters by the
-  // thread.assignedStaffId (who's working it). Both can be set.
-  const mine = params.mine === "1";
+  // INBOX OWNER scope ("mine") = only threads flowing through the operator's
+  // OWN connected accounts. This is the DEFAULT view; `mine` is derived from
+  // visScope below. Distinct from the "staff=mine" filter, which filters by
+  // thread.assignedStaffId (who's WORKING it).
 
   // "mine" → current user id; explicit id → that id; otherwise no filter.
   // This filters by who the thread is ASSIGNED to.
@@ -177,17 +176,14 @@ export default async function InboxPage({ searchParams }: Props) {
   // fetchInboxThreads + fetchFolderCounts. The data layer skips
   // the broad filter when the narrow one is also set (see
   // lib/inbox-data.ts).
-  // Visibility scope (top toggle). DEFAULT = "team": every team inbox, ALL
-  // campaigns. The inbox no longer auto-scopes to the global campaign switcher
-  // -- a scope is OPT-IN. Users switch to "Mine" (?mine=1, own accounts) or
-  // "This campaign" (?scope=campaign, applies the global campaign). Send
-  // authority is unaffected (own-only). `?allCampaigns=1` is accepted as a
-  // legacy alias for the default team scope.
-  const visScope: VisibilityScope = mine
-    ? "mine"
-    : params.scope === "campaign"
-      ? "campaign"
-      : "team";
+  // Visibility scope (top toggle). DEFAULT = "mine": the operator lands on
+  // THEIR OWN inbox -- all of their connected accounts, all campaigns, NO
+  // campaign scoping. Nobody has to pick a scope to see their own mail. Wider
+  // views are OPT-IN via the toggle: "All team" (?allCampaigns=1) or "This
+  // campaign" (?scope=campaign). Send authority is unaffected (own-only).
+  const visScope: VisibilityScope =
+    params.scope === "campaign" ? "campaign" : params.allCampaigns === "1" ? "team" : "mine";
+  const mine = visScope === "mine";
   // Only resolve the global campaign when the user explicitly turned ON
   // campaign scope (and didn't already narrow to a specific city campaign via
   // ?campaign=). In the default team scope, no campaign filter is applied, so

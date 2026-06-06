@@ -44,10 +44,10 @@ export function InboxVisibilityToggle({ scope }: { scope: VisibilityScope }) {
     p.delete("mine");
     p.delete("allCampaigns");
     p.delete("scope");
-    if (next === "mine") p.set("mine", "1");
+    if (next === "team") p.set("allCampaigns", "1");
     else if (next === "campaign") p.set("scope", "campaign");
-    // "team" = no scope params -> the DEFAULT (all team inboxes, all campaigns).
-    // Scoping is opt-in: a user switches to Mine / This campaign to turn it on.
+    // "mine" = no scope params -> the DEFAULT (your own inbox; no one has to
+    // pick a scope to see their mail).
     const qs = p.toString();
     router.push(qs ? `/inbox?${qs}` : "/inbox");
   }
