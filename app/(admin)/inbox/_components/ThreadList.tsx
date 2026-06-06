@@ -215,6 +215,9 @@ function ThreadRow({
           <p
             className={cn(
               "min-w-0 flex-1 truncate text-[13px]",
+              // Gmail single-line view: sender shrinks to a fixed slice so the
+              // subject + snippet can sit on the SAME line (below).
+              "[[data-inbox-view=gmail]_&]:max-w-[42%] [[data-inbox-view=gmail]_&]:flex-none",
               isUnread
                 ? "font-semibold text-zinc-900 dark:text-zinc-100"
                 : "font-normal text-zinc-700 dark:text-zinc-300",
@@ -222,6 +225,26 @@ function ThreadRow({
           >
             {thread.lastSenderName ?? thread.venueName ?? "Unassigned"}
           </p>
+          {/* Gmail single-line view ONLY: subject + snippet inline on line 1,
+              right after the sender. Hidden in Outlook (3-pane) view, where
+              the subject renders on its own line below. */}
+          {(thread.subject || thread.snippet) && (
+            <span className="hidden min-w-0 flex-1 truncate text-xs [[data-inbox-view=gmail]_&]:block">
+              {thread.subject && (
+                <span
+                  className={cn(
+                    isUnread
+                      ? "font-semibold text-zinc-800 dark:text-zinc-200"
+                      : "text-zinc-600 dark:text-zinc-400",
+                  )}
+                >
+                  {thread.subject}
+                </span>
+              )}
+              {thread.subject && thread.snippet && <span className="text-zinc-400"> - </span>}
+              {thread.snippet && <span className="text-zinc-500">{thread.snippet}</span>}
+            </span>
+          )}
           {/* Fixed-width right gutter so the timestamp -> hover-actions swap
               doesn't shift line 1. */}
           <div className="flex shrink-0 justify-end" style={{ minWidth: "5.5rem" }}>
@@ -245,9 +268,10 @@ function ThreadRow({
           </div>
         </div>
 
-        {/* Line 2: subject + muted snippet on one truncating line (Gmail). */}
+        {/* Line 2: subject + muted snippet on one truncating line. Hidden in
+            gmail view (it's inlined on line 1 there for the single-line look). */}
         {(thread.subject || thread.snippet) && (
-          <p className="mt-0.5 truncate pl-7 text-xs leading-5">
+          <p className="mt-0.5 truncate pl-7 text-xs leading-5 [[data-inbox-view=gmail]_&]:hidden">
             {thread.subject && (
               <span
                 className={cn(
@@ -264,7 +288,7 @@ function ThreadRow({
           </p>
         )}
 
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-7">
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-7 [[data-inbox-view=gmail]_&]:hidden">
           {/* Low-signal metadata (classification, venue, city, campaign,
               owner mailbox) is revealed on ROW HOVER to keep the resting
               row clean -- the alert badges + labels below stay always

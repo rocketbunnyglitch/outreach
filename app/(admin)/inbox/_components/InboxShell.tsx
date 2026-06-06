@@ -200,6 +200,9 @@ export function InboxShell({
 
   return (
     <div
+      // Drives the gmail-vs-outlook row density via CSS ancestor variants
+      // in the thread rows (single-line list in gmail view).
+      data-inbox-view={view}
       className={cn(
         "relative flex animate-[fade-in_300ms_ease-out] flex-col",
         // Pin to the viewport so the thread list + reading pane scroll
