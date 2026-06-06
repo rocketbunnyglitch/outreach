@@ -362,39 +362,12 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
       case "inbox":
         // Gmail "Inbox": active conversations with at least one
         // inbound message; not deleted, not archived, not snoozed.
-        //
-        // De-noise (operator request): keep pure Gmail newsletter noise
-        // (Promotions / Social / Updates) OUT of the default Inbox so real
-        // venue/partnership mail isn't buried. STRICTLY scoped so it can never
-        // hide an operational thread -- only excludes a thread that is ALL of:
-        //   - inbound-only (we never replied; mixed/outbound stay)
-        //   - has no matched venue
-        //   - has no operator classification (or unclassified/spam/auto_reply)
-        //   - carries a Promotions/Social/Updates Gmail category label
-        //   - has NO message Gmail tagged CATEGORY_PERSONAL
-        // Newsletters remain fully visible under "All Mail". Retroactive (no
-        // backfill needed) and applies to every account.
+        // No category filtering -- promotions/social/updates show like Gmail.
         return and(
           isNull(emailThreads.deletedAt),
           or(eq(emailThreads.direction, "inbound"), eq(emailThreads.direction, "mixed")),
           ne(emailThreads.state, "archived"),
           or(isNull(emailThreads.snoozeUntil), sql`${emailThreads.snoozeUntil} <= now()`),
-          sql`NOT (
-            ${emailThreads.direction} = 'inbound'
-            AND ${emailThreads.venueId} IS NULL
-            AND (${emailThreads.classification} IS NULL
-                 OR ${emailThreads.classification} IN ('unclassified','spam','auto_reply'))
-            AND EXISTS (
-              SELECT 1 FROM email_messages m
-              WHERE m.thread_id = ${emailThreads.id}
-                AND m.gmail_labels && ARRAY['CATEGORY_PROMOTIONS','CATEGORY_SOCIAL','CATEGORY_UPDATES']
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM email_messages m2
-              WHERE m2.thread_id = ${emailThreads.id}
-                AND 'CATEGORY_PERSONAL' = ANY(m2.gmail_labels)
-            )
-          )`,
         );
       case "sent":
         // Threads we've sent at least one outbound on. Not deleted.
@@ -885,23 +858,6 @@ export async function fetchFolderCounts(opts: {
           AND direction IN ('inbound','mixed')
           AND state <> 'archived'
           AND (snooze_until IS NULL OR snooze_until <= now())
-          -- Match the Inbox folder de-noise: exclude pure newsletter threads
-          -- (see folderPredicate "inbox"). Never excludes venue/personal mail.
-          AND NOT (
-            direction = 'inbound'
-            AND venue_id IS NULL
-            AND (classification IS NULL OR classification IN ('unclassified','spam','auto_reply'))
-            AND EXISTS (
-              SELECT 1 FROM email_messages m
-              WHERE m.thread_id = scoped.id
-                AND m.gmail_labels && ARRAY['CATEGORY_PROMOTIONS','CATEGORY_SOCIAL','CATEGORY_UPDATES']
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM email_messages m2
-              WHERE m2.thread_id = scoped.id
-                AND 'CATEGORY_PERSONAL' = ANY(m2.gmail_labels)
-            )
-          )
       )::int AS inbox,
       COUNT(*) FILTER (
         WHERE deleted_at IS NULL
