@@ -172,6 +172,10 @@ export interface ThreadListFilter {
    * up a thread.
    */
   mine?: boolean;
+  /** 1-based page for offset pagination (Gmail-style, default 1). */
+  page?: number;
+  /** Rows per page (default 50). Capped at 200. */
+  pageSize?: number;
   assignedStaffId?: string;
   /**
    * Narrow to threads on this specific city_campaign (campaign × city
@@ -323,6 +327,9 @@ export interface InboxThreadRow {
  */
 export async function fetchInboxThreads(filter: ThreadListFilter): Promise<InboxThreadRow[]> {
   const slaCutoff = new Date(Date.now() - INBOX_SLA_HOURS * 3_600_000);
+  // Gmail-style offset pagination: 50/page by default.
+  const pageSize = Math.min(Math.max(filter.pageSize ?? 50, 1), 200);
+  const pageOffset = (Math.max(filter.page ?? 1, 1) - 1) * pageSize;
 
   // Aliased join target for the connected-account OWNER (the staff
   // member whose Gmail this is). Different from the existing
@@ -617,7 +624,8 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     // time (stable), so outbound-only cold threads don't jump around as the
     // operator sends. last_message_at still drives the relative-time display.
     .orderBy(sql`COALESCE(${emailThreads.lastInboundAt}, ${emailThreads.createdAt}) DESC`)
-    .limit(200);
+    .limit(pageSize)
+    .offset(pageOffset);
 
   // Fetch the labels for all visible threads in one round trip, then
   // attach to the row. Tiny query — limited to the 200 row cap above.

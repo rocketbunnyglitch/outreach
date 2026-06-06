@@ -179,7 +179,10 @@ export function InboxShell({
     <div
       className={cn(
         "relative flex animate-[fade-in_300ms_ease-out] flex-col",
-        "min-h-[calc(100vh-8rem)] lg:min-h-[calc(100vh-6rem)]",
+        // Pin to the viewport so the thread list + reading pane scroll
+        // INTERNALLY (Gmail-style) instead of growing the whole page.
+        // 100dvh accounts for mobile browser chrome.
+        "h-[calc(100dvh-8rem)] lg:h-[calc(100dvh-6rem)]",
         "card-surface overflow-hidden p-0",
         "-mx-6 -mt-6 max-lg:rounded-none max-lg:border-x-0 sm:-mx-10 sm:-mt-10",
         "lg:-mx-6 lg:-my-6",

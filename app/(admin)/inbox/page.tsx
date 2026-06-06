@@ -23,6 +23,7 @@ import { DraftList } from "./_components/DraftList";
 import { FolderList } from "./_components/FolderList";
 import { InboxFilterBar } from "./_components/InboxFilterBar";
 import { InboxLiveRefresh } from "./_components/InboxLiveRefresh";
+import { InboxPagination } from "./_components/InboxPagination";
 import { InboxPresenceBar } from "./_components/InboxPresenceBar";
 import { InboxRailTrigger } from "./_components/InboxRail";
 import { InboxScopeBar } from "./_components/InboxScopeBar";
@@ -47,6 +48,8 @@ interface Props {
     alias?: string;
     /** Free-text search across subject, snippet, venue name, sender. */
     q?: string;
+    /** 1-based page for the 50-per-page thread list. */
+    page?: string;
     /**
      * "1" -> show only threads flowing through the current user's
      * own connected_accounts rows. Default (absent) = show all
@@ -105,6 +108,8 @@ export default async function InboxPage({ searchParams }: Props) {
   const { staff: currentStaff } = await requireStaff();
 
   const folder: InboxFolder = isInboxFolder(params.folder) ? params.folder : "inbox";
+  const INBOX_PAGE_SIZE = 50;
+  const pageNum = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
   // "?mine=1" — show only threads flowing through MY OWN connected
   // accounts (the new inbox owner toggle). Distinct from the
@@ -205,6 +210,8 @@ export default async function InboxPage({ searchParams }: Props) {
       unmatchedOnly: params.unmatched === "1",
       mentionedOnly: params.mentioned === "1",
       search: params.q,
+      page: pageNum,
+      pageSize: INBOX_PAGE_SIZE,
     }),
     fetchFolderCounts({
       currentTeamId: currentStaff.teamId,
@@ -373,14 +380,22 @@ export default async function InboxPage({ searchParams }: Props) {
                   folderLabel={FOLDER_LABELS[folder]}
                 />
               ) : (
-                <ThreadListWithBulk
-                  threads={threads}
-                  activeThreadId={null}
-                  folderLabel={FOLDER_LABELS[folder]}
-                  preservedQuery={preservedQuery.toString()}
-                  isTrashView={folder === "trash"}
-                  isArchiveView={folder === "archive"}
-                />
+                <>
+                  <ThreadListWithBulk
+                    threads={threads}
+                    activeThreadId={null}
+                    folderLabel={FOLDER_LABELS[folder]}
+                    preservedQuery={preservedQuery.toString()}
+                    isTrashView={folder === "trash"}
+                    isArchiveView={folder === "archive"}
+                  />
+                  <InboxPagination
+                    page={pageNum}
+                    hasMore={threads.length >= INBOX_PAGE_SIZE}
+                    pageSize={INBOX_PAGE_SIZE}
+                    preservedQuery={preservedQuery.toString()}
+                  />
+                </>
               )}
               {/* Mounts at the bottom so it's always rendered but
                 contributes no layout. j/k navigation + help. */}
