@@ -177,6 +177,14 @@ export async function handoffColdOutreach(input: {
       };
     }
 
+    // Constrain the UPDATE to the SINGLE selected thread id (P0-2). The
+    // earlier venue x campaign x state WHERE would mutate EVERY exhausted-cold
+    // thread for this venue x campaign -- if a venue had two exhausted cold
+    // threads, handing off one re-attributed + reset both. Targeting thread.id
+    // (the row the pre-check resolved) guarantees only the selected thread is
+    // touched; warm/confirmed/lifecycle/declined/other-exhausted threads are
+    // untouched. Re-assert the exhausted-cold state so a concurrent change
+    // can't flip a now-non-exhausted thread.
     await db
       .update(emailThreads)
       .set({
@@ -186,8 +194,7 @@ export async function handoffColdOutreach(input: {
       })
       .where(
         and(
-          eq(emailThreads.venueId, entry.venueId),
-          eq(emailThreads.cityCampaignId, entry.cityCampaignId),
+          eq(emailThreads.id, thread.id),
           eq(emailThreads.cadenceState, "cold_exhausted_ready_for_handoff"),
         ),
       );
