@@ -1364,14 +1364,18 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           onChange={({ text, html }) =>
             setField(instance.id, { bodyText: text, bodyHtml: html, userEdited: true })
           }
-          // min height keeps the reply field usable when the (now scrollable)
-          // body also shows the expanded original below it.
-          className="min-h-[10rem] flex-1"
+          // Inline reply: content-sized (no flex-1) so it GROWS with what you
+          // type and the window grows up to its cap before scrolling. Docked/
+          // fullscreen: flex-1 to fill the fixed-height window.
+          className={effectiveMode === "inline" ? "min-h-[8rem]" : "min-h-[10rem] flex-1"}
           showToolbar={toolbarOpen}
           // Gmail-style: an inline reply lands the caret in the body so
           // the operator can start typing immediately. Fresh compose
           // windows keep focus on the To field.
           autofocus={effectiveMode === "inline"}
+          // Inline reply grows with content (no internal scroll) so the
+          // window grows to its cap, Gmail-style, before any scroll.
+          autoGrow={effectiveMode === "inline"}
         />
 
         {/* Collapsed quoted-thread chip — Gmail-parity. Shows when

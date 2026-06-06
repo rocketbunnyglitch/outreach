@@ -100,6 +100,11 @@ interface Props {
    *  reply: hitting Reply lands the cursor in the body). Off by
    *  default so opening a fresh compose window doesn't steal focus. */
   autofocus?: boolean;
+  /** When true, the editor grows with its content (no internal scroll) so
+   *  the surrounding composer window can grow up to its max height before
+   *  scrolling -- Gmail's inline-reply behavior. Off = fixed-height editor
+   *  that scrolls internally (docked / fullscreen windows). */
+  autoGrow?: boolean;
 }
 
 const FONT_SIZES: Array<{ label: string; value: string }> = [
@@ -136,6 +141,7 @@ export function RichTextEditor({
   className,
   showToolbar = true,
   autofocus = false,
+  autoGrow = false,
 }: Props) {
   // Track last-emitted HTML so we don't re-seed the editor on our
   // own round-trip (which would jump the cursor to the start).
@@ -252,7 +258,11 @@ export function RichTextEditor({
           // White typing surface with dark text in BOTH themes (Gmail's
           // compose is always light) so the reply matches the white email
           // body you're reading and stays readable in dark mode.
-          "min-h-[160px] flex-1 overflow-y-auto bg-white px-3 py-2 text-sm text-zinc-900 outline-none",
+          "bg-white px-3 py-2 text-sm text-zinc-900 outline-none",
+          // autoGrow (inline reply): grow with content, no internal scroll,
+          // so the composer window grows up to its cap then scrolls. Else:
+          // fixed-height editor that scrolls internally.
+          autoGrow ? "min-h-[120px]" : "min-h-[160px] flex-1 overflow-y-auto",
         ),
       },
     },
@@ -474,7 +484,7 @@ export function RichTextEditor({
           <LinkIcon className="h-3 w-3" />
         </BubbleButton>
       </BubbleMenu>
-      <EditorContent editor={editor} className="flex-1 overflow-y-auto" />
+      <EditorContent editor={editor} className={autoGrow ? "" : "flex-1 overflow-y-auto"} />
     </div>
   );
 }
