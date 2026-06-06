@@ -131,6 +131,22 @@ function Row({ c }: { c: WorklistFloorStaffCallRow }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {c.readiness.blocker ? (
+            <span
+              title={c.readiness.blockerReason ?? "Event-day readiness blocker"}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-red-400 bg-red-100 px-2 py-0.5 font-mono text-[9px] text-red-800 uppercase tracking-[0.08em] dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
+            >
+              Blocker{c.readiness.daysToEvent != null ? ` ${c.readiness.daysToEvent}d` : ""}
+            </span>
+          ) : null}
+          {c.effectivePriority !== c.priority ? (
+            <span
+              title={c.effectiveReason || undefined}
+              className="inline-flex shrink-0 items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              P{c.priority}-&gt;P{c.effectivePriority}
+            </span>
+          ) : null}
           <ReadinessPill readiness={c.readiness} />
           {c.phoneE164 ? (
             <a

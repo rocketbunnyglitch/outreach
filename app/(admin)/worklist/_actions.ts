@@ -15,6 +15,7 @@ import {
   cityCampaigns,
   connectedAccounts,
   emailThreads,
+  tasks,
   venueDomainRelationships,
   venueEvents,
   venues,
@@ -29,7 +30,7 @@ import type { ActionResult } from "@/lib/form-utils";
 import { scheduleLifecycle } from "@/lib/lifecycle-scheduler";
 import { logger } from "@/lib/logger";
 import { buildPoliteDeclineDraft, isComebackSlotAvailable } from "@/lib/slot-decline";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -247,6 +248,53 @@ export async function recordFloorStaffCall(input: {
           { err, venueEventId: input.venueEventId },
           "floor-staff escalation notify failed",
         );
+      }
+    }
+
+    // No-answer / voicemail -> schedule an explicit dated retry for the next
+    // day (P1-2). The row also resurfaces in the worklist daily until briefed,
+    // but a dated task gives the lead a concrete reminder + calendar entry.
+    // Deduped so repeated no-answers don't pile up retries. Best-effort.
+    if (
+      updated &&
+      !updated.completedAt &&
+      (input.outcome === "no_answer" || input.outcome === "voicemail")
+    ) {
+      try {
+        const [existing] = await db
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.targetType, "venue_event"),
+              eq(tasks.targetId, input.venueEventId),
+              eq(tasks.source, "auto"),
+              inArray(tasks.status, ["pending", "in_progress"]),
+              sql`${tasks.title} LIKE 'Retry floor-staff%'`,
+            ),
+          )
+          .limit(1);
+        if (!existing) {
+          const [v] = await db
+            .select({ name: venues.name })
+            .from(venues)
+            .where(eq(venues.id, updated.venueId))
+            .limit(1);
+          await db.insert(tasks).values({
+            title: `Retry floor-staff call: ${v?.name ?? "venue"}`,
+            description: `Last attempt was "${input.outcome.replace(/_/g, " ")}". Briefing not yet confirmed -- try the venue's frontline staff again before the event.`,
+            source: "auto",
+            status: "pending",
+            targetType: "venue_event",
+            targetId: input.venueEventId,
+            assignedStaffId: staff.id,
+            dueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+            createdBy: staff.id,
+            updatedBy: staff.id,
+          });
+        }
+      } catch (err) {
+        logger.error({ err, venueEventId: input.venueEventId }, "floor-staff retry task failed");
       }
     }
 

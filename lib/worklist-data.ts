@@ -746,7 +746,12 @@ export interface WorklistFloorStaffCallRow {
   attempts: number;
   lastCallAt: string | null;
   lastOutcome: string | null;
-  /** Event-day prep readiness summary for the pill (Phase 3.13). */
+  /** Static city-campaign priority (1 highest .. 10 lowest). */
+  priority: number;
+  /** Sales-blended effective priority + reason (P1-4). */
+  effectivePriority: number;
+  effectiveReason: string;
+  /** Event-day prep readiness summary for the pill (Phase 3.13 + P1-2 blocker). */
   readiness: EventReadiness;
 }
 
@@ -769,11 +774,14 @@ export async function loadWorklistFloorStaffCalls(opts: {
       attempts: venueEvents.floorStaffCallAttempts,
       lastCallAt: venueEvents.floorStaffLastCallAt,
       lastOutcome: venueEvents.floorStaffLastCallOutcome,
+      priority: cityCampaigns.priority,
       confirmedAt: venueEvents.confirmedAt,
       twoWeekEmailSentAt: venueEvents.twoWeekEmailSentAt,
       oneWeekEmailSentAt: venueEvents.oneWeekEmailSentAt,
       threeDayCallCompletedAt: venueEvents.threeDayCallCompletedAt,
       floorStaffCallCompletedAt: venueEvents.floorStaffCallCompletedAt,
+      // Days to event for the readiness blocker (P1-2). Negative = past.
+      daysToEvent: sql<number | null>`(${events.eventDate} - now()::date)`,
     })
     .from(venueEvents)
     .innerJoin(events, eq(events.id, venueEvents.eventId))
@@ -789,34 +797,63 @@ export async function loadWorklistFloorStaffCalls(opts: {
         sql`${events.eventDate} >= now()::date`,
         sql`${events.eventDate} <= (now() + interval '4 days')::date`,
       ),
-    )
-    .orderBy(asc(events.eventDate), asc(cityCampaigns.priority));
+    );
 
-  return rows.map((r) => ({
-    venueEventId: r.venueEventId,
-    venueId: r.venueId,
-    venueName: r.venueName,
-    cityName: r.cityName ?? null,
-    eventDate: r.eventDate,
-    role: r.role,
-    slotStartTime: r.slotStartTime ?? null,
-    slotEndTime: r.slotEndTime ?? null,
-    phoneE164: r.phoneE164 ?? null,
-    outreachBrandId: r.outreachBrandId ?? null,
-    cityCampaignId: r.cityCampaignId,
-    attempts: r.attempts,
-    lastCallAt: r.lastCallAt ? r.lastCallAt.toISOString() : null,
-    lastOutcome: r.lastOutcome ?? null,
-    readiness: readinessFromRow({
+  // Sales-blended effective priority (P1-4): inside the pivot window a selling
+  // P4 city's floor call outranks a quiet P1's. Event-date proximity stays the
+  // primary sort (these are all 0-4 days out and time-critical); effective
+  // priority breaks ties within the same date.
+  const now = new Date();
+  const staticByCc = new Map(rows.map((r) => [r.cityCampaignId, r.priority]));
+  const effByCc = await loadEffectivePriorityByCityCampaign(
+    [...staticByCc.keys()],
+    staticByCc,
+    now,
+  );
+
+  const mapped = rows.map((r) => {
+    const eff = effByCc.get(r.cityCampaignId);
+    return {
       venueEventId: r.venueEventId,
-      confirmedAt: r.confirmedAt,
-      twoWeekEmailSentAt: r.twoWeekEmailSentAt,
-      oneWeekEmailSentAt: r.oneWeekEmailSentAt,
-      threeDayCallCompletedAt: r.threeDayCallCompletedAt,
-      floorStaffCallCompletedAt: r.floorStaffCallCompletedAt,
-      floorStaffCallAttempts: r.attempts,
-    }),
-  }));
+      venueId: r.venueId,
+      venueName: r.venueName,
+      cityName: r.cityName ?? null,
+      eventDate: r.eventDate,
+      role: r.role,
+      slotStartTime: r.slotStartTime ?? null,
+      slotEndTime: r.slotEndTime ?? null,
+      phoneE164: r.phoneE164 ?? null,
+      outreachBrandId: r.outreachBrandId ?? null,
+      cityCampaignId: r.cityCampaignId,
+      attempts: r.attempts,
+      lastCallAt: r.lastCallAt ? r.lastCallAt.toISOString() : null,
+      lastOutcome: r.lastOutcome ?? null,
+      priority: r.priority,
+      effectivePriority: eff?.effective ?? r.priority,
+      effectiveReason: eff?.reason ?? "",
+      readiness: readinessFromRow({
+        venueEventId: r.venueEventId,
+        confirmedAt: r.confirmedAt,
+        twoWeekEmailSentAt: r.twoWeekEmailSentAt,
+        oneWeekEmailSentAt: r.oneWeekEmailSentAt,
+        threeDayCallCompletedAt: r.threeDayCallCompletedAt,
+        floorStaffCallCompletedAt: r.floorStaffCallCompletedAt,
+        floorStaffCallAttempts: r.attempts,
+        daysToEvent: r.daysToEvent != null ? Number(r.daysToEvent) : null,
+      }),
+    };
+  });
+
+  mapped.sort((a, b) => {
+    // Blockers float to the top of their date bucket, then soonest event,
+    // then sales-blended effective priority, then most attempts.
+    if (a.eventDate !== b.eventDate) return a.eventDate < b.eventDate ? -1 : 1;
+    if (a.readiness.blocker !== b.readiness.blocker) return a.readiness.blocker ? -1 : 1;
+    if (a.effectivePriority !== b.effectivePriority)
+      return a.effectivePriority - b.effectivePriority;
+    return b.attempts - a.attempts;
+  });
+  return mapped;
 }
 
 // =========================================================================

@@ -44,6 +44,7 @@ import { logger } from "@/lib/logger";
 import { newOpError } from "@/lib/op-error";
 import { publishRealtime } from "@/lib/realtime-publish";
 import { preflightSend, recordSendEvent } from "@/lib/send-cap";
+import { deriveSendIntent } from "@/lib/send-intent";
 import { describeBlock, runSendSafety } from "@/lib/send-safety";
 import { clearStaleOnAction } from "@/lib/stale-tagger";
 import {
@@ -342,6 +343,10 @@ export async function sendThreadReply(
       // the calling staff (Phase C.1).
       templateId: null,
       teamId: staff.teamId,
+      // Log the send intent (P0) -- an inline reply is always a reply; warm if
+      // the thread has inbound, else a cold follow-up. Purely additive logging;
+      // does not change category, the cap, or the cadence-clear below.
+      sendIntent: deriveSendIntent({ isReply: true, cadenceCategory: sendCategory }).sendIntent,
     });
   } catch (err) {
     logger.error({ err, threadId }, "sendThreadReply: recordSendEvent failed");
