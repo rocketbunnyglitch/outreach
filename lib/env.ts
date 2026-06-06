@@ -67,6 +67,23 @@ const envSchema = z.object({
   // For verifying inbound POSTs to /api/webhooks/quo
   QUO_WEBHOOK_SIGNING_SECRET: stringOptional,
 
+  // --- Phase 5: SMS (Twilio + A2P 10DLC) ---
+  // The SMS subsystem is INERT until all of these land: lib/sms.ts
+  // isSmsConfigured() gates every send, and the inbound webhook fails closed
+  // without the auth token. A2P 10DLC carrier approval (1-3 weeks) is a
+  // separate operator step; code goes live the moment these are set.
+  TWILIO_ACCOUNT_SID: stringOptional,
+  TWILIO_AUTH_TOKEN: stringOptional,
+  TWILIO_MESSAGING_SERVICE_SID: stringOptional,
+  TWILIO_FROM_E164: stringOptional,
+  // Public URL Twilio posts inbound SMS to; used to validate X-Twilio-Signature.
+  TWILIO_PUBLIC_WEBHOOK_URL: urlString.optional(),
+
+  // --- Engine read API (machine clients: Smart Map, Eventbrite pusher) ---
+  // Static shared secret checked by app/api/engine/* via the X-Engine-Api-Key
+  // header (cron-secret pattern; machine clients have no Google session).
+  ENGINE_API_KEY: stringOptional,
+
   // Sentry — graceful no-op when DSN is unset. SENTRY_DSN is for the
   // server/edge runtimes; NEXT_PUBLIC_SENTRY_DSN ships into the browser
   // bundle (same DSN value, different consumer). SENTRY_AUTH_TOKEN +

@@ -24,6 +24,7 @@ import { db } from "@/lib/db";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { planFromState } from "./cadence-engine-core";
 import { computeEffectivePriority } from "./effective-priority";
+import { type EventReadiness, readinessFromRow } from "./event-readiness";
 
 /**
  * Effective priority per city campaign (Phase 2.15). Sums ticket sales and
@@ -705,6 +706,8 @@ export interface WorklistFloorStaffCallRow {
   attempts: number;
   lastCallAt: string | null;
   lastOutcome: string | null;
+  /** Event-day prep readiness summary for the pill (Phase 3.13). */
+  readiness: EventReadiness;
 }
 
 export async function loadWorklistFloorStaffCalls(opts: {
@@ -726,6 +729,11 @@ export async function loadWorklistFloorStaffCalls(opts: {
       attempts: venueEvents.floorStaffCallAttempts,
       lastCallAt: venueEvents.floorStaffLastCallAt,
       lastOutcome: venueEvents.floorStaffLastCallOutcome,
+      confirmedAt: venueEvents.confirmedAt,
+      twoWeekEmailSentAt: venueEvents.twoWeekEmailSentAt,
+      oneWeekEmailSentAt: venueEvents.oneWeekEmailSentAt,
+      threeDayCallCompletedAt: venueEvents.threeDayCallCompletedAt,
+      floorStaffCallCompletedAt: venueEvents.floorStaffCallCompletedAt,
     })
     .from(venueEvents)
     .innerJoin(events, eq(events.id, venueEvents.eventId))
@@ -759,6 +767,15 @@ export async function loadWorklistFloorStaffCalls(opts: {
     attempts: r.attempts,
     lastCallAt: r.lastCallAt ? r.lastCallAt.toISOString() : null,
     lastOutcome: r.lastOutcome ?? null,
+    readiness: readinessFromRow({
+      venueEventId: r.venueEventId,
+      confirmedAt: r.confirmedAt,
+      twoWeekEmailSentAt: r.twoWeekEmailSentAt,
+      oneWeekEmailSentAt: r.oneWeekEmailSentAt,
+      threeDayCallCompletedAt: r.threeDayCallCompletedAt,
+      floorStaffCallCompletedAt: r.floorStaffCallCompletedAt,
+      floorStaffCallAttempts: r.attempts,
+    }),
   }));
 }
 
@@ -819,4 +836,75 @@ export async function loadWorklistTodayStats(opts: {
     repliesHandled: Number(sendsRow.replies_handled ?? 0),
     callsCompleted: Number(callsRow.calls_completed ?? 0),
   };
+}
+
+// =========================================================================
+// Slot changes (Phase 3.5). [ReferenceDoc 9.4] A CONFIRMED venue replied asking
+// to move to a different day/slot; the inbound poll worker raised the heuristic
+// flag (email_threads.slot_change_requested -- NOT an AI enum). Surface it in a
+// led city so the operator can drive the cancel-old / confirm-new swap. Source
+// slot = the venue's current confirmed venue_event.
+// =========================================================================
+
+export interface WorklistSlotChangeRow {
+  threadId: string;
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  /** The venue's current confirmed slot -- what the swap cancels. */
+  fromVenueEventId: string;
+  matchedPhrase: string | null;
+}
+
+export async function loadWorklistSlotChanges(opts: {
+  staffId: string;
+}): Promise<WorklistSlotChangeRow[]> {
+  const rows = await db
+    .select({
+      threadId: emailThreads.id,
+      venueId: venues.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      fromVenueEventId: venueEvents.id,
+      matchedPhrase: emailThreads.slotChangePhrase,
+      lastInboundAt: emailThreads.lastInboundAt,
+    })
+    .from(emailThreads)
+    .innerJoin(venues, eq(venues.id, emailThreads.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .innerJoin(
+      venueEvents,
+      and(eq(venueEvents.venueId, venues.id), eq(venueEvents.status, "confirmed")),
+    )
+    .where(
+      and(
+        eq(emailThreads.slotChangeRequested, true),
+        isNull(emailThreads.deletedAt),
+        sql`EXISTS (
+          SELECT 1 FROM city_campaigns cc
+          WHERE cc.lead_staff_id = ${opts.staffId}
+            AND (cc.id = ${emailThreads.cityCampaignId} OR cc.city_id = ${venues.cityId})
+        )`,
+      ),
+    )
+    .orderBy(desc(emailThreads.lastInboundAt));
+
+  // Dedupe by thread (a multi-night venue has several confirmed venue_events;
+  // keep the first as the suggested source slot -- the picker lets the operator
+  // choose among all current slots anyway).
+  const seen = new Set<string>();
+  const out: WorklistSlotChangeRow[] = [];
+  for (const r of rows) {
+    if (seen.has(r.threadId)) continue;
+    seen.add(r.threadId);
+    out.push({
+      threadId: r.threadId,
+      venueId: r.venueId,
+      venueName: r.venueName,
+      cityName: r.cityName ?? null,
+      fromVenueEventId: r.fromVenueEventId,
+      matchedPhrase: r.matchedPhrase ?? null,
+    });
+  }
+  return out;
 }

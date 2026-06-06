@@ -358,6 +358,18 @@ export const emailThreads = pgTable(
     cadenceState: cadenceState("cadence_state"),
     cadenceNextDueAt: timestamp("cadence_next_due_at", { withTimezone: true }),
 
+    /**
+     * Slot-change reply flag (Phase 3.5, migration 0117). [ReferenceDoc 9.4]
+     * Raised by lib/slot-change-detect (a pure phrase heuristic, NOT an AI
+     * reply_classification value) when a CONFIRMED venue replies asking to move
+     * to a different day/slot. The /worklist "Slot change requested" section
+     * reads it; the operator then drives the cancel-old / confirm-new swap.
+     * slotChangePhrase is the change-intent phrase that matched, for display.
+     */
+    slotChangeRequested: boolean("slot_change_requested").notNull().default(false),
+    slotChangeDetectedAt: timestamp("slot_change_detected_at", { withTimezone: true }),
+    slotChangePhrase: text("slot_change_phrase"),
+
     ...auditColumns,
     ...archivedAt,
     ...versionColumn,

@@ -51,6 +51,7 @@ import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
 import { logger } from "@/lib/logger";
 import { routeMisroutedReply } from "@/lib/misrouted-reply";
 import { publishRealtime } from "@/lib/realtime-publish";
+import { detectSlotChange } from "@/lib/slot-change-detect";
 import { reconcileGmailLabelsForThread, unreconcileGmailLabelsForThread } from "@/lib/team-labels";
 import { classifyInboundEmail } from "@/lib/triage-classifier";
 import { autoTagOrCreateVenue } from "@/lib/venue-auto-create";
@@ -1320,6 +1321,42 @@ async function ingestMessage(opts: {
     await routeMisroutedReply(threadId).catch((err) =>
       logger.warn({ err, threadId }, "misrouted-reply routing failed"),
     );
+  }
+
+  // Phase 3.5: slot-change detection. [ReferenceDoc 9.4] If a CONFIRMED venue
+  // replies asking to move to a different day/slot, raise a heuristic FLAG on
+  // the thread (NOT a new AI classification enum value) so the worklist's
+  // "Slot change requested" section surfaces it for an operator-driven swap.
+  // Best-effort -- never blocks ingestion.
+  if (direction === "inbound") {
+    try {
+      const confirmedRes = await db.execute<{ has_confirmed: boolean }>(sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM venue_events ve
+          JOIN email_threads t ON t.venue_id = ve.venue_id
+          WHERE t.id = ${threadId}
+            AND ve.status = 'confirmed'
+        ) AS has_confirmed
+      `);
+      const confirmedRow = Array.isArray(confirmedRes)
+        ? (confirmedRes as unknown as Array<{ has_confirmed: boolean }>)[0]
+        : (confirmedRes as unknown as { rows: Array<{ has_confirmed: boolean }> }).rows?.[0];
+      const venueHasConfirmedEvent = confirmedRow?.has_confirmed === true;
+
+      const detection = detectSlotChange({ subject, body: bodyText, venueHasConfirmedEvent });
+      if (detection.isSlotChange) {
+        await db.execute(sql`
+          UPDATE email_threads
+          SET slot_change_requested = true,
+              slot_change_detected_at = NOW(),
+              slot_change_phrase = ${detection.matchedPhrase ?? null}
+          WHERE id = ${threadId}
+        `);
+      }
+    } catch (err) {
+      logger.warn({ err, threadId }, "slot-change detection failed (non-fatal)");
+    }
   }
 
   // Reconcile Gmail labels onto team_labels. Skip system labels

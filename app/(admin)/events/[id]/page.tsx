@@ -16,6 +16,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { archiveEvent, updateEvent } from "../_actions";
 import { ArchiveWithReason } from "../_components/archive-with-reason";
+import { DebriefNotes } from "../_components/debrief-notes";
+import { EmergencyReplacementButton } from "../_components/emergency-replacement-button";
 import { EventForm } from "../_components/event-form";
 import { VenueEventsSection } from "../_components/venue-events-section";
 import { addVenueToEvent, removeVenueFromEvent, updateVenueEvent } from "../_venue-event-actions";
@@ -40,6 +42,18 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
     .limit(1)
     .then((r) => r[0]);
   if (!eventRow) notFound();
+
+  // Debrief author display name (Phase 6.4) -- small lookup so the main
+  // eventRow query stays untouched.
+  let debriefUpdatedByName: string | null = null;
+  if (eventRow.event.debriefUpdatedBy) {
+    const [author] = await db
+      .select({ displayName: staffMembers.displayName })
+      .from(staffMembers)
+      .where(eq(staffMembers.id, eventRow.event.debriefUpdatedBy))
+      .limit(1);
+    debriefUpdatedByName = author?.displayName ?? null;
+  }
 
   // Venues already participating in this event
   const veRows = await db
@@ -150,6 +164,10 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         <EventForm initial={eventRow.event} action={boundUpdate} />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <EmergencyReplacementButton eventId={id} />
+      </div>
+
       <VenueEventsSection
         eventId={id}
         venueEvents={veRows.map((r) => ({
@@ -168,6 +186,15 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         addAction={addVenueToEvent}
         updateAction={updateVenueEvent}
         removeAction={removeVenueFromEvent}
+      />
+
+      <DebriefNotes
+        eventId={id}
+        initialNotes={eventRow.event.debriefNotes}
+        updatedAt={
+          eventRow.event.debriefUpdatedAt ? eventRow.event.debriefUpdatedAt.toISOString() : null
+        }
+        updatedByName={debriefUpdatedByName}
       />
 
       <ArchiveWithReason

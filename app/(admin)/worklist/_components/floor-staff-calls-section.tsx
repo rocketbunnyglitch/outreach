@@ -8,6 +8,7 @@
 
 import { useToast } from "@/components/ui/toast";
 import { captureClientError } from "@/lib/client-error";
+import type { EventReadiness } from "@/lib/event-readiness";
 import type { WorklistFloorStaffCallRow } from "@/lib/worklist-data";
 import { Phone } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -30,6 +31,31 @@ function fmtTime(t: string | null): string {
   const ampm = h >= 12 ? "PM" : "AM";
   h = h % 12 || 12;
   return `${h}:${m[2]} ${ampm}`;
+}
+
+const READINESS_STYLES: Record<EventReadiness["status"], string> = {
+  ready:
+    "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200",
+  on_track:
+    "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200",
+  at_risk:
+    "border-red-300 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200",
+  not_started:
+    "border-zinc-300 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
+};
+
+function ReadinessPill({ readiness }: { readiness: EventReadiness }) {
+  const pending = readiness.steps.filter((s) => !s.done).map((s) => s.label);
+  const title =
+    pending.length > 0 ? `Pending: ${pending.join(", ")}` : "All event-day prep complete";
+  return (
+    <span
+      title={title}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] ${READINESS_STYLES[readiness.status]}`}
+    >
+      {readiness.statusLabel} {readiness.doneCount}/{readiness.totalCount}
+    </span>
+  );
 }
 
 function Row({ c }: { c: WorklistFloorStaffCallRow }) {
@@ -75,16 +101,19 @@ function Row({ c }: { c: WorklistFloorStaffCallRow }) {
               : ""}
           </p>
         </div>
-        {c.phoneE164 ? (
-          <a
-            href={`tel:${c.phoneE164}`}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 font-mono text-[10px] text-blue-700 uppercase tracking-[0.08em] hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200"
-          >
-            <Phone className="h-3 w-3" /> Call
-          </a>
-        ) : (
-          <span className="shrink-0 font-mono text-[10px] text-zinc-400">no phone</span>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <ReadinessPill readiness={c.readiness} />
+          {c.phoneE164 ? (
+            <a
+              href={`tel:${c.phoneE164}`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 font-mono text-[10px] text-blue-700 uppercase tracking-[0.08em] hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200"
+            >
+              <Phone className="h-3 w-3" /> Call
+            </a>
+          ) : (
+            <span className="shrink-0 font-mono text-[10px] text-zinc-400">no phone</span>
+          )}
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-1">
         {OUTCOMES.map((o) => (

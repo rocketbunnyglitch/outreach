@@ -21,6 +21,7 @@ import {
   loadWorklistFollowUps,
   loadWorklistRelationshipFlags,
   loadWorklistReplies,
+  loadWorklistSlotChanges,
 } from "@/lib/worklist-data";
 import { CallsSection } from "./_components/calls-section";
 import { ComebacksSection } from "./_components/comebacks-section";
@@ -29,6 +30,7 @@ import { FloorStaffCallsSection } from "./_components/floor-staff-calls-section"
 import { FollowUpsSection } from "./_components/follow-ups-section";
 import { RelationshipFlagsSection } from "./_components/relationship-flags-section";
 import { RepliesSection } from "./_components/replies-section";
+import { SlotChangeSection } from "./_components/slot-change-section";
 import { WorklistAllCaughtUp } from "./_components/worklist-all-caught-up";
 
 export const metadata = { title: "Daily worklist" };
@@ -39,16 +41,25 @@ export default async function WorklistPage() {
 
   // Load all four queues once so we can detect the all-empty state without
   // double-querying; the sections render the data passed in.
-  const [drafts, replies, followUps, calls, relationshipFlags, comebacks, floorStaffCalls] =
-    await Promise.all([
-      loadWorklistDrafts({ staffId: staff.id }),
-      loadWorklistReplies({ staffId: staff.id }),
-      loadWorklistFollowUps({ staffId: staff.id }),
-      loadWorklistCalls({ staffId: staff.id }),
-      loadWorklistRelationshipFlags({ staffId: staff.id }),
-      loadWorklistComebacks({ staffId: staff.id }),
-      loadWorklistFloorStaffCalls({ staffId: staff.id }),
-    ]);
+  const [
+    drafts,
+    replies,
+    followUps,
+    calls,
+    relationshipFlags,
+    comebacks,
+    floorStaffCalls,
+    slotChanges,
+  ] = await Promise.all([
+    loadWorklistDrafts({ staffId: staff.id }),
+    loadWorklistReplies({ staffId: staff.id }),
+    loadWorklistFollowUps({ staffId: staff.id }),
+    loadWorklistCalls({ staffId: staff.id }),
+    loadWorklistRelationshipFlags({ staffId: staff.id }),
+    loadWorklistComebacks({ staffId: staff.id }),
+    loadWorklistFloorStaffCalls({ staffId: staff.id }),
+    loadWorklistSlotChanges({ staffId: staff.id }),
+  ]);
   const allEmpty =
     drafts.length === 0 &&
     replies.length === 0 &&
@@ -56,7 +67,8 @@ export default async function WorklistPage() {
     calls.length === 0 &&
     relationshipFlags.length === 0 &&
     comebacks.length === 0 &&
-    floorStaffCalls.length === 0;
+    floorStaffCalls.length === 0 &&
+    slotChanges.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,6 +84,7 @@ export default async function WorklistPage() {
         <WorklistAllCaughtUp staffId={staff.id} />
       ) : (
         <div className="flex flex-col gap-4">
+          <SlotChangeSection slotChanges={slotChanges} />
           <FloorStaffCallsSection calls={floorStaffCalls} />
           <ComebacksSection comebacks={comebacks} />
           <RelationshipFlagsSection flags={relationshipFlags} />

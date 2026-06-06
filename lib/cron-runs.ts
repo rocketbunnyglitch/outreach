@@ -72,10 +72,12 @@ const HOST = os.hostname();
 
 export type CronName =
   | "cadence-advance"
+  | "cancellation-review"
   | "daily-digest"
   | "eventbrite-sync"
   | "follow-up-cadence"
   | "gmail-poll"
+  | "host-sms-cadence"
   | "inbox-alerts"
   | "inbox-daily-stats"
   | "notification-escalation"

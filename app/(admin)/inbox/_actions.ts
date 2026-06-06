@@ -27,6 +27,7 @@ import {
 import { draftReply } from "@/lib/ai-reply";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { triggerVenueCancellation } from "@/lib/cancellation-flow";
+import { createCrawlLeadFromThread } from "@/lib/confirmed-to-crawl";
 import { db, withAuditContext } from "@/lib/db";
 import { extractEmailAddress } from "@/lib/email-address";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
@@ -1839,7 +1840,7 @@ export async function setThreadClassification(
  */
 export async function applyQuickAction(
   threadId: string,
-  action: "engaged" | "soft_no" | "hard_no" | "cancelled" | "snooze_5d",
+  action: "engaged" | "soft_no" | "hard_no" | "cancelled" | "snooze_5d" | "confirmed",
 ): Promise<ActionResult<{ ok: true }>> {
   const { staff } = await requireStaff();
   if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
@@ -1855,6 +1856,37 @@ export async function applyQuickAction(
               updated_at = NOW(), updated_by = ${staff.id}
           WHERE id = ${threadId}`);
         break;
+      case "confirmed": {
+        // Operator confirmed the venue is in. Record the operator-confirmed
+        // classification + clear the AI suggestion, but DO NOT create a
+        // confirmed booking -- CLAUDE.md 8.5: status flips to confirmed need a
+        // human click. We create a venue_events LEAD so the venue surfaces in
+        // the crawl table for the operator to place on a slot.
+        await db.execute(sql`
+          UPDATE email_threads
+          SET classification = 'confirmed'::reply_classification,
+              suggested_classification = NULL, suggested_classification_confidence = NULL,
+              suggested_classification_at = NULL, needs_attention = false,
+              state = 'needs_reply'::thread_state,
+              updated_at = NOW(), updated_by = ${staff.id}
+          WHERE id = ${threadId}`);
+        try {
+          const leadResult = await createCrawlLeadFromThread({
+            threadId,
+            staffId: staff.id,
+            teamId: staff.teamId,
+          });
+          if (!leadResult.ok) {
+            logger.warn(
+              { threadId, error: leadResult.error },
+              "applyQuickAction confirmed: crawl lead not created",
+            );
+          }
+        } catch (leadErr) {
+          logger.error({ err: leadErr, threadId }, "applyQuickAction confirmed: crawl lead threw");
+        }
+        break;
+      }
       case "soft_no":
         await db.execute(sql`
           UPDATE email_threads

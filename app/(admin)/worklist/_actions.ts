@@ -9,20 +9,26 @@
  * surfaces in the Drafts section.
  */
 
+import { emitNotification } from "@/app/(admin)/_actions/notifications";
 import {
+  events,
+  cityCampaigns,
   connectedAccounts,
   emailThreads,
   venueDomainRelationships,
   venueEvents,
+  venues,
 } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { generateCadenceDraftForThread } from "@/lib/cadence-advance";
 import { generateConfirmationCascade } from "@/lib/confirmation-cascade";
 import { db, withAuditContext } from "@/lib/db";
 import { resolveEngineRole } from "@/lib/engine-roles";
+import { FLOOR_STAFF_ESCALATION_ATTEMPTS } from "@/lib/event-readiness";
 import type { ActionResult } from "@/lib/form-utils";
 import { scheduleLifecycle } from "@/lib/lifecycle-scheduler";
 import { logger } from "@/lib/logger";
+import { buildPoliteDeclineDraft, isComebackSlotAvailable } from "@/lib/slot-decline";
 import { eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -137,6 +143,11 @@ export async function reconfirmCancelledVenue(input: {
 }): Promise<ActionResult<{ ok: true }>> {
   const { staff } = await requireStaff();
   if (!UUID_RE.test(input.venueEventId)) return { ok: false, error: "Invalid id." };
+  // 4.8: the re-confirm path must first verify the slot is still open. If
+  // another venue has taken it, block re-confirm and steer to a polite decline.
+  if (!(await isComebackSlotAvailable(input.venueEventId))) {
+    return { ok: false, error: "That slot has been filled. Use Polite decline instead." };
+  }
   try {
     const [graphicsDesignerId, lifecycleOwnerId] = await Promise.all([
       resolveEngineRole(staff.teamId, "graphics_designer"),
@@ -186,7 +197,7 @@ export async function recordFloorStaffCall(input: {
   try {
     const now = new Date();
     const confirmed = input.outcome === "confirmed_with_floor_staff";
-    await db
+    const [updated] = await db
       .update(venueEvents)
       .set({
         floorStaffCallAttempts: sql`${venueEvents.floorStaffCallAttempts} + 1`,
@@ -195,11 +206,79 @@ export async function recordFloorStaffCall(input: {
         ...(confirmed ? { floorStaffCallCompletedAt: now } : {}),
         updatedBy: staff.id,
       })
-      .where(eq(venueEvents.id, input.venueEventId));
+      .where(eq(venueEvents.id, input.venueEventId))
+      .returning({
+        attempts: venueEvents.floorStaffCallAttempts,
+        completedAt: venueEvents.floorStaffCallCompletedAt,
+        venueId: venueEvents.venueId,
+      });
+
+    // 3+ attempts and still not briefed -> escalate to the city lead (falling
+    // back to the host-payment coordinator). emitNotification dedupes on
+    // (kind, staffId, linkPath) so repeated attempts past 3 do not spam.
+    if (
+      updated &&
+      !updated.completedAt &&
+      (updated.attempts ?? 0) >= FLOOR_STAFF_ESCALATION_ATTEMPTS
+    ) {
+      try {
+        const [ctx] = await db
+          .select({ venueName: venues.name, leadStaffId: cityCampaigns.leadStaffId })
+          .from(venueEvents)
+          .innerJoin(events, eq(events.id, venueEvents.eventId))
+          .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+          .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+          .where(eq(venueEvents.id, input.venueEventId))
+          .limit(1);
+        const escalateTo =
+          ctx?.leadStaffId ?? (await resolveEngineRole(staff.teamId, "host_payment_coordinator"));
+        if (escalateTo) {
+          await emitNotification({
+            staffId: escalateTo,
+            kind: "admin_message",
+            title: `Floor-staff briefing stuck: ${ctx?.venueName ?? "venue"}`,
+            body: `${updated.attempts} floor-staff call attempts with no briefing confirmed. Needs attention before the event.`,
+            linkPath: `/venues/${updated.venueId}`,
+            dedupeMinutes: 24 * 60,
+          });
+        }
+      } catch (err) {
+        logger.error(
+          { err, venueEventId: input.venueEventId },
+          "floor-staff escalation notify failed",
+        );
+      }
+    }
+
     revalidatePath("/worklist");
     return { ok: true, data: { ok: true } };
   } catch (err) {
     logger.error({ err, venueEventId: input.venueEventId }, "recordFloorStaffCall failed");
     return { ok: false, error: "Couldn't record the call." };
+  }
+}
+
+/**
+ * Phase 4.8: one-click templated polite decline for a comeback whose slot is
+ * gone. Builds an unsent review draft (scheduledFor=null) addressed to the
+ * venue; the operator reviews + sends from the Drafts queue.
+ */
+export async function sendPoliteDecline(input: {
+  venueEventId: string;
+}): Promise<ActionResult<{ draftId: string | null }>> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(input.venueEventId)) return { ok: false, error: "Invalid id." };
+  try {
+    const res = await buildPoliteDeclineDraft({
+      venueEventId: input.venueEventId,
+      byStaffId: staff.id,
+      teamId: staff.teamId,
+    });
+    if (!res.ok) return { ok: false, error: res.error ?? "Couldn't build the decline." };
+    revalidatePath("/worklist");
+    return { ok: true, data: { draftId: res.draftId } };
+  } catch (err) {
+    logger.error({ err, venueEventId: input.venueEventId }, "sendPoliteDecline failed");
+    return { ok: false, error: "Couldn't build the decline." };
   }
 }

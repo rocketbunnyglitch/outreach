@@ -34,6 +34,7 @@ import { archivedAt, auditColumns, idColumn, versionColumn } from "../types";
 import { cityCampaigns } from "./city-campaigns";
 import { crawlFormat, dayPart, eventStatus } from "./enums";
 import { middleVenueGroups } from "./middle-venue-groups";
+import { staffMembers } from "./users";
 
 export const events = pgTable(
   "events",
@@ -94,6 +95,17 @@ export const events = pgTable(
      *  crawl a custom name like "Day Party" or "Pre-game". Bulk-renamed
      *  via a tracker-tab admin action. Migration 0074. */
     crawlName: text("crawl_name"),
+
+    /** Operator post-event debrief (Phase 6.4, migration 0118). A single
+     *  free-text note edited in place after the crawl runs -- what went well,
+     *  what broke, follow-ups for next time. Distinct from `notes` (a planning
+     *  annotation) and the author-attributed notes table; this is one running
+     *  debrief, last-writer-wins, with who/when stamped below. */
+    debriefNotes: text("debrief_notes"),
+    debriefUpdatedAt: timestamp("debrief_updated_at", { withTimezone: true }),
+    debriefUpdatedBy: uuid("debrief_updated_by").references(() => staffMembers.id, {
+      onDelete: "set null",
+    }),
 
     ...archivedAt,
     ...auditColumns,

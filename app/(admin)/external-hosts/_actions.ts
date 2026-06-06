@@ -11,6 +11,7 @@ import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { scheduleHostBriefings } from "@/lib/host-briefing";
 import { logger } from "@/lib/logger";
+import { scheduleHostSmsCadence } from "@/lib/sms-cadence";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -219,6 +220,23 @@ export async function assignExternalHostToCrawl(
       logger.error(
         { err: briefingErr, crawlHostId },
         "host briefing drafting failed (assignment committed anyway)",
+      );
+    }
+
+    // Phase 5.4: arm the host SMS cadence (H1-H5). Best-effort + outside the tx
+    // so a hiccup never blocks the assign. Inert until Twilio creds land.
+    try {
+      const cadence = await scheduleHostSmsCadence({
+        crawlHostId,
+        externalHostId,
+        staffId: staff.id,
+        teamId: staff.teamId,
+      });
+      logger.info({ crawlHostId, ...cadence }, "host sms cadence armed on assign");
+    } catch (cadenceErr) {
+      logger.error(
+        { err: cadenceErr, crawlHostId },
+        "host sms cadence scheduling failed (assignment committed anyway)",
       );
     }
 

@@ -183,6 +183,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
     { href: "/goals", label: "Goals", icon: <Target className="h-3.5 w-3.5" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3.5 w-3.5" /> },
     {
+      href: "/misclassifications",
+      label: "Misclassifications",
+      icon: <Activity className="h-3.5 w-3.5" />,
+    },
+    {
       href: "/admin/analytics/templates",
       label: "→ Templates",
       icon: <BarChart3 className="h-3.5 w-3.5 opacity-60" />,

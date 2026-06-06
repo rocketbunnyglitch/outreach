@@ -10,11 +10,11 @@
 import { useToast } from "@/components/ui/toast";
 import { captureClientError } from "@/lib/client-error";
 import type { WorklistComebackRow } from "@/lib/worklist-data";
-import { ExternalLink, Loader2, RotateCcw } from "lucide-react";
+import { ExternalLink, Loader2, MailX, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { reconfirmCancelledVenue } from "../_actions";
+import { reconfirmCancelledVenue, sendPoliteDecline } from "../_actions";
 
 function fmt(iso: string | null): string {
   if (!iso) return "unknown";
@@ -50,6 +50,26 @@ function Row({ c }: { c: WorklistComebackRow }) {
     });
   }
 
+  function decline() {
+    startTx(async () => {
+      try {
+        const res = await sendPoliteDecline({ venueEventId: c.venueEventId });
+        if (!res.ok) {
+          toast.show({ kind: "error", message: res.error ?? "Couldn't build the decline." });
+          return;
+        }
+        toast.show({ kind: "success", message: "Polite decline drafted -- review in Drafts." });
+        router.refresh();
+      } catch (err) {
+        const cap = captureClientError(err, {
+          tag: "worklist.comeback.decline",
+          fallback: "Couldn't build the decline.",
+        });
+        toast.show({ kind: "error", message: cap.message, code: cap.code });
+      }
+    });
+  }
+
   return (
     <li className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2.5 dark:border-zinc-800">
       <div className="min-w-0">
@@ -69,6 +89,15 @@ function Row({ c }: { c: WorklistComebackRow }) {
         >
           <ExternalLink className="h-3 w-3" /> Thread
         </Link>
+        <button
+          type="button"
+          onClick={decline}
+          disabled={pending}
+          title="Slot taken -- send a polite decline"
+          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 font-mono text-[10px] text-amber-800 uppercase tracking-[0.08em] hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          <MailX className="h-3 w-3" /> Polite decline
+        </button>
         <button
           type="button"
           onClick={reconfirm}

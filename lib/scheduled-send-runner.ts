@@ -30,6 +30,7 @@ import { type EmailDraftAttachment, emailDrafts, users } from "@/db/schema";
 import { composeAndSendImpl } from "@/lib/compose-send-impl";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { shouldBlockLifecycleSend } from "@/lib/relationship-send-gate";
 import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 
 export interface ScheduledSendResult {
@@ -70,6 +71,26 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
   let failed = 0;
 
   for (const { draft, owner } of candidates) {
+    // T17 [ReferenceDoc 7.15.2]: never auto-send a relationship-gated lifecycle
+    // template to a venue x outreach-brand pair flagged 'bad'. Re-check at
+    // dispatch time (the flag may have been set after the draft was scheduled).
+    // Stop it retrying every tick by stamping sent_at WITHOUT a sent_thread_id:
+    // the runner filters sent_at IS NULL, so this drops it from all future
+    // ticks; the null sent_thread_id marks it blocked-not-delivered (a real
+    // send always sets a thread id), keeping the audit trail intact.
+    if (await shouldBlockLifecycleSend({ draft })) {
+      await db
+        .update(emailDrafts)
+        .set({ sentAt: new Date(), sentThreadId: null, updatedAt: new Date() })
+        .where(eq(emailDrafts.id, draft.id));
+      logger.info(
+        { draftId: draft.id, owner: owner.id },
+        "scheduled send blocked: T17 to a bad venue x brand pair; cancelled (will not retry)",
+      );
+      failed += 1;
+      continue;
+    }
+
     if (!draft.connectedAccountId) {
       logger.info(
         { draftId: draft.id, owner: owner.id },

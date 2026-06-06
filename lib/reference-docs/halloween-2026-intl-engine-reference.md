@@ -2067,4 +2067,37 @@ Items captured from this doc that should land on the engine roadmap, not the ref
 
 ---
 
+## 13. Engine current behavior -- 2026-06 build (Phases 3.5, 5, 6, follow-ups)
+
+This section mirrors LOCKED rules into shipped engine behavior. It does NOT change any LOCKED rule above; it records how the engine implements them as of the 2026-06 build. Tagged [ENGINE - current behavior].
+
+### 13.1 Slot-change replies [ENGINE - current behavior] (mirrors section 9.4)
+Inbound replies are scanned by a conservative heuristic detector (lib/slot-change-detect.ts) -- NOT a new AI classification value. It fires only when the venue already holds a confirmed venue_event AND the reply contains a change-intent phrase (for example "can't do", "switch to", "move to", "different night"). A match sets email_threads.slot_change_requested. The operator's worklist shows a "Slot change requested" section; "Approve swap" cancels the original slot (triggerVenueCancellation) and confirms the operator-chosen new slot, firing the confirmation cascade + lifecycle. The swap is operator-driven; the engine never re-slots automatically.
+
+### 13.2 Confirmed -> crawl from the inbox [ENGINE - current behavior] (mirrors section 8.5, never auto-confirm)
+A new inbox "Confirmed" quick action records classification=confirmed and creates a venue_events row at status=lead (role=middle placeholder, no slot position) on the thread's earliest upcoming event. This surfaces the venue in the crawl table as an unplaced lead. It does NOT set status=confirmed -- placing the venue on a real slot remains a human click, per the never-auto-confirm rule.
+
+### 13.3 Host SMS cadence H1-H5 [ENGINE - current behavior] (mirrors section 7.14.2)
+External hosts assigned to a crawl get an automated SMS cadence computed from event_date by the host-sms-cadence cron: H1 about 7 days out, H2 about 2 days out, H3 day-of, H4 about 1 hour before shift, H5 on arrival reply or escalation. Idempotency is per (external host, event, touch) via host_sms_log. Inbound "YES"/replies mark the latest pending touch responded. Lineup-change, payment-confirmation, and post-event distribution-count SMS are also available. ALL SMS is INERT until Twilio + A2P 10DLC creds are set: sends are logged to sms_messages with status=unconfigured and no message leaves the system.
+
+### 13.4 T17 relationship gate at auto-send [ENGINE - current behavior] (mirrors section 7.15.2)
+The scheduled-send runner now re-checks the venue x outreach-brand relationship before auto-sending a relationship-gated lifecycle template (T17). If the pair is flagged bad, the draft is cancelled (stamped sent_at with a null sent_thread_id so it never retries) and not delivered. Good/neutral pairs send as before.
+
+### 13.5 Cancellation-review queue [ENGINE - current behavior] (mirrors section 7.9)
+A Tue/Wed/Thu cron (cancellation-review) scans confirmed venues on upcoming events for risk signals (no/low ticket sales in the lean-cancel band, structural gaps, or a quiet/stalled confirmed venue) and notifies the city lead to review. It never cancels automatically -- human-in-the-loop.
+
+### 13.6 Emergency replacement [ENGINE - current behavior] (mirrors section 7.16)
+When a confirmed venue drops, the operator can trigger an emergency replacement for the open slot from the event page: the engine drafts review-and-send outreach (cadence floors suspended via the existing override) to reachable same-city backup venues. Drafts are never auto-sent. There is no T8 template; the campaign cold opener is used.
+
+### 13.7 Event readiness + floor-staff escalation [ENGINE - current behavior] (mirrors section 3.13 / 7.14)
+The floor-staff worklist shows a readiness pill (prep steps done vs pending from the venue_events timestamps). Three or more floor-staff call attempts with no briefing confirmed auto-escalates a notification to the city lead (fallback host-payment coordinator).
+
+### 13.8 Engine lineup read API [ENGINE - current behavior] (mirrors Smart Map / Eventbrite glossary)
+The engine exposes a public-safe confirmed-lineup JSON API (app/api/engine/lineup) for Smart Map / Eventbrite to consume instead of Sheets/web-form. It returns only confirmed venue facts (name, address, role, slot times, lat/lng) + CrawlBrand public branding -- never internal notes, financials, or cross-brand history. A recordLineupChange hook signals consumers on lineup changes.
+
+### 13.9 Operator debrief [ENGINE - current behavior] (mirrors section 7.15)
+The event page has a post-event debrief notes field (events.debrief_notes) -- a single last-writer-wins field stamped with who/when, for the whole crawl night.
+
+---
+
 *End of working draft. Continue interview to fill remaining sections.*

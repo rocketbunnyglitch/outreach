@@ -15,12 +15,20 @@
  */
 
 import { cn } from "@/lib/cn";
-import { CalendarX, CircleCheck, Clock, Loader2, MessageSquareX, Shield } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarX,
+  CircleCheck,
+  Clock,
+  Loader2,
+  MessageSquareX,
+  Shield,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { applyQuickAction } from "../_actions";
 
-type QuickAction = "engaged" | "soft_no" | "hard_no" | "cancelled" | "snooze_5d";
+type QuickAction = "engaged" | "soft_no" | "hard_no" | "cancelled" | "snooze_5d" | "confirmed";
 
 const CHIPS: Array<{
   action: QuickAction;
@@ -33,6 +41,12 @@ const CHIPS: Array<{
     label: "Engaged",
     icon: CircleCheck,
     tone: "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40",
+  },
+  {
+    action: "confirmed",
+    label: "Confirmed",
+    icon: CalendarCheck,
+    tone: "border-emerald-300 text-emerald-800 hover:bg-emerald-50 dark:border-emerald-800/60 dark:text-emerald-200 dark:hover:bg-emerald-950/40",
   },
   {
     action: "soft_no",
