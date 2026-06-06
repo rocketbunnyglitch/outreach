@@ -301,6 +301,44 @@ export async function attachVenueToThread(
 }
 
 /**
+ * Clear a thread's venue (and city-campaign) link. For when the matcher
+ * attached the WRONG venue (e.g. a freemail sender domain-matched a venue
+ * that happens to use that freemail address) and there's no correct venue
+ * to point it at -- the operator just wants it un-matched.
+ */
+export async function clearVenueFromThread(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ threadId: string }>> {
+  const { staff } = await requireStaff();
+  const threadId = String(formData.get("threadId") ?? "");
+  if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid id." };
+
+  const threadRow = await db
+    .select({ teamId: staffOutreachEmails.teamId })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(eq(emailThreads.id, threadId))
+    .limit(1);
+  if (!threadRow[0] || threadRow[0].teamId !== staff.teamId) {
+    return { ok: false, error: "Thread not found." };
+  }
+
+  try {
+    await db
+      .update(emailThreads)
+      .set({ venueId: null, cityCampaignId: null, updatedBy: staff.id })
+      .where(eq(emailThreads.id, threadId));
+    revalidatePath(`/inbox/${threadId}`);
+    revalidatePath("/inbox");
+    return { ok: true, data: { threadId } };
+  } catch (err) {
+    logger.error({ err, threadId }, "clearVenueFromThread failed");
+    return { ok: false, error: "Could not clear the venue." };
+  }
+}
+
+/**
  * Extract a bare lowercase email from a header value like
  *   "Mike Lavelle <mike@lavelle.com>"
  * Returns null if no email can be extracted.

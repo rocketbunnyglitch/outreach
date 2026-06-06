@@ -20,10 +20,19 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   type VenueSearchResult,
   attachVenueToThread,
+  clearVenueFromThread,
   searchVenuesForThread,
 } from "../_attach-venue-action";
 
-export function AttachVenueButton({ threadId }: { threadId: string }) {
+export function AttachVenueButton({
+  threadId,
+  assigned = false,
+}: {
+  threadId: string;
+  /** True when the thread already has a venue -> show "Fix venue" + a
+   *  "Remove venue match" option (for a wrong auto-match). */
+  assigned?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<VenueSearchResult[]>([]);
@@ -79,6 +88,19 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
     return () => clearTimeout(timer);
   }, [query, open]);
 
+  function clear() {
+    setError(null);
+    setPendingId("__clear__");
+    startTx(async () => {
+      const fd = new FormData();
+      fd.set("threadId", threadId);
+      const result = await clearVenueFromThread(null, fd);
+      setPendingId(null);
+      if (result.ok) setOpen(false);
+      else setError(result.error);
+    });
+  }
+
   function attach(venueId: string) {
     setError(null);
     setPendingId(venueId);
@@ -123,9 +145,13 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
             return !o;
           })
         }
-        className="inline-flex items-center gap-1 rounded-full border border-amber-300 border-dashed bg-amber-50 px-2 py-0.5 font-medium text-[11px] text-amber-800 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+        className={
+          assigned
+            ? "inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2 py-0.5 font-medium text-[11px] text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            : "inline-flex items-center gap-1 rounded-full border border-amber-300 border-dashed bg-amber-50 px-2 py-0.5 font-medium text-[11px] text-amber-800 hover:bg-amber-100 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+        }
       >
-        + Attach venue
+        {assigned ? "Fix venue" : "+ Attach venue"}
       </button>
       {open && (
         <div className="absolute top-full left-0 z-30 mt-1 w-80 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
@@ -149,8 +175,26 @@ export function AttachVenueButton({ threadId }: { threadId: string }) {
             </button>
           </div>
 
+          {assigned && (
+            <button
+              type="button"
+              onClick={clear}
+              disabled={pendingId !== null}
+              className="flex w-full items-center gap-2 border-zinc-200/80 border-b px-3 py-2 text-left text-rose-600 text-xs hover:bg-rose-50 disabled:opacity-50 dark:border-zinc-800/60 dark:text-rose-400 dark:hover:bg-rose-950/30"
+            >
+              {pendingId === "__clear__" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+              Remove venue match (wrong auto-match)
+            </button>
+          )}
+
           {query.trim().length < 2 ? (
-            <p className="px-3 py-3 text-xs text-zinc-500">Type at least 2 characters.</p>
+            <p className="px-3 py-3 text-xs text-zinc-500">
+              {assigned ? "Or search a venue to re-point it." : "Type at least 2 characters."}
+            </p>
           ) : results.length === 0 && !searching ? (
             <p className="px-3 py-3 text-xs text-zinc-500">No venues match "{query.trim()}".</p>
           ) : (

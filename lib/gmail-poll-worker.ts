@@ -59,6 +59,39 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 
 const BATCH_INBOX_LIMIT = 10;
 const PER_INBOX_MSG_LIMIT = 50;
+
+// Freemail / personal-email domains. Inbound senders on these domains are
+// NEVER matched to a venue by domain (a venue using bradleyson7th@aol.com
+// must not capture every @aol.com sender) -- only by exact email.
+const FREEMAIL_DOMAINS = new Set<string>([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "yahoo.ca",
+  "ymail.com",
+  "aol.com",
+  "hotmail.com",
+  "hotmail.co.uk",
+  "outlook.com",
+  "live.com",
+  "live.co.uk",
+  "msn.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "proton.me",
+  "protonmail.com",
+  "gmx.com",
+  "mail.com",
+  "comcast.net",
+  "verizon.net",
+  "att.net",
+  "sbcglobal.net",
+  "bellsouth.net",
+  "cox.net",
+  "rocketmail.com",
+]);
 // First-poll backfill window. A freshly-connected inbox ingests the last
 // N days of inbox+sent mail (the incremental history cursor then captures
 // everything new). 7 days was far too narrow: high-frequency automated
@@ -1640,6 +1673,12 @@ async function resolveVenueFromAddress(
   // bookings@lavelle.com is the stored email).
   const domain = email.split("@")[1];
   if (!domain) return null;
+  // Never domain-match on a freemail / personal domain. A venue that happens
+  // to use e.g. bradleyson7th@aol.com would otherwise capture EVERY @aol.com
+  // sender (strayvay@aol.com -> wrong "Bradley's on 7th, Tampa" match).
+  // Personal-domain senders are linked only by EXACT email (operator-curated
+  // alias / alternate_emails), never by a shared freemail domain.
+  if (FREEMAIL_DOMAINS.has(domain.toLowerCase())) return null;
   const domainMatch = await db.execute<{ id: string; city_id: string | null }>(sql`
     SELECT id, city_id FROM venues
     WHERE email IS NOT NULL

@@ -114,12 +114,15 @@ export function ThreadPane({
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
           {thread.venueId && thread.venueName ? (
-            <Link
-              href={`/venues/${thread.venueId}`}
-              className="font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
-            >
-              {thread.venueName}
-            </Link>
+            <span className="inline-flex items-center gap-2">
+              <Link
+                href={`/venues/${thread.venueId}`}
+                className="font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
+              >
+                {thread.venueName}
+              </Link>
+              <AttachVenueButton threadId={thread.id} assigned />
+            </span>
           ) : (
             <span className="inline-flex items-center gap-2">
               <span className="font-medium text-amber-700 dark:text-amber-300">
