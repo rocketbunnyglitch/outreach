@@ -18,6 +18,7 @@ import { QuickReplyChips } from "./QuickReplyChips";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
+import { ThreadHeaderActions } from "./ThreadHeaderActions";
 import { ThreadHeaderReply } from "./ThreadHeaderReply";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
@@ -101,6 +102,8 @@ export function ThreadPane({
             </h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {/* Gmail-style top-right quick actions: star / reply / forward. */}
+            <ThreadHeaderActions threadId={thread.id} isStarred={thread.isStarred} />
             {/* Phase D.3 — soft-lock pill. Renders only when other
                 operators are looking at this thread right now. */}
             <ThreadViewersPill threadId={thread.id} currentStaffId={currentStaffId} />

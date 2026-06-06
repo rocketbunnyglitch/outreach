@@ -104,12 +104,20 @@ export function ThreadReplyButtons({ threadId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
+  // While the inline composer is open for this thread, it IS the reply
+  // surface -- hide the entry bar. Returning null keeps the component
+  // mounted (effects/bridge still run), it just renders nothing.
+  const composingHere = Array.from(composers.values()).some(
+    (c) => c.replyToThreadId === threadId && c.mode === "inline",
+  );
+  if (composingHere) return null;
+
   return (
-    // Desktop-only: on mobile the sticky ThreadReplyBar is the reply
-    // entry point (Gmail-mobile pattern). This row stays MOUNTED on
-    // mobile (hidden, not unmounted) so the event bridge above keeps
+    // Desktop-only sticky reply bar pinned to the bottom of the scrolling
+    // thread pane (Gmail-style). On mobile the ThreadReplyBar is the entry
+    // point; this row stays MOUNTED (hidden) so the event bridge above keeps
     // working for the bar + keyboard shortcut.
-    <div className="hidden items-center gap-2 border-zinc-200 border-y bg-zinc-50/70 px-4 py-3 sm:px-6 lg:flex dark:border-zinc-800 dark:bg-zinc-900/60">
+    <div className="sticky bottom-0 z-10 hidden items-center gap-2 border-zinc-200 border-t bg-white/95 px-4 py-3 backdrop-blur-md sm:px-6 lg:flex dark:border-zinc-800 dark:bg-zinc-950/95">
       <ReplyButton
         onClick={() => open("reply")}
         disabled={pending}

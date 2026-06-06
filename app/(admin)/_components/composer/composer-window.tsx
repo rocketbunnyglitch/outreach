@@ -967,10 +967,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         "fixed inset-0 h-[100dvh] max-h-[100dvh] max-w-none sm:inset-x-12 sm:inset-y-12 sm:h-auto sm:max-h-none"
       : effectiveMode === "inline"
         ? // Inline reply: fills the thread-pane width; height is
-          // content-driven up to 60vh so a long quoted thread + edit
-          // surface stays scrollable inside the window without
-          // pushing the whole thread out of view.
-          "w-full max-h-[60vh]"
+          // content-driven and GROWS as you type (the editor is flex-1)
+          // up to ~85vh -- nearly to the top of the screen, like Gmail --
+          // then the body scrolls inside without pushing the thread out.
+          "w-full max-h-[85vh]"
         : effectiveMode === "expanded"
           ? // Mobile: full-bleed (minus a small safe-area margin) so
             // the composer doesn't horizontally overflow on a 375px
