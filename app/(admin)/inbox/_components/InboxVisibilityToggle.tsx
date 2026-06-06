@@ -44,6 +44,10 @@ export function InboxVisibilityToggle({ scope }: { scope: VisibilityScope }) {
     p.delete("mine");
     p.delete("allCampaigns");
     p.delete("scope");
+    // The multi-mailbox picker only exists on All-team; clear its
+    // ?accounts= filter on any scope change so a stale teammate-inbox
+    // selection can't silently scope Mine / This-campaign.
+    p.delete("accounts");
     if (next === "team") p.set("allCampaigns", "1");
     else if (next === "campaign") p.set("scope", "campaign");
     // "mine" = no scope params -> the DEFAULT (your own inbox; no one has to

@@ -210,14 +210,14 @@ export function InboxShell({
         // 100dvh accounts for mobile browser chrome.
         "h-[calc(100dvh-8rem)] lg:h-[calc(100dvh-6rem)]",
         "card-surface overflow-hidden p-0",
-        "-mx-6 -mt-6 max-lg:rounded-none max-lg:border-x-0 sm:-mx-10 sm:-mt-10",
+        "-mx-6 -mt-6 sm:-mx-10 sm:-mt-10 max-lg:rounded-none max-lg:border-x-0",
         "lg:-mx-6 lg:-my-6",
       )}
     >
       {topRight && (
         <div className="absolute top-3 right-4 z-20 lg:top-4 lg:right-5">{topRight}</div>
       )}
-      {topBar && <div className="shrink-0 pr-14 lg:pr-16">{topBar}</div>}
+      {topBar && <div className={cn("shrink-0", topRight && "pr-14 lg:pr-16")}>{topBar}</div>}
 
       {/* Pane body — column on mobile, row on lg+. */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -281,7 +281,7 @@ export function InboxShell({
               dragging === "left" && "bg-blue-500/20",
             )}
           >
-            <span aria-hidden="true" className="absolute inset-y-0 -right-1 -left-1" />
+            <span aria-hidden="true" className="-right-1 -left-1 absolute inset-y-0" />
             <span
               aria-hidden="true"
               className={cn(
@@ -325,7 +325,7 @@ export function InboxShell({
               dragging === "middle" && "bg-blue-500/20",
             )}
           >
-            <span aria-hidden="true" className="absolute inset-y-0 -right-1 -left-1" />
+            <span aria-hidden="true" className="-right-1 -left-1 absolute inset-y-0" />
             <span
               aria-hidden="true"
               className={cn(

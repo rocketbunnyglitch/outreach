@@ -6,7 +6,6 @@ import {
   type InboxFolder,
   fetchDraftList,
   fetchFolderCounts,
-  fetchInboxAliases,
   fetchInboxFilterFacets,
   fetchInboxThreads,
   fetchTeamGmailLabels,
@@ -200,7 +199,6 @@ export default async function InboxPage({ searchParams }: Props) {
   const [
     threads,
     counts,
-    aliases,
     facets,
     gmailLabels,
     drafts,
@@ -236,10 +234,6 @@ export default async function InboxPage({ searchParams }: Props) {
       accountIds,
       campaignId: scopeCampaignId,
     }),
-    fetchInboxAliases({
-      currentTeamId: currentStaff.teamId,
-      currentUserId: currentStaff.id,
-    }),
     fetchInboxFilterFacets({
       currentTeamId: currentStaff.teamId,
       currentUserId: currentStaff.id,
@@ -271,19 +265,6 @@ export default async function InboxPage({ searchParams }: Props) {
     countUnacknowledgedMentions(currentStaff.id),
   ]);
 
-  // AccountSwitcher per-campaign key. Use the SAME resolved campaign
-  // context the thread list is scoped by -- the narrow ?campaign=
-  // city_campaign id when set, otherwise the global switcher's
-  // campaign (scopeCampaignId). Keying only on params.campaign lost
-  // the global campaign context: an operator scoped to Halloween via
-  // the top-nav switcher (no ?campaign= in the URL) fell back to the
-  // "_default" bucket, so their per-campaign account selection never
-  // persisted. The "_default" key is the true no-campaign /
-  // all-campaigns mode. Null = let the component fall back through
-  // URL > localStorage > all-selected.
-  const accountFilterCampaignKey = params.campaign ?? scopeCampaignId ?? "_default";
-  const initialAccountSelection = userPrefs?.inboxAccountFilters[accountFilterCampaignKey] ?? null;
-
   const preservedQuery = new URLSearchParams();
   preservedQuery.set("folder", folder);
   if (mine) preservedQuery.set("mine", "1");
@@ -309,16 +290,6 @@ export default async function InboxPage({ searchParams }: Props) {
         hasThreadSelected={false}
         view={userPrefs?.inboxView ?? "outlook"}
         topBar={<InboxVisibilityToggle scope={visScope} />}
-        topRight={
-          <AccountSwitcher
-            accounts={visibleAccounts}
-            currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
-              .trim()
-              .charAt(0)}
-            currentCampaignId={params.campaign ?? scopeCampaignId ?? null}
-            initialSelection={initialAccountSelection}
-          />
-        }
         left={
           <div className="flex h-full flex-col">
             <FolderList
@@ -351,11 +322,7 @@ export default async function InboxPage({ searchParams }: Props) {
               {/* Mobile-only: opens the folder/settings rail drawer. */}
               <InboxRailTrigger />
               <div className="min-w-0 flex-1">
-                <InboxScopeBar
-                  currentUserId={currentStaff.id}
-                  isAdmin={hasMinimumRole(currentStaff, "admin")}
-                  mentionCount={mentionCount}
-                />
+                <InboxScopeBar mentionCount={mentionCount} />
               </div>
               {/* Live-refresh indicator + subscriber (Phase E). */}
               <div className="shrink-0 px-3">
@@ -363,17 +330,12 @@ export default async function InboxPage({ searchParams }: Props) {
               </div>
             </div>
             <InboxFilterBar
-              aliases={aliases}
-              currentStaffId={currentStaff.id}
-              mineAssigned={mineAssigned}
-              mineInbox={mine}
-              unassignedOnly={params.unassigned === "1"}
-              unassignedCount={counts.unassigned}
-              assignedToMeCount={counts.assignedToMe}
               unreadThreadIds={threads.filter((t) => t.unreadCount > 0).map((t) => t.id)}
-              activeAliasId={params.alias}
               initialSearch={params.q}
               savedSearches={savedSearches}
+              inboxPicker={
+                visScope === "team" ? <AccountSwitcher accounts={visibleAccounts} /> : null
+              }
             />
             {/* Surface the active campaign scope above the list. Only
                 renders when the inbox is implicitly scoped by the

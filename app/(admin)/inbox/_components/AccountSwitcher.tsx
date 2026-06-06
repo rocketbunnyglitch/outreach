@@ -1,129 +1,54 @@
 "use client";
 
 /**
- * AccountSwitcher — Gmail-style circular avatar in the top-right
- * of the inbox surface that opens a dropdown of connected accounts.
+ * AccountSwitcher -- inline multi-select dropdown that scopes the inbox
+ * to a subset of connected mailboxes. Shown only on the "All team"
+ * visibility scope (the operator's own inbox / a single campaign don't
+ * need a cross-mailbox picker).
  *
- * Each row is a checkbox the operator can toggle to scope the inbox
- * to a subset of their connected mailboxes. The selection persists
- * to localStorage immediately so it survives page reloads; a future
- * commit can mirror it to user_preferences for cross-device sync.
+ * Each row is a checkbox the operator can toggle to view one or more
+ * specific mailboxes (e.g. a teammate's inbox). The applied filter
+ * lives ONLY in the URL as ?accounts=<id>,<id> -- it is intentionally
+ * session-scoped: it survives opening a thread + hitting back (the URL
+ * is carried through navigation) but resets to "All inboxes" on a fresh
+ * page load. No localStorage, no server persistence.
  *
- * The filter actually applied to the thread query lives in the URL
- * as ?accounts=<id>,<id>,<id> — this component writes that query
- * param when the operator changes their selection, and Next.js
- * re-fetches the inbox with the narrower scope.
- *
- * Quick actions in the footer (Select all visible, Clear all, My
- * accounts only, Accounts with issues) shortcut the most common
- * filter states without forcing per-row clicks.
- *
- * Avatar trigger: circle with the operator's first initial.
- * Stable color derived from the user id so each operator's avatar
- * is recognizable across devices.
+ * Trigger: a labeled button ("All inboxes" / one mailbox name / "N
+ * mailboxes") rather than the old top-right avatar, which read as a
+ * second profile menu and duplicated the "Showing" scope toggle.
  */
 
 import { cn } from "@/lib/cn";
 import type { AccountHealth, VisibleAccount } from "@/lib/visible-accounts";
-import { AlertTriangle, Check, RotateCw, ShieldOff } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Mail, RotateCw, ShieldOff } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { saveInboxAccountFilter } from "../../_actions/user-preferences";
-
-const STORAGE_KEY = "inbox.accountFilter";
 
 interface Props {
   /** All accounts the operator is allowed to see. Includes their
-   *  own plus team accounts (for admins/leads); see
-   *  lib/visible-accounts.loadVisibleAccounts. */
+   *  own plus team accounts; see lib/visible-accounts.loadVisibleAccounts. */
   accounts: VisibleAccount[];
-  /** The first letter of the operator's name — drives the avatar
-   *  glyph. We don't take a full name because the avatar should
-   *  always render even when displayName is null. */
-  currentUserInitial: string;
-  /** Active campaign id, or null when viewing the no-campaign /
-   *  all-campaigns mode. Drives the per-campaign persistence key
-   *  ("_default" when null) so each campaign keeps its own
-   *  visibility scope across sessions. */
-  currentCampaignId: string | null;
-  /** Server-persisted selection for this campaign (or "_default").
-   *  When set, takes precedence over the localStorage fallback —
-   *  the URL still wins if it carries an explicit ?accounts. */
-  initialSelection: string[] | null;
 }
 
-export function AccountSwitcher({
-  accounts,
-  currentUserInitial,
-  currentCampaignId,
-  initialSelection,
-}: Props) {
+export function AccountSwitcher({ accounts }: Props) {
   const router = useRouter();
   const params = useSearchParams();
   const [open, setOpen] = useState(false);
   const popRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  // Resolve selected set from URL first (the persistence layer that
-  // actually filters the thread query), then fall back to
-  // localStorage on first mount so the operator's last selection
-  // survives a hard refresh that didn't carry the param.
+  // Selection comes ONLY from the URL (?accounts=). No localStorage /
+  // server seed -- the picker is session-scoped by design. Initializing
+  // from the URL is hydration-safe: useSearchParams returns the same
+  // value on the server render and the first client render.
   const urlSelected = useMemo(() => {
     const raw = params.get("accounts");
     if (!raw) return null;
-    const set = new Set(raw.split(",").filter(Boolean));
-    return set;
+    return new Set(raw.split(",").filter(Boolean));
   }, [params]);
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => {
-    if (urlSelected) return urlSelected;
-    // Server-persisted per-campaign selection wins over localStorage
-    // since it survives across devices. localStorage is the local
-    // no-flicker fallback for when the server hasn't seeded yet
-    // (first-time operator) or the lookup failed.
-    if (initialSelection && initialSelection.length > 0) {
-      return new Set(initialSelection);
-    }
-    // Default: every account on first visit.
-    //
-    // IMPORTANT: do NOT read localStorage here. This initializer runs during
-    // SSR (where window is undefined → it returns this default) AND during
-    // client hydration (where a populated localStorage would return a saved
-    // subset). When those differ, the rendered selection (checkbox states +
-    // count label) mismatches between server HTML and client → React #418,
-    // and because the inbox renders inside a streaming <Suspense> boundary
-    // that can bail the WHOLE page's hydration → frozen inbox. Incognito has
-    // empty localStorage so it always matched the default → "works in
-    // incognito" only. The saved-selection restore happens post-mount in the
-    // effect below, after hydration has completed cleanly.
-    return new Set(accounts.map((a) => a.id));
-  });
-
-  // Re-sync if the URL changes (e.g. operator picked from another
-  // surface).
-  useEffect(() => {
-    if (urlSelected) setSelectedIds(urlSelected);
-  }, [urlSelected]);
-
-  // localStorage fallback — applied AFTER hydration (never during render, see
-  // the initializer note above). Runs once on mount; only takes effect when
-  // there's no URL selection and no server-seeded selection.
-  const lsRestored = useRef(false);
-  useEffect(() => {
-    if (lsRestored.current) return;
-    lsRestored.current = true;
-    if (urlSelected || (initialSelection && initialSelection.length > 0)) return;
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        setSelectedIds(new Set(parsed as string[]));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [urlSelected, initialSelection]);
+  // Default (no ?accounts=) = every account selected.
+  const selectedIds: Set<string> = urlSelected ?? new Set(accounts.map((a) => a.id));
 
   // Close on outside click.
   useEffect(() => {
@@ -146,16 +71,10 @@ export function AccountSwitcher({
   }, [open]);
 
   function applySelection(next: Set<string>) {
-    setSelectedIds(next);
-    // Persist to localStorage immediately for no-flicker reload.
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(next)));
-    } catch {
-      /* ignore */
-    }
     // Write the URL param so the thread query re-runs with the new
     // scope. Skip the param entirely when every account is selected
-    // — keeps URLs short for the default case.
+    // (or none) -- keeps URLs short for the default case and means a
+    // fresh /inbox load lands on "All inboxes".
     const url = new URL(window.location.href);
     if (next.size === 0 || next.size === accounts.length) {
       url.searchParams.delete("accounts");
@@ -163,22 +82,6 @@ export function AccountSwitcher({
       url.searchParams.set("accounts", Array.from(next).join(","));
     }
     router.replace(`${url.pathname}${url.search}`);
-
-    // Persist server-side, keyed by the active campaign (or
-    // "_default" when no campaign is selected). Fire-and-forget;
-    // the local + URL state already updated optimistically. The
-    // server action validates against the operator's identity.
-    const campaignKey = currentCampaignId ?? "_default";
-    saveInboxAccountFilter({
-      campaignKey,
-      // Empty array = clear the entry (revert to "every account I
-      // can see" for this campaign on the next page render).
-      accountIds: next.size === accounts.length ? [] : Array.from(next),
-    }).catch(() => {
-      /* network blip — local state remains correct; next reload
-         falls back to whatever the server has, which might be
-         slightly stale */
-    });
   }
 
   function toggle(id: string) {
@@ -204,6 +107,20 @@ export function AccountSwitcher({
   const totalUnread = accounts
     .filter((a) => selectedIds.has(a.id))
     .reduce((sum, a) => sum + a.unreadCount, 0);
+  const anyIssues = accounts.some((a) => a.health !== "healthy");
+
+  // Trigger label: "All inboxes" when everything (or nothing) is
+  // explicitly selected, the single mailbox name when exactly one, else
+  // a count.
+  const triggerLabel = (() => {
+    const n = selectedIds.size;
+    if (n === 0 || n === accounts.length) return "All inboxes";
+    if (n === 1) {
+      const only = accounts.find((a) => selectedIds.has(a.id));
+      return only?.emailAddress ?? "1 mailbox";
+    }
+    return `${n} mailboxes`;
+  })();
 
   return (
     <div className="relative">
@@ -211,30 +128,32 @@ export function AccountSwitcher({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen(!open)}
-        aria-label="Account switcher"
-        title="Switch which mailboxes are visible"
+        aria-label="Choose which mailboxes to view"
+        title="Choose which mailboxes to view"
+        aria-expanded={open}
         className={cn(
-          "relative inline-flex h-8 w-8 items-center justify-center rounded-full",
-          "bg-gradient-to-br from-indigo-500 to-violet-600 font-semibold text-sm text-white",
-          "shadow-sm transition-transform hover:scale-105",
-          "ring-2 ring-transparent hover:ring-indigo-200 dark:hover:ring-indigo-900/40",
+          "inline-flex max-w-[220px] items-center gap-1.5 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
+          "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800",
         )}
       >
-        {currentUserInitial.toUpperCase()}
-        {/* Tiny dot in the corner when any account has issues — Gmail
-            does the same with a red dot on the avatar. */}
-        {accounts.some((a) => a.health !== "healthy") && (
-          <span className="-right-0.5 -top-0.5 absolute h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-zinc-950" />
+        <Mail className="h-3 w-3 shrink-0" />
+        <span className="truncate font-mono">{triggerLabel}</span>
+        {anyIssues && (
+          <span
+            title="One or more inboxes need reconnecting"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500"
+          />
         )}
+        <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
       </button>
       {open && (
         <div
           ref={popRef}
-          className="absolute top-full right-0 z-30 mt-2 w-96 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute top-full left-0 z-30 mt-2 w-96 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
         >
           <header className="border-zinc-200 border-b bg-zinc-50/60 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/40">
             <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
-              Visible accounts
+              Visible mailboxes
             </p>
             <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
               {selectedIds.size} of {accounts.length} selected · {totalUnread} unread
@@ -263,9 +182,7 @@ export function AccountSwitcher({
             <QuickAction onClick={selectAll}>Select all</QuickAction>
             <QuickAction onClick={clearAll}>Clear</QuickAction>
             <QuickAction onClick={myAccountsOnly}>My accounts</QuickAction>
-            {accounts.some((a) => a.health !== "healthy") && (
-              <QuickAction onClick={accountsWithIssues}>Issues</QuickAction>
-            )}
+            {anyIssues && <QuickAction onClick={accountsWithIssues}>Issues</QuickAction>}
           </div>
         </div>
       )}

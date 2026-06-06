@@ -1,91 +1,50 @@
 "use client";
 
 /**
- * InboxScopeBar — Gmail-style horizontal strip of named scope
- * presets above the thread list. Each preset is a quick-select
- * pill that maps to a combination of URL params on /inbox:
+ * InboxScopeBar -- Gmail-style horizontal strip of TRIAGE filters above
+ * the thread list. Each is a quick-select pill mapping to URL params:
  *
- *   Team Inbox        clear everything (default for admins)
- *   View All          clear everything + clear ?accounts (the
- *                     "show me literally every team thread"
- *                     escape hatch)
- *   Assigned to Me    ?staff=<currentUserId>
- *   My Inboxes        ?mine=1
- *   Unassigned        ?unassigned=1
- *   Needs Reply       ?folder=needs_reply (also a real folder
- *                     in the left rail; we surface here too
- *                     because it's the most common triage scope)
- *   Stale             ?stale=1
+ *   Unassigned    ?unassigned=1
+ *   Unmatched     ?unmatched=1  (no venue linked yet)
+ *   Needs Reply   ?folder=needs_reply (also a left-rail folder; the
+ *                 most common triage scope, so surfaced here too)
+ *   Stale         ?stale=1
+ *   Mentioned     ?mentioned=1
  *
- * Default behavior per role:
- *   Staff   defaults to "Assigned to Me" or "My Inboxes" — the
- *           server-side handler enforces no actual data leakage,
- *           this is purely the initial pill on first visit
- *   Admin   defaults to "Team Inbox" — full team scope visible
- *           by default
+ * The earlier "Team Inbox / View All / Assigned to Me / My Inboxes"
+ * pills were removed: they duplicated the top "Showing: All team / This
+ * campaign / Mine" visibility toggle and caused confusion. Visibility
+ * lives in that toggle; this bar is purely triage state.
  *
- * The "active" pill is computed from the current URL state, so
- * navigating through chip filters / search will deselect every
- * pill once the operator strays from a named preset. This is
- * intentional: chips + scopes compose, and we don't want a
- * stale "Team Inbox" highlight after the operator drilled
- * into a brand-specific view.
+ * The active pill is computed from the current URL, so straying from a
+ * named preset (search, chip drill-down) deselects every pill. That's
+ * intentional: triage filters compose with search/chips.
  */
 
 import { cn } from "@/lib/cn";
-import {
-  AlertTriangle,
-  AtSign,
-  HelpCircle,
-  Inbox,
-  Mail,
-  MailQuestion,
-  User,
-  Users,
-} from "lucide-react";
+import { AlertTriangle, AtSign, HelpCircle, Mail, MailQuestion } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 interface Props {
-  currentUserId: string;
-  isAdmin: boolean;
   /** Unread @-mention count for the current user (Phase D). Drives
    *  the badge on the Mentioned scope pill. */
   mentionCount?: number;
 }
 
-type ScopeKey =
-  | "team"
-  | "assigned"
-  | "mine"
-  | "unassigned"
-  | "unmatched"
-  | "needs_reply"
-  | "stale"
-  | "mentioned";
+type ScopeKey = "unassigned" | "unmatched" | "needs_reply" | "stale" | "mentioned";
 
-export function InboxScopeBar({ currentUserId, isAdmin, mentionCount = 0 }: Props) {
+export function InboxScopeBar({ mentionCount = 0 }: Props) {
   const router = useRouter();
   const params = useSearchParams();
 
-  // Resolve which preset is currently active. Order matters: more
-  // specific predicates win so e.g. "Unassigned" beats "Team Inbox"
-  // even though both share the cleared assigned filter otherwise.
+  // Resolve which triage preset is active. Order matters: more specific
+  // predicates win.
   const active: ScopeKey | null = (() => {
     if (params.get("mentioned") === "1") return "mentioned";
     if (params.get("unmatched") === "1") return "unmatched";
     if (params.get("stale") === "1") return "stale";
     if (params.get("unassigned") === "1") return "unassigned";
     if (params.get("folder") === "needs_reply") return "needs_reply";
-    if (params.get("mine") === "1") return "mine";
-    if (params.get("staff") === "mine" || params.get("staff") === currentUserId) return "assigned";
-    // Distinguish "View All" (operator clicked it — ?accounts not set
-    // either) from "Team Inbox" (operator just hasn't set anything).
-    // Both have the same URL shape; for simplicity treat "team" as
-    // the default highlight on /inbox without any preset signals.
-    // "View All" is one explicit-click away to clear ?accounts too.
-    if (!params.get("staff") && !params.get("mine") && !params.get("accounts")) {
-      return isAdmin ? "team" : null;
-    }
     return null;
   })();
 
@@ -106,70 +65,6 @@ export function InboxScopeBar({ currentUserId, isAdmin, mentionCount = 0 }: Prop
         "dark:border-zinc-800/60",
       )}
     >
-      <ScopePill
-        active={active === "team"}
-        onClick={() =>
-          go({
-            staff: null,
-            mine: null,
-            unassigned: null,
-            unmatched: null,
-            stale: null,
-            mentioned: null,
-            folder: null,
-          })
-        }
-        icon={<Users className="h-3 w-3" />}
-        label="Team Inbox"
-      />
-      <ScopePill
-        active={false}
-        onClick={() =>
-          go({
-            staff: null,
-            mine: null,
-            unassigned: null,
-            unmatched: null,
-            stale: null,
-            mentioned: null,
-            folder: null,
-            accounts: null, // explicit escape: clear visibility scope too
-          })
-        }
-        icon={<Inbox className="h-3 w-3" />}
-        label="View All"
-      />
-      <Divider />
-      <ScopePill
-        active={active === "assigned"}
-        onClick={() =>
-          go({
-            staff: "mine",
-            mine: null,
-            unassigned: null,
-            unmatched: null,
-            stale: null,
-            mentioned: null,
-          })
-        }
-        icon={<User className="h-3 w-3" />}
-        label="Assigned to Me"
-      />
-      <ScopePill
-        active={active === "mine"}
-        onClick={() =>
-          go({
-            mine: "1",
-            staff: null,
-            unassigned: null,
-            unmatched: null,
-            stale: null,
-            mentioned: null,
-          })
-        }
-        icon={<Mail className="h-3 w-3" />}
-        label="My Inboxes"
-      />
       <ScopePill
         active={active === "unassigned"}
         onClick={() =>

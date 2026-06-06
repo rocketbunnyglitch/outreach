@@ -10,7 +10,6 @@ import {
   FOLDER_LABELS,
   type InboxFolder,
   fetchFolderCounts,
-  fetchInboxAliases,
   fetchInboxFilterFacets,
   fetchInboxThreads,
   fetchTeamGmailLabels,
@@ -105,7 +104,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     !search.campaign && !allCampaignsExplicit ? await getCurrentCampaign() : null;
   const scopeCampaignId: string | undefined = currentCampaignContext?.campaign.id;
 
-  const [detail, threads, counts, aliases, facets, gmailLabels, visibleAccounts, userPrefs] =
+  const [detail, threads, counts, facets, gmailLabels, visibleAccounts, userPrefs] =
     await Promise.all([
       fetchThreadDetail(threadId, currentStaff.teamId),
       fetchInboxThreads({
@@ -133,10 +132,6 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         accountIds,
         campaignId: scopeCampaignId,
       }),
-      fetchInboxAliases({
-        currentTeamId: currentStaff.teamId,
-        currentUserId: currentStaff.id,
-      }),
       fetchInboxFilterFacets({
         currentTeamId: currentStaff.teamId,
         currentUserId: currentStaff.id,
@@ -159,9 +154,6 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
     ]);
 
   if (!detail) notFound();
-
-  const accountFilterCampaignKey = search.campaign ?? "_default";
-  const initialAccountSelection = userPrefs?.inboxAccountFilters[accountFilterCampaignKey] ?? null;
 
   // When the thread isn't matched to a venue yet (poll worker
   // couldn't resolve the sender domain), there's no per-venue
@@ -303,16 +295,6 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       <InboxShell
         hasThreadSelected={true}
         view={userPrefs?.inboxView ?? "outlook"}
-        topRight={
-          <AccountSwitcher
-            accounts={visibleAccounts}
-            currentUserInitial={(currentStaff.displayName ?? currentStaff.primaryEmail ?? "?")
-              .trim()
-              .charAt(0)}
-            currentCampaignId={search.campaign ?? null}
-            initialSelection={initialAccountSelection}
-          />
-        }
         left={
           <div className="flex h-full flex-col">
             <FolderList
@@ -341,11 +323,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
-                <InboxScopeBar
-                  currentUserId={currentStaff.id}
-                  isAdmin={hasMinimumRole(currentStaff, "admin")}
-                  mentionCount={mentionCount}
-                />
+                <InboxScopeBar mentionCount={mentionCount} />
               </div>
               {/* Live-refresh indicator + subscriber (Phase E). */}
               <div className="shrink-0 px-3">
@@ -353,16 +331,11 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
               </div>
             </div>
             <InboxFilterBar
-              aliases={aliases}
-              currentStaffId={currentStaff.id}
-              mineAssigned={mineAssigned}
-              mineInbox={mine}
-              unassignedOnly={search.unassigned === "1"}
-              unassignedCount={counts.unassigned}
-              assignedToMeCount={counts.assignedToMe}
-              activeAliasId={search.alias}
               initialSearch={search.q}
               savedSearches={savedSearches}
+              inboxPicker={
+                allCampaignsExplicit ? <AccountSwitcher accounts={visibleAccounts} /> : null
+              }
             />
             {currentCampaignContext && (
               <CampaignScopeBanner

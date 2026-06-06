@@ -1,78 +1,48 @@
 "use client";
 
 /**
- * InboxFilterBar — search box + alias picker + "Mine assigned" /
- * "Mine inbox" toggles + submit cue.
+ * InboxFilterBar -- search box + (on All-team) the multi-mailbox picker
+ * + mark-read + density toggle.
  *
- * Two distinct "mine" filters:
- *   - "Mine assigned" (?staff=<id>) — threads ASSIGNED TO ME (the
- *     person triaging the thread). A thread can be in anyone's inbox
- *     but assigned to me to follow up.
- *   - "Mine inbox" (?mine=1) — threads flowing through MY connected
- *     Gmail accounts. The new team-shared inbox shows every team
- *     account by default; this toggle narrows to my own.
- *
- * Plus alias filter to pin to one specific Gmail account, and
- * substring search across subject/snippet/venue/sender. All three
- * filters live in the URL.
+ * The old "My inbox" / "Assigned to me" / "Unassigned" toggles and the
+ * single-select alias dropdown were removed: the first two duplicated
+ * the top "Showing: All team / This campaign / Mine" visibility toggle,
+ * and the alias dropdown was superseded by the inbox picker (passed in
+ * as `inboxPicker`, a multi-select that only renders on All-team).
+ * Unassigned triage still lives on InboxScopeBar. Assignment search is
+ * still available via the `assigned:` search operator.
  */
 
 import { cn } from "@/lib/cn";
 import type { SavedSearch } from "@/lib/inbox-saved-searches";
 import { parseSearchQuery } from "@/lib/inbox-search";
-import { Inbox, Search, User, UserX, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { InboxDensityToggle } from "./InboxDensityToggle";
 import { MarkFolderReadButton } from "./MarkFolderReadButton";
 import { SavedSearchesDropdown } from "./SavedSearchesDropdown";
 
-interface AliasOption {
-  id: string;
-  emailAddress: string;
-  staffDisplayName: string | null;
-}
-
 interface Props {
-  aliases: AliasOption[];
-  currentStaffId: string;
-  /** "Assigned to me" filter (?staff=<currentId>). */
-  mineAssigned: boolean;
-  /** "Owned by me" inbox filter (?mine=1). */
-  mineInbox: boolean;
-  /** "Unassigned only" filter (?unassigned=1). */
-  unassignedOnly: boolean;
-  /** Count of unassigned needs_reply threads in the current scope.
-   *  Surfaces as a small "(N)" badge on the Unassigned chip when > 0
-   *  so operators see the pile size before clicking. */
-  unassignedCount?: number;
-  /** Count of threads assigned to the current operator in the
-   *  current scope. Surfaces as a small "(N)" badge on the
-   *  "Assigned to me" chip when > 0. */
-  assignedToMeCount?: number;
   /** IDs of threads in the visible list whose unread_count > 0.
    *  Passed through to MarkFolderReadButton so it can bulk-mark
    *  them read without re-querying. Empty list -> the button
    *  hides itself. */
   unreadThreadIds?: string[];
-  activeAliasId?: string;
   initialSearch?: string;
   /** Saved searches for the current operator (Phase B.2). */
   savedSearches?: SavedSearch[];
+  /** Multi-mailbox picker (AccountSwitcher). Rendered only on the
+   *  "All team" visibility scope; null otherwise (own inbox / a single
+   *  campaign don't need a cross-mailbox selector). */
+  inboxPicker?: React.ReactNode;
 }
 
 export function InboxFilterBar({
-  aliases,
-  currentStaffId,
-  mineAssigned,
-  mineInbox,
-  unassignedOnly,
-  unassignedCount = 0,
-  assignedToMeCount = 0,
   unreadThreadIds = [],
-  activeAliasId,
   initialSearch,
   savedSearches = [],
+  inboxPicker,
 }: Props) {
   const router = useRouter();
   const params = useSearchParams();
@@ -91,30 +61,6 @@ export function InboxFilterBar({
   function submitSearch(e: React.FormEvent) {
     e.preventDefault();
     router.push(buildNextUrl({ q: search.trim() || null }));
-  }
-
-  function setMineAssigned(next: boolean) {
-    router.push(buildNextUrl({ staff: next ? currentStaffId : null }));
-  }
-
-  function setMineInbox(next: boolean) {
-    router.push(buildNextUrl({ mine: next ? "1" : null }));
-  }
-
-  function setUnassignedOnly(next: boolean) {
-    // Toggling unassigned-only and assigned-to-me at the same time is
-    // a contradiction (a thread is one or the other), so flipping on
-    // unassigned-only clears assigned-to-me, and vice versa upstream.
-    router.push(
-      buildNextUrl({
-        unassigned: next ? "1" : null,
-        staff: next ? null : params.get("staff"),
-      }),
-    );
-  }
-
-  function setAlias(next: string) {
-    router.push(buildNextUrl({ alias: next === "_all" ? null : next }));
   }
 
   return (
@@ -169,112 +115,10 @@ export function InboxFilterBar({
           searches don't get a redundant repeat below the input. */}
       <ParsedOperatorChips raw={search} />
 
-      {/* Row 2: mine-assigned + mine-inbox toggles + alias select.
-          WRAPS rather than horizontally scrolls — a scroll strip here
-          hard-clipped the trailing toggle (read as "cut off") and an
-          overflow container would also clip the density popover + alias
-          dropdown. Wrapping keeps every control visible at any width. */}
+      {/* Row 2: inbox picker (All-team only) + submit cue + mark-read +
+          density. Wraps rather than scrolls so nothing clips. */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setMineInbox(!mineInbox)}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
-            mineInbox
-              ? "border-emerald-400 bg-emerald-100 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100"
-              : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
-          )}
-          aria-pressed={mineInbox}
-          title={
-            mineInbox
-              ? "Showing only threads in YOUR connected inboxes"
-              : "Showing every team inbox"
-          }
-        >
-          <Inbox className="h-3 w-3" />
-          My inbox
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMineAssigned(!mineAssigned)}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
-            mineAssigned
-              ? "border-blue-400 bg-blue-100 text-blue-900 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-100"
-              : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
-          )}
-          aria-pressed={mineAssigned}
-          title={
-            assignedToMeCount > 0
-              ? `${assignedToMeCount} thread${assignedToMeCount === 1 ? "" : "s"} assigned to you in the current scope`
-              : "Threads assigned to me"
-          }
-        >
-          <User className="h-3 w-3" />
-          Assigned to me
-          {assignedToMeCount > 0 && (
-            <span className="font-mono text-[10px] tabular-nums opacity-70">
-              ({assignedToMeCount.toLocaleString("en-US")})
-            </span>
-          )}
-        </button>
-
-        {/* Unassigned-only filter. Mutually exclusive with "Assigned
-            to me" (a thread is one or the other); enabling this
-            clears that filter via setUnassignedOnly. Zinc-tinted to
-            mirror the per-row Unassigned pill so the connection is
-            visual: this toggle scopes the list to JUST the rows
-            with that pill. The trailing (N) is the pile size in
-            the current scope -- helps operators decide whether to
-            click in. Hidden at 0 so a clean inbox doesn't show a
-            "(0)" badge. */}
-        <button
-          type="button"
-          onClick={() => setUnassignedOnly(!unassignedOnly)}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md border px-2 py-1.5 font-medium text-[11px] transition-colors sm:py-0.5",
-            unassignedOnly
-              ? "border-zinc-400 bg-zinc-200 text-zinc-900 dark:border-zinc-500 dark:bg-zinc-700 dark:text-zinc-100"
-              : "border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
-          )}
-          aria-pressed={unassignedOnly}
-          title={
-            unassignedCount > 0
-              ? `${unassignedCount} unassigned thread${unassignedCount === 1 ? "" : "s"} in the current scope`
-              : "Threads with no operator assigned"
-          }
-        >
-          <UserX className="h-3 w-3" />
-          Unassigned
-          {unassignedCount > 0 && (
-            <span className="font-mono text-[10px] tabular-nums opacity-70">
-              ({unassignedCount.toLocaleString("en-US")})
-            </span>
-          )}
-        </button>
-
-        {aliases.length > 1 && (
-          <select
-            value={activeAliasId ?? "_all"}
-            onChange={(e) => setAlias(e.target.value)}
-            aria-label="Filter by alias"
-            className={cn(
-              "max-w-[200px] flex-1 truncate rounded-md border border-zinc-200 bg-white px-2 py-1.5 font-mono text-[11px] sm:py-0.5",
-              "focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20",
-              "dark:border-zinc-700 dark:bg-zinc-900",
-            )}
-          >
-            <option value="_all">All inboxes</option>
-            {aliases.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.emailAddress}
-                {a.staffDisplayName && ` (${a.staffDisplayName})`}
-              </option>
-            ))}
-          </select>
-        )}
-
+        {inboxPicker}
         {/* Submit-on-Enter is implicit; render a small visible cue so the
             user knows pressing Enter in the search input submits. */}
         <button
