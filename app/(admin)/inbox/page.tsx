@@ -291,6 +291,7 @@ export default async function InboxPage({ searchParams }: Props) {
           negative margins can't clip it. */}
       <InboxShell
         hasThreadSelected={false}
+        view={userPrefs?.inboxView ?? "outlook"}
         topBar={<InboxVisibilityToggle scope={visScope} />}
         topRight={
           <AccountSwitcher

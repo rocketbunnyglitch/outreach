@@ -1,10 +1,14 @@
 "use client";
 
 import { cn } from "@/lib/cn";
-import { PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { Columns3, PanelLeftClose, PanelLeftOpen, Rows3, Settings } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { updateUserPreferences } from "../../_actions/user-preferences";
 import { InboxRail } from "./InboxRail";
+
+export type InboxView = "outlook" | "gmail";
 
 /**
  * Three-pane Inbox shell (Outlook/Gmail-style, desktop-resizable).
@@ -48,6 +52,7 @@ export function InboxShell({
   topRight,
   topBar,
   hasThreadSelected = false,
+  view = "outlook",
 }: {
   left: React.ReactNode;
   middle: React.ReactNode;
@@ -59,7 +64,25 @@ export function InboxShell({
   topBar?: React.ReactNode;
   /** Drives the mobile pane swap. Desktop shows all panes regardless. */
   hasThreadSelected?: boolean;
+  /** 'outlook' = 3-pane reading-pane layout (default). 'gmail' = no
+   *  reading pane: full-width list, click opens the thread full-screen
+   *  (like the mobile pane-swap, but on desktop too). Saved to profile. */
+  view?: InboxView;
 }) {
+  const router = useRouter();
+  const [, startViewSave] = useTransition();
+  // In gmail view the list + reading pane never coexist -- they swap
+  // full-width like the mobile layout, keeping only the folder rail.
+  const gmail = view === "gmail";
+
+  function toggleView() {
+    const next: InboxView = gmail ? "outlook" : "gmail";
+    startViewSave(() => {
+      void updateUserPreferences({ inboxView: next }).catch(() => {});
+      // Server re-renders the shell with the new layout.
+      router.refresh();
+    });
+  }
   // Mount gate — defaults match SSR; persisted prefs apply only after mount
   // (and only on desktop) so the first client render can't mismatch the
   // server HTML.
@@ -219,6 +242,21 @@ export function InboxShell({
           >
             <Settings className="h-4 w-4" />
           </Link>
+          <button
+            type="button"
+            onClick={toggleView}
+            aria-label={
+              gmail ? "Switch to Outlook view (reading pane)" : "Switch to Gmail view (list)"
+            }
+            title={
+              gmail
+                ? "Outlook view: 3-pane with reading pane"
+                : "Gmail view: full-width list, open full-screen"
+            }
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+          >
+            {gmail ? <Columns3 className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
+          </button>
         </div>
 
         {/* Left pane — folders. Hidden on desktop when collapsed; mobile
@@ -255,44 +293,59 @@ export function InboxShell({
         {/* Middle pane — thread list. Drag-resizable on desktop; mobile
             keeps the full-width pane swap. */}
         <section
-          style={middleStyle}
+          style={gmail ? undefined : middleStyle}
           className={cn(
-            "overflow-y-auto border-zinc-200/80 lg:w-[380px] lg:border-r",
-            "dark:border-zinc-800/60",
-            hasThreadSelected ? "hidden lg:block" : "flex-1 lg:flex-none",
+            "overflow-y-auto border-zinc-200/80 dark:border-zinc-800/60",
+            gmail
+              ? hasThreadSelected
+                ? "hidden"
+                : "flex-1"
+              : cn(
+                  "lg:w-[380px] lg:border-r",
+                  hasThreadSelected ? "hidden lg:block" : "flex-1 lg:flex-none",
+                ),
           )}
         >
           {middle}
         </section>
 
         {/* Resize handle between the list and the reading pane. Desktop
-            only; a wide invisible hit-area around a thin visible rule. */}
-        <button
-          type="button"
-          aria-label="Resize reading pane"
-          onPointerDown={(e) => startDrag("middle", e)}
-          className={cn(
-            "group relative hidden w-1.5 shrink-0 cursor-col-resize touch-none lg:block",
-            "bg-transparent hover:bg-blue-500/10",
-            dragging === "middle" && "bg-blue-500/20",
-          )}
-        >
-          <span aria-hidden="true" className="absolute inset-y-0 -right-1 -left-1" />
-          <span
-            aria-hidden="true"
+            only; hidden in gmail view (no side-by-side reading pane). */}
+        {!gmail && (
+          <button
+            type="button"
+            aria-label="Resize reading pane"
+            onPointerDown={(e) => startDrag("middle", e)}
             className={cn(
-              "-translate-x-1/2 absolute inset-y-0 left-1/2 w-px bg-transparent",
-              "group-hover:bg-blue-400/60",
-              dragging === "middle" && "bg-blue-500/70",
+              "group relative hidden w-1.5 shrink-0 cursor-col-resize touch-none lg:block",
+              "bg-transparent hover:bg-blue-500/10",
+              dragging === "middle" && "bg-blue-500/20",
             )}
-          />
-        </button>
+          >
+            <span aria-hidden="true" className="absolute inset-y-0 -right-1 -left-1" />
+            <span
+              aria-hidden="true"
+              className={cn(
+                "-translate-x-1/2 absolute inset-y-0 left-1/2 w-px bg-transparent",
+                "group-hover:bg-blue-400/60",
+                dragging === "middle" && "bg-blue-500/70",
+              )}
+            />
+          </button>
+        )}
 
-        {/* Right pane — thread detail. */}
+        {/* Right pane -- thread detail. In gmail view it takes the full
+            width when a thread is open, and is hidden on the list route. */}
         <section
           className={cn(
             "overflow-y-auto",
-            hasThreadSelected ? "flex-1" : "hidden lg:block lg:flex-1",
+            gmail
+              ? hasThreadSelected
+                ? "flex-1"
+                : "hidden"
+              : hasThreadSelected
+                ? "flex-1"
+                : "hidden lg:block lg:flex-1",
           )}
         >
           {right}

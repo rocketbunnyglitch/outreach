@@ -302,6 +302,7 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
       <UserPreferencesHydrator userId={currentStaff.id} />
       <InboxShell
         hasThreadSelected={true}
+        view={userPrefs?.inboxView ?? "outlook"}
         topRight={
           <AccountSwitcher
             accounts={visibleAccounts}
