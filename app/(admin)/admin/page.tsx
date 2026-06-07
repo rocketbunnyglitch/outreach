@@ -346,6 +346,29 @@ async function renderAdminPage() {
         </header>
       </section>
 
+      {/* AI usage / spend log. Every Anthropic call is logged with exact
+          token counts + a cost snapshot; this page shows where the budget
+          goes (per feature, model, day) and projects monthly spend. */}
+      <section className="card-surface overflow-hidden">
+        <header className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-5 w-5 text-violet-500" />
+            <div>
+              <h2 className="font-semibold text-lg tracking-tight">AI usage &amp; spend</h2>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Track Anthropic API spend by feature, model, and day, with a projected monthly
+                run-rate. Every AI call is logged automatically.
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/ai-usage">
+              Open <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        </header>
+      </section>
+
       {/* Archived venues — soft-deleted records. Admin can restore
           (clear archived_at) or permanently delete (cascading DELETE
           through outreach + events + history). Per operator:

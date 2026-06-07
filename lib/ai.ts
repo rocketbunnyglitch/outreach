@@ -23,6 +23,7 @@ import "server-only";
  *   pm2 reload outreach --update-env
  */
 
+import { recordAiUsage } from "@/lib/ai-usage";
 import { captureException, logger } from "@/lib/logger";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -209,6 +210,16 @@ export async function generateCompletion(opts: {
       },
       "claude completion",
     );
+
+    // Spend log — fire-and-forget so it never adds latency or breaks the call.
+    // This is the single choke point for ALL AI features, so every call is
+    // captured with exact token counts. See lib/ai-usage.ts + /admin/ai-usage.
+    void recordAiUsage({
+      tag: opts.tag,
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
 
     // Concatenate text blocks. Tool-use blocks aren't expected here.
     const text = response.content
