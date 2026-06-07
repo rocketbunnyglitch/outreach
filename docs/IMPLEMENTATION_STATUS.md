@@ -31,7 +31,25 @@
 
 Sales source = `SUM(events.ticket_sales_count)` per city campaign; `daysToEvent` = earliest upcoming `events.event_date`. With no events / no sales the pivot stays inactive, so this is safe before any ticketing integration is live.
 
-Wired into the **worklist Calls queue** (`lib/worklist-data.ts` `loadWorklistCalls` re-ranks by effective priority before the 8-row cap; the badge shows `P{static}->{effective}` with the reason on hover). The cold-outreach table is scoped to a **single** city campaign, so every row shares the same effective priority -- a per-row sort there is a no-op; the cross-city pivot lives in the worklist instead.
+Wired into the **worklist Calls queue** (`lib/worklist-data.ts` `loadWorklistCalls` re-ranks by effective priority before the 8-row cap; the badge shows `P{static}->{effective}` with the reason on hover). **(P1-4)** also applied to the **floor-staff briefing queue** (`loadWorklistFloorStaffCalls`): event-date is the primary sort (time-critical), effective priority breaks ties, with the same `P{static}->P{effective}` badge. The cold-outreach table is scoped to a **single** city campaign, so every row shares the same effective priority -- a per-row sort there is a no-op; the cross-city pivot lives in the worklist instead. There is no operator override of the (sales-blended) effective value; the human-settable value is the static `city_campaigns.priority`.
+
+---
+
+## 6.x Explicit send intent -> lib/send-intent.ts (P0, 2026-06-06)
+
+Every venue/host send is classified by `deriveSendIntent()` BEFORE the cold cap, cadence floor, cold-cadence seed, and cadence-touch logging run, so a human-sent lifecycle/cancellation/post-event/host email can never be processed as cold outreach. Pure + unit-tested (`lib/send-intent.test.ts`, 28 cases).
+
+- Signal priority: `email_drafts.touch_type` -> else `template_code` (resolved from `templateId`, forwarded by `sendDraftAsUser` AND the scheduled-send cron) -> else reply context. Real prod `template_code` families map: T1-T8 (T7A/T7B) = `cold_cadence`; T9*/T10/T11*/T13/T13W/T14/T15/V1 = `lifecycle`; T16 = `cancellation`; T17 = `post_event`; H0a/H0b = `host`. A template-less new venue thread = `unknown` (counts vs the cold cap for deliverability, but seeds NO cadence + records NO touch -- never `cold_touch_1`).
+- Wired in `lib/compose-send-impl.ts`: the cold-cap block + cooldown, the `cold_pending_touch_1` seed (the line that used to mislabel a human T9/T16 as cold), the cadence floor, and `recordTouch` are each gated on intent; `recordSendEvent` stores `send_intent` + `touch_type` (migration **0120** on `email_send_events`). `sendThreadReply` (inline reply) also logs the intent. Cold openers are zero behavior change. The "Engine drafts, humans send" send-mode gate is untouched.
+
+## 7.16 Cross-domain handoff scope (P0-2) + cancellation fan-out (P1-1)
+
+- **Handoff** (`_handoff-actions.ts`): the cadence-reset UPDATE is constrained to the single selected `email_threads.id` (re-asserting `cold_exhausted_ready_for_handoff`), so a venue with two exhausted-cold threads no longer has both mutated by one handoff.
+- **Cancellation fan-out** (`lib/cancellation-flow.ts`): on cancel, a deduped IN-APP notification (no venue email) goes to the city lead + booking owner (`our_contact_staff_id`) + `campaign_manager` + `lifecycle_owner`; plus `host_payment_coordinator` if a host is assigned to the event, `wristband_coordinator` if the cancelled slot was a wristband, `graphics_designer` if a `social_media_graphics` deliverable is still pending. Urgency tier (day-of 15m / week 2h / else 24h) sets `escalateAfter`. Week-of/day-of also queue a pending `sms_messages` row (`status='unconfigured'`) per notified staffer with a phone via `sendSms()` -- inert until Twilio/A2P creds land.
+
+## 7.14.3 V2 floor-staff readiness blocker (P1-2) -> lib/event-readiness-core.ts
+
+Pure core extracted (`lib/event-readiness-core.ts`, 11 tests) from the server `event-readiness.ts`. A confirmed event 0-4 days out whose floor-staff briefing call is not done is flagged a hard `blocker` (+ `at_risk`), surfaced as a red chip floated to the top of its date bucket in the floor-staff worklist. `recordFloorStaffCall` schedules a deduped, dated "Retry floor-staff call" task on `no_answer`/`voicemail`; 3+ attempts still escalates a notification to the city lead (fallback host-payment coordinator).
 
 ---
 

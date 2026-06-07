@@ -174,6 +174,86 @@ For a single crawl, walk each state and confirm the roll-up pill + slot pills:
 
 ---
 
+## 14. Send-intent & cadence safety (P0/P1 audit, 2026-06-06)
+
+The dangerous flows from the "push to 10/10" audit. Legend additions: `[U]` =
+proven by automated unit tests (`npm test`); `[V]` = verified read-only against
+prod (no send); `[ ]` = needs a live send (the production send-gate the operator
+deferred). "Counts as cold" is checked via `email_send_events`
+(`send_intent`, `counted_against_cap`) + `venue_campaign_touch_log`.
+
+### Explicit send intent (`lib/send-intent.ts`)
+- [U] T9 / T14 / T13 / T15 derive `send_intent = lifecycle`; T16 -> `cancellation`;
+      T17 -> `post_event`; T1 / T3 / T4 / T8 -> `cold_cadence`; warm reply ->
+      `warm_cadence`; H0a/H0b -> `host`; V1 -> `lifecycle`. (28 tests in
+      `lib/send-intent.test.ts`.)
+- [U] A new venue thread with NO template/touch derives `unknown` -- it never
+      seeds cold cadence and never records a cadence touch (it still counts vs the
+      cold cap for deliverability). No silent fallback to `cold_touch_1`.
+- [ ] LIVE: a human sends a T9 to a confirmed venue. Expect: a new send_event row
+      with `send_intent='lifecycle'`, `counted_against_cap=false`, NO new
+      `venue_campaign_touch_log` row, and the thread is NOT stamped
+      `cold_pending_touch_1`. Repeat for T11/T14/T16/T17.
+- [ ] LIVE: a human sends a T1 cold opener. Expect `send_intent='cold_cadence'`,
+      `counted_against_cap=true`, a `cold_touch_1` touch-log row, thread seeded
+      `cold_pending_touch_1`. (Cold cadence still works -- zero behavior change.)
+- [ ] LIVE: a cold follow-up advances to `cold_touch_2`/`cold_touch_3`; a warm
+      reply records `warm_nudge_*` only when the thread's cadence_state is a
+      pending-nudge (else no touch).
+
+### Scheduled-send cron safety (boundary intact)
+- [V] No venue draft can auto-send: `SELECT count(*) FROM email_drafts WHERE
+      recipient_type='venue' AND send_mode='auto_allowed'` = **0** on prod.
+- [U] `cronMaySendDraft` allows only `operator_scheduled+approved_at` or
+      `auto_allowed` for host/internal/system (10 tests in `send-mode-gate.test.ts`).
+- [ ] LIVE: an `auto_allowed` VENUE message is refused by the cron; an
+      `auto_allowed` host/system message sends only if creds allow.
+
+### Cross-domain handoff scope (P0-2)
+- [V] Code now constrains the handoff UPDATE to `email_threads.id = thread.id`
+      (re-asserting exhausted-cold state) -- `_handoff-actions.ts`.
+- [ ] LIVE: a venue with TWO exhausted-cold threads; hand off ONE. Expect only the
+      selected thread reset + re-attributed; the other exhausted thread and any
+      warm/confirmed/lifecycle threads untouched.
+
+### Cancellation: event-specific + fan-out (P0-3 / P1-1)
+- [V] Cleanup is scoped by `venue_event_id` (drafts) / `target_id`
+      (tasks); T16 is built with the cancelled `eventId` (night-specific).
+      Relationship is left neutral (no auto-bad-flag).
+- [ ] LIVE: a venue confirmed Thursday (wristband) + Friday (middle). Cancel
+      Thursday. Expect: Thursday drafts/tasks stop, Friday's survive, Thursday slot
+      needs-replacement, Friday stays confirmed, T16 references only Thursday.
+- [ ] LIVE: cancellation notifies city lead + booking owner + campaign_manager +
+      lifecycle_owner; host_payment_coordinator only if a host is assigned;
+      wristband_coordinator only if the slot was a wristband; graphics_designer
+      only if a `social_media_graphics` deliverable is pending. Week-of/day-of:
+      a pending `sms_messages` row with `status='unconfigured'` per notified
+      staffer with a phone.
+
+### V2 floor-staff readiness (P1-2)
+- [U] A confirmed event 0-4 days out, not briefed, is a readiness `blocker` +
+      `at_risk`; briefed or outside the window is not (11 tests in
+      `event-readiness-core.test.ts`).
+- [ ] LIVE: a confirmed event 2 days out with no floor-staff briefing shows the red
+      BLOCKER chip and sorts to the top of its date bucket in /worklist.
+- [ ] LIVE: recording a `no_answer`/`voicemail` outcome creates a deduped "Retry
+      floor-staff call" task due tomorrow; 3+ attempts escalates a notification.
+
+### T10 / T11 lifecycle blockers (P0-4)
+- [U] `isT11Touch` gates a T11 draft until a `staff_info_sheets` row exists for its
+      `venue_event_id` (covered around `send-mode-gate.test.ts`).
+- [ ] LIVE: attempting to send/approve a T11 with no info sheet is blocked with a
+      clear message; T10 is a confirmation-cascade TASK (no auto venue email) and
+      the graphic attaches only once uploaded.
+
+### Effective priority sorting (P1-4)
+- [U] Inside 21 days a selling P4 outranks a quiet P1; static stays visible; reason
+      string present (10 tests in `effective-priority.test.ts`).
+- [ ] LIVE: the call queue AND the floor-staff briefing queue show the
+      `P{static}->P{effective}` badge and order by effective priority.
+
+---
+
 ## Notes for the tester
 
 - "Local day" for the cap is the INBOX OWNER's timezone, default America/Toronto.
