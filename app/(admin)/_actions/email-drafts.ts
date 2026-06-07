@@ -539,7 +539,15 @@ export async function bulkDeleteDrafts(ids: string[]): Promise<ActionResult<{ de
  */
 export async function sendDraft(
   draftId: string,
-  opts: { bypassCap?: boolean; ackDuplicates?: boolean; cadenceOverrideReason?: string } = {},
+  opts: {
+    bypassCap?: boolean;
+    /** Per-gate overrides (split out of the old single bypassCap). */
+    bypassRelationship?: boolean;
+    bypassWrongAccount?: boolean;
+    bypassAmbiguousIntent?: boolean;
+    ackDuplicates?: boolean;
+    cadenceOverrideReason?: string;
+  } = {},
 ): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
@@ -572,6 +580,9 @@ export async function sendDraft(
     draftId,
     ownerUserId: staff.id,
     bypassCap: opts.bypassCap,
+    bypassRelationship: opts.bypassRelationship,
+    bypassWrongAccount: opts.bypassWrongAccount,
+    bypassAmbiguousIntent: opts.bypassAmbiguousIntent,
     ackDuplicates: opts.ackDuplicates,
     cadenceOverrideReason: opts.cadenceOverrideReason,
   });
@@ -588,6 +599,9 @@ async function sendDraftAsUser(input: {
   draftId: string;
   ownerUserId: string;
   bypassCap?: boolean;
+  bypassRelationship?: boolean;
+  bypassWrongAccount?: boolean;
+  bypassAmbiguousIntent?: boolean;
   ackDuplicates?: boolean;
   cadenceOverrideReason?: string;
 }): Promise<
@@ -691,9 +705,14 @@ async function sendDraftAsUser(input: {
   if (pendingLabelIds.length > 0) {
     fd.set("labelIds", pendingLabelIds.join(","));
   }
-  // Admin-bypass marker — composeAndSend re-checks the operator's
-  // role server-side; we just surface the form-field convention here.
+  // Admin-bypass markers — composeAndSend re-checks the operator's role
+  // server-side; we just surface the form-field convention here. Each gate
+  // has its own flag so acknowledging one (e.g. the daily cap) never
+  // silently waives the others (bad-relationship, wrong-account, intent).
   if (input.bypassCap) fd.set("bypassCap", "1");
+  if (input.bypassRelationship) fd.set("bypassRelationship", "1");
+  if (input.bypassWrongAccount) fd.set("bypassWrongAccount", "1");
+  if (input.bypassAmbiguousIntent) fd.set("bypassAmbiguousIntent", "1");
   // Admin cadence-floor override reason (Phase 1.9). Present only when an
   // admin chose to send despite the floor; logged on the send event.
   if (input.cadenceOverrideReason) {

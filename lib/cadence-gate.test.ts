@@ -20,14 +20,22 @@ describe("decideCadenceGate [Phase 1.9]", () => {
     expect(d.overrideApplied).toBe(false);
   });
 
-  it("hard-blocks a non-admin at the floor", () => {
-    const d = decideCadenceGate({ floor: blockedFloor, isAdmin: false, overrideReason: "please" });
+  it("blocks a non-admin at the floor when they give NO reason", () => {
+    const d = decideCadenceGate({ floor: blockedFloor, isAdmin: false, overrideReason: null });
     expect(d.blocked).toBe(true);
     expect(d.overrideApplied).toBe(false);
-    expect(d.errorMessage).toContain("Ask an admin");
+    expect(d.errorMessage).toContain("override reason");
   });
 
-  it("admin override with a reason goes through and logs the reason", () => {
+  it("lets a non-admin override WITH a reason, flagged as non-admin", () => {
+    const d = decideCadenceGate({ floor: blockedFloor, isAdmin: false, overrideReason: "please" });
+    expect(d.blocked).toBe(false);
+    expect(d.overrideApplied).toBe(true);
+    expect(d.overrideByNonAdmin).toBe(true);
+    expect(d.overrideReasonToLog).toBe("[non-admin override] please");
+  });
+
+  it("admin override with a reason goes through and logs the bare reason", () => {
     const d = decideCadenceGate({
       floor: blockedFloor,
       isAdmin: true,
@@ -35,6 +43,7 @@ describe("decideCadenceGate [Phase 1.9]", () => {
     });
     expect(d.blocked).toBe(false);
     expect(d.overrideApplied).toBe(true);
+    expect(d.overrideByNonAdmin).toBe(false);
     expect(d.overrideReasonToLog).toBe("venue asked us to follow up");
   });
 

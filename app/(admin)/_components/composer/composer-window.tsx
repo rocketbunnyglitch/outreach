@@ -587,6 +587,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     opts: {
       testOnly?: boolean;
       bypassCap?: boolean;
+      bypassWrongAccount?: boolean;
+      bypassRelationship?: boolean;
+      bypassAmbiguousIntent?: boolean;
       ackDuplicates?: boolean;
       cadenceOverrideReason?: string;
     } = {},
@@ -627,6 +630,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       }
       const sendRes = await sendDraft(instance.id, {
         bypassCap: opts.bypassCap,
+        bypassWrongAccount: opts.bypassWrongAccount,
+        bypassRelationship: opts.bypassRelationship,
+        bypassAmbiguousIntent: opts.bypassAmbiguousIntent,
         ackDuplicates: opts.ackDuplicates,
         cadenceOverrideReason: opts.cadenceOverrideReason,
       });
@@ -1473,31 +1479,32 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 </button>
               )}
             </div>
-            {instance.isAdmin && (
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={cadenceOverrideReason}
-                  onChange={(e) => setCadenceOverrideReason(e.target.value)}
-                  placeholder="Override reason (required, admin)"
-                  className="min-w-48 flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-900 placeholder:text-amber-500 dark:border-amber-900/40 dark:bg-zinc-900 dark:text-amber-100"
-                />
-                <button
-                  type="button"
-                  disabled={!cadenceOverrideReason.trim()}
-                  onClick={() => {
-                    const reason = cadenceOverrideReason.trim();
-                    if (!reason) return;
-                    setCadenceBlock(null);
-                    setCadenceOverrideReason("");
-                    actuallySend({ cadenceOverrideReason: reason });
-                  }}
-                  className="rounded-md border border-amber-400 bg-amber-200 px-2 py-1 font-medium text-amber-900 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-800/50 dark:text-amber-100"
-                >
-                  Override + send
-                </button>
-              </div>
-            )}
+            {/* Anyone may override the cadence wait-rule with a reason; the
+                override is logged on the send event (non-admin overrides are
+                flagged distinctly in the audit trail). */}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={cadenceOverrideReason}
+                onChange={(e) => setCadenceOverrideReason(e.target.value)}
+                placeholder="Override reason (required, logged)"
+                className="min-w-48 flex-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-900 placeholder:text-amber-500 dark:border-amber-900/40 dark:bg-zinc-900 dark:text-amber-100"
+              />
+              <button
+                type="button"
+                disabled={!cadenceOverrideReason.trim()}
+                onClick={() => {
+                  const reason = cadenceOverrideReason.trim();
+                  if (!reason) return;
+                  setCadenceBlock(null);
+                  setCadenceOverrideReason("");
+                  actuallySend({ cadenceOverrideReason: reason });
+                }}
+                className="rounded-md border border-amber-400 bg-amber-200 px-2 py-1 font-medium text-amber-900 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-800/50 dark:text-amber-100"
+              >
+                Override + send
+              </button>
+            </div>
           </div>
         )}
 
@@ -1583,13 +1590,13 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             <button
               type="button"
               onClick={() => {
-                // Admin path: re-fire with bypassCap=true. Same form
-                // field as the cap bypass — compose-send-impl uses it
-                // for both checks since the only legitimate reason to
-                // hit either is admin override. Server re-checks role.
+                // Admin path: re-fire with the wrong-account-specific
+                // override flag. Split out of bypassCap so overriding
+                // the cap can't silently waive this guard too. Server
+                // re-checks the admin role.
                 setWrongAccountBlocked(false);
                 setSendError(null);
-                actuallySend({ bypassCap: true });
+                actuallySend({ bypassWrongAccount: true });
               }}
               className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950 dark:text-amber-200"
               title="Send from the chosen From inbox anyway (admin only)"

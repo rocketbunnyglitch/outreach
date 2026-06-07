@@ -28,27 +28,44 @@ export interface CadenceGateInput {
 export interface CadenceGateDecision {
   /** True => return a block error to the UI; do NOT send. */
   blocked: boolean;
-  /** True => an admin pushed through; log overrideReasonToLog on the send. */
+  /** True => someone pushed through; log overrideReasonToLog on the send. */
   overrideApplied: boolean;
+  /** True => a non-admin pushed the override through (extra-flagged in logs). */
+  overrideByNonAdmin: boolean;
   errorMessage?: string;
   overrideReasonToLog?: string;
 }
 
 export function decideCadenceGate(input: CadenceGateInput): CadenceGateDecision {
   // Within the floors -> nothing to do.
-  if (input.floor.allowed) return { blocked: false, overrideApplied: false };
+  if (input.floor.allowed) {
+    return { blocked: false, overrideApplied: false, overrideByNonAdmin: false };
+  }
 
   const reason = input.floor.reason ?? "This venue is at its cadence floor.";
   const trimmed = (input.overrideReason ?? "").trim();
 
-  // Admin with a reason pushes the send through (logged).
-  if (input.isAdmin && trimmed.length > 0) {
-    return { blocked: false, overrideApplied: true, overrideReasonToLog: trimmed };
+  // Policy (operator decision): the cadence "wait rule" is a good default but
+  // ANYONE may override it with a reason -- the override is always flagged
+  // (the reason is persisted on the send event). Non-admin overrides are
+  // marked distinctly so they stand out in the audit trail.
+  if (trimmed.length > 0) {
+    const byNonAdmin = !input.isAdmin;
+    const reasonToLog = byNonAdmin ? `[non-admin override] ${trimmed}` : trimmed;
+    return {
+      blocked: false,
+      overrideApplied: true,
+      overrideByNonAdmin: byNonAdmin,
+      overrideReasonToLog: reasonToLog,
+    };
   }
 
-  // Otherwise hard-block. Admins get told how to override.
-  const suffix = input.isAdmin
-    ? " Provide an override reason to send anyway."
-    : " Ask an admin to override if this send is necessary.";
-  return { blocked: true, overrideApplied: false, errorMessage: reason + suffix };
+  // No reason supplied -> hard-block. Tell them a reason unlocks it (and that
+  // overrides are recorded).
+  return {
+    blocked: true,
+    overrideApplied: false,
+    overrideByNonAdmin: false,
+    errorMessage: `${reason} Provide an override reason to send anyway -- overrides are logged.`,
+  };
 }

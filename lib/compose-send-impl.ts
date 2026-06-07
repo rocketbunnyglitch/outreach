@@ -391,7 +391,17 @@ export async function composeAndSendImpl(
     `send-intent: ${intent.sendIntent} (${intent.reason})`,
   );
 
+  // Per-gate override flags. Previously a single `bypassCap` field unlocked
+  // EVERY safety gate at once -- so an admin clicking "Bypass cap" (to beat
+  // the daily cold limit) would silently also push past a bad-relationship
+  // block, a wrong-account guard, or an unclassified-intent block on the same
+  // send. Each dangerous gate now requires its OWN explicit acknowledgment.
+  // `bypassCap` is scoped to the cold cap + its pacing cooldown (one
+  // subsystem); the others are independent. All still require admin server-side.
   const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
+  const bypassRelationship = String(formData.get("bypassRelationship") ?? "") === "1";
+  const bypassWrongAccount = String(formData.get("bypassWrongAccount") ?? "") === "1";
+  const bypassAmbiguousIntent = String(formData.get("bypassAmbiguousIntent") ?? "") === "1";
 
   // P0 (Required Impl #3) -- "every send has an explicit intent; nothing is
   // guessed." An `unknown` send to a real venue (no template/touch + not a
@@ -399,7 +409,7 @@ export async function composeAndSendImpl(
   // explicit template, or an admin bypass. Non-venue / non-tracked sends (no
   // venueId) are unaffected. This is the hard "ambiguous intent" gate.
   if (intent.sendIntent === "unknown" && venueId) {
-    const canBypass = bypassCap && hasMinimumRole(staff, "admin");
+    const canBypass = bypassAmbiguousIntent && hasMinimumRole(staff, "admin");
     if (!canBypass) {
       return {
         ok: false,
@@ -506,7 +516,7 @@ export async function composeAndSendImpl(
       if (sendOutreachBrandId) {
         const rel = await getVenueBrandRelationship(venueId, sendOutreachBrandId);
         if (rel?.status === "bad") {
-          const canBypass = bypassCap && hasMinimumRole(staff, "admin");
+          const canBypass = bypassRelationship && hasMinimumRole(staff, "admin");
           if (!canBypass) {
             return {
               ok: false,
@@ -514,7 +524,7 @@ export async function composeAndSendImpl(
                 rel.notes ? ` -- ${rel.notes}` : ""
               }. ${
                 hasMinimumRole(staff, "admin")
-                  ? "Click 'Bypass cap' to override."
+                  ? "Click 'Override relationship block' to send anyway."
                   : "Ask an admin to override before sending."
               }`,
               relationshipBlocked: true,
@@ -560,8 +570,16 @@ export async function composeAndSendImpl(
         if (gate.overrideApplied) {
           cadenceOverrideToLog = gate.overrideReasonToLog ?? null;
           logger.warn(
-            { fromAccountId, userId: staff.id, venueId, campaignId: cc.campaignId },
-            "composeAndSend: admin overrode cadence floor",
+            {
+              fromAccountId,
+              userId: staff.id,
+              venueId,
+              campaignId: cc.campaignId,
+              byNonAdmin: gate.overrideByNonAdmin,
+            },
+            gate.overrideByNonAdmin
+              ? "composeAndSend: non-admin overrode cadence floor (flagged)"
+              : "composeAndSend: admin overrode cadence floor",
           );
         }
       }
@@ -663,7 +681,8 @@ export async function composeAndSendImpl(
     // since the operator already knows how that pattern works
     // from the cold-cap path.
     const wrongAccount = t.staffOutreachEmailId !== fromAccountId;
-    const wrongAccountBypassed = wrongAccount && bypassCap && hasMinimumRole(staff, "admin");
+    const wrongAccountBypassed =
+      wrongAccount && bypassWrongAccount && hasMinimumRole(staff, "admin");
     if (wrongAccount && !wrongAccountBypassed) {
       // Look up the right account's email + the chosen account's
       // email so the error message is concrete enough for the
