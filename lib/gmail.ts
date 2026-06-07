@@ -358,11 +358,34 @@ export async function sendGmailMessage(opts: {
   const mixedBoundary = `==MIX_${Date.now()}==`;
   const hasAttachments = (opts.attachments?.length ?? 0) > 0;
 
-  const headers = [`From: ${opts.from}`, `To: ${toList.join(", ")}`];
+  // RFC 2047: header values with non-ASCII (accented venue names, etc.) must be
+  // encoded-words or the recipient sees mojibake / the send is rejected.
+  const hasNonAscii = (s: string): boolean => {
+    for (let i = 0; i < s.length; i++) {
+      if (s.charCodeAt(i) > 127) return true;
+    }
+    return false;
+  };
+  const encodeWord = (s: string): string =>
+    `=?UTF-8?B?${Buffer.from(s, "utf8").toString("base64")}?=`;
+  // Plain header text value (Subject).
+  const encText = (s: string): string => (hasNonAscii(s) ? encodeWord(s) : s);
+  // Encode the display-name part of `"Name" <email>`, leaving the address.
+  const encFrom = (addr: string): string => {
+    const m = addr.match(/^\s*"?(.*?)"?\s*<([^>]+)>\s*$/);
+    if (!m) return addr; // bare email address
+    const name = m[1] ?? "";
+    const email = m[2] ?? "";
+    if (!name) return `<${email}>`;
+    const namePart = hasNonAscii(name) ? encodeWord(name) : `"${name.replace(/(["\\])/g, "\\$1")}"`;
+    return `${namePart} <${email}>`;
+  };
+
+  const headers = [`From: ${encFrom(opts.from)}`, `To: ${toList.join(", ")}`];
   if (ccList.length > 0) headers.push(`Cc: ${ccList.join(", ")}`);
   if (bccList.length > 0) headers.push(`Bcc: ${bccList.join(", ")}`);
   headers.push(
-    `Subject: ${opts.subject}`,
+    `Subject: ${encText(opts.subject)}`,
     "MIME-Version: 1.0",
     hasAttachments
       ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`

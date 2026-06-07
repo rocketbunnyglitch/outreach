@@ -106,8 +106,10 @@ export async function GET(req: Request) {
  */
 function csvEscape(value: string): string {
   if (value === "") return "";
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // Neutralize spreadsheet formula injection (leading = + - @ tab cr).
+  const v = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\n\r]/.test(v)) {
+    return `"${v.replace(/"/g, '""')}"`;
   }
-  return value;
+  return v;
 }

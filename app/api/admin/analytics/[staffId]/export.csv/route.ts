@@ -128,6 +128,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ staffId:
 
 function csvEscape(value: string): string {
   if (value === "") return "";
-  if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-  return value;
+  // Neutralize spreadsheet formula injection: a leading = + - @ (or tab/CR) is
+  // run as a formula by Excel/Sheets. Prefix with ' to force plain text.
+  const v = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
 }

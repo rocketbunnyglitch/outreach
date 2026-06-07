@@ -521,6 +521,22 @@ const stateSchema = z.object({
   ]),
 });
 
+/**
+ * Verify a thread belongs to the caller's team. setThreadState /
+ * setThreadClassification / applyQuickAction historically mutated a thread by id
+ * with NO ownership check (unlike every sibling action here) -- a
+ * missing-authorization (IDOR) hole. Call before any mutation.
+ */
+async function threadOnTeam(threadId: string, teamId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: emailThreads.id })
+    .from(emailThreads)
+    .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
+    .where(and(eq(emailThreads.id, threadId), eq(staffOutreachEmails.teamId, teamId)))
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function setThreadState(
   _prev: unknown,
   formData: FormData,
@@ -530,6 +546,12 @@ export async function setThreadState(
   if (!parsed.success) return { ok: false, error: "Invalid state value." };
 
   const { threadId, state } = parsed.data;
+  if (!hasMinimumRole(staff, "outreach")) {
+    return { ok: false, error: "Read-only access -- you can't change threads." };
+  }
+  if (!(await threadOnTeam(threadId, staff.teamId))) {
+    return { ok: false, error: "Thread not on your team." };
+  }
   try {
     await db
       .update(emailThreads)
@@ -1802,6 +1824,12 @@ export async function setThreadClassification(
     | "unclassified",
 ): Promise<ActionResult<{ ok: true }>> {
   const { staff } = await requireStaff();
+  if (!hasMinimumRole(staff, "outreach")) {
+    return { ok: false, error: "Read-only access -- you can't change threads." };
+  }
+  if (!(await threadOnTeam(threadId, staff.teamId))) {
+    return { ok: false, error: "Thread not on your team." };
+  }
   try {
     // Set the operator-confirmed classification AND clear any
     // pending AI suggestion in the same statement -- the
@@ -1854,6 +1882,12 @@ export async function applyQuickAction(
 ): Promise<ActionResult<{ ok: true }>> {
   const { staff } = await requireStaff();
   if (!UUID_RE.test(threadId)) return { ok: false, error: "Invalid thread id." };
+  if (!hasMinimumRole(staff, "outreach")) {
+    return { ok: false, error: "Read-only access -- you can't change threads." };
+  }
+  if (!(await threadOnTeam(threadId, staff.teamId))) {
+    return { ok: false, error: "Thread not on your team." };
+  }
   try {
     switch (action) {
       case "engaged":

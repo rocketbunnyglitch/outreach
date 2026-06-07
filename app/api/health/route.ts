@@ -76,7 +76,10 @@ async function readBackupStatus(): Promise<BackupStatus> {
       state: ageMs < BACKUP_STALE_AFTER_MS ? "ok" : "stale",
       last_run_at: parsed.last_run_at,
       hours_since_last: hoursSinceLast,
-      last_object_key: parsed.object_key ?? null,
+      // Do NOT expose the backup's S3 object key on the public, unauthenticated
+      // health endpoint (it leaks the backup storage path). Monitoring only
+      // needs state + staleness.
+      last_object_key: null,
       last_size_mb: parsed.size_mb ?? null,
     };
   } catch {
