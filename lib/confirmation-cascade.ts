@@ -24,7 +24,7 @@
  */
 
 import { crawlDeliverables, tasks } from "@/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 type Tx = Parameters<Parameters<typeof import("@/lib/db").withAuditContext>[1]>[0];
 
@@ -98,9 +98,10 @@ export async function generateConfirmationCascade(
     leadStaffId: row.lead_staff_id,
   };
 
-  // 2. Clean up any existing AUTO tasks for this venue_event so we
-  //    regenerate cleanly. Manual tasks (source='manual') are never
-  //    touched — if an operator hand-created a task here, we respect it.
+  // 2. Clean up any UNFINISHED auto tasks for this venue_event so we regenerate
+  //    cleanly. Only pending/in_progress are removed -- COMPLETED auto tasks are
+  //    preserved (deleting them on a re-confirm/slot-swap destroyed SLA history
+  //    and re-surfaced already-done work). Manual tasks are never touched.
   await tx
     .delete(tasks)
     .where(
@@ -108,6 +109,7 @@ export async function generateConfirmationCascade(
         eq(tasks.targetId, venueEventId),
         eq(tasks.targetType, "venue_event"),
         eq(tasks.source, "auto"),
+        inArray(tasks.status, ["pending", "in_progress"]),
       ),
     );
 

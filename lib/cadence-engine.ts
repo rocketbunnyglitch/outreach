@@ -236,6 +236,10 @@ export async function recordTouch(args: {
   sendingOutreachBrandId: string;
   touchKind: string;
   emailMessageId?: string;
+  /** The thread the touch was ACTUALLY sent on. When provided, advance THIS
+   *  thread's cadence_state -- not the most-recent thread for the venue, which
+   *  corrupts state on venues with more than one thread (e.g. after a handoff). */
+  threadId?: string;
 }): Promise<void> {
   const sentAt = new Date();
   await db.insert(venueCampaignTouchLog).values({
@@ -251,8 +255,11 @@ export async function recordTouch(args: {
   const sentState = sentStateForTouchKind(args.touchKind);
   if (!sentState) return;
 
-  const thread = await findCadenceThread(args.venueId, args.campaignId);
-  if (!thread) return;
+  // Advance the thread the send actually went out on when known; only fall back
+  // to the most-recent thread for the venue when the caller didn't supply one.
+  const threadId =
+    args.threadId ?? (await findCadenceThread(args.venueId, args.campaignId))?.id ?? null;
+  if (!threadId) return;
 
   // After this touch, the next plan tells us when the following touch is due;
   // if the sequence is exhausted, rest in the terminal state with no due time.
@@ -267,5 +274,5 @@ export async function recordTouch(args: {
   await db
     .update(emailThreads)
     .set({ cadenceState: newState, cadenceNextDueAt: nextDueAt })
-    .where(eq(emailThreads.id, thread.id));
+    .where(eq(emailThreads.id, threadId));
 }

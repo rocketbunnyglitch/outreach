@@ -180,7 +180,7 @@ export async function assignSlotVenue(
   try {
     const id = await withAuditContext(staff.id, async (tx) => {
       const existing = await tx
-        .select({ id: venueEvents.id })
+        .select({ id: venueEvents.id, venueId: venueEvents.venueId })
         .from(venueEvents)
         .where(
           and(
@@ -193,9 +193,32 @@ export async function assignSlotVenue(
         .then((r) => r[0]);
 
       if (existing) {
+        // Re-picking the SAME venue is idempotent. Swapping in a DIFFERENT
+        // venue must RESET the booking state -- otherwise the new venue silently
+        // inherits the previous venue's 'confirmed' status + cadence/disabled
+        // timestamps, which violates "no venue reaches confirmed without a human
+        // click" (CLAUDE.md 8.5) and counts an un-contacted venue as filled.
+        const venueChanged = existing.venueId !== input.venueId;
         await tx
           .update(venueEvents)
-          .set({ venueId: input.venueId, updatedBy: staff.id })
+          .set({
+            venueId: input.venueId,
+            updatedBy: staff.id,
+            ...(venueChanged
+              ? {
+                  status: "lead" as const,
+                  confirmedAt: null,
+                  twoWeekEmailSentAt: null,
+                  oneWeekEmailSentAt: null,
+                  threeDayCallCompletedAt: null,
+                  floorStaffCallCompletedAt: null,
+                  floorStaffCallAttempts: 0,
+                  temporarilyDisabled: false,
+                  temporarilyDisabledAt: null,
+                  temporarilyDisabledBy: null,
+                }
+              : {}),
+          })
           .where(eq(venueEvents.id, existing.id));
         return existing.id;
       }

@@ -1026,6 +1026,9 @@ export async function composeAndSendImpl(
           sendingAliasId: fromAccountId,
           sendingOutreachBrandId: sendOutreachBrandId ?? "",
           touchKind: derived,
+          // Advance THIS thread (the one we just sent on), not the venue's
+          // most-recently-active thread.
+          threadId,
         });
       } else {
         logger.warn(
