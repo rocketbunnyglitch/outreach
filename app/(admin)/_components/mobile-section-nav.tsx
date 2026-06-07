@@ -132,6 +132,7 @@ const SECTIONS: Section[] = [
         label: "Event Submission",
         icon: <Upload className="h-3 w-3" />,
       },
+      { href: "/readiness", label: "Readiness", icon: <ShieldCheck className="h-3 w-3" /> },
       { href: "/crawl-support", label: "Crawl Support", icon: <LifeBuoy className="h-3 w-3" /> },
       { href: "/support-hours", label: "Support Hours", icon: <Clock className="h-3 w-3" /> },
     ],

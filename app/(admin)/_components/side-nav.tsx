@@ -128,6 +128,11 @@ const SECTIONS: Array<{
         icon: <Upload className="h-3.5 w-3.5" />,
       },
       {
+        href: "/readiness",
+        label: "Readiness",
+        icon: <ShieldCheck className="h-3.5 w-3.5" />,
+      },
+      {
         href: "/crawl-support",
         label: "Crawl Support",
         icon: <LifeBuoy className="h-3.5 w-3.5" />,

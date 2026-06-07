@@ -9,10 +9,10 @@ import "server-only";
  * read path.
  */
 
-import { events, venueEvents } from "@/db/schema";
+import { events, cities, cityCampaigns, venueEvents, venues } from "@/db/schema";
 import { db } from "@/lib/db";
 import { type EventReadiness, readinessFromRow } from "@/lib/event-readiness-core";
-import { eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 export type {
   EventReadiness,
@@ -47,4 +47,72 @@ export async function computeEventReadiness(venueEventId: string): Promise<Event
     .limit(1);
   if (!row) return null;
   return readinessFromRow(row);
+}
+
+export interface ReadinessDashboardRow {
+  venueEventId: string;
+  venueId: string;
+  venueName: string;
+  cityName: string | null;
+  eventDate: string;
+  role: string;
+  readiness: EventReadiness;
+}
+
+/**
+ * Readiness dashboard (P1-2): every CONFIRMED venue_event for a campaign with
+ * its event-day readiness DTO + blocker, soonest events first, blockers floated
+ * to the top of their date bucket. Powers /readiness.
+ */
+export async function loadCampaignReadiness(opts: {
+  campaignId: string;
+}): Promise<ReadinessDashboardRow[]> {
+  const rows = await db
+    .select({
+      venueEventId: venueEvents.id,
+      venueId: venues.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      eventDate: events.eventDate,
+      role: venueEvents.role,
+      confirmedAt: venueEvents.confirmedAt,
+      twoWeekEmailSentAt: venueEvents.twoWeekEmailSentAt,
+      oneWeekEmailSentAt: venueEvents.oneWeekEmailSentAt,
+      threeDayCallCompletedAt: venueEvents.threeDayCallCompletedAt,
+      floorStaffCallCompletedAt: venueEvents.floorStaffCallCompletedAt,
+      floorStaffCallAttempts: venueEvents.floorStaffCallAttempts,
+      daysToEvent: sql<number | null>`(${events.eventDate} - now()::date)`,
+    })
+    .from(venueEvents)
+    .innerJoin(events, eq(events.id, venueEvents.eventId))
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(venues, eq(venues.id, venueEvents.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .where(and(eq(venueEvents.status, "confirmed"), eq(cityCampaigns.campaignId, opts.campaignId)))
+    .orderBy(asc(events.eventDate));
+
+  const mapped = rows.map((r) => ({
+    venueEventId: r.venueEventId,
+    venueId: r.venueId,
+    venueName: r.venueName,
+    cityName: r.cityName ?? null,
+    eventDate: r.eventDate,
+    role: r.role,
+    readiness: readinessFromRow({
+      venueEventId: r.venueEventId,
+      confirmedAt: r.confirmedAt,
+      twoWeekEmailSentAt: r.twoWeekEmailSentAt,
+      oneWeekEmailSentAt: r.oneWeekEmailSentAt,
+      threeDayCallCompletedAt: r.threeDayCallCompletedAt,
+      floorStaffCallCompletedAt: r.floorStaffCallCompletedAt,
+      floorStaffCallAttempts: r.floorStaffCallAttempts,
+      daysToEvent: r.daysToEvent != null ? Number(r.daysToEvent) : null,
+    }),
+  }));
+  mapped.sort((a, b) => {
+    if (a.eventDate !== b.eventDate) return a.eventDate < b.eventDate ? -1 : 1;
+    if (a.readiness.blocker !== b.readiness.blocker) return a.readiness.blocker ? -1 : 1;
+    return a.venueName.localeCompare(b.venueName);
+  });
+  return mapped;
 }

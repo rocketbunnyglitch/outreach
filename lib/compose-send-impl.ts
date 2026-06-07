@@ -392,6 +392,28 @@ export async function composeAndSendImpl(
   );
 
   const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
+
+  // P0 (Required Impl #3) -- "every send has an explicit intent; nothing is
+  // guessed." An `unknown` send to a real venue (no template/touch + not a
+  // reply) cannot be classified, so it must NOT proceed as a guess. Require an
+  // explicit template, or an admin bypass. Non-venue / non-tracked sends (no
+  // venueId) are unaffected. This is the hard "ambiguous intent" gate.
+  if (intent.sendIntent === "unknown" && venueId) {
+    const canBypass = bypassCap && hasMinimumRole(staff, "admin");
+    if (!canBypass) {
+      return {
+        ok: false,
+        error:
+          "Can't send: this venue email has no classified send intent. Pick a template (cold opener, lifecycle, cancellation, etc.) so the engine knows how to treat it, or reply within an existing thread. An admin can override with Bypass.",
+        intentAmbiguous: true,
+      };
+    }
+    logger.warn(
+      { fromAccountId, venueId, userId: staff.id },
+      "composeAndSend: admin bypassed ambiguous send-intent block",
+    );
+  }
+
   const preflight = await preflightSend({
     connectedAccountId: fromAccountId,
     threadId: replyToThreadId,

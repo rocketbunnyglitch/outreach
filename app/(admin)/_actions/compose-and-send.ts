@@ -371,6 +371,10 @@ export type ComposeResult =
        *  (Phase 3.10). Hard-blocked for non-admins; admins override via the
        *  same bypassCap path. */
       relationshipBlocked?: boolean;
+      /** Set when the send had no classified intent (a venue email with no
+       *  template/touch + not a reply). Hard-blocked for non-admins; admins
+       *  override via the same bypassCap path. "Every send has explicit intent." */
+      intentAmbiguous?: boolean;
       /** Set when a cold-send pacing cooldown blocked the send (migration
        *  0106). The composer shows the countdown ring; admins bypass via the
        *  same path as the cap. cooldownUntil is the ISO expiry. */
