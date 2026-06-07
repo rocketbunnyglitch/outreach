@@ -375,6 +375,10 @@ export type ComposeResult =
        *  template/touch + not a reply). Hard-blocked for non-admins; admins
        *  override via the same bypassCap path. "Every send has explicit intent." */
       intentAmbiguous?: boolean;
+      /** True when Gmail ACCEPTED the message but a later DB write failed. The
+       *  email DID go out -- callers (e.g. the scheduled-send runner) must NOT
+       *  retry, or they'd double-send. */
+      gmailSent?: boolean;
       /** Set when a cold-send pacing cooldown blocked the send (migration
        *  0106). The composer shows the countdown ring; admins bypass via the
        *  same path as the cap. cooldownUntil is the ISO expiry. */

@@ -713,8 +713,28 @@ async function sendDraftAsUser(input: {
   // reply/warm rates. Null when the operator composed freeform.
   if (draft.templateId) fd.set("templateId", draft.templateId);
 
+  // Atomically CLAIM the draft before sending (mirrors the cron runner). The
+  // UPDATE...WHERE sent_at IS NULL is atomic, so a double-click or a cron/manual
+  // race can't both dispatch it. If we don't win the claim, it's already sent.
+  const sendClaim = await db
+    .update(emailDrafts)
+    .set({ sentAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(emailDrafts.id, input.draftId), isNull(emailDrafts.sentAt)))
+    .returning({ id: emailDrafts.id });
+  if (sendClaim.length === 0) {
+    return { ok: false, error: "This email has already been sent." };
+  }
+
   const result = await composeAndSend(null, fd);
   if (!result.ok) {
+    // Release the claim so the operator can retry -- unless Gmail already
+    // accepted the message (gmailSent), where retrying would double-send.
+    if (!("gmailSent" in result) || !result.gmailSent) {
+      await db
+        .update(emailDrafts)
+        .set({ sentAt: null, updatedAt: new Date() })
+        .where(eq(emailDrafts.id, input.draftId));
+    }
     return {
       ok: false,
       error: result.error,

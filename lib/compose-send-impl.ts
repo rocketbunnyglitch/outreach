@@ -950,6 +950,8 @@ export async function composeAndSendImpl(
     return {
       ok: false,
       error: "The email sent, but couldn't save the record. Refresh the inbox.",
+      // Gmail already accepted it -- the runner must NOT retry (would double-send).
+      gmailSent: true,
     };
   }
 

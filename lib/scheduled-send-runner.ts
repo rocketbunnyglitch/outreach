@@ -135,6 +135,18 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       continue;
     }
 
+    // Atomically CLAIM the draft before sending. UPDATE...WHERE sent_at IS NULL
+    // is atomic, so two overlapping cron ticks (or a tick racing a manual send)
+    // can't both dispatch the same draft -- exactly one flips it. If we don't
+    // win the claim, someone else already took it -> skip. Released below if the
+    // send is blocked BEFORE Gmail accepted it.
+    const claim = await db
+      .update(emailDrafts)
+      .set({ sentAt: now, updatedAt: now })
+      .where(and(eq(emailDrafts.id, draft.id), isNull(emailDrafts.sentAt)))
+      .returning({ id: emailDrafts.id });
+    if (claim.length === 0) continue;
+
     // Construct the FormData composeAndSend expects. This MUST mirror
     // the interactive path in app/(admin)/_actions/email-drafts.ts
     // (sendDraftAsUser) field-for-field. Previously the cron forwarded
@@ -206,20 +218,37 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     try {
       const result = await composeAndSendImpl(owner, fd);
       if (result.ok) {
-        // Mark the draft as sent + link the thread.
+        // Already claimed (sent_at set above); just link the thread.
         await db
           .update(emailDrafts)
-          .set({ sentAt: new Date(), sentThreadId: result.threadId, updatedAt: new Date() })
+          .set({ sentThreadId: result.threadId, updatedAt: new Date() })
           .where(eq(emailDrafts.id, draft.id));
         sent += 1;
       } else {
+        // Release the claim so the draft retries -- UNLESS Gmail already
+        // accepted the message (gmailSent), in which case releasing would
+        // double-send. A gmail-sent-but-not-saved draft stays claimed (sent_at
+        // set, no thread id) = the blocked-not-delivered marker (like T17).
+        if (!result.gmailSent) {
+          await db
+            .update(emailDrafts)
+            .set({ sentAt: null, updatedAt: new Date() })
+            .where(eq(emailDrafts.id, draft.id));
+        }
         failed += 1;
         logger.warn(
-          { draftId: draft.id, owner: owner.id, error: result.error },
+          { draftId: draft.id, owner: owner.id, error: result.error, gmailSent: result.gmailSent },
           "scheduled send failed (will retry next tick)",
         );
       }
     } catch (err) {
+      // A throw from composeAndSendImpl is pre-Gmail (it catches its own
+      // post-send DB errors and returns ok:false instead of throwing), so it's
+      // safe to release the claim for a retry.
+      await db
+        .update(emailDrafts)
+        .set({ sentAt: null, updatedAt: new Date() })
+        .where(eq(emailDrafts.id, draft.id));
       failed += 1;
       logger.error({ err, draftId: draft.id }, "scheduled send threw unexpectedly");
     }
