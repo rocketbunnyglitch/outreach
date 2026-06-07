@@ -218,7 +218,11 @@ export default async function DashboardHome({
                 <>
                   Scope:{" "}
                   <span className="text-zinc-900 dark:text-zinc-100">
-                    {data.scopedCampaign.name}
+                    {/* Abbreviated short name on mobile, full name on sm+. */}
+                    <span className="sm:hidden">
+                      {data.scopedCampaign.shortName ?? data.scopedCampaign.name}
+                    </span>
+                    <span className="hidden sm:inline">{data.scopedCampaign.name}</span>
                   </span>
                 </>
               ) : currentCampaign ? (

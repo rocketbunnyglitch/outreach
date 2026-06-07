@@ -89,6 +89,7 @@ export interface DashboardData {
   scopedCampaign: {
     id: string;
     name: string;
+    shortName: string | null;
   } | null;
 }
 
@@ -582,11 +583,12 @@ export async function loadDashboardData(
   let scopedCampaign: DashboardData["scopedCampaign"] = null;
   if (options.campaignId) {
     const row = await db
-      .select({ id: campaigns.id, name: campaigns.name })
+      .select({ id: campaigns.id, name: campaigns.name, shortName: campaigns.shortName })
       .from(campaigns)
       .where(eq(campaigns.id, options.campaignId))
       .limit(1);
-    if (row[0]) scopedCampaign = { id: row[0].id, name: row[0].name };
+    if (row[0])
+      scopedCampaign = { id: row[0].id, name: row[0].name, shortName: row[0].shortName ?? null };
   }
 
   // Cities completed + goal — for the dotted-arc KPI on the
