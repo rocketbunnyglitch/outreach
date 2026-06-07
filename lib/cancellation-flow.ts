@@ -19,13 +19,17 @@ import {
   events,
   campaigns,
   cityCampaigns,
+  crawlDeliverables,
+  crawlHosts,
   emailDrafts,
   emailTemplates,
   tasks,
+  users,
   venueEvents,
   venues,
 } from "@/db/schema";
 import { db, withAuditContext } from "@/lib/db";
+import { getEngineRoleAssignments } from "@/lib/engine-roles";
 import { logger } from "@/lib/logger";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { renderTemplate } from "@/lib/template-render";
@@ -60,6 +64,10 @@ export async function triggerVenueCancellation(
       campaignId: cityCampaigns.campaignId,
       leadStaffId: cityCampaigns.leadStaffId,
       eventDate: events.eventDate,
+      // P1-1 fan-out inputs: the booking owner + slot role (wristband =>
+      // shipping involved).
+      ourContactStaffId: venueEvents.ourContactStaffId,
+      role: venueEvents.role,
     })
     .from(venueEvents)
     .innerJoin(events, eq(events.id, venueEvents.eventId))
@@ -216,31 +224,107 @@ export async function triggerVenueCancellation(
     );
   }
 
-  // 5. (4.5) Notify the city lead (when it's not the operator who cancelled).
-  // Escalation tier by urgency (4.6): day-of cancellations escalate in 15 min,
-  // event-week in 2 hours, otherwise 24 hours.
+  // 5. (4.5 + P1-1) Notify everyone the cancellation touches -- IN-APP
+  // notifications to STAFF only (never a venue email). Recipients depend on what
+  // the cancelled night involved: always the city lead + booking owner + campaign
+  // manager + lifecycle owner (Bryle); the host coordinator only if a host is
+  // assigned; the wristband/shipping coordinator (Brandon) only if it was a
+  // wristband slot; the designer only if a social graphic is still in progress.
+  // Urgency tier (4.6) by days-to-event sets the escalation deadline; week-of /
+  // day-of additionally queue a pending SMS record (inert until Twilio).
   let notified = 0;
-  if (ve.leadStaffId && ve.leadStaffId !== args.byStaffId) {
-    try {
-      const now = new Date();
-      const daysToEvent = ve.eventDate
-        ? Math.floor((new Date(`${ve.eventDate}T00:00:00Z`).getTime() - now.getTime()) / 86_400_000)
-        : 999;
-      const escalateMs =
-        daysToEvent <= 0 ? 15 * 60_000 : daysToEvent <= 7 ? 2 * 3_600_000 : 24 * 3_600_000;
-      const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+  try {
+    const now = new Date();
+    const daysToEvent = ve.eventDate
+      ? Math.floor((new Date(`${ve.eventDate}T00:00:00Z`).getTime() - now.getTime()) / 86_400_000)
+      : 999;
+    const escalateMs =
+      daysToEvent <= 0 ? 15 * 60_000 : daysToEvent <= 7 ? 2 * 3_600_000 : 24 * 3_600_000;
+    const escalateAfter = new Date(now.getTime() + escalateMs);
+    const urgent = daysToEvent <= 7;
+    const whenBit = daysToEvent <= 0 ? "TODAY" : `in ${daysToEvent}d`;
+
+    const roles = await getEngineRoleAssignments(args.teamId);
+
+    // Conditional context for the host/shipping/graphics recipients.
+    const [hostRow] = await db
+      .select({ id: crawlHosts.id })
+      .from(crawlHosts)
+      .where(eq(crawlHosts.eventId, ve.eventId))
+      .limit(1);
+    const hostAssigned = Boolean(hostRow);
+    const [graphicRow] = await db
+      .select({ id: crawlDeliverables.id, assignedStaffId: crawlDeliverables.assignedStaffId })
+      .from(crawlDeliverables)
+      .where(
+        and(
+          eq(crawlDeliverables.venueEventId, args.venueEventId),
+          eq(crawlDeliverables.deliverableType, "social_media_graphics"),
+          eq(crawlDeliverables.status, "pending"),
+        ),
+      )
+      .limit(1);
+    const graphicInProgress = Boolean(graphicRow);
+    const shippingInvolved = ve.role === "wristband";
+
+    // staffId -> short "why you're being told" label (deduped; skip the canceller).
+    const recipients = new Map<string, string>();
+    const add = (id: string | null | undefined, why: string) => {
+      if (id && id !== args.byStaffId && !recipients.has(id)) recipients.set(id, why);
+    };
+    add(ve.leadStaffId, "city lead");
+    add(ve.ourContactStaffId, "you booked this venue");
+    add(roles.get("campaign_manager") ?? null, "campaign manager");
+    add(roles.get("lifecycle_owner") ?? null, "lifecycle owner");
+    if (hostAssigned) add(roles.get("host_payment_coordinator") ?? null, "host coordinator");
+    if (shippingInvolved) add(roles.get("wristband_coordinator") ?? null, "wristband / shipping");
+    if (graphicInProgress) {
+      add(roles.get("graphics_designer") ?? graphicRow?.assignedStaffId ?? null, "graphic owner");
+    }
+
+    const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+    for (const [staffId, why] of recipients) {
       await emitNotification({
-        staffId: ve.leadStaffId,
+        staffId,
         kind: "admin_message",
         title: `Venue cancelled: ${ve.venueName}`,
-        body: `${ve.venueName} cancelled (${args.reason}). Downstream emails stopped; a T16 draft is ready to review.`,
+        body: `${ve.venueName} cancelled (${args.reason}) -- event ${whenBit}. You're notified as ${why}. Downstream emails stopped; a T16 draft is ready to review.`,
         linkPath: `/venues/${ve.venueId}`,
-        escalateAfter: new Date(now.getTime() + escalateMs),
+        escalateAfter,
       });
-      notified = 1;
-    } catch (err) {
-      logger.error({ err, venueEventId: args.venueEventId }, "cancellation notify failed");
+      notified += 1;
     }
+
+    // Week-of / day-of: queue a pending SMS to each notified staffer with a
+    // phone. sendSms() writes an sms_messages row with status='unconfigured'
+    // when Twilio isn't set up -- exactly the "disabled/pending SMS record with
+    // a clear reason" the spec asks for; it goes live the moment creds land.
+    if (urgent && recipients.size > 0) {
+      try {
+        const { sendSms } = await import("@/lib/sms");
+        const phones = await db
+          .select({ id: users.id, phone: users.phoneE164 })
+          .from(users)
+          .where(inArray(users.id, [...recipients.keys()]));
+        for (const p of phones) {
+          if (!p.phone) continue;
+          await sendSms({
+            to: p.phone,
+            body: `Cancellation: ${ve.venueName} pulled out (event ${whenBit}). Check the app.`,
+            kind: "system",
+            venueId: ve.venueId,
+            cityCampaignId: ve.cityCampaignId,
+            campaignId: ve.campaignId,
+            staffId: p.id,
+            teamId: args.teamId,
+          });
+        }
+      } catch (err) {
+        logger.error({ err, venueEventId: args.venueEventId }, "cancellation pending-SMS failed");
+      }
+    }
+  } catch (err) {
+    logger.error({ err, venueEventId: args.venueEventId }, "cancellation notify failed");
   }
 
   logger.info(
