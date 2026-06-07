@@ -210,7 +210,9 @@ export async function classifyInboundMessage(
     .from(emailMessages)
     .where(and(eq(emailMessages.threadId, input.threadId)))
     .orderBy(desc(emailMessages.sentAt))
-    .limit(6);
+    // 4 (target + 3 prior) is plenty of context to classify the latest reply;
+    // more just inflates input tokens on every call.
+    .limit(4);
 
   // Reverse to chronological.
   const historyChrono = history.reverse();
@@ -238,7 +240,7 @@ export async function classifyInboundMessage(
       direction: h.direction,
       from: h.fromAddress,
       subject: h.subject,
-      text: truncate(h.bodyText ?? "", 1200),
+      text: truncate(h.bodyText ?? "", 700),
     })),
     target: {
       from: msg.fromAddress,
@@ -247,18 +249,24 @@ export async function classifyInboundMessage(
     },
   });
 
-  // Ground the classifier in the Reference Doc's classification rules
-  // (sections 6.3/6.4/8.3/8.4 via the curated `classify_reply` map, topped up
-  // semantically by the reply text). Prepended to the static instructions so
-  // the doc's rules lead. Degrades to the static prompt when no doc/embeddings
-  // are configured. [ReferenceDoc 6.3 + 8.4]
-  const retrieved = await retrieveRelevantSections({
-    task: "classify_reply",
-    query: truncate(msg.bodyText ?? "", 1000),
-    topK: 4,
-  });
+  // Reference-doc grounding (RAG) is OPT-IN. It prepends up to 4 retrieved
+  // reference-doc sections to every classification call, which is the single
+  // biggest input-token cost per call AND triggers an OpenAI embedding call for
+  // the query — multiplied across every inbound reply. The static SYSTEM_PROMPT
+  // below already encodes the full classification rubric, so the grounding is
+  // largely redundant for cost-sensitive steady-state. Enable with
+  // AI_CLASSIFY_RAG_ENABLED=1 if you want the doc-grounded variant back.
+  // [ReferenceDoc 6.3 + 8.4]
+  const ragEnabled = process.env.AI_CLASSIFY_RAG_ENABLED === "1";
+  const retrieved = ragEnabled
+    ? await retrieveRelevantSections({
+        task: "classify_reply",
+        query: truncate(msg.bodyText ?? "", 1000),
+        topK: 4,
+      })
+    : [];
   const retrievedCodes = retrieved.map((s) => s.sectionCode);
-  const groundedSystem = [formatAsSystemPrompt(retrieved), SYSTEM_PROMPT]
+  const groundedSystem = [ragEnabled ? formatAsSystemPrompt(retrieved) : "", SYSTEM_PROMPT]
     .filter(Boolean)
     .join("\n\n");
 

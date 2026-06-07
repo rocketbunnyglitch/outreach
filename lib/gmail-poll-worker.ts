@@ -1395,14 +1395,30 @@ async function ingestMessage(opts: {
   }
 
   // AI auto-classify suggestion for inbound messages — Phase A.1.
-  // Fire-and-forget so ingest latency isn't affected. The classifier
-  // itself skips when the thread is already operator-classified (or
-  // confidently regex-classified upstream), so this is cheap in
-  // steady-state and only runs on genuinely ambiguous threads.
+  // Fire-and-forget so ingest latency isn't affected.
+  //
+  // COST GATE: the free rule-based classifier above already confidently
+  // handles the high-volume mechanical inbound that follows a send blast —
+  // bounces and out-of-office/auto-replies (auto_reply ~0.95), unsubscribes,
+  // and obvious spam. Paying for a Haiku classification + a Haiku
+  // promise-extraction on each of those adds nothing and is what makes the
+  // AI inbox bill balloon. So only spend model calls when the rules did NOT
+  // confidently resolve the message — i.e. genuinely ambiguous inbound that
+  // is likely a real human reply worth reasoning about. (Set
+  // AI_INBOX_FORCE_FULL=1 to bypass this gate and AI-process every inbound.)
+  const ruleCategory = classification?.classification ?? "unclassified";
+  const ruleConfidence = classification?.confidence ?? 0;
+  const ruleHandledMechanically =
+    ruleCategory === "auto_reply" ||
+    ruleCategory === "unsubscribe" ||
+    ruleCategory === "spam" ||
+    ruleConfidence >= 0.9;
+  const aiWorthwhile = process.env.AI_INBOX_FORCE_FULL === "1" || !ruleHandledMechanically;
   if (
     direction === "inbound" &&
     insertedMessageId &&
     !skipAiEnrichment &&
+    aiWorthwhile &&
     process.env.AI_INBOX_CLASSIFY_ENABLED !== "0"
   ) {
     try {
@@ -1422,12 +1438,13 @@ async function ingestMessage(opts: {
           messageId: insertedMessageId,
           teamId,
         });
-        // Same fire-and-forget pattern: pull date-anchored promises
-        // out of the message and auto-create tasks for them. Phase
-        // A.2. Independent of the classifier — extraction can
-        // succeed when classification fails (or vice versa). Gated
-        // by its own env flag so ops can disable just one.
-        if (process.env.AI_INBOX_EXTRACT_PROMISES_ENABLED !== "0") {
+        // Same fire-and-forget pattern: pull date-anchored promises out of the
+        // message and auto-create tasks for them (Phase A.2). This is a SECOND
+        // Haiku call per inbound message, so it is now OPT-IN (default off) to
+        // keep AI inbox costs viable — set AI_INBOX_EXTRACT_PROMISES_ENABLED=1
+        // to turn the auto-task-from-promise feature back on. It already only
+        // reaches here for AI-worthwhile (likely real human reply) messages.
+        if (process.env.AI_INBOX_EXTRACT_PROMISES_ENABLED === "1") {
           void extractPromisesAsync({
             threadId,
             messageId: insertedMessageId,
