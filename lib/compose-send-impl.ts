@@ -591,6 +591,7 @@ export async function composeAndSendImpl(
   // so e.g. the user Bryle sending from a "Dan" inbox shows as "Dan". NULL =
   // fall back to the bare email address (Gmail's account name).
   let fromAliasName: string | null = null;
+  // 1. Exact per-campaign persona, when this send is campaign-attributed.
   if (cityCampaignId) {
     const [a] = await db
       .select({ aliasName: campaignConnectedAccounts.aliasName })
@@ -604,7 +605,20 @@ export async function composeAndSendImpl(
       )
       .where(eq(cityCampaigns.id, cityCampaignId))
       .limit(1);
-    fromAliasName = a?.aliasName ?? null;
+    fromAliasName = a?.aliasName?.trim() || null;
+  }
+  // 2. Account-level persona fallback. The persona is configured per-campaign,
+  //    but each inbox uses ONE consistent persona and the vast majority of
+  //    sends -- especially replies -- carry no city-campaign attribution. Without
+  //    this fallback the configured persona ("Brandon Kern") almost never fires
+  //    and the recipient sees the raw inbox handle. Resolve the inbox's persona
+  //    from any campaign it is assigned to so every send goes out under it.
+  if (!fromAliasName) {
+    const aliasRows = await db
+      .select({ aliasName: campaignConnectedAccounts.aliasName })
+      .from(campaignConnectedAccounts)
+      .where(eq(campaignConnectedAccounts.connectedAccountId, fromAccountId));
+    fromAliasName = aliasRows.map((r) => r.aliasName?.trim()).find((a) => a) || null;
   }
   // RFC 5322 From with a display name: quote + escape the persona.
   //
