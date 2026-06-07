@@ -84,11 +84,10 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
             AND ve.status IN ('confirmed','scheduled','contract_signed')
             AND ve.temporarily_disabled IS NOT TRUE
         )::int AS confirmed_middle,
-        -- final ONLY (alt_final is a backup, not a primary final -- matches
-        -- tracker-status / crawl-matrix / the public lineup, which all count
-        -- role='final' only).
+        -- final OR alt_final: an alt_final acts as the final when no regular
+        -- final is booked (extras are capped at required_final_count below).
         COUNT(*) FILTER (
-          WHERE ve.role = 'final'
+          WHERE ve.role IN ('final','alt_final')
             AND ve.status IN ('confirmed','scheduled','contract_signed')
             AND ve.temporarily_disabled IS NOT TRUE
         )::int AS confirmed_final,

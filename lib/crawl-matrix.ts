@@ -236,7 +236,9 @@ export async function buildCrawlMatrix(opts: {
   return eventRows.map((er) => {
     const ves = veByEvent.get(er.eventId) ?? [];
     const wristband = ves.find((v) => v.role === "wristband");
-    const final = ves.find((v) => v.role === "final");
+    // Prefer a regular final; fall back to an alt_final (which acts as the
+    // final when no regular final is booked).
+    const final = ves.find((v) => v.role === "final") ?? ves.find((v) => v.role === "alt_final");
     const inlineMiddles = ves.filter((v) => v.role === "middle");
 
     const wristbandStatus: CrawlMatrixRow["wristbandStatus"] = !wristband

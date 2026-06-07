@@ -320,7 +320,9 @@ export async function computeCityNeeds(
     if (isConfirmedStatus(r.venueEventStatus) && !r.temporarilyDisabled) {
       if (r.venueRole === "wristband") b.confirmedWristband++;
       else if (r.venueRole === "middle") b.confirmedMiddle++;
-      else if (r.venueRole === "final") b.confirmedFinal++;
+      // alt_final counts toward the final: it acts as the final when there's no
+      // regular final, and extras are capped at the required count below.
+      else if (r.venueRole === "final" || r.venueRole === "alt_final") b.confirmedFinal++;
     }
     // Capture the wristband-role venue's shipping status for this crawl.
     if (r.venueRole === "wristband" && r.wristbandStatus) {
