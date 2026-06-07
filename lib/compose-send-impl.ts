@@ -607,8 +607,16 @@ export async function composeAndSendImpl(
     fromAliasName = a?.aliasName ?? null;
   }
   // RFC 5322 From with a display name: quote + escape the persona.
-  const fromHeader = fromAliasName
-    ? `"${fromAliasName.replace(/([\\"])/g, "\\$1")}" <${inbox.email}>`
+  //
+  // When there's no per-campaign persona alias (e.g. a send with no campaign
+  // attribution), we used to emit a BARE email address -- which let Gmail fill
+  // in the account's own raw display name, often an unprofessional lowercase
+  // handle like "brandon". Instead, always supply a clean title-cased name
+  // derived from the inbox local-part ("brandon@..." -> "Brandon") so the
+  // recipient never sees a lowercase handle. An explicit alias still wins.
+  const fromDisplayName = fromAliasName?.trim() || titleCaseLocalPart(inbox.email);
+  const fromHeader = fromDisplayName
+    ? `"${fromDisplayName.replace(/([\\"])/g, "\\$1")}" <${inbox.email}>`
     : inbox.email;
 
   // Build the outbound HTML body.
@@ -1073,4 +1081,21 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/**
+ * Derive a presentable From display name from an email's local-part when no
+ * explicit persona alias is set. Splits on common separators and title-cases
+ * each token: "brandon@x.com" -> "Brandon", "bar.crawl@x" -> "Bar Crawl".
+ * Returns "" for a degenerate local-part so the caller can fall back to a bare
+ * address rather than an empty quoted name.
+ */
+function titleCaseLocalPart(email: string): string {
+  const local = (email.split("@")[0] ?? "").trim();
+  if (!local) return "";
+  return local
+    .split(/[._+-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 }
