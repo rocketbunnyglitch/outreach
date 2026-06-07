@@ -582,7 +582,12 @@ export async function setThreadState(
     // is done with the thread; the auto "Call follow-up" tasks
     // are noise from here on. open/working states (needs_reply /
     // waiting_on_them / follow_up_due) keep their tasks.
-    const TERMINAL_STATES: ReadonlySet<string> = new Set(["archived", "closed", "won", "lost"]);
+    const TERMINAL_STATES: ReadonlySet<string> = new Set([
+      "archived",
+      "closed_won",
+      "closed_lost",
+      "closed_dnc",
+    ]);
     if (TERMINAL_STATES.has(state)) {
       await cancelAutoTasksForThreads({
         threadIds: [threadId],

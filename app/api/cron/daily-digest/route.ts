@@ -94,7 +94,7 @@ export async function POST(req: Request) {
         // delivery happened. Otherwise an env-gated downgrade would
         // re-log the same user every time the cron fires.
         await db.execute(sql`
-        UPDATE staff_members
+        UPDATE users
         SET digest_sent_at = NOW()
         WHERE id = ${row.staffId}
       `);

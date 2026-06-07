@@ -90,12 +90,20 @@ export async function loadInboxAnalytics(
   // recordSendEvent — see lib/send-cap.ts). Warm sends and
   // bypassed-but-not-counted sends are excluded.
   // -----------------------------------------------------------------
+  // Bind the account ids as a real uuid[] via ARRAY[...]. Interpolating the JS
+  // array directly (accountIds::uuid[]) makes drizzle emit a RECORD cast ->
+  // Postgres 22P02 "cannot cast type record to uuid[]" (same class as the bug
+  // fixed in lib/inbox-daily-stats.ts + lib/venue-communication.ts).
+  const accIds = sql`ARRAY[${sql.join(
+    accountIds.map((x) => sql`${x}`),
+    sql`, `,
+  )}]::uuid[]`;
   const coldRows = await db.execute<{ account: string; n: number }>(sql`
     SELECT
       connected_account_id::text AS account,
       COUNT(*)::int               AS n
     FROM email_send_events
-    WHERE connected_account_id = ANY (${accountIds}::uuid[])
+    WHERE connected_account_id = ANY (${accIds})
       AND counted_against_cap = true
       AND sent_at >= NOW() - (${windowDays} || ' days')::interval
     GROUP BY connected_account_id
@@ -119,7 +127,7 @@ export async function loadInboxAnalytics(
       COUNT(*)::int                     AS n
     FROM email_messages em
     JOIN email_threads et ON et.id = em.thread_id
-    WHERE et.staff_outreach_email_id = ANY (${accountIds}::uuid[])
+    WHERE et.staff_outreach_email_id = ANY (${accIds})
       AND em.direction = 'inbound'
       AND em.sent_at >= NOW() - (${windowDays} || ' days')::interval
     GROUP BY et.staff_outreach_email_id
@@ -150,7 +158,7 @@ export async function loadInboxAnalytics(
     JOIN email_suppression es
       ON lower(es.email) = lower(ese.recipient_email)
      AND es.reason = 'bounced'
-    WHERE ese.connected_account_id = ANY (${accountIds}::uuid[])
+    WHERE ese.connected_account_id = ANY (${accIds})
       AND ese.sent_at >= NOW() - (${windowDays} || ' days')::interval
     GROUP BY ese.connected_account_id
   `);
@@ -167,7 +175,7 @@ export async function loadInboxAnalytics(
       staff_outreach_email_id::text AS account,
       COUNT(*)::int                  AS n
     FROM email_threads
-    WHERE staff_outreach_email_id = ANY (${accountIds}::uuid[])
+    WHERE staff_outreach_email_id = ANY (${accIds})
       AND is_stale = true
       AND state IN ('needs_reply', 'waiting_on_them', 'follow_up_due')
     GROUP BY staff_outreach_email_id

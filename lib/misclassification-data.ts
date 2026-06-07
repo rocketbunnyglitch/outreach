@@ -92,7 +92,7 @@ export async function loadMisclassifications(
       v.name                      AS venue_name,
       c.name                      AS city_name
     FROM email_threads et
-    JOIN staff_outreach_emails soe ON soe.id = et.staff_outreach_email_id
+    JOIN connected_accounts soe ON soe.id = et.staff_outreach_email_id
     JOIN LATERAL (
       SELECT r.classification, r.confidence, r.model, r.retrieved_section_codes, r.run_at
       FROM classifier_runs r

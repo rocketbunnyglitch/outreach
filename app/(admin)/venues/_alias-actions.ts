@@ -85,7 +85,7 @@ export async function addDomainAlias(
       const retroResult = await db.execute<{ id: string }>(sql`
         UPDATE email_threads et
         SET venue_id = ${venueId}, updated_by = ${staff.id}
-        FROM staff_outreach_emails soe, email_messages em
+        FROM connected_accounts soe, email_messages em
         WHERE et.staff_outreach_email_id = soe.id
           AND soe.team_id = ${staff.teamId}
           AND et.venue_id IS NULL
