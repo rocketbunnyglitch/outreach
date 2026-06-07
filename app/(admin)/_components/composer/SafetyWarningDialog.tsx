@@ -27,6 +27,7 @@
  *     Zinc keeps it from drowning out the others.
  */
 
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { AlertTriangle, Building2, Mail, UserCircle } from "lucide-react";
 
 export type SafetyWarningInput = Record<string, unknown>;
@@ -42,6 +43,7 @@ export function SafetyWarningDialog({
   onConfirm: () => void;
   sending: boolean;
 }) {
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
@@ -57,7 +59,11 @@ export function SafetyWarningDialog({
         if (e.key === "Escape") onCancel();
       }}
     >
-      <div className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-xl outline-none dark:border-zinc-800 dark:bg-zinc-950"
+      >
         <header className="border-zinc-200/80 border-b px-4 py-3 dark:border-zinc-800/60">
           <h2
             id="safety-warning-title"

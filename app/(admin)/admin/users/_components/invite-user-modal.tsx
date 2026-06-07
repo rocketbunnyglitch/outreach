@@ -1,6 +1,7 @@
 "use client";
 
 import { MIN_PASSWORD_LENGTH } from "@/lib/passwords";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { Loader2, X } from "lucide-react";
 import { type ReactNode, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -19,6 +20,7 @@ export function InviteUserModal({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ inviteLinkPath?: string } | null>(null);
   const [isPending, startTx] = useTransition();
+  const trapRef = useFocusTrap<HTMLDivElement>(open);
 
   function close() {
     setOpen(false);
@@ -60,7 +62,11 @@ export function InviteUserModal({ children }: { children: ReactNode }) {
               if (e.key === "Escape") close();
             }}
           >
-            <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+            <div
+              ref={trapRef}
+              tabIndex={-1}
+              className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none dark:border-zinc-800 dark:bg-zinc-950"
+            >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">

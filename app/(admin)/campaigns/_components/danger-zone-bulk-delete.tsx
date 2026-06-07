@@ -23,6 +23,7 @@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { AlertTriangle, CalendarDays, Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -67,6 +68,7 @@ function WipeRosterPanel({
   const [pending, startTx] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const trapRef = useFocusTrap<HTMLDivElement>(open);
 
   function submit() {
     setError(null);
@@ -141,7 +143,12 @@ function WipeRosterPanel({
           tabIndex={-1}
         >
           <div
-            className={cn("card-surface w-full max-w-md p-6", "animate-[fade-in_200ms_ease-out]")}
+            ref={trapRef}
+            tabIndex={-1}
+            className={cn(
+              "card-surface w-full max-w-md p-6 outline-none",
+              "animate-[fade-in_200ms_ease-out]",
+            )}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >

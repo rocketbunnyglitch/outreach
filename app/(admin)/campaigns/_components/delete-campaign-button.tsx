@@ -14,6 +14,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -32,6 +33,7 @@ export function DeleteCampaignButton({ campaignId, campaignName, isAdmin }: Prop
   const [error, setError] = useState<string | null>(null);
   const [pending, startTx] = useTransition();
   const router = useRouter();
+  const trapRef = useFocusTrap<HTMLDivElement>(open);
 
   if (!isAdmin) return null;
 
@@ -84,7 +86,12 @@ export function DeleteCampaignButton({ campaignId, campaignName, isAdmin }: Prop
           tabIndex={-1}
         >
           <div
-            className={cn("card-surface w-full max-w-md p-6", "animate-[fade-in_200ms_ease-out]")}
+            ref={trapRef}
+            tabIndex={-1}
+            className={cn(
+              "card-surface w-full max-w-md p-6 outline-none",
+              "animate-[fade-in_200ms_ease-out]",
+            )}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >

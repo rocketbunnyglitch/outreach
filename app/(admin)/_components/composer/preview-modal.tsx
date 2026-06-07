@@ -17,6 +17,7 @@
  * interactivity beyond Close.
  */
 
+import { useFocusTrap } from "@/lib/use-focus-trap";
 import { X } from "lucide-react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -39,6 +40,8 @@ export function PreviewModal({ instance, fromEmailAddress, onClose }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
+
   if (typeof document === "undefined") return null;
 
   const bodyHtml = instance.bodyHtml
@@ -60,7 +63,11 @@ export function PreviewModal({ instance, fromEmailAddress, onClose }: Props) {
       aria-modal="true"
       aria-label="Email preview"
     >
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl outline-none dark:border-zinc-800 dark:bg-zinc-950"
+      >
         <header className="flex items-center justify-between gap-2 border-zinc-200 border-b bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="font-medium text-sm">Preview — final email</h2>
           <button
