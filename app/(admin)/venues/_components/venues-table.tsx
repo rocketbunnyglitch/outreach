@@ -277,8 +277,26 @@ export function VenuesTable({
     });
   }, [rows, filter, sort.state]);
 
+  // -----------------------------------------------------------------
+  // Pagination (render-bounding). The filter + sort above still run over
+  // the FULL set so search/sort see every venue; we only ever render one
+  // page worth of <tr> at a time. Without this the table painted every
+  // matching row at once -- fine for a few hundred venues, janky once a
+  // multi-city campaign pushes the list into the thousands.
+  // -----------------------------------------------------------------
+  const PAGE_SIZE = 100;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
+  // Clamp so a shrinking filtered set can never strand us on an empty page.
+  const safePage = Math.min(page, pageCount - 1);
+  const pagedRows = useMemo(
+    () => visibleRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [visibleRows, safePage],
+  );
+
   const selectedCount = selected.size;
-  const visibleIds = visibleRows.map((r) => r.id);
+  // Select-all + select-state are scoped to the CURRENT page (bounded set).
+  const visibleIds = pagedRows.map((r) => r.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
   const someVisibleSelected = !allVisibleSelected && visibleIds.some((id) => selected.has(id));
 
@@ -495,6 +513,29 @@ export function VenuesTable({
               </>
             )}
           </p>
+          {pageCount > 1 && (
+            <span className="flex items-center gap-1 font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
+              <button
+                type="button"
+                disabled={safePage === 0}
+                onClick={() => setPage(safePage - 1)}
+                className="rounded border border-zinc-300 px-1.5 py-0.5 disabled:opacity-40 dark:border-zinc-700"
+              >
+                Prev
+              </button>
+              <span>
+                {safePage + 1}/{pageCount}
+              </span>
+              <button
+                type="button"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => setPage(safePage + 1)}
+                className="rounded border border-zinc-300 px-1.5 py-0.5 disabled:opacity-40 dark:border-zinc-700"
+              >
+                Next
+              </button>
+            </span>
+          )}
           {/* Saved views: ?sort=... + ?f.* params get bundled into named views */}
           <SavedViewsPicker
             surface="venues"
@@ -600,7 +641,7 @@ export function VenuesTable({
         </DataTableHead>
 
         <DataTableBody>
-          {visibleRows.map((venue, rowIndex) => (
+          {pagedRows.map((venue, rowIndex) => (
             <VenueTableRow
               key={venue.id}
               venue={venue}
