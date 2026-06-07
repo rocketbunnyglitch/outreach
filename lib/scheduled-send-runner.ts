@@ -173,6 +173,7 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     // intent classifier still works off touch_type / template_code.)
     if (draft.touchType) fd.set("touchType", draft.touchType);
     if (draft.recipientType) fd.set("recipientType", draft.recipientType);
+    if (draft.venueEventId) fd.set("venueEventId", draft.venueEventId);
     // Reply/forward context -- composeAndSendImpl branches on these to
     // attach the new message to the existing Gmail thread (keeps
     // threading + ensures the send classifies as warm) instead of

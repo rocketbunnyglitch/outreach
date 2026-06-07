@@ -8,6 +8,7 @@ import { emailThreads } from "./outreach";
 import { teams } from "./teams";
 import { emailTemplates } from "./templates";
 import { staffOutreachEmails, users } from "./users";
+import { venueEvents } from "./venue-events";
 
 export const emailSendEvents = pgTable(
   "email_send_events",
@@ -65,6 +66,15 @@ export const emailSendEvents = pgTable(
     /** Template/touch code for the send (T1..T17, H0a, V1) -- migration
      *  0120. NULL = freeform / no template. */
     touchType: text("touch_type"),
+    /** Full send-intent audit (migration 0121). Mirror the classified intent at
+     *  send time so a row is self-describing without re-deriving from
+     *  send_intent. NULL for legacy rows. */
+    venueEventId: uuid("venue_event_id").references(() => venueEvents.id, {
+      onDelete: "set null",
+    }),
+    cadenceManaged: boolean("cadence_managed"),
+    appliedCadenceFloor: boolean("applied_cadence_floor"),
+    recordedCadenceTouch: boolean("recorded_cadence_touch"),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

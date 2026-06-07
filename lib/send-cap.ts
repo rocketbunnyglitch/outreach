@@ -294,6 +294,12 @@ export async function recordSendEvent(opts: {
   sendIntent?: string | null;
   /** Template/touch code for the send (T1..T17, H0a, V1). NULL = freeform. */
   touchType?: string | null;
+  /** Full send-intent audit (migration 0121) -- the classified intent's cadence
+   *  effects + the venue_event the send belongs to. NULL when not classified. */
+  venueEventId?: string | null;
+  cadenceManaged?: boolean | null;
+  appliedCadenceFloor?: boolean | null;
+  recordedCadenceTouch?: boolean | null;
 }): Promise<void> {
   // send_type defaults to the cap category so existing callers (which
   // don't pass intent) record 'cold'/'warm' exactly as before.
@@ -322,5 +328,9 @@ export async function recordSendEvent(opts: {
     cadenceOverrideReason: opts.cadenceOverrideReason ?? null,
     sendIntent: opts.sendIntent ?? null,
     touchType: opts.touchType ?? null,
+    venueEventId: opts.venueEventId ?? null,
+    cadenceManaged: opts.cadenceManaged ?? null,
+    appliedCadenceFloor: opts.appliedCadenceFloor ?? null,
+    recordedCadenceTouch: opts.recordedCadenceTouch ?? null,
   });
 }

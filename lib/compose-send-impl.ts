@@ -350,6 +350,9 @@ export async function composeAndSendImpl(
   // cold cadence -- a template-less new venue thread is "unknown".
   // -----------------------------------------------------------------
   const touchTypeRaw = String(formData.get("touchType") ?? "").trim();
+  const venueEventIdRaw = String(formData.get("venueEventId") ?? "").trim();
+  const sendVenueEventId =
+    venueEventIdRaw && UUID_RE.test(venueEventIdRaw) ? venueEventIdRaw : null;
   const recipientTypeRaw = String(formData.get("recipientType") ?? "").trim();
   const recipientType =
     recipientTypeRaw === "host" ||
@@ -950,10 +953,14 @@ export async function composeAndSendImpl(
       // Operational intents force send_type='operational' so they never
       // consume the cold budget regardless of cold/warm category (P0).
       intent: intent.operationalForCap ? "operational" : undefined,
-      // Explicit send intent + touch code on the audit row so "was this
-      // treated as cold?" is answerable without reverse-engineering.
+      // Full send-intent audit on the row so "was this treated as cold, and what
+      // cadence effects did it have?" is answerable without reverse-engineering.
       sendIntent: intent.sendIntent,
       touchType: touchTypeRaw || null,
+      venueEventId: sendVenueEventId,
+      cadenceManaged: intent.cadenceManaged,
+      appliedCadenceFloor: intent.appliesCadenceFloor,
+      recordedCadenceTouch: intent.recordsCadenceTouch,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
