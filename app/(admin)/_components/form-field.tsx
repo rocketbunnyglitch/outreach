@@ -66,10 +66,14 @@ export function FormSection({
   description?: string;
   children: React.ReactNode;
 }) {
+  // Header stacks ON TOP of the fields (not a fixed 200px left column). The
+  // old left-rail layout ate ~200px and squished the inputs whenever the form
+  // sat in a narrow container (e.g. the venue deal-room tab column). Stacked is
+  // cleaner everywhere and gives the inputs the full available width.
   return (
-    <section className="grid grid-cols-1 gap-6 border-zinc-200 border-t pt-8 first:border-t-0 first:pt-0 sm:grid-cols-[200px_minmax(0,1fr)] dark:border-zinc-800">
+    <section className="flex flex-col gap-4 border-zinc-200 border-t pt-8 first:border-t-0 first:pt-0 dark:border-zinc-800">
       <div>
-        <h2 className="font-semibold text-lg tracking-tight ">{title}</h2>
+        <h2 className="font-semibold text-lg tracking-tight">{title}</h2>
         {description && <p className="mt-1 text-xs text-zinc-500">{description}</p>}
       </div>
       <div className="flex flex-col gap-5">{children}</div>

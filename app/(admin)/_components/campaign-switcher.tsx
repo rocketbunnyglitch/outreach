@@ -32,6 +32,7 @@ export async function CampaignSwitcher() {
       available={available}
       currentId={current?.campaign.id ?? null}
       currentLabel={current ? current.campaign.name : null}
+      currentShortLabel={current?.campaign.shortName ?? null}
       currentBrandPair={
         current ? `${current.outreachBrand.displayName} · ${current.crawlBrand.displayName}` : null
       }

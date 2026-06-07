@@ -30,6 +30,9 @@ export const campaigns = pgTable(
 
     slug: text("slug").notNull(),
     name: text("name").notNull(), // e.g. "St. Paddy's 2026"
+    /** Short label for tight/mobile UI (e.g. "IHLWN26"). NULL -> fall back to
+     *  `name` (truncated). Migration 0122. */
+    shortName: text("short_name"),
 
     // Both brand FKs are NOT NULL. Every campaign has one of each.
     outreachBrandId: uuid("outreach_brand_id")

@@ -19,6 +19,8 @@ interface Props {
   available: CampaignOption[];
   currentId: string | null;
   currentLabel: string | null;
+  /** Compact label for mobile (e.g. "IHLWN26"). Falls back to currentLabel. */
+  currentShortLabel: string | null;
   currentBrandPair: string | null;
 }
 
@@ -56,6 +58,7 @@ export function CampaignSwitcherClient({
   available,
   currentId,
   currentLabel,
+  currentShortLabel,
   currentBrandPair,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -155,8 +158,10 @@ export function CampaignSwitcherClient({
         <div className="flex min-w-0 flex-col items-start leading-tight">
           <span className="text-[10px] text-zinc-400 uppercase tracking-widest">Campaign</span>
           {currentLabel ? (
-            <span className="max-w-[120px] truncate font-medium text-zinc-900 sm:max-w-[200px] dark:text-zinc-100">
-              {currentLabel}
+            <span className="max-w-[140px] truncate font-medium text-zinc-900 sm:max-w-[200px] dark:text-zinc-100">
+              {/* Short label on mobile (e.g. IHLWN26), full name on sm+. */}
+              <span className="sm:hidden">{currentShortLabel ?? currentLabel}</span>
+              <span className="hidden sm:inline">{currentLabel}</span>
             </span>
           ) : (
             <span className="font-medium text-zinc-500">Pick one…</span>

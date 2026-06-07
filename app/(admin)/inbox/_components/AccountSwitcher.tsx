@@ -41,9 +41,16 @@ export function AccountSwitcher({ accounts }: Props) {
   // server seed -- the picker is session-scoped by design. Initializing
   // from the URL is hydration-safe: useSearchParams returns the same
   // value on the server render and the first client render.
+  // Sentinel for an EXPLICITLY empty selection (operator hit "Clear"). The
+  // bare absence of ?accounts= means "default = all" -- so clearing can't just
+  // delete the param (that would re-check everything, the reported bug). An
+  // impossible-but-valid UUID represents "none selected": the data layer's
+  // inArray filter matches zero rows, and no real account checkbox matches it.
+  const NONE = "00000000-0000-0000-0000-000000000000";
   const urlSelected = useMemo(() => {
     const raw = params.get("accounts");
     if (!raw) return null;
+    if (raw === NONE) return new Set<string>();
     return new Set(raw.split(",").filter(Boolean));
   }, [params]);
 
@@ -76,8 +83,12 @@ export function AccountSwitcher({ accounts }: Props) {
     // (or none) -- keeps URLs short for the default case and means a
     // fresh /inbox load lands on "All inboxes".
     const url = new URL(window.location.href);
-    if (next.size === 0 || next.size === accounts.length) {
+    if (next.size === accounts.length) {
+      // Everything selected = the default; drop the param to keep URLs short.
       url.searchParams.delete("accounts");
+    } else if (next.size === 0) {
+      // Explicitly cleared = show nothing (NOT the all-default).
+      url.searchParams.set("accounts", NONE);
     } else {
       url.searchParams.set("accounts", Array.from(next).join(","));
     }
@@ -114,7 +125,8 @@ export function AccountSwitcher({ accounts }: Props) {
   // a count.
   const triggerLabel = (() => {
     const n = selectedIds.size;
-    if (n === 0 || n === accounts.length) return "All inboxes";
+    if (n === 0) return "No inboxes";
+    if (n === accounts.length) return "All inboxes";
     if (n === 1) {
       const only = accounts.find((a) => selectedIds.has(a.id));
       return only?.emailAddress ?? "1 mailbox";

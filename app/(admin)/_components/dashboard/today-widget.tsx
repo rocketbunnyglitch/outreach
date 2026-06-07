@@ -67,10 +67,10 @@ export function TodayWidget({ digest, currentCampaign }: Props) {
   if (totalCount === 0) {
     return (
       <section className="overflow-hidden rounded-2xl border border-zinc-200/80 bg-gradient-to-br from-white to-zinc-50/40 p-5 shadow-sm shadow-zinc-200/40 dark:border-zinc-800/60 dark:from-zinc-950/60 dark:to-zinc-900/60 dark:shadow-none">
-        <header className="flex items-center gap-2">
-          <Sunrise className="h-4 w-4 text-zinc-400" />
-          <h2 className="font-semibold text-sm tracking-tight">Today</h2>
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+        <header className="flex min-w-0 flex-wrap items-center gap-2">
+          <Sunrise className="h-4 w-4 shrink-0 text-zinc-400" />
+          <h2 className="shrink-0 font-semibold text-sm tracking-tight">Today</h2>
+          <span className="min-w-0 truncate font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
             · {currentCampaign.name}
           </span>
         </header>
@@ -85,14 +85,14 @@ export function TodayWidget({ digest, currentCampaign }: Props) {
   return (
     <section className="card-surface overflow-hidden">
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
-        <div className="flex items-center gap-2">
-          <Sunrise className="h-4 w-4 text-amber-500" />
-          <h2 className="font-semibold text-sm tracking-tight">Today</h2>
-          <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+        <div className="flex min-w-0 items-center gap-2">
+          <Sunrise className="h-4 w-4 shrink-0 text-amber-500" />
+          <h2 className="shrink-0 font-semibold text-sm tracking-tight">Today</h2>
+          <span className="min-w-0 truncate font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
             · {currentCampaign.name}
           </span>
         </div>
-        <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
+        <p className="shrink-0 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em]">
           live digest
         </p>
       </header>
