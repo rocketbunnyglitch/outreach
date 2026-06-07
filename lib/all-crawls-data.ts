@@ -75,14 +75,22 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
       SELECT
         ve.event_id,
         COUNT(*) FILTER (
-          WHERE ve.role = 'wristband' AND ve.status IN ('confirmed','contract_signed')
+          WHERE ve.role = 'wristband'
+            AND ve.status IN ('confirmed','scheduled','contract_signed')
+            AND ve.temporarily_disabled IS NOT TRUE
         )::int AS confirmed_wristband,
         COUNT(*) FILTER (
-          WHERE ve.role = 'middle' AND ve.status IN ('confirmed','contract_signed')
+          WHERE ve.role = 'middle'
+            AND ve.status IN ('confirmed','scheduled','contract_signed')
+            AND ve.temporarily_disabled IS NOT TRUE
         )::int AS confirmed_middle,
+        -- final ONLY (alt_final is a backup, not a primary final -- matches
+        -- tracker-status / crawl-matrix / the public lineup, which all count
+        -- role='final' only).
         COUNT(*) FILTER (
-          WHERE ve.role IN ('final','alt_final')
-            AND ve.status IN ('confirmed','contract_signed')
+          WHERE ve.role = 'final'
+            AND ve.status IN ('confirmed','scheduled','contract_signed')
+            AND ve.temporarily_disabled IS NOT TRUE
         )::int AS confirmed_final,
         COUNT(*)::int AS total_slots,
         COUNT(*) FILTER (
@@ -90,21 +98,6 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
         )::int AS open_slots
       FROM venue_events ve
       GROUP BY ve.event_id
-    ),
-    group_member_counts AS (
-      -- When a crawl uses a shared middle group, count its confirmed
-      -- members toward this crawl's "confirmed middle" total so the
-      -- status pill stays accurate.
-      SELECT
-        e.id AS event_id,
-        COUNT(*) FILTER (
-          WHERE mvgm.status IN ('confirmed','contract_signed')
-        )::int AS shared_middle_confirmed
-      FROM events e
-      JOIN middle_venue_group_members mvgm
-        ON mvgm.middle_venue_group_id = e.middle_venue_group_id
-      WHERE e.middle_venue_group_id IS NOT NULL
-      GROUP BY e.id
     )
     SELECT
       e.id AS event_id,
@@ -123,7 +116,7 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
       e.eventbrite_event_id,
       e.eventbrite_url,
       COALESCE(sa.confirmed_wristband, 0) AS confirmed_wristband,
-      COALESCE(sa.confirmed_middle, 0) + COALESCE(gmc.shared_middle_confirmed, 0) AS confirmed_middle,
+      COALESCE(sa.confirmed_middle, 0) AS confirmed_middle,
       COALESCE(sa.confirmed_final, 0) AS confirmed_final,
       -- total/open are the REQUIRED slot mix per crawl format, NOT a raw
       -- count of attached venue_events. Previously an empty crawl counted
@@ -138,7 +131,7 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
         (e.required_wristband_count + e.required_middle_count + e.required_final_count)
           - LEAST(COALESCE(sa.confirmed_wristband, 0), e.required_wristband_count)
           - LEAST(
-              COALESCE(sa.confirmed_middle, 0) + COALESCE(gmc.shared_middle_confirmed, 0),
+              COALESCE(sa.confirmed_middle, 0),
               e.required_middle_count
             )
           - LEAST(COALESCE(sa.confirmed_final, 0), e.required_final_count)
@@ -148,7 +141,6 @@ export async function loadAllCrawlsForCampaign(campaignId: string): Promise<AllC
     JOIN city_campaigns cc ON cc.id = e.city_campaign_id
     JOIN cities c ON c.id = cc.city_id
     LEFT JOIN slot_agg sa ON sa.event_id = e.id
-    LEFT JOIN group_member_counts gmc ON gmc.event_id = e.id
     LEFT JOIN middle_venue_groups mvg ON mvg.id = e.middle_venue_group_id
     WHERE cc.campaign_id = ${campaignId}
       AND e.archived_at IS NULL

@@ -40,7 +40,7 @@ import "server-only";
  *     yet); engine in outreach mode.
  */
 
-import { events, crawlHosts, middleVenueGroupMembers, venueEvents, wristbands } from "@/db/schema";
+import { events, crawlHosts, venueEvents, wristbands } from "@/db/schema";
 import { db } from "@/lib/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
@@ -114,6 +114,7 @@ export async function computeCityNeeds(
     middleVenueGroupId: string | null;
     venueEventStatus: string | null;
     venueRole: string | null;
+    temporarilyDisabled: boolean | null;
     wristbandStatus: CrawlNeed["wristbandStatus"];
   };
   let rows: EventJoinRow[];
@@ -135,6 +136,7 @@ export async function computeCityNeeds(
         middleVenueGroupId: events.middleVenueGroupId,
         venueEventStatus: venueEvents.status,
         venueRole: venueEvents.role,
+        temporarilyDisabled: venueEvents.temporarilyDisabled,
         wristbandStatus: wristbands.status,
       })
       .from(events)
@@ -158,6 +160,7 @@ export async function computeCityNeeds(
         middleVenueGroupId: events.middleVenueGroupId,
         venueEventStatus: venueEvents.status,
         venueRole: venueEvents.role,
+        temporarilyDisabled: venueEvents.temporarilyDisabled,
         wristbandStatus: wristbands.status,
       })
       .from(events)
@@ -167,30 +170,9 @@ export async function computeCityNeeds(
     rows = fallback.map((r) => ({ ...r, notes: null }));
   }
 
-  // Confirmed-member counts per attached middle_venue_group. When a
-  // crawl has events.middle_venue_group_id set, the group's confirmed
-  // members count toward that crawl's middle fill (mirrors the
-  // memberCountMap in lib/crawl-matrix.ts). Guarded so a missing table
-  // degrades to "no group members" instead of 500-ing the dashboard.
-  const groupIds = [
-    ...new Set(rows.map((r) => r.middleVenueGroupId).filter((id): id is string => !!id)),
-  ];
-  const confirmedGroupMembersById = new Map<string, number>();
-  if (groupIds.length > 0) {
-    try {
-      const memberCounts = await db
-        .select({
-          groupId: middleVenueGroupMembers.middleVenueGroupId,
-          count: sql<number>`count(*) filter (where status IN ('confirmed','scheduled','contract_signed'))::int`,
-        })
-        .from(middleVenueGroupMembers)
-        .where(inArray(middleVenueGroupMembers.middleVenueGroupId, groupIds))
-        .groupBy(middleVenueGroupMembers.middleVenueGroupId);
-      for (const m of memberCounts) confirmedGroupMembersById.set(m.groupId, m.count);
-    } catch (err) {
-      console.warn("[tracker-status] middle group member lookup failed", err);
-    }
-  }
+  // (Middle-group member counts are no longer fetched here: attached groups
+  // copy their members into inline role='middle' venue_events, which are
+  // already counted above -- see filledM below.)
 
   // Per-crawl host kind, sourced from crawl_hosts where slot=1. Done
   // as a separate small query rather than another LEFT JOIN on the
@@ -333,7 +315,9 @@ export async function computeCityNeeds(
     // MATCHING role count toward that role's fill. declined / cancelled
     // venue_events fall outside CONFIRMED_STATUSES so they never fill a
     // slot.
-    if (isConfirmedStatus(r.venueEventStatus)) {
+    // A temporarily_disabled venue_event (middle backed out, slot reopened)
+    // keeps status='confirmed' but must NOT count as filling its slot.
+    if (isConfirmedStatus(r.venueEventStatus) && !r.temporarilyDisabled) {
       if (r.venueRole === "wristband") b.confirmedWristband++;
       else if (r.venueRole === "middle") b.confirmedMiddle++;
       else if (r.venueRole === "final") b.confirmedFinal++;
@@ -380,13 +364,11 @@ export async function computeCityNeeds(
 
     // Cap each role's confirmed contribution at its required count.
     const filledW = Math.min(b.confirmedWristband, reqW);
-    const groupMiddles = b.middleVenueGroupId
-      ? (confirmedGroupMembersById.get(b.middleVenueGroupId) ?? 0)
-      : 0;
-    // A crawl owns its inline middles AND (when a template group is
-    // attached) the group's confirmed members both count toward the same
-    // middle requirement. Sum then cap at the required count.
-    const filledM = Math.min(b.confirmedMiddle + groupMiddles, reqM);
+    // Middle-group members are COPIED into inline role='middle' venue_events on
+    // attach (copyGroupMembersIntoCrawl), so confirmedMiddle ALREADY counts
+    // them -- adding the group members again double-counted (a partial group
+    // could read as complete). Count the inline confirmed middles only.
+    const filledM = Math.min(b.confirmedMiddle, reqM);
     const filledF = Math.min(b.confirmedFinal, reqF);
 
     const missingW = Math.max(0, reqW - filledW);

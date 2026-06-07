@@ -30,7 +30,6 @@ import {
   externalHostShipments,
   externalHosts,
   internalHosts,
-  middleVenueGroupMembers,
   middleVenueGroups,
   venueEvents,
   venues,
@@ -139,7 +138,6 @@ export async function buildCrawlMatrix(opts: {
   if (eventRows.length === 0) return [];
 
   const eventIds = eventRows.map((r) => r.eventId);
-  const middleGroupIds = eventRows.map((r) => r.middleGroupId).filter((id): id is string => !!id);
 
   // 2. Per-event venue_events with role + venue name, status=confirmed only
   //    (for the wristband/final lookups). Plus a count of confirmed
@@ -151,25 +149,14 @@ export async function buildCrawlMatrix(opts: {
       venueName: venues.name,
       role: venueEvents.role,
       status: venueEvents.status,
+      temporarilyDisabled: venueEvents.temporarilyDisabled,
     })
     .from(venueEvents)
     .innerJoin(venues, eq(venues.id, venueEvents.venueId))
     .where(inArray(venueEvents.eventId, eventIds));
 
-  // 3. Member venue counts per middle group (confirmed only)
-  const memberCounts =
-    middleGroupIds.length === 0
-      ? []
-      : await db
-          .select({
-            groupId: middleVenueGroupMembers.middleVenueGroupId,
-            count: sql<number>`count(*) filter (where status IN ('confirmed','scheduled','contract_signed'))::int`,
-          })
-          .from(middleVenueGroupMembers)
-          .where(inArray(middleVenueGroupMembers.middleVenueGroupId, middleGroupIds))
-          .groupBy(middleVenueGroupMembers.middleVenueGroupId);
-
-  const memberCountMap = new Map(memberCounts.map((m) => [m.groupId, m.count]));
+  // (Middle-group member counts are no longer fetched: attached groups copy
+  // their members into inline role='middle' venue_events, counted directly.)
 
   // 4. Staleness: any outreach activity per cityCampaign in the last 5 days?
   const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
@@ -276,9 +263,13 @@ export async function buildCrawlMatrix(opts: {
     let middleStatus: CrawlMatrixRow["middleStatus"] = "missing";
     let middleVenueCount = 0;
     {
-      const confirmedCount = er.middleGroupId
-        ? (memberCountMap.get(er.middleGroupId) ?? 0)
-        : inlineMiddles.filter((v) => isConfirmedStatus(v.status)).length;
+      // Attached middle-group members are copied into inline role='middle'
+      // venue_events, so the inline confirmed middles are the single source of
+      // truth (counting the group separately double-counted, and ignored inline
+      // edits when a group was attached). Exclude temporarily-disabled middles.
+      const confirmedCount = inlineMiddles.filter(
+        (v) => isConfirmedStatus(v.status) && !v.temporarilyDisabled,
+      ).length;
       middleVenueCount = confirmedCount;
       middleStatus =
         confirmedCount >= requiredMiddles
