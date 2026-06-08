@@ -14,6 +14,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -59,6 +60,24 @@ export const venues = pgTable(
     alternateEmails: text("alternate_emails").array().notNull().default([]),
     websiteUrl: text("website_url"),
     instagramHandle: text("instagram_handle"),
+
+    // -------------------------------------------------------------------
+    // Contact enrichment (mig 0131). Populated by the on-demand contact
+    // scraper (lib/enrichment-orchestrator). Kept SEPARATE from the
+    // operator-entered email / instagram_handle above so a scrape never
+    // overwrites a human-verified contact.
+    // -------------------------------------------------------------------
+    /** Scraped emails, sorted by confidence DESC. */
+    scrapedEmails: jsonb("scraped_emails")
+      .$type<Array<{ email: string; role_hint: string; source_page: string; confidence: number }>>()
+      .notNull()
+      .default([]),
+    scrapedInstagram: text("scraped_instagram"),
+    scrapedFacebook: text("scraped_facebook"),
+    lastEnrichmentAttemptAt: timestamp("last_enrichment_attempt_at", { withTimezone: true }),
+    /** 'tier1_success' | 'tier1_partial' | 'tier1_failed_no_emails' | 'tier2_success'
+     *  | 'tier2_failed' | 'no_website' | 'unreachable' | 'manual_override'. */
+    lastEnrichmentStatus: text("last_enrichment_status"),
 
     // Venue facts
     capacity: integer("capacity"),
