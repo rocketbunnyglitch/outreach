@@ -38,6 +38,7 @@ import { lintEmail } from "@/lib/spam-linter";
 import type { TeamLabelSummary } from "@/lib/team-labels";
 import {
   AlertCircle,
+  Clock,
   Image as ImageIcon,
   Link as LinkIcon,
   Loader2,
@@ -54,6 +55,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type BestSendTimeResult, getBestSendTime } from "../../_actions/best-send-time";
 import {
   type ComposeRenderContext,
   type ComposeTemplate,
@@ -220,6 +222,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [undoActive, setUndoActive] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  /** Best-send-time meta for the venue (peak-now hint + suggested slot label).
+   *  Fetched once per venue/city change; null until resolved or N/A. */
+  const [sendTimeHint, setSendTimeHint] = useState<BestSendTimeResult | null>(null);
+  const sendTimeHintKeyRef = useRef<string | null>(null);
   // Plain-text send mode (best cold-send deliverability): send a single
   // text/plain part with no HTML. Per-composer toggle in the footer.
   const [plainTextMode, setPlainTextMode] = useState(false);
@@ -350,6 +356,33 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     // selected inbox's alias + brand instead of the default inbox's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance.venueId, instance.fromAccountId]);
+
+  // -------------------------------------------------------------
+  // Best-send-time hint (Tier-2). Resolve the venue's next off-peak slot once
+  // per venue/city change so we can (a) drive "Send at best time" and (b) warn
+  // when the operator is about to send into a peak-service window. Guarded by a
+  // key ref so it never re-fires on every keystroke (no autosave-style loop).
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const venueId = instance.venueId ?? null;
+    const cityCampaignId = instance.cityCampaignId ?? null;
+    if (!venueId && !cityCampaignId) {
+      setSendTimeHint(null);
+      sendTimeHintKeyRef.current = null;
+      return;
+    }
+    const key = `${venueId}|${cityCampaignId}`;
+    if (sendTimeHintKeyRef.current === key) return;
+    sendTimeHintKeyRef.current = key;
+    let cancelled = false;
+    void getBestSendTime({ venueId, cityCampaignId }).then((res) => {
+      if (cancelled) return;
+      setSendTimeHint(res.ok ? res.data : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [instance.venueId, instance.cityCampaignId]);
 
   // -------------------------------------------------------------
   // Engine template auto-pick (Phase 1.5).
@@ -874,6 +907,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       } else {
         toast.show({ kind: "error", message: res.error ?? "Couldn't schedule." });
       }
+    });
+  }
+
+  /**
+   * "Send at best time" -- resolves the venue's next off-peak daytime slot
+   * (hospitality-tuned; biased to the venue's reply hour when known) and
+   * schedules the draft for it via the same operator-approved path. Timing
+   * only; never changes who/whether it sends.
+   */
+  function handleBestTime() {
+    void getBestSendTime({
+      venueId: instance.venueId ?? null,
+      cityCampaignId: instance.cityCampaignId ?? null,
+    }).then((res) => {
+      if (!res.ok) {
+        toast.show({ kind: "error", message: res.error ?? "Couldn't compute a send time." });
+        return;
+      }
+      handleScheduleSend(res.data.iso);
     });
   }
 
@@ -1533,6 +1585,24 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         )}
       </div>
 
+      {/* Peak-service hint (Tier-2). Subtle, advisory; never blocks. Shown only
+          when sending RIGHT NOW would land in the venue's dinner/service rush. */}
+      {sendTimeHint?.isPeakNow && !instance.scheduledFor && (
+        <div className="flex items-center justify-between gap-2 border-amber-200 border-t bg-amber-50 px-3 py-1.5 text-amber-800 text-xs dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+          <span className="flex items-center gap-1.5">
+            <Clock className="h-3 w-3 shrink-0" />
+            It's peak service hours for this venue right now -- emails get buried.
+          </span>
+          <button
+            type="button"
+            onClick={handleBestTime}
+            className="shrink-0 font-medium underline underline-offset-2"
+          >
+            Send {sendTimeHint.localLabel} instead
+          </button>
+        </div>
+      )}
+
       {/* Footer */}
       <footer className="flex items-center justify-between gap-2 border-zinc-200 border-t bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
         {/* min-w-0 + flex-wrap so on a narrow (mobile) footer the tool
@@ -1545,6 +1615,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             scheduledFor={instance.scheduledFor}
             onSendNow={handleSendNow}
             onSchedule={handleScheduleSend}
+            onBestTime={instance.venueId || instance.cityCampaignId ? handleBestTime : undefined}
             onQueue={instance.composeMode === "new" ? handleQueue : undefined}
             onSendTest={handleSendTest}
             onSaveAsDraft={handleSaveAsDraft}

@@ -27,6 +27,7 @@ import {
   FileText,
   Inbox,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -36,6 +37,9 @@ interface Props {
   scheduledFor: string | null;
   onSendNow: () => void;
   onSchedule: (iso: string | null) => void;
+  /** "Send at best time" -- schedules for the venue's next off-peak daytime
+   *  slot (hospitality-tuned). Omitted -> the item is hidden (no venue context). */
+  onBestTime?: () => void;
   /** Queue for auto-staggered sending (cold-send queue). Omitted -> the
    *  item is hidden (e.g. replies/forwards, which send immediately). */
   onQueue?: () => void;
@@ -53,6 +57,7 @@ export function SendMenu({
   scheduledFor,
   onSendNow,
   onSchedule,
+  onBestTime,
   onQueue,
   onSendTest,
   onSaveAsDraft,
@@ -149,6 +154,16 @@ export function SendMenu({
               icon={<Calendar className="h-3 w-3" />}
               label="Schedule send…"
               onClick={() => setShowDateInput(true)}
+            />
+          )}
+          {onBestTime && (
+            <MenuItem
+              icon={<Sparkles className="h-3 w-3" />}
+              label="Send at best time"
+              onClick={() => {
+                setOpen(false);
+                onBestTime();
+              }}
             />
           )}
           {scheduledFor && (
