@@ -1,3 +1,4 @@
+import { SmartBackButton } from "@/app/(admin)/_components/smart-back-button";
 import type { CampaignSuggestion } from "@/lib/campaign-matcher";
 import type { InboxThreadDetail, ThreadTaskRow, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
 import { type ThreadState, suggestNextAction } from "@/lib/suggested-next-action";
@@ -5,7 +6,7 @@ import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import type { ThreadNoteRow } from "@/lib/thread-notes";
 import type { Classification } from "@/lib/triage-classifier";
 import type { VenueCommunication } from "@/lib/venue-communication";
-import { ArrowLeft, CalendarClock, Check, MailOpen, Sparkles, User } from "lucide-react";
+import { CalendarClock, Check, MailOpen, Sparkles, User } from "lucide-react";
 import Link from "next/link";
 import { AssignmentPicker } from "./AssignmentPicker";
 import { AttachVenueButton } from "./AttachVenueButton";
@@ -19,7 +20,6 @@ import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
 import { ThreadHeaderActions } from "./ThreadHeaderActions";
-import { ThreadHeaderReply } from "./ThreadHeaderReply";
 import { ThreadHistoryPanel } from "./ThreadHistoryPanel";
 import { ThreadLabelsRow } from "./ThreadLabelsRow";
 import { ThreadNotesBlock } from "./ThreadNotesBlock";
@@ -85,18 +85,22 @@ export function ThreadPane({
       <header className="sticky top-0 z-10 border-zinc-200/80 border-b bg-white/90 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4 dark:border-zinc-800/60 dark:bg-zinc-950/80">
         <div className="flex items-baseline justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            {/* Mobile back-arrow — returns to the thread list pane.
-                Hidden on lg+ where the list pane is always visible. */}
-            <Link
-              href="/inbox"
-              aria-label="Back to inbox"
+            {/* Back to the inbox -- returns to the exact view the operator came
+                from (folder + scope) via router.back(), falling back to /inbox
+                on a direct load. Using the client history cache also avoids the
+                stale-deployment "Failed to find Server Action" crash a hard
+                /inbox navigation can hit. Mobile = icon-only; desktop = labelled,
+                styled like the top-right reply/forward cluster. */}
+            <SmartBackButton
+              fallbackHref="/inbox"
+              label=""
               className="-ml-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:hidden dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            {/* Reply lives on the LEFT so the floating account-switcher
-                avatar (top-right of the shell) can't block it on mobile. */}
-            <ThreadHeaderReply threadId={thread.id} />
+            />
+            <SmartBackButton
+              fallbackHref="/inbox"
+              label="Back"
+              className="hidden h-8 shrink-0 items-center gap-1 rounded-md px-2 font-medium text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 lg:inline-flex dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            />
             <h1 className="min-w-0 truncate font-semibold text-base tracking-tight sm:text-lg">
               {thread.subject ?? "(no subject)"}
             </h1>

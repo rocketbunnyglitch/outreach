@@ -22,6 +22,7 @@ export type InboxDensity = "compact" | "default" | "comfortable";
 export type ReadingPanePosition = "right" | "bottom" | "none";
 export type InboxView = "outlook" | "gmail";
 export type ThemePref = "light" | "dark";
+export type InboxScope = "team" | "campaign" | "mine";
 
 export interface UserPrefs {
   inboxDensity: InboxDensity | null;
@@ -30,6 +31,8 @@ export interface UserPrefs {
   inboxView: InboxView | null;
   /** 'light' | 'dark'. null = follow localStorage / OS. */
   themePref: ThemePref | null;
+  /** 'team' | 'campaign' | 'mine'. null = no saved scope -> default 'mine'. */
+  inboxScope: InboxScope | null;
   /** Per-campaign account-visibility scope. Key is campaign id or
    *  "_default" for the no-campaign / all-campaigns view. Value is
    *  the list of connected_account ids the operator explicitly
@@ -50,6 +53,7 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
       inboxReadingPane: userPreferences.inboxReadingPane,
       inboxView: userPreferences.inboxView,
       themePref: userPreferences.themePref,
+      inboxScope: userPreferences.inboxScope,
       inboxAccountFilters: userPreferences.inboxAccountFilters,
       dailyDigestEnabled: userPreferences.dailyDigestEnabled,
     })
@@ -62,6 +66,7 @@ export async function getUserPreferences(userId: string): Promise<UserPrefs | nu
     inboxReadingPane: (row.inboxReadingPane as ReadingPanePosition | null) ?? null,
     inboxView: (row.inboxView as InboxView | null) ?? null,
     themePref: (row.themePref as ThemePref | null) ?? null,
+    inboxScope: (row.inboxScope as InboxScope | null) ?? null,
     inboxAccountFilters: (row.inboxAccountFilters as Record<string, string[]> | null) ?? {},
     dailyDigestEnabled: row.dailyDigestEnabled ?? null,
   };
@@ -85,6 +90,7 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
     : undefined;
   const view = isInboxView(patch.inboxView ?? null) ? patch.inboxView : undefined;
   const theme = isThemePref(patch.themePref ?? null) ? patch.themePref : undefined;
+  const scope = isInboxScope(patch.inboxScope ?? null) ? patch.inboxScope : undefined;
   // dailyDigestEnabled: only accept actual booleans or explicit
   // null. Undefined (key not present in patch) means "don't touch."
   // We can't use `patch.dailyDigestEnabled === undefined` cleanly
@@ -101,6 +107,7 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
     pane === undefined &&
     view === undefined &&
     theme === undefined &&
+    scope === undefined &&
     digest === undefined &&
     !digestProvided
   ) {
@@ -115,6 +122,7 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
       inboxReadingPane: pane ?? null,
       inboxView: view ?? null,
       themePref: theme ?? null,
+      inboxScope: scope ?? null,
       // dailyDigestEnabled column default is TRUE; an explicit
       // false here records the opt-out. NULL here means "not set
       // by this insert", which on a fresh row falls back to the
@@ -128,6 +136,7 @@ export async function setUserPreference(userId: string, patch: Partial<UserPrefs
         ...(pane !== undefined ? { inboxReadingPane: pane ?? null } : {}),
         ...(view !== undefined ? { inboxView: view ?? null } : {}),
         ...(theme !== undefined ? { themePref: theme ?? null } : {}),
+        ...(scope !== undefined ? { inboxScope: scope ?? null } : {}),
         ...(digestProvided ? { dailyDigestEnabled: digest ?? null } : {}),
         updatedAt: sql`NOW()`,
       },
@@ -148,6 +157,10 @@ function isInboxView(v: unknown): v is InboxView | null {
 
 function isThemePref(v: unknown): v is ThemePref | null {
   return v === null || v === "light" || v === "dark";
+}
+
+function isInboxScope(v: unknown): v is InboxScope | null {
+  return v === null || v === "team" || v === "campaign" || v === "mine";
 }
 
 /**

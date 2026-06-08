@@ -22,6 +22,7 @@
  * loaders need no new plumbing: mine=1 / allCampaigns=1 / neither.
  */
 
+import { updateUserPreferences } from "@/app/(admin)/_actions/user-preferences";
 import { cn } from "@/lib/cn";
 import { Building2, User, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -40,6 +41,9 @@ export function InboxVisibilityToggle({ scope }: { scope: VisibilityScope }) {
 
   function go(next: VisibilityScope) {
     if (next === scope) return;
+    // Persist the choice so it survives navigation + reload (fire-and-forget;
+    // the URL push below drives the immediate view).
+    void updateUserPreferences({ inboxScope: next });
     const p = new URLSearchParams(params?.toString() ?? "");
     p.delete("mine");
     p.delete("allCampaigns");
@@ -50,8 +54,9 @@ export function InboxVisibilityToggle({ scope }: { scope: VisibilityScope }) {
     p.delete("accounts");
     if (next === "team") p.set("allCampaigns", "1");
     else if (next === "campaign") p.set("scope", "campaign");
-    // "mine" = no scope params -> the DEFAULT (your own inbox; no one has to
-    // pick a scope to see their mail).
+    // "mine" pushes an EXPLICIT scope=mine (not empty) so it overrides a saved
+    // non-mine default without racing the fire-and-forget preference write.
+    else if (next === "mine") p.set("scope", "mine");
     const qs = p.toString();
     router.push(qs ? `/inbox?${qs}` : "/inbox");
   }

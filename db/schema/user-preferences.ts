@@ -27,6 +27,9 @@ export const userPreferences = pgTable("user_preferences", {
   inboxView: text("inbox_view"),
   /** 'light' | 'dark' -- theme, synced across devices (migration 0115). */
   themePref: text("theme_pref"),
+  /** 'team' | 'campaign' | 'mine' -- persisted inbox visibility scope so the
+   *  toggle choice survives navigation + reload (migration 0130). */
+  inboxScope: text("inbox_scope"),
   /** Per-campaign account-visibility scope from the AccountSwitcher.
    *  Shape: { "<campaign_id>": ["<connected_account_id>", ...] }
    *  Empty arrays + missing keys both mean "default to every account

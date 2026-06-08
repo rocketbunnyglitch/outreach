@@ -180,8 +180,28 @@ export default async function InboxPage({ searchParams }: Props) {
   // campaign scoping. Nobody has to pick a scope to see their own mail. Wider
   // views are OPT-IN via the toggle: "All team" (?allCampaigns=1) or "This
   // campaign" (?scope=campaign). Send authority is unaffected (own-only).
+  // Persisted scope: the toggle always pushes an explicit param (scope=campaign
+  // / scope=mine / allCampaigns=1), so an explicit choice always wins. On a
+  // FRESH load with no scope param, fall back to the operator's saved scope
+  // (then "mine"). This makes the Mine/Team/Campaign choice survive reloads.
+  const userPrefs = await getUserPreferences(currentStaff.id);
+  const savedScope: VisibilityScope | null =
+    userPrefs?.inboxScope === "team" ||
+    userPrefs?.inboxScope === "campaign" ||
+    userPrefs?.inboxScope === "mine"
+      ? userPrefs.inboxScope
+      : null;
+  const hasExplicitScope = params.scope !== undefined || params.allCampaigns !== undefined;
   const visScope: VisibilityScope =
-    params.scope === "campaign" ? "campaign" : params.allCampaigns === "1" ? "team" : "mine";
+    params.scope === "campaign"
+      ? "campaign"
+      : params.scope === "mine"
+        ? "mine"
+        : params.allCampaigns === "1"
+          ? "team"
+          : !hasExplicitScope && savedScope
+            ? savedScope
+            : "mine";
   // The "mine" owner-restriction applies ONLY when the operator hasn't
   // explicitly picked inboxes in the AccountSwitcher (?accounts=). An explicit
   // pick (e.g. a teammate's inbox) wins, so viewing another person's inbox
@@ -203,7 +223,6 @@ export default async function InboxPage({ searchParams }: Props) {
     gmailLabels,
     drafts,
     visibleAccounts,
-    userPrefs,
     savedSearches,
     mentionCount,
   ] = await Promise.all([
@@ -260,7 +279,6 @@ export default async function InboxPage({ searchParams }: Props) {
       // the cross-inbox send override (lead visibility != send).
       isAdmin: hasMinimumRole(currentStaff, "admin"),
     }),
-    getUserPreferences(currentStaff.id),
     loadSavedSearches(currentStaff.id),
     countUnacknowledgedMentions(currentStaff.id),
   ]);
