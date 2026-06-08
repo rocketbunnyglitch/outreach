@@ -1468,10 +1468,13 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               className="flex-1 bg-transparent text-xs outline-none"
             >
               <option value="">— Pick a template —</option>
+              {/* Brand intentionally omitted: the list is already collapsed to
+                  one template per code, resolved to the sending inbox's brand
+                  (lib/compose-and-send listComposeContext), so the operator just
+                  picks the template and the brand-correct variation is used. */}
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.brandName} · {t.name} ({t.stage.replace(/_/g, " ")})
-                  {t.isDefaultForStage ? " ★" : ""}
+                  {t.name} ({t.stage.replace(/_/g, " ")}){t.isDefaultForStage ? " ★" : ""}
                 </option>
               ))}
             </select>

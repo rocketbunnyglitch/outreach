@@ -20,6 +20,7 @@
  */
 
 import {
+  campaignConnectedAccounts,
   campaigns,
   cities,
   cityCampaigns,
@@ -329,14 +330,44 @@ export async function listComposeContext(
     sendingAccountId,
   });
 
-  // Logical dropdown order: T-codes by number first (T1 cold opener -> T17),
-  // then H (host) then V (venue) families. All templates share stage='custom'
-  // + the same auto_pick_priority, so the SQL ORDER BY can't differentiate
-  // them; sort by a natural reading of the code here. Brand stays the primary
-  // group so a multi-brand catalog still clusters by brand.
-  templateRows.sort(
-    (a, b) =>
-      a.brandName.localeCompare(b.brandName) || compareTemplateCode(a.templateCode, b.templateCode),
+  // Resolve the sending inbox's OutreachBrand so the picker shows ONE template
+  // per code -- the variation matching the brand the venue sees in the From,
+  // falling back to the canonical/default row when that brand has no variation
+  // yet. (Operator: drop brand from the picker; the template auto-adjusts to
+  // the sending brand for cross-brand reputation isolation.)
+  let sendingBrandId: string | null = null;
+  if (sendingAccountId && campaignId) {
+    const [link] = await db
+      .select({ brandId: campaignConnectedAccounts.outreachBrandId })
+      .from(campaignConnectedAccounts)
+      .where(
+        and(
+          eq(campaignConnectedAccounts.connectedAccountId, sendingAccountId),
+          eq(campaignConnectedAccounts.campaignId, campaignId),
+        ),
+      )
+      .limit(1);
+    sendingBrandId = link?.brandId ?? null;
+  }
+
+  // Collapse to one row per template_code. Preference: the sending brand's
+  // variation > the default-for-stage row > the first seen.
+  const byCode = new Map<string, (typeof templateRows)[number]>();
+  for (const t of templateRows) {
+    const existing = byCode.get(t.templateCode);
+    if (!existing) {
+      byCode.set(t.templateCode, t);
+      continue;
+    }
+    const tMatches = sendingBrandId !== null && t.brandId === sendingBrandId;
+    const existingMatches = sendingBrandId !== null && existing.brandId === sendingBrandId;
+    const better =
+      (tMatches && !existingMatches) ||
+      (!existingMatches && !existing.isDefaultForStage && t.isDefaultForStage);
+    if (better) byCode.set(t.templateCode, t);
+  }
+  const templateRowsDeduped = [...byCode.values()].sort((a, b) =>
+    compareTemplateCode(a.templateCode, b.templateCode),
   );
 
   // Pre-tag visibility: ensure the campaign's Gmail label + the venue's city
@@ -359,7 +390,7 @@ export async function listComposeContext(
     }
   }
 
-  return { inboxes, labels, templates: templateRows, renderContext, defaultLabelIds };
+  return { inboxes, labels, templates: templateRowsDeduped, renderContext, defaultLabelIds };
 }
 
 export type ComposeResult =
