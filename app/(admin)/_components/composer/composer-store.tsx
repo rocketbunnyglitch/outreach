@@ -21,7 +21,15 @@
  *   debugging tools (React DevTools) consistent.
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+} from "react";
 
 export type ComposerMode = "docked" | "minimized" | "expanded" | "fullscreen" | "inline";
 
@@ -188,6 +196,19 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+/**
+ * A post-send follow-up nudge, surfaced by the host AFTER the composer that
+ * sent it has already closed. Decoupling it from the composer instance is what
+ * lets a sent composer close immediately instead of lingering (and re-opening
+ * as an editable composer when you reopen the thread).
+ */
+export interface FollowUpRequest {
+  venueId: string | null;
+  threadId: string;
+  subject: string;
+  to: string;
+}
+
 interface ComposerStoreValue {
   composers: State;
   open: (input: OpenComposerInput) => string;
@@ -196,6 +217,9 @@ interface ComposerStoreValue {
   setField: (id: string, patch: Partial<ComposerInstance>) => void;
   setStatus: (id: string, status: DraftStatus, lastSavedAt?: string) => void;
   hydrate: (instances: ComposerInstance[]) => void;
+  /** Post-send follow-up nudge (rendered by the host, not the composer). */
+  followUp: FollowUpRequest | null;
+  setFollowUp: (req: FollowUpRequest | null) => void;
 }
 
 const Ctx = createContext<ComposerStoreValue | null>(null);
@@ -429,9 +453,21 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("compose-email", onCompose);
   }, [open, setMode, hydrate]);
 
+  const [followUp, setFollowUp] = useState<FollowUpRequest | null>(null);
+
   const value = useMemo<ComposerStoreValue>(
-    () => ({ composers, open, close, setMode, setField, setStatus, hydrate }),
-    [composers, open, close, setMode, setField, setStatus, hydrate],
+    () => ({
+      composers,
+      open,
+      close,
+      setMode,
+      setField,
+      setStatus,
+      hydrate,
+      followUp,
+      setFollowUp,
+    }),
+    [composers, open, close, setMode, setField, setStatus, hydrate, followUp],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -28,13 +28,14 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { type ComposerInstance, useComposer } from "./composer-store";
 import { ComposerWindow } from "./composer-window";
+import { FollowUpPrompt } from "./follow-up-prompt";
 import { useDraftHydration } from "./use-draft-hydration";
 
 const MAX_DOCKED_COMPOSERS = 3;
 const MOBILE_BREAKPOINT_PX = 640;
 
 export function ComposerHost() {
-  const { composers, setMode } = useComposer();
+  const { composers, setMode, followUp, setFollowUp } = useComposer();
   const [isMobile, setIsMobile] = useState(false);
 
   // Hydrate any not-yet-sent drafts from the server on first mount
@@ -66,7 +67,28 @@ export function ComposerHost() {
   }, [composers, setMode]);
 
   if (typeof document === "undefined") return null;
-  if (composers.size === 0) return null;
+
+  // Post-send follow-up nudge. Rendered independently of the composer stack
+  // (the composer that sent it has already closed) so a sent composer never
+  // lingers as an editable window. Anchored bottom-right as a small card.
+  const followUpEl = followUp
+    ? createPortal(
+        <div className="pointer-events-none fixed right-3 bottom-3 z-[160] flex justify-end">
+          <div className="pointer-events-auto w-80 max-w-[90vw] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+            <FollowUpPrompt
+              venueId={followUp.venueId}
+              threadId={followUp.threadId}
+              subject={followUp.subject}
+              to={followUp.to}
+              onClose={() => setFollowUp(null)}
+            />
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
+  if (composers.size === 0) return followUpEl;
 
   // Partition into visible (docked/expanded/fullscreen) and minimized.
   // Inline-mode composers are rendered inside the ThreadPane via
@@ -83,18 +105,26 @@ export function ComposerHost() {
   if (isMobile) {
     const activeMobile = fullscreen ?? visibleDocked[visibleDocked.length - 1] ?? null;
     const otherMinimized = all.filter((c) => c.id !== activeMobile?.id);
-    return createPortal(
-      <div className="pointer-events-none fixed inset-0 z-[150] flex flex-col" aria-live="polite">
-        {activeMobile && <ComposerWindow instance={activeMobile} index={0} isMobile={true} />}
-        {otherMinimized.length > 0 && (
-          <div className="pointer-events-none flex flex-row gap-2 overflow-x-auto px-2 pb-2">
-            {otherMinimized.map((c) => (
-              <ComposerWindow key={c.id} instance={c} index={0} isMobile={false} />
-            ))}
-          </div>
+    return (
+      <>
+        {createPortal(
+          <div
+            className="pointer-events-none fixed inset-0 z-[150] flex flex-col"
+            aria-live="polite"
+          >
+            {activeMobile && <ComposerWindow instance={activeMobile} index={0} isMobile={true} />}
+            {otherMinimized.length > 0 && (
+              <div className="pointer-events-none flex flex-row gap-2 overflow-x-auto px-2 pb-2">
+                {otherMinimized.map((c) => (
+                  <ComposerWindow key={c.id} instance={c} index={0} isMobile={false} />
+                ))}
+              </div>
+            )}
+          </div>,
+          document.body,
         )}
-      </div>,
-      document.body,
+        {followUpEl}
+      </>
     );
   }
 
@@ -104,24 +134,29 @@ export function ComposerHost() {
   //                                                                              right edge of viewport
   //
   // Fullscreen composers render at z-[200] over everything else.
-  return createPortal(
-    <div
-      // Container is a non-interactive overlay layer; individual
-      // composer windows each have pointer-events: auto. This way
-      // the page beneath the unused space stays clickable.
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[150] flex flex-row-reverse items-end gap-3 px-3 pb-3"
-      aria-live="polite"
-    >
-      {visibleDocked
-        .slice()
-        .reverse()
-        .map((c, i) => (
-          <ComposerWindow key={c.id} instance={c} index={i} isMobile={false} />
-        ))}
-      {minimized.length > 0 && <MinimizedStack minimized={minimized} />}
-      {fullscreen && <ComposerWindow instance={fullscreen} index={0} isMobile={false} />}
-    </div>,
-    document.body,
+  return (
+    <>
+      {createPortal(
+        <div
+          // Container is a non-interactive overlay layer; individual
+          // composer windows each have pointer-events: auto. This way
+          // the page beneath the unused space stays clickable.
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-[150] flex flex-row-reverse items-end gap-3 px-3 pb-3"
+          aria-live="polite"
+        >
+          {visibleDocked
+            .slice()
+            .reverse()
+            .map((c, i) => (
+              <ComposerWindow key={c.id} instance={c} index={i} isMobile={false} />
+            ))}
+          {minimized.length > 0 && <MinimizedStack minimized={minimized} />}
+          {fullscreen && <ComposerWindow instance={fullscreen} index={0} isMobile={false} />}
+        </div>,
+        document.body,
+      )}
+      {followUpEl}
+    </>
   );
 }
 

@@ -71,7 +71,6 @@ import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
 import { CooldownRing } from "./cooldown-ring";
-import { FollowUpPrompt } from "./follow-up-prompt";
 import { PreviewModal } from "./preview-modal";
 import { RecipientChips } from "./recipient-chips";
 import { RichTextEditor } from "./rich-text-editor";
@@ -169,7 +168,7 @@ function stripSignatureBlock(html: string): string {
 }
 
 export function ComposerWindow({ instance, isMobile }: Props) {
-  const { close, setMode, setField, setStatus } = useComposer();
+  const { close, setMode, setField, setStatus, setFollowUp } = useComposer();
   const [inboxes, setInboxes] = useState<ConnectedAccountOption[] | null>(null);
   const [templates, setTemplates] = useState<ComposeTemplate[] | null>(null);
   const [renderContext, setRenderContext] = useState<ComposeRenderContext>({});
@@ -218,22 +217,8 @@ export function ComposerWindow({ instance, isMobile }: Props) {
    *  and the operator can cancel. */
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [undoActive, setUndoActive] = useState(false);
-  const [sentThreadId, setSentThreadId] = useState<string | null>(null);
-  const [showFollowUp, setShowFollowUp] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // After a successful send we keep the window open showing the
-  // FollowUpPrompt (one-click "schedule a follow-up" affordance) rather
-  // than closing instantly. But it must not linger forever — operators
-  // reported the composer "stays popped up" after sending. Auto-close
-  // after a grace window; the operator can still pick a follow-up preset
-  // or hit Close before then, and acting flips showFollowUp false (via
-  // onClose) which clears this timer.
-  useEffect(() => {
-    if (!showFollowUp) return;
-    const t = setTimeout(() => close(instance.id), 12_000);
-    return () => clearTimeout(t);
-  }, [showFollowUp, close, instance.id]);
   // Toolbar visibility — Gmail collapses the formatting toolbar by
   // default and surfaces it via the Aa toggle. We default to open
   // on first paint so power users see the affordances; the toggle
@@ -683,17 +668,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       }
       // Clear any prior safety dialog state on success.
       setPendingSafetyWarnings([]);
-      setSentThreadId(sendRes.data.threadId);
       toast.show({
         kind: "success",
         message: opts.testOnly ? "Test sent to your inbox." : "Message sent.",
       });
-      // Skip follow-up prompt on test sends.
+      // Close the composer IMMEDIATELY on a successful send so it can never
+      // linger as an editable inline/docked composer (the previous behavior
+      // kept it open for the follow-up prompt, and navigating away cancelled
+      // the auto-close -- so reopening the thread showed the sent email as an
+      // editable draft). The follow-up nudge is handed to the host, which
+      // renders it independently of this (now closed) composer instance.
       if (!opts.testOnly) {
-        setShowFollowUp(true);
-      } else {
-        setTimeout(() => close(instance.id), 1200);
+        setFollowUp({
+          venueId: instance.venueId,
+          threadId: sendRes.data.threadId,
+          subject: instance.subject,
+          to: toList[0] ?? "",
+        });
       }
+      close(instance.id);
     });
   }
 
@@ -1519,19 +1512,6 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               Undo
             </button>
           </div>
-        )}
-
-        {showFollowUp && (
-          <FollowUpPrompt
-            venueId={instance.venueId}
-            threadId={sentThreadId}
-            subject={instance.subject}
-            to={toList[0] ?? ""}
-            onClose={() => {
-              setShowFollowUp(false);
-              setTimeout(() => close(instance.id), 200);
-            }}
-          />
         )}
       </div>
 
