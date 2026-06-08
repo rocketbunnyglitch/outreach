@@ -56,6 +56,7 @@ import {
   describeBlock,
   runSendSafetyForRecipients,
 } from "@/lib/send-safety";
+import { expandSpintax, hasSpintax, seededRng } from "@/lib/spintax";
 import { applyLabelToThread, ensureTeamLabel } from "@/lib/team-labels";
 import { getVenueBrandRelationship } from "@/lib/venue-relationships";
 import { and, eq, sql } from "drizzle-orm";
@@ -668,6 +669,27 @@ export async function composeAndSendImpl(
   const htmlBody = sanitizeEmailHtml(rawHtml) ?? synthesizedHtml;
 
   // -------------------------------------------------------------------
+  // Spintax variation (cold-deliverability). Expand {a|b} alternations at SEND
+  // time so no two cold emails are byte-identical -- repeated bodies are a spam
+  // fingerprint at 50-city scale. Body + HTML share a seed so they resolve to
+  // the SAME choices; {{merge}} fields are never touched. No-op (identical
+  // output) when the draft contains no spintax, so normal sends are unaffected.
+  // The EXPANDED text is what we both send AND store, so the record matches the
+  // delivered email.
+  // -------------------------------------------------------------------
+  let sendSubject = subject;
+  let sendBody = body;
+  let sendHtml = htmlBody;
+  if (hasSpintax(subject) || hasSpintax(body) || hasSpintax(htmlBody)) {
+    const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
+    sendSubject = expandSpintax(subject, seededRng(seed));
+    // Body + html share the same seed -> same option picks -> consistent.
+    sendBody = expandSpintax(body, seededRng(seed + 1));
+    sendHtml = expandSpintax(htmlBody, seededRng(seed + 1));
+    logger.info({ fromAccountId, venueId }, "composeAndSend: expanded spintax variation");
+  }
+
+  // -------------------------------------------------------------------
   // Warm-only open tracking (hard-gated). A pixel is injected ONLY when:
   //   - this is a reply into an EXISTING thread the venue has engaged
   //     (direction inbound/mixed) -- new threads are cold by definition and
@@ -680,7 +702,7 @@ export async function composeAndSendImpl(
   // hiccup must never block the send. Opens are a SOFT signal (no automation).
   // -------------------------------------------------------------------
   let trackingTokenToStore: string | null = null;
-  let htmlBodyForSend = htmlBody;
+  let htmlBodyForSend = sendHtml;
   if (replyToThreadId && isOpenTrackingEnvOn() && env.TRACKING_BASE_URL) {
     try {
       const [thr] = await db
@@ -706,7 +728,7 @@ export async function composeAndSendImpl(
       ) {
         const token = randomUUID();
         trackingTokenToStore = token;
-        htmlBodyForSend = `${htmlBody}<img src="${env.TRACKING_BASE_URL}/api/track/o/${token}.gif" width="1" height="1" alt="" style="display:none">`;
+        htmlBodyForSend = `${sendHtml}<img src="${env.TRACKING_BASE_URL}/api/track/o/${token}.gif" width="1" height="1" alt="" style="display:none">`;
       }
     } catch (err) {
       logger.warn({ err, replyToThreadId }, "open-tracking injection skipped (non-fatal)");
@@ -718,7 +740,7 @@ export async function composeAndSendImpl(
   // version of the HTML so HTML-only payloads (rare, but possible
   // when the composer sends pure markup) still get a sensible
   // preview instead of an empty string.
-  const derivedSnippet = (body.trim().length > 0 ? body : htmlBody.replace(/<[^>]*>/g, " "))
+  const derivedSnippet = (sendBody.trim().length > 0 ? sendBody : sendHtml.replace(/<[^>]*>/g, " "))
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 140);
@@ -846,15 +868,15 @@ export async function composeAndSendImpl(
       to: toList,
       cc: ccList.length > 0 ? ccList : undefined,
       bcc: bccList.length > 0 ? bccList : undefined,
-      subject,
+      subject: sendSubject,
       // htmlBodyForSend carries the warm-only open pixel when eligible; the
-      // stored message row keeps the clean htmlBody (no pixel) so our own
-      // inbox render can't fire a false open.
+      // stored message row keeps the clean (spintax-expanded) sendHtml so our
+      // own inbox render can't fire a false open.
       htmlBody: htmlBodyForSend,
-      // textBody falls back to a strip of the HTML when `body` is
+      // textBody falls back to a strip of the HTML when the body is
       // blank but bodyHtml was provided (HTML-only payloads). Keeps
       // the multipart text part meaningful for plain-text clients.
-      textBody: body.trim().length > 0 ? body : htmlBody.replace(/<[^>]*>/g, "").trim(),
+      textBody: sendBody.trim().length > 0 ? sendBody : sendHtml.replace(/<[^>]*>/g, "").trim(),
       threadId: replyThreadGmailId ?? undefined,
       replyToMessageId: replyMessageRfc822Id ?? undefined,
       attachments: gmailAttachments.length > 0 ? gmailAttachments : undefined,
@@ -939,7 +961,7 @@ export async function composeAndSendImpl(
           staffOutreachEmailId: inbox.id,
           gmailThreadId: sent.threadId,
           venueId,
-          subject,
+          subject: sendSubject,
           state: "waiting_on_them",
           direction: "outbound",
           classification: "unclassified",
@@ -998,9 +1020,9 @@ export async function composeAndSendImpl(
       toEmailsNormalized: toList.map((s) => s.toLowerCase()),
       ccEmailsNormalized: ccList.map((s) => s.toLowerCase()),
       bccEmailsNormalized: bccList.map((s) => s.toLowerCase()),
-      subject,
-      bodyText: body,
-      bodyHtml: htmlBody,
+      subject: sendSubject,
+      bodyText: sendBody,
+      bodyHtml: sendHtml,
       // Warm-only open tracking: NULL unless the gate above allowed a pixel.
       trackingToken: trackingTokenToStore,
       snippet: derivedSnippet,

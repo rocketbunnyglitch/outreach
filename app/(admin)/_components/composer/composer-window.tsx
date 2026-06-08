@@ -34,6 +34,7 @@
 
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { lintEmail } from "@/lib/spam-linter";
 import type { TeamLabelSummary } from "@/lib/team-labels";
 import {
   AlertCircle,
@@ -46,6 +47,7 @@ import {
   MoreHorizontal,
   PenLine,
   SendHorizontal,
+  ShieldAlert,
   Smile,
   Tag,
   Trash2,
@@ -235,6 +237,18 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const toList = useMemo(() => parseAddressList(instance.to), [instance.to]);
   const ccList = useMemo(() => parseAddressList(instance.cc), [instance.cc]);
   const bccList = useMemo(() => parseAddressList(instance.bcc), [instance.bcc]);
+  // Live deliverability lint (spam-risk). Replies are graded more leniently
+  // than cold first-touches. Advisory only — never blocks the send.
+  const deliverability = useMemo(
+    () =>
+      lintEmail({
+        subject: instance.subject,
+        bodyText: instance.bodyText,
+        bodyHtml: instance.bodyHtml,
+        context: instance.replyToThreadId ? "warm" : "cold",
+      }),
+    [instance.subject, instance.bodyText, instance.bodyHtml, instance.replyToThreadId],
+  );
 
   // Gmail-style: resolve a display name for each recipient address (venue
   // name, or the name the mail came in as) so the chips read "Name" not a
@@ -1534,6 +1548,25 @@ export function ComposerWindow({ instance, isMobile }: Props) {
             showSaveAsTemplate={instance.isAdmin}
             onSaveAsTemplate={handleSaveAsTemplate}
           />
+          {/* Deliverability lint chip — shown only when the draft has spam
+              risk. Hover for the specific issues. Advisory; never blocks. */}
+          {deliverability.level !== "clean" && (
+            <span
+              title={`Deliverability: ${deliverability.level} (spam risk ${deliverability.score}/100)\n${deliverability.issues
+                .map((i) => `• ${i.message}${i.hint ? ` — ${i.hint}` : ""}`)
+                .join("\n")}`}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium text-[11px]",
+                deliverability.level === "risky"
+                  ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/40 dark:text-rose-300"
+                  : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300",
+              )}
+            >
+              <ShieldAlert className="h-3 w-3" />
+              {deliverability.level === "risky" ? "Spam risk" : "Deliverability"} ·{" "}
+              {deliverability.score}
+            </span>
+          )}
           {capBlocked && instance.isAdmin && (
             <button
               type="button"
