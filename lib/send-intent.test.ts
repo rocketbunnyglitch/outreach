@@ -174,3 +174,65 @@ describe("deriveSendIntent -- cap/cadence behavior gates [P0]", () => {
     });
   });
 });
+
+describe("deriveSendIntent -- T4/T5/T6 slot-detail context sensitivity [P0-2]", () => {
+  // Acceptance 1: cold opener context still counts as cold.
+  it.each(["T4", "T5", "T6"])("%s as a cold opener (no context) -> cold_cadence", (code) => {
+    const r = deriveSendIntent({ templateCode: code });
+    expect(r.sendIntent).toBe("cold_cadence");
+    expect(r.countsAgainstColdCap).toBe(true);
+    expect(r.seedsColdCadence).toBe(true);
+  });
+
+  // Acceptance 4 + 5: slot detail into an engaged warm thread is warm, not cold.
+  it("T6 in a warm (engaged) reply thread -> warm_cadence, no cold cap, no cold seed", () => {
+    const r = deriveSendIntent({ templateCode: "T6", isReply: true, cadenceCategory: "warm" });
+    expect(r.sendIntent).toBe("warm_cadence");
+    expect(r.countsAgainstColdCap).toBe(false);
+    expect(r.seedsColdCadence).toBe(false);
+  });
+  it("T4 slot-detail reply to engaged inbound does NOT create a cold touch", () => {
+    const r = deriveSendIntent({ touchType: "T4", isReply: true, cadenceCategory: "warm" });
+    expect(r.sendIntent).not.toBe("cold_cadence");
+    expect(r.seedsColdCadence).toBe(false);
+  });
+
+  // Acceptance 2 + 3: call-outcome slot send is operational + bypasses the floor.
+  it("T5 from a call outcome -> operational, bypasses cadence floor, never cold", () => {
+    const r = deriveSendIntent({ templateCode: "T5", slotDetailFromCallOutcome: true });
+    expect(r.appliesCadenceFloor).toBe(false);
+    expect(r.countsAgainstColdCap).toBe(false);
+    expect(r.operationalForCap).toBe(true);
+    expect(r.seedsColdCadence).toBe(false);
+  });
+  it("call-outcome flag wins even over a cold-thread reply for T4/T5/T6", () => {
+    const r = deriveSendIntent({
+      templateCode: "T4",
+      slotDetailFromCallOutcome: true,
+      isReply: true,
+      cadenceCategory: "cold",
+    });
+    expect(r.appliesCadenceFloor).toBe(false);
+    expect(r.countsAgainstColdCap).toBe(false);
+  });
+
+  // Regression guards: ONLY T4/T5/T6 are context-sensitive.
+  it.each(["T1", "T2", "T3", "T7A", "T8"])(
+    "%s stays cold even in a warm reply context (true sequence touch)",
+    (code) => {
+      const r = deriveSendIntent({ templateCode: code, isReply: true, cadenceCategory: "warm" });
+      expect(r.sendIntent).toBe("cold_cadence");
+      expect(r.countsAgainstColdCap).toBe(true);
+    },
+  );
+  it("call-outcome flag is ignored for non-slot families (T1 stays cold)", () => {
+    expect(
+      deriveSendIntent({ templateCode: "T1", slotDetailFromCallOutcome: true }).sendIntent,
+    ).toBe("cold_cadence");
+  });
+  it("T4/T5/T6 cold follow-up on a cold (no-inbound) thread stays cold", () => {
+    expect(
+      deriveSendIntent({ templateCode: "T6", isReply: true, cadenceCategory: "cold" }).sendIntent,
+    ).toBe("cold_cadence");
+  });
+});

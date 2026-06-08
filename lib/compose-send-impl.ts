@@ -371,12 +371,17 @@ export async function composeAndSendImpl(
     templateCode = tpl?.code ?? null;
   }
   const cadenceCategoryForIntent = await classifySend({ threadId: replyToThreadId });
+  // Slot-detail (T4/T5/T6) triggered by a call outcome ("send me the slots"):
+  // the call-outcome send path sets slotFromCallOutcome=1 so the classifier
+  // treats it as operational (bypasses the cadence floor, never cold). (P0-2)
+  const slotFromCallOutcome = String(formData.get("slotFromCallOutcome") ?? "") === "1";
   const intent: SendIntentResult = deriveSendIntent({
     templateCode,
     touchType: touchTypeRaw || null,
     recipientType,
     isReply: Boolean(replyToThreadId),
     cadenceCategory: cadenceCategoryForIntent,
+    slotDetailFromCallOutcome: slotFromCallOutcome,
   });
   logger.info(
     {

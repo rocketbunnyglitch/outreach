@@ -80,11 +80,23 @@ export interface DeriveSendIntentInput {
   isReply?: boolean;
   /** Cold/warm from classifySend (the reply thread's inbound history). */
   cadenceCategory?: "cold" | "warm" | null;
+  /**
+   * Explicit signal that a slot-detail send (T4/T5/T6) was triggered by a call
+   * outcome ("send me the slots") rather than a cold sequence. Such a send is
+   * operational: it bypasses the cadence floor and never counts as cold.
+   * Only affects T4/T5/T6 -- ignored for every other family. (P0-2)
+   */
+  slotDetailFromCallOutcome?: boolean;
 }
 
 // Family token sets. codeFamily() collapses "T9-near" -> "T9",
 // "T7A" -> "T7", "T11-wristband" -> "T11", "T13W" -> "T13", "H0a" -> "H".
 const COLD_FAMILIES = new Set(["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"]);
+// Slot-detail templates. Unlike the true cold openers (T1-T3, T7, T8), these
+// are routinely RE-USED after engagement -- sent into a warm reply thread, or
+// off a phone call where the venue said "send me the slots". In those contexts
+// they must NOT consume the cold cap or seed cold cadence. (P0-2)
+const SLOT_DETAIL_FAMILIES = new Set(["T4", "T5", "T6"]);
 const LIFECYCLE_FAMILIES = new Set(["T9", "T10", "T11", "T12", "T13", "T14", "T15"]);
 const CANCELLATION_FAMILIES = new Set(["T16"]);
 const POST_EVENT_FAMILIES = new Set(["T17"]);
@@ -148,9 +160,11 @@ function result(
       // Operational families: never cadence, never cold cap.
       return { ...base, operationalForCap: true };
     case "custom_reply":
-      // Human reply on an engaged thread: no cadence side effects, and
-      // warm (classifySend) so it never consumes the cold budget.
-      return base;
+      // Operator-written / operational reply on an engaged thread: no cadence
+      // side effects, never cold, and operational-for-cap so it is never
+      // cap-blocked or cooldown-blocked (the venue is already engaged). Used
+      // for slot-detail (T4/T5/T6) sends triggered by a call outcome.
+      return { ...base, operationalForCap: true };
     case "unknown":
       // New venue thread with no template/touch. Do NOT fabricate cold
       // cadence, but still pace it against the cold cap (deliverability).
@@ -188,6 +202,30 @@ export function deriveSendIntent(input: DeriveSendIntentInput): SendIntentResult
   //    re-engagement opener but in cadence terms it is a first touch that
   //    initiates the sequence, so it behaves like a cold opener.
   if (COLD_FAMILIES.has(fam)) {
+    // Slot-detail (T4/T5/T6) are context-sensitive (P0-2). The SAME template
+    // is a cold touch when it opens/continues a cold sequence, but operational
+    // when sent in response to engagement. Other cold families (T1-T3, T7, T8)
+    // are true sequence touches and stay cold even as a follow-up.
+    if (SLOT_DETAIL_FAMILIES.has(fam)) {
+      if (input.slotDetailFromCallOutcome) {
+        // Venue asked for slots on a call -> operational: bypass the cadence
+        // floor, never count as cold, never cap-block.
+        return result(
+          "custom_reply",
+          recipientType,
+          `slot-detail ${fam} from a call outcome (operational, bypasses floor)`,
+        );
+      }
+      if (input.isReply && input.cadenceCategory === "warm") {
+        // Slot detail sent into an engaged (has-inbound) warm thread: warm
+        // cadence, not cold -- no cold cap, no cold seed.
+        return result(
+          "warm_cadence",
+          recipientType,
+          `slot-detail ${fam} on an engaged (warm) thread`,
+        );
+      }
+    }
     return result("cold_cadence", recipientType, `cold cadence touch ${fam}`);
   }
 
