@@ -25,6 +25,7 @@ import { logger } from "@/lib/logger";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { planFromState } from "./cadence-engine-core";
 import { computeEffectivePriority } from "./effective-priority";
+import { type EngagementBand, scoreEngagement } from "./engagement-score";
 import { type EventReadiness, readinessFromRow } from "./event-readiness";
 
 /**
@@ -161,6 +162,10 @@ export interface WorklistReplyRow {
   needsAttention: boolean;
   nextActionLabel: string | null;
   lastMessageAt: string;
+  /** Per-venue engagement (soft signal, 0-100). Sorts genuinely-interested
+   *  venues up within an urgency tier; never drives any send. */
+  engagementScore: number;
+  engagementBand: EngagementBand;
 }
 
 // Classification -> sort rank for the replies queue. Lower = more urgent.
@@ -190,6 +195,7 @@ function replyUrgencyRank(classification: string): number {
  * sensibly before anyone confirms it.
  */
 export async function loadWorklistReplies(opts: { staffId: string }): Promise<WorklistReplyRow[]> {
+  const now = new Date();
   const rows = await db
     .select({
       id: emailThreads.id,
@@ -202,6 +208,14 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
       needsAttention: emailThreads.needsAttention,
       aiNextAction: emailThreads.aiNextAction,
       lastMessageAt: emailThreads.lastMessageAt,
+      lastInboundAt: emailThreads.lastInboundAt,
+      // Real inbound reply count for this thread -- feeds the engagement score.
+      // Bounded query (limit 60 rows), mirrors the raw-subquery style already
+      // used for the city-lead EXISTS filter below.
+      inboundCount: sql<number>`(
+        SELECT count(*)::int FROM email_messages m
+        WHERE m.thread_id = ${emailThreads.id} AND m.direction = 'inbound'
+      )`,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
@@ -232,6 +246,12 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
       r.classification && r.classification !== "unclassified" ? r.classification : null;
     const classification = confirmed ?? r.suggestedClassification ?? "unclassified";
     const nextAction = r.aiNextAction as { label?: string } | null;
+    const engagement = scoreEngagement({
+      replyCount: Number(r.inboundCount ?? 0),
+      lastReplyAt: r.lastInboundAt ?? r.lastMessageAt,
+      classification,
+      now,
+    });
     return {
       id: r.id,
       venueName: r.venueName ?? null,
@@ -242,15 +262,20 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
       needsAttention: r.needsAttention,
       nextActionLabel: typeof nextAction?.label === "string" ? nextAction.label : null,
       lastMessageAt: r.lastMessageAt.toISOString(),
+      engagementScore: engagement.score,
+      engagementBand: engagement.band,
     };
   });
 
-  // Final ordering: needs_attention first, then classification urgency, then
-  // recency. Done in JS so the urgency map stays readable + testable.
+  // Final ordering: needs_attention first, then classification urgency (a
+  // fire-drill like cancelled_by_them must still float up even though its
+  // engagement is low), then engagement (genuinely-interested venues rise
+  // within a tier), then recency. Done in JS so it stays readable + testable.
   mapped.sort(
     (a, b) =>
       Number(b.needsAttention) - Number(a.needsAttention) ||
       replyUrgencyRank(a.classification) - replyUrgencyRank(b.classification) ||
+      b.engagementScore - a.engagementScore ||
       new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime(),
   );
 

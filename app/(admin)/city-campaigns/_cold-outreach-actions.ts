@@ -26,6 +26,7 @@ import { backfillLeadScores } from "@/lib/ai-lead-score";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { detectRemarkFollowUp } from "@/lib/detect-remark-followup";
+import { type EngagementBand, scoreEngagement } from "@/lib/engagement-score";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { newOpError } from "@/lib/op-error";
@@ -1176,6 +1177,11 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     /** Phase 2.14: the venue's cold sequence is exhausted (3 touches, no
      *  reply) and ready for a cross-domain handoff to another brand. */
     readyForHandoff: boolean;
+    /** Per-venue engagement (Tier-2 soft signal, 0-100). Computed on read from
+     *  the thread classification + warm flag. Sortable so genuinely-interested
+     *  venues rise; never drives a send. */
+    engagementScore: number;
+    engagementBand: EngagementBand;
   }>
 > {
   await requireStaff();
@@ -1302,47 +1308,64 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
   }
   const now = new Date();
 
-  return rows.map((r) => ({
-    entryId: r.entryId,
-    venueId: r.venueId,
-    venueName: r.venueName,
-    venueEmail: r.venueEmail,
-    venuePhone: r.venuePhone,
-    venueWebsite: r.venueWebsite,
-    venueInstagramHandle: r.venueInstagramHandle,
-    venueHours: r.venueHours,
-    venueType: r.venueType,
-    cityName: r.cityName,
-    // cities.timezone is NOT NULL in schema, but LEFT JOIN means r could
-    // have a null cities row (a venue without a city — edge case). Fall
-    // back to Toronto since 95% of the team's venues are Eastern.
-    venueTimezone: r.venueTimezone ?? "America/Toronto",
-    venueUpdatedAt: r.venueUpdatedAt.toISOString(),
-    zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
-    status: r.status as string,
-    isWarm: r.isWarm,
-    assignedStaffId: r.assignedStaffId,
-    assignedStaffName: r.assignedStaffName,
-    remarks: r.remarks,
-    lastTouchAt: r.lastTouchAt,
-    callAttempts: callCountMap.get(r.venueId) ?? 0,
-    escalatedToStaffId: r.escalatedToStaffId,
-    escalatedToName: r.escalatedToName,
-    escalatedAt: r.escalatedAt ? r.escalatedAt.toISOString() : null,
-    escalationNotes: r.escalationNotes,
-    aiLeadScore: r.aiLeadScore,
-    aiLeadScoreReason: r.aiLeadScoreReason,
-    aiLeadScoreAt: r.aiLeadScoreAt,
-    cadenceLabel: coldCadenceLabel({
-      cadenceState: cadenceMap.get(r.venueId)?.cadenceState ?? null,
-      cadenceNextDueAt: cadenceMap.get(r.venueId)?.cadenceNextDueAt ?? null,
-      classification: cadenceMap.get(r.venueId)?.classification ?? null,
-      status: r.status as string,
-      lastTouchAt: r.lastTouchAt,
+  return rows.map((r) => {
+    // Engagement (soft signal). Prefer the thread reply classification when we
+    // have one (interested/warm/confirmed/declined...), else the cold status.
+    // isWarm == the venue has replied at least once; lastTouchAt is a coarse
+    // recency proxy (last contact on the entry). Approximate by design -- the
+    // cold table doesn't load per-reply timestamps -- but enough to float
+    // genuinely-interested venues up.
+    const cadence = cadenceMap.get(r.venueId);
+    const engagement = scoreEngagement({
+      replyCount: r.isWarm ? 1 : 0,
+      lastReplyAt: r.isWarm ? r.lastTouchAt : null,
+      classification: cadence?.classification ?? (r.status as string),
       now,
-    }),
-    readyForHandoff: cadenceMap.get(r.venueId)?.cadenceState === "cold_exhausted_ready_for_handoff",
-  }));
+    });
+    return {
+      entryId: r.entryId,
+      venueId: r.venueId,
+      venueName: r.venueName,
+      venueEmail: r.venueEmail,
+      venuePhone: r.venuePhone,
+      venueWebsite: r.venueWebsite,
+      venueInstagramHandle: r.venueInstagramHandle,
+      venueHours: r.venueHours,
+      venueType: r.venueType,
+      cityName: r.cityName,
+      // cities.timezone is NOT NULL in schema, but LEFT JOIN means r could
+      // have a null cities row (a venue without a city — edge case). Fall
+      // back to Toronto since 95% of the team's venues are Eastern.
+      venueTimezone: r.venueTimezone ?? "America/Toronto",
+      venueUpdatedAt: r.venueUpdatedAt.toISOString(),
+      zeroBounceStatus: r.venueEmail ? (zbMap.get(r.venueEmail.toLowerCase()) ?? null) : null,
+      status: r.status as string,
+      isWarm: r.isWarm,
+      assignedStaffId: r.assignedStaffId,
+      assignedStaffName: r.assignedStaffName,
+      remarks: r.remarks,
+      lastTouchAt: r.lastTouchAt,
+      callAttempts: callCountMap.get(r.venueId) ?? 0,
+      escalatedToStaffId: r.escalatedToStaffId,
+      escalatedToName: r.escalatedToName,
+      escalatedAt: r.escalatedAt ? r.escalatedAt.toISOString() : null,
+      escalationNotes: r.escalationNotes,
+      aiLeadScore: r.aiLeadScore,
+      aiLeadScoreReason: r.aiLeadScoreReason,
+      aiLeadScoreAt: r.aiLeadScoreAt,
+      cadenceLabel: coldCadenceLabel({
+        cadenceState: cadenceMap.get(r.venueId)?.cadenceState ?? null,
+        cadenceNextDueAt: cadenceMap.get(r.venueId)?.cadenceNextDueAt ?? null,
+        classification: cadenceMap.get(r.venueId)?.classification ?? null,
+        status: r.status as string,
+        lastTouchAt: r.lastTouchAt,
+        now,
+      }),
+      readyForHandoff: cadence?.cadenceState === "cold_exhausted_ready_for_handoff",
+      engagementScore: engagement.score,
+      engagementBand: engagement.band,
+    };
+  });
 }
 
 // =========================================================================

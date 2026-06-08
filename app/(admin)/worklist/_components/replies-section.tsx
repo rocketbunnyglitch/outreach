@@ -50,8 +50,28 @@ function classificationBadge(classification: string): { label: string; className
   }
 }
 
+/** A small engagement chip, shown only for genuinely-engaged venues so the
+ *  highest-value replies catch the eye. Soft signal -- display only. */
+function engagementChip(band: WorklistReplyRow["engagementBand"]): {
+  label: string;
+  className: string;
+} | null {
+  if (band === "hot")
+    return {
+      label: "Hot lead",
+      className: "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300",
+    };
+  if (band === "engaged")
+    return {
+      label: "Engaged",
+      className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    };
+  return null;
+}
+
 function ReplyRow({ reply }: { reply: WorklistReplyRow }) {
   const badge = classificationBadge(reply.classification);
+  const engagement = engagementChip(reply.engagementBand);
   return (
     <Link
       href={`/inbox/${reply.id}`}
@@ -70,6 +90,14 @@ function ReplyRow({ reply }: { reply: WorklistReplyRow }) {
           {reply.needsAttention ? (
             <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 font-medium text-[10px] text-amber-700 uppercase tracking-wide dark:bg-amber-950/50 dark:text-amber-300">
               Needs attention
+            </span>
+          ) : null}
+          {engagement ? (
+            <span
+              title={`Engagement score ${reply.engagementScore}/100`}
+              className={`shrink-0 rounded-md px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wide ${engagement.className}`}
+            >
+              {engagement.label}
             </span>
           ) : null}
         </div>

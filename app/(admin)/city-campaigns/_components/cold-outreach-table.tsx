@@ -64,7 +64,15 @@ import { LeadScoreChip, ScoreAllButton } from "./lead-score-ui";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
-type SortKey = "venue" | "email" | "status" | "assignee" | "zb" | "lastTouch" | "callWindow";
+type SortKey =
+  | "venue"
+  | "email"
+  | "status"
+  | "assignee"
+  | "zb"
+  | "lastTouch"
+  | "callWindow"
+  | "engagement";
 
 interface ColdEntry {
   entryId: string;
@@ -131,6 +139,10 @@ interface ColdEntry {
   cadenceLabel: string;
   /** Phase 2.14: cold sequence exhausted -> offer cross-domain handoff. */
   readyForHandoff: boolean;
+  /** Per-venue engagement (Tier-2 soft signal, 0-100) + band. Sortable so
+   *  genuinely-interested venues rise. Display/sort only -- never a send. */
+  engagementScore: number;
+  engagementBand: "dead" | "cold" | "warming" | "engaged" | "hot";
 }
 
 interface Props {
@@ -580,6 +592,11 @@ export function ColdOutreachTable({
           cmp = aPri - bPri;
           break;
         }
+        case "engagement":
+          // Higher engagement first even in asc (most-engaged is the
+          // actionable top, like callWindow). Soft signal -- sort only.
+          cmp = b.engagementScore - a.engagementScore;
+          break;
       }
       // Stable secondary sort by venue name when primary ties
       if (cmp === 0) cmp = a.venueName.localeCompare(b.venueName);
@@ -1002,6 +1019,16 @@ export function ColdOutreachTable({
                 onClick={() => toggleSort("status")}
                 width="w-32 px-2"
               />
+              {/* Engagement (Tier-2). Soft 0-100 signal; sortable so
+                  genuinely-interested venues rise. */}
+              <SortableTh
+                label="Engage"
+                col="engagement"
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onClick={() => toggleSort("engagement")}
+                width="w-24 px-2"
+              />
               {/* Cadence-aware row state (Phase 2.12). Read-only column. */}
               <th className="w-44 px-2 py-2.5">Cadence</th>
               <SortableTh
@@ -1124,6 +1151,47 @@ export function ColdOutreachTable({
         }}
       />
     </section>
+  );
+}
+
+/** Compact engagement band chip for the cold table (Tier-2). Display only. */
+function EngagementChip({
+  band,
+  score,
+}: {
+  band: ColdEntry["engagementBand"];
+  score: number;
+}) {
+  const map: Record<ColdEntry["engagementBand"], { label: string; className: string }> = {
+    hot: {
+      label: "Hot",
+      className: "bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300",
+    },
+    engaged: {
+      label: "Engaged",
+      className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    },
+    warming: {
+      label: "Warming",
+      className: "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    },
+    dead: {
+      label: "—",
+      className: "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500",
+    },
+    cold: {
+      label: "—",
+      className: "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500",
+    },
+  };
+  const m = map[band];
+  return (
+    <span
+      title={`Engagement ${score}/100 (${band})`}
+      className={`inline-flex items-center rounded-md px-1.5 py-0.5 font-medium text-[10px] ${m.className}`}
+    >
+      {m.label}
+    </span>
   );
 }
 
@@ -1867,6 +1935,11 @@ function ColdRow({
           onChange={(v) => commitField("status", v)}
           entryId={entry.entryId}
         />
+      </td>
+
+      {/* Engagement (Tier-2 soft signal). */}
+      <td className="px-2 py-2 align-middle">
+        <EngagementChip band={entry.engagementBand} score={entry.engagementScore} />
       </td>
 
       {/* Cadence (Phase 2.12) + cross-domain handoff on exhausted rows (2.14). */}
