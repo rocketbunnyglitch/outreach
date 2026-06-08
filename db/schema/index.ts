@@ -83,4 +83,5 @@ export * from "./venue-campaign-touch-log";
 export * from "./engine-role-assignments";
 export * from "./classifier-runs";
 export * from "./ai-usage-events";
+export * from "./email-open-events";
 export * from "./sms";

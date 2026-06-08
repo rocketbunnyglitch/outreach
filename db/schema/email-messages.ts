@@ -18,6 +18,7 @@ import {
   bigint,
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -144,6 +145,19 @@ export const emailMessages = pgTable(
       onDelete: "set null",
     }),
     confirmationFlaggedAt: timestamp("confirmation_flagged_at", { withTimezone: true }),
+
+    // -------------------------------------------------------------------
+    // Warm-only open tracking (migration 0124). Only ever set on OUTBOUND
+    // messages sent into a WARM thread (the venue has replied). Cold sends
+    // carry no token and are never tracked. Opens are a SOFT signal --
+    // informational only, never drive cadence/automation. See
+    // lib/open-tracking-gate.ts.
+    // -------------------------------------------------------------------
+    /** Unguessable token embedded in the open pixel URL. NULL = not tracked. */
+    trackingToken: uuid("tracking_token"),
+    firstOpenedAt: timestamp("first_opened_at", { withTimezone: true }),
+    lastOpenedAt: timestamp("last_opened_at", { withTimezone: true }),
+    openCount: integer("open_count").notNull().default(0),
   },
   (table) => ({
     /**
@@ -174,6 +188,8 @@ export const emailMessages = pgTable(
      * doesn't model the `USING GIN` syntax and we don't need to
      * round-trip them.
      */
+    // Open-pixel endpoint looks the message up by this token (unique, sparse).
+    trackingTokenIdx: uniqueIndex("email_messages_tracking_token_idx").on(table.trackingToken),
     fromEmailNormalizedIdx: index("email_messages_from_email_normalized_idx").on(
       table.fromEmailNormalized,
     ),
