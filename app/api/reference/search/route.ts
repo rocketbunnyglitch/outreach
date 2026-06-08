@@ -14,8 +14,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  // Reference is an admin-only view, so its search API must be admin-gated too
+  // (otherwise a non-admin could pull reference content via this endpoint).
   const staff = await getCurrentStaff();
   if (!staff) return new Response("Unauthorized", { status: 401 });
+  if (staff.staff.role !== "admin") return new Response("Forbidden", { status: 403 });
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();

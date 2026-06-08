@@ -1,5 +1,5 @@
 import { referenceDocSections, referenceDocs } from "@/db/schema";
-import { requireStaff } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, desc, eq } from "drizzle-orm";
 import { BookOpen } from "lucide-react";
@@ -32,7 +32,9 @@ const PROSE =
 
 export default async function ReferencePage({ params }: PageProps) {
   const { slug } = await params;
-  await requireStaff();
+  // Reference is an admin-only management view (business-rules doc). Gate the
+  // route too, not just the nav link, so non-admins can't reach it by URL.
+  await requireAdmin();
 
   const [doc] = await db
     .select()

@@ -146,11 +146,6 @@ const SECTIONS: Array<{
       { href: "/cities", label: "Cities", icon: <Globe className="h-3.5 w-3.5" /> },
       { href: "/venues", label: "Venues", icon: <Building2 className="h-3.5 w-3.5" /> },
       { href: "/templates", label: "Templates", icon: <FileCode className="h-3.5 w-3.5" /> },
-      {
-        href: "/reference/halloween-2026-intl",
-        label: "Reference",
-        icon: <BookOpen className="h-3.5 w-3.5" />,
-      },
     ],
   },
   {
@@ -208,6 +203,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
       icon: <BarChart3 className="h-3.5 w-3.5 opacity-60" />,
     },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3.5 w-3.5" /> },
+    {
+      href: "/reference/halloween-2026-intl",
+      label: "Reference",
+      icon: <BookOpen className="h-3.5 w-3.5" />,
+    },
   ],
 };
 
