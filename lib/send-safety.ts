@@ -158,11 +158,19 @@ export interface DomainAliasSuggestionWarning {
   candidates: Array<{ venueId: string; venueName: string }>;
 }
 
+/** Pre-send address verification (ZeroBounce): the recipient looks invalid. */
+export interface InvalidRecipientWarning {
+  kind: "invalid_recipient";
+  email: string;
+  status: string;
+}
+
 export type SafetyWarning =
   | DuplicateWarning
   | RecentDeclineWarning
   | CrossStaffOwnershipWarning
-  | DomainAliasSuggestionWarning;
+  | DomainAliasSuggestionWarning
+  | InvalidRecipientWarning;
 
 export type SafetyResult =
   | { ok: true; warnings: SafetyWarning[] }

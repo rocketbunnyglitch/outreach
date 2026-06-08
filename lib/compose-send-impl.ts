@@ -59,6 +59,7 @@ import {
 import { expandSpintax, hasSpintax, seededRng } from "@/lib/spintax";
 import { applyLabelToThread, ensureTeamLabel } from "@/lib/team-labels";
 import { getVenueBrandRelationship } from "@/lib/venue-relationships";
+import { validateEmail } from "@/lib/zerobounce";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -279,6 +280,26 @@ export async function composeAndSendImpl(
       safetyBlock: safety.block,
     };
   }
+
+  // Pre-send address verification (deliverability). Only on NEW (cold) sends --
+  // a warm-reply recipient already replied, so it's valid. An 'invalid' address
+  // is a guaranteed bounce, and bounces wreck sender reputation. Surfaced as an
+  // acknowledgeable warning (ZeroBounce can be wrong) through the same dialog as
+  // duplicate/decline. Best-effort + cached; a no-op when ZeroBounce is unset.
+  if (!replyToThreadId) {
+    try {
+      const primary = (toList[0] ?? "").trim();
+      if (primary) {
+        const v = await validateEmail(primary, staff.id);
+        if (v?.status === "invalid") {
+          safety.warnings.push({ kind: "invalid_recipient", email: primary, status: v.status });
+        }
+      }
+    } catch (err) {
+      logger.warn({ err }, "composeAndSend: pre-send email validation skipped (non-fatal)");
+    }
+  }
+
   // Warnings present + operator hasn't acknowledged → surface them
   // so the modal can render the confirm step.
   const acknowledgedDuplicates = String(formData.get("ackDuplicates") ?? "") === "1";
@@ -295,11 +316,14 @@ export async function composeAndSendImpl(
     // The "duplicate" case is the most common but least
     // information-rich; we lead with it only when there's
     // nothing stronger to surface.
+    const invalidRecip = safety.warnings.find((w) => w.kind === "invalid_recipient");
     const declineWarning = safety.warnings.find((w) => w.kind === "recent_decline");
     const crossStaff = safety.warnings.find((w) => w.kind === "cross_staff_owner");
     const duplicateCount = safety.warnings.filter((w) => w.kind === "duplicate").length;
     let message: string;
-    if (declineWarning && declineWarning.kind === "recent_decline") {
+    if (invalidRecip && invalidRecip.kind === "invalid_recipient") {
+      message = `${invalidRecip.email} looks like an invalid address (likely to bounce). Send anyway?`;
+    } else if (declineWarning && declineWarning.kind === "recent_decline") {
       const eventBit = declineWarning.eventLabel ? ` (${declineWarning.eventLabel})` : "";
       message = `${declineWarning.venueName} declined ${declineWarning.daysAgo} day${declineWarning.daysAgo === 1 ? "" : "s"} ago${eventBit}. Continue anyway?`;
     } else if (crossStaff && crossStaff.kind === "cross_staff_owner") {

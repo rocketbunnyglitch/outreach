@@ -242,6 +242,29 @@ function WarningCard({ w }: { w: SafetyWarningInput }) {
     );
   }
 
+  if (kind === "invalid_recipient") {
+    const email = String(w.email ?? "this address");
+    return (
+      <div className="rounded-md border border-rose-200 bg-rose-50 p-3 dark:border-rose-900/40 dark:bg-rose-950/30">
+        <div className="flex items-start gap-2">
+          <AlertTriangle
+            className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400"
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-rose-900 text-xs dark:text-rose-100">
+              Likely invalid address
+            </p>
+            <p className="mt-0.5 text-rose-800 text-xs dark:text-rose-300">
+              <span className="font-medium">{email}</span> failed verification and will probably
+              bounce. Sending to invalid addresses hurts your sender reputation.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Unknown kind -- render as a generic info card. Should not
   // happen in normal operation; defensive coverage so a future
   // kind doesn't blank-render before the UI catches up.
