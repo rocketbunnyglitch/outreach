@@ -20,6 +20,7 @@ import "server-only";
  * imports via the "server-only" sentinel.
  */
 
+import { randomUUID } from "node:crypto";
 import {
   campaignConnectedAccounts,
   campaigns,
@@ -29,6 +30,8 @@ import {
   emailMessages,
   emailTemplates,
   emailThreads,
+  teams,
+  venues,
 } from "@/db/schema";
 import { fetchAttachmentBytes, isValidStorageKey } from "@/lib/attachment-storage";
 import { type StaffRole, hasMinimumRole } from "@/lib/auth";
@@ -37,8 +40,10 @@ import { isCadenceTouchKind, planFromState } from "@/lib/cadence-engine-core";
 import { decideCadenceGate } from "@/lib/cadence-gate";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
+import { env, isOpenTrackingEnvOn } from "@/lib/env";
 import { type GmailAttachment, sendGmailMessage } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
+import { shouldTrackOpens } from "@/lib/open-tracking-gate";
 import {
   classifySend,
   preflightSend,
@@ -662,6 +667,52 @@ export async function composeAndSendImpl(
   const rawHtml = bodyHtmlFromForm.trim().length > 0 ? bodyHtmlFromForm : synthesizedHtml;
   const htmlBody = sanitizeEmailHtml(rawHtml) ?? synthesizedHtml;
 
+  // -------------------------------------------------------------------
+  // Warm-only open tracking (hard-gated). A pixel is injected ONLY when:
+  //   - this is a reply into an EXISTING thread the venue has engaged
+  //     (direction inbound/mixed) -- new threads are cold by definition and
+  //     never tracked (shouldTrackOpens is the single source of truth);
+  //   - the env feature is on AND the per-team runtime kill-switch is off;
+  //   - the venue is not DNC and the brand relationship is not 'bad'.
+  // We append a 1x1 pixel to the SENT html only -- never rewrite links, and
+  // never store the pixel on the message row (so re-rendering our own sent
+  // message in the inbox can't fire a false open). Best-effort: a tracking
+  // hiccup must never block the send. Opens are a SOFT signal (no automation).
+  // -------------------------------------------------------------------
+  let trackingTokenToStore: string | null = null;
+  let htmlBodyForSend = htmlBody;
+  if (replyToThreadId && isOpenTrackingEnvOn() && env.TRACKING_BASE_URL) {
+    try {
+      const [thr] = await db
+        .select({ direction: emailThreads.direction, venueDnc: venues.doNotContact })
+        .from(emailThreads)
+        .leftJoin(venues, eq(venues.id, emailThreads.venueId))
+        .where(eq(emailThreads.id, replyToThreadId))
+        .limit(1);
+      const [team] = await db
+        .select({ paused: teams.openTrackingPaused })
+        .from(teams)
+        .where(eq(teams.id, staff.teamId))
+        .limit(1);
+      const relBad =
+        venueId && sendOutreachBrandId
+          ? (await getVenueBrandRelationship(venueId, sendOutreachBrandId))?.status === "bad"
+          : false;
+      if (
+        !team?.paused &&
+        !thr?.venueDnc &&
+        !relBad &&
+        shouldTrackOpens({ threadDirection: thr?.direction ?? null, recipientType })
+      ) {
+        const token = randomUUID();
+        trackingTokenToStore = token;
+        htmlBodyForSend = `${htmlBody}<img src="${env.TRACKING_BASE_URL}/api/track/o/${token}.gif" width="1" height="1" alt="" style="display:none">`;
+      }
+    } catch (err) {
+      logger.warn({ err, replyToThreadId }, "open-tracking injection skipped (non-fatal)");
+    }
+  }
+
   // 140-char snippet for thread + message list rows. Prefers the
   // plain-text body when present; falls back to a tag-stripped
   // version of the HTML so HTML-only payloads (rare, but possible
@@ -796,7 +847,10 @@ export async function composeAndSendImpl(
       cc: ccList.length > 0 ? ccList : undefined,
       bcc: bccList.length > 0 ? bccList : undefined,
       subject,
-      htmlBody,
+      // htmlBodyForSend carries the warm-only open pixel when eligible; the
+      // stored message row keeps the clean htmlBody (no pixel) so our own
+      // inbox render can't fire a false open.
+      htmlBody: htmlBodyForSend,
       // textBody falls back to a strip of the HTML when `body` is
       // blank but bodyHtml was provided (HTML-only payloads). Keeps
       // the multipart text part meaningful for plain-text clients.
@@ -941,6 +995,8 @@ export async function composeAndSendImpl(
       subject,
       bodyText: body,
       bodyHtml: htmlBody,
+      // Warm-only open tracking: NULL unless the gate above allowed a pixel.
+      trackingToken: trackingTokenToStore,
       snippet: derivedSnippet,
       gmailLabels: ["SENT"],
       sentAt: now,

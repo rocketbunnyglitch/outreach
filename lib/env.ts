@@ -116,6 +116,17 @@ const envSchema = z.object({
   EVENTBRITE_PRIVATE_TOKEN: stringOptional,
   B2_BUCKET: stringOptional,
 
+  // --- Warm-only email open tracking ---
+  // TRACKING_BASE_URL is the master switch: the feature is INERT until it is
+  // set, and it MUST be the app's own first-party domain (never a shared
+  // tracker domain) to protect sender reputation. EMAIL_OPEN_TRACKING_ENABLED
+  // defaults ON when the base URL is set ("automatically on"); set it to "0"
+  // or "false" to disable in code without unsetting the URL. Tracking is also
+  // gated per-team at runtime via teams.open_tracking_paused, and NEVER fires
+  // on cold threads (lib/open-tracking-gate.ts).
+  TRACKING_BASE_URL: urlString.optional(),
+  EMAIL_OPEN_TRACKING_ENABLED: stringOptional,
+
   // --- Build-time (set by scripts/build-with-version.sh) ---
   BUILD_VERSION: stringOptional,
   BUILD_COMMIT: stringOptional,
@@ -131,6 +142,18 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+/**
+ * Warm-only open tracking is env-enabled when a first-party TRACKING_BASE_URL
+ * is set and EMAIL_OPEN_TRACKING_ENABLED is not explicitly turned off. This is
+ * only the ENV gate -- the warm-only thread gate (lib/open-tracking-gate.ts)
+ * and the per-team runtime kill-switch (teams.open_tracking_paused) still apply.
+ */
+export function isOpenTrackingEnvOn(): boolean {
+  if (!env.TRACKING_BASE_URL) return false;
+  const flag = env.EMAIL_OPEN_TRACKING_ENABLED;
+  return flag !== "0" && flag !== "false";
+}
 
 /**
  * Assert that a Phase-N variable is present at the moment a feature needs it.
