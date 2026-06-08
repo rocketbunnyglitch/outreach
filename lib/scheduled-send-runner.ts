@@ -177,12 +177,24 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       fd.set("bodyHtml", bodyPart + quotePart);
     }
     if (draft.venueId) fd.set("venueId", draft.venueId);
+    // City-campaign attribution (P0-1) -- mirrors the interactive path
+    // (sendDraftAsUser sets the same field). composeAndSendImpl derives the
+    // campaign + outreach brand from this to:
+    //   (a) enforce the cadence floor on scheduled COLD sends and record the
+    //       cadence touch -- previously omitted, so a queued cold send skipped
+    //       the cross-domain floor and the hard cap, risking over-contact and
+    //       leaving the send event with no campaign/city/brand attribution;
+    //   (b) stamp campaign/city/brand on the send event for every send.
+    // Lifecycle sends (T14/T15 etc.) carry it too but stay operational:
+    // intent.appliesCadenceFloor is false for them, so they get attribution
+    // WITHOUT counting against the cold budget. A floor-blocked cold send is
+    // released for retry below -- never silently dropped, never double-sent.
+    if (draft.cityCampaignId) fd.set("cityCampaignId", draft.cityCampaignId);
     // Send-intent signals (P0): forward the draft's touch code + recipient
     // type so a cron-dispatched lifecycle email (e.g. T14/T15) is classified
     // operational -- never cap-blocked, never counted against the cold budget,
-    // never seeded as cold cadence. (cityCampaignId is intentionally NOT
-    // forwarded here so queued cold-send cadence behavior is unchanged; the
-    // intent classifier still works off touch_type / template_code.)
+    // never seeded as cold cadence. The intent classifier works off
+    // touch_type / template_code.
     if (draft.touchType) fd.set("touchType", draft.touchType);
     if (draft.recipientType) fd.set("recipientType", draft.recipientType);
     if (draft.venueEventId) fd.set("venueEventId", draft.venueEventId);
