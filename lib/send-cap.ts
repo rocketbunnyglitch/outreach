@@ -132,7 +132,7 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
     .where(eq(staffOutreachEmails.id, connectedAccountId))
     .limit(1);
 
-  const configuredCap = acct[0]?.cap ?? 30;
+  const configuredCap = acct[0]?.cap ?? 50;
   // Warm-up ramp: a newly-connected inbox sends below its configured cap and
   // ramps up over ~3 weeks (warmupStartedAt NULL = established -> full cap).
   const cap = warmupRampCap(acct[0]?.warmupStartedAt ?? null, configuredCap);

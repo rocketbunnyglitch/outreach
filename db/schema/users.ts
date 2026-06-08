@@ -168,10 +168,10 @@ export const connectedAccounts = pgTable(
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
 
     /** Hard cap on cold sends per local day (sender user's timezone).
-     *  Default 30 per the spec; admin can adjust per inbox in
-     *  /admin/inboxes when an account is warming up. Added in
-     *  migration 0049. */
-    dailyColdSendCap: integer("daily_cold_send_cap").notNull().default(30),
+     *  Default 50 (operator, 2026-06-08; was 30 -- migration 0129); admin can
+     *  adjust per inbox in /admin/inboxes when an account is warming up. Added
+     *  in migration 0049. */
+    dailyColdSendCap: integer("daily_cold_send_cap").notNull().default(50),
 
     /** Cold-send pacing cooldown (migration 0106). After a cold send this is
      *  set to now() + a randomized 5-8 min; the send path blocks further cold
