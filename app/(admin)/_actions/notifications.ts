@@ -162,6 +162,7 @@ export async function emitNotification(input: {
   staffId: string;
   kind:
     | "reply"
+    | "seen"
     | "mention"
     | "email_invalid"
     | "ai_draft_failed"

@@ -1335,6 +1335,50 @@ async function ingestMessage(opts: {
     );
   }
 
+  // Tier-2 real-time reply notification. A venue reply makes the thread warm by
+  // definition, so notify the owning operator (the original pitcher, or whoever
+  // the thread is assigned to). Best-effort + deduped -- never blocks ingestion,
+  // never auto-sends anything. Only on a NEW inbound message for a matched
+  // venue (so we don't ping on our own outbound mirror or unmatched mail).
+  if (direction === "inbound" && insertedMessageId) {
+    try {
+      const ownerRes = await db.execute<{ owner: string | null; venue_id: string | null }>(sql`
+        SELECT
+          t.venue_id AS venue_id,
+          COALESCE(
+            t.assigned_staff_id,
+            (SELECT m.sent_by_staff_id FROM email_messages m
+              WHERE m.thread_id = t.id AND m.direction = 'outbound'
+                AND m.sent_by_staff_id IS NOT NULL
+              ORDER BY m.sent_at DESC LIMIT 1)
+          ) AS owner
+        FROM email_threads t WHERE t.id = ${threadId}
+      `);
+      const ownerRow = Array.isArray(ownerRes)
+        ? (ownerRes as unknown as Array<{ owner: string | null; venue_id: string | null }>)[0]
+        : (
+            ownerRes as unknown as {
+              rows: Array<{ owner: string | null; venue_id: string | null }>;
+            }
+          ).rows?.[0];
+      const ownerId = ownerRow?.owner ?? null;
+      // Only a matched venue's reply is a warm-venue reply worth a ping.
+      if (ownerId && ownerRow?.venue_id) {
+        const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+        await emitNotification({
+          staffId: ownerId,
+          kind: "reply",
+          title: `New reply from ${extractSenderName(fromHeader) || "a venue"}`,
+          body: snippet ?? null,
+          linkPath: `/inbox/${threadId}`,
+          dedupeMinutes: 30,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, threadId }, "reply notification failed (non-fatal)");
+    }
+  }
+
   // Phase 3.5: slot-change detection. [ReferenceDoc 9.4] If a CONFIRMED venue
   // replies asking to move to a different day/slot, raise a heuristic FLAG on
   // the thread (NOT a new AI classification enum value) so the worklist's

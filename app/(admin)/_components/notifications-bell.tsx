@@ -7,6 +7,7 @@ import {
   Bell,
   Check,
   CheckCheck,
+  Eye,
   Loader2,
   Mail,
   MessageSquare,
@@ -41,6 +42,7 @@ const POLL_INTERVAL_MS = 60_000;
 
 const KIND_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   reply: MessageSquare,
+  seen: Eye,
   mention: User,
   email_invalid: AlertCircle,
   ai_draft_failed: Sparkles,
@@ -50,6 +52,7 @@ const KIND_ICONS: Record<string, React.ComponentType<{ className?: string }>> = 
 
 const KIND_TONES: Record<string, string> = {
   reply: "text-emerald-600 dark:text-emerald-400",
+  seen: "text-violet-600 dark:text-violet-400",
   mention: "text-blue-600 dark:text-blue-400",
   email_invalid: "text-rose-600 dark:text-rose-400",
   ai_draft_failed: "text-rose-600 dark:text-rose-400",

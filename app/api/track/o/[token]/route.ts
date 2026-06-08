@@ -52,8 +52,10 @@ export async function GET(
     const [msg] = await db
       .select({
         id: emailMessages.id,
+        threadId: emailMessages.threadId,
         sentAt: emailMessages.sentAt,
         firstOpenedAt: emailMessages.firstOpenedAt,
+        sentByStaffId: emailMessages.sentByStaffId,
       })
       .from(emailMessages)
       .where(eq(emailMessages.trackingToken, token))
@@ -82,6 +84,28 @@ export async function GET(
         ...(msg.firstOpenedAt ? {} : { firstOpenedAt: new Date() }),
       })
       .where(eq(emailMessages.id, msg.id));
+
+    // Tier-2 real-time "Seen" notification. Notify the sender that a WARM venue
+    // opened their email -- but ONLY on a real, non-proxy open (a Gmail/Apple
+    // pre-fetch is not a human read). The pixel is warm-only by construction, so
+    // any recorded open is already a warm thread. Opens stay a SOFT signal:
+    // this is informational, clearly "Seen" (not "replied"), and never drives
+    // cadence or sends. Deduped to one per thread per 12h so repeated opens
+    // don't spam the bell.
+    if (!isLikelyProxy && msg.sentByStaffId) {
+      try {
+        const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+        await emitNotification({
+          staffId: msg.sentByStaffId,
+          kind: "seen",
+          title: "Seen — a venue opened your email",
+          linkPath: `/inbox/${msg.threadId}`,
+          dedupeMinutes: 720,
+        });
+      } catch (err) {
+        logger.warn({ err, messageId: msg.id }, "open-pixel: seen-notification failed (non-fatal)");
+      }
+    }
   } catch (err) {
     // Recording is best-effort; the client must always get its pixel.
     logger.warn({ err }, "open-pixel: record failed (non-fatal)");

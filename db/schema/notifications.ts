@@ -24,6 +24,9 @@ export const notificationKind = pgEnum("notification_kind", [
   // The notifications bell + dropdown surfaces this so the escalation
   // owner sees it immediately even if email is delayed/blocked.
   "escalation",
+  // Migration 0128 — a WARM venue opened a tracked email (real, non-proxy).
+  // Labelled "Seen" in the UI. Soft signal; informational only.
+  "seen",
 ]);
 
 export const notifications = pgTable(
