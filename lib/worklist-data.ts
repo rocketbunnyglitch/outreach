@@ -22,7 +22,20 @@ import {
 } from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { planFromState } from "./cadence-engine-core";
 import { computeEffectivePriority } from "./effective-priority";
 import { type EngagementBand, scoreEngagement } from "./engagement-score";
@@ -280,6 +293,125 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
   );
 
   return mapped;
+}
+
+// =========================================================================
+// No-reply follow-up reminders (Tier-2)
+// =========================================================================
+
+export interface WorklistNoReplyRow {
+  /** thread id */
+  id: string;
+  venueName: string | null;
+  cityName: string | null;
+  subject: string | null;
+  snippet: string | null;
+  /** Whole calendar days since our last outbound on this thread. */
+  daysSilent: number;
+  lastOutboundAt: string;
+}
+
+/** Default silence threshold for a no-reply nudge, in BUSINESS days. */
+export const NO_REPLY_NUDGE_BUSINESS_DAYS = 3;
+
+/** The instant `businessDays` weekdays before `now` (skips Sat/Sun). */
+function businessDaysAgo(now: Date, businessDays: number): Date {
+  const d = new Date(now);
+  let remaining = Math.max(0, businessDays);
+  while (remaining > 0) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) remaining -= 1;
+  }
+  return d;
+}
+
+/**
+ * No-reply follow-up reminders (Tier-2). Threads where WE sent last and the
+ * venue has been silent for N business days, that are NOT already handled by
+ * the cadence engine (no scheduled next touch). This is a REMINDER for the
+ * human -- it never drafts or sends anything.
+ *
+ * Clears automatically: a reply lands -> last_inbound_at moves past
+ * last_outbound_at (excluded); we send again -> last_outbound_at resets past
+ * the cutoff (excluded). Dead leads (declined/unsubscribed/cancelled) and
+ * closed/archived threads are filtered out.
+ *
+ * Scoped like the replies queue: the operator's own threads OR threads in a
+ * city campaign they lead.
+ */
+export async function loadWorklistNoReplyNudges(opts: {
+  staffId: string;
+  /** Override the silence threshold (business days). Defaults to 3. */
+  businessDays?: number;
+}): Promise<WorklistNoReplyRow[]> {
+  const now = new Date();
+  const businessDays = opts.businessDays ?? NO_REPLY_NUDGE_BUSINESS_DAYS;
+  const cutoff = businessDaysAgo(now, businessDays);
+
+  const rows = await db
+    .select({
+      id: emailThreads.id,
+      venueName: venues.name,
+      cityName: cities.name,
+      subject: emailThreads.subject,
+      snippet: emailThreads.snippet,
+      lastOutboundAt: emailThreads.lastOutboundAt,
+    })
+    .from(emailThreads)
+    .leftJoin(venues, eq(venues.id, emailThreads.venueId))
+    .leftJoin(cities, eq(cities.id, venues.cityId))
+    .where(
+      and(
+        // We sent last and are waiting on them.
+        isNotNull(emailThreads.lastOutboundAt),
+        or(
+          isNull(emailThreads.lastInboundAt),
+          gt(emailThreads.lastOutboundAt, emailThreads.lastInboundAt),
+        ),
+        // Silent for at least N business days.
+        lte(emailThreads.lastOutboundAt, cutoff),
+        // Not already handled by the cadence engine (no planned next touch).
+        isNull(emailThreads.cadenceNextDueAt),
+        // Exclude closed / archived and threads awaiting OUR reply (those are
+        // the Replies section's job).
+        notInArray(emailThreads.state, [
+          "closed_won",
+          "closed_lost",
+          "closed_dnc",
+          "archived",
+          "needs_reply",
+        ]),
+        // Don't nudge dead leads.
+        notInArray(emailThreads.classification, ["decline", "unsubscribe", "cancelled_by_them"]),
+        isNull(emailThreads.deletedAt),
+        // Assigned to the operator OR in a city campaign they lead.
+        or(
+          eq(emailThreads.assignedStaffId, opts.staffId),
+          sql`EXISTS (
+            SELECT 1 FROM city_campaigns cc
+            WHERE cc.lead_staff_id = ${opts.staffId}
+              AND (cc.id = ${emailThreads.cityCampaignId} OR cc.city_id = ${venues.cityId})
+          )`,
+        ),
+      ),
+    )
+    .orderBy(asc(emailThreads.lastOutboundAt))
+    .limit(60);
+
+  const DAY = 24 * 60 * 60 * 1000;
+  return rows.map((r) => {
+    const last = r.lastOutboundAt ?? now;
+    return {
+      id: r.id,
+      venueName: r.venueName ?? null,
+      cityName: r.cityName ?? null,
+      subject: r.subject ?? null,
+      snippet: r.snippet ?? null,
+      daysSilent: Math.max(0, Math.floor((now.getTime() - last.getTime()) / DAY)),
+      lastOutboundAt: last.toISOString(),
+    };
+  });
 }
 
 export interface WorklistFollowUpRow {

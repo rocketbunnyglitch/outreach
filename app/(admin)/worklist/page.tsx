@@ -19,6 +19,7 @@ import {
   loadWorklistDrafts,
   loadWorklistFloorStaffCalls,
   loadWorklistFollowUps,
+  loadWorklistNoReplyNudges,
   loadWorklistRelationshipFlags,
   loadWorklistReplies,
   loadWorklistSlotChanges,
@@ -28,6 +29,7 @@ import { ComebacksSection } from "./_components/comebacks-section";
 import { DraftsSection } from "./_components/drafts-section";
 import { FloorStaffCallsSection } from "./_components/floor-staff-calls-section";
 import { FollowUpsSection } from "./_components/follow-ups-section";
+import { NoReplySection } from "./_components/no-reply-section";
 import { RelationshipFlagsSection } from "./_components/relationship-flags-section";
 import { RepliesSection } from "./_components/replies-section";
 import { SlotChangeSection } from "./_components/slot-change-section";
@@ -50,6 +52,7 @@ export default async function WorklistPage() {
     comebacks,
     floorStaffCalls,
     slotChanges,
+    noReplyNudges,
   ] = await Promise.all([
     loadWorklistDrafts({ staffId: staff.id }),
     loadWorklistReplies({ staffId: staff.id }),
@@ -59,6 +62,7 @@ export default async function WorklistPage() {
     loadWorklistComebacks({ staffId: staff.id }),
     loadWorklistFloorStaffCalls({ staffId: staff.id }),
     loadWorklistSlotChanges({ staffId: staff.id }),
+    loadWorklistNoReplyNudges({ staffId: staff.id }),
   ]);
   const allEmpty =
     drafts.length === 0 &&
@@ -68,7 +72,8 @@ export default async function WorklistPage() {
     relationshipFlags.length === 0 &&
     comebacks.length === 0 &&
     floorStaffCalls.length === 0 &&
-    slotChanges.length === 0;
+    slotChanges.length === 0 &&
+    noReplyNudges.length === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -91,6 +96,7 @@ export default async function WorklistPage() {
           <DraftsSection drafts={drafts} />
           <RepliesSection replies={replies} />
           <FollowUpsSection followUps={followUps} />
+          <NoReplySection rows={noReplyNudges} />
           <CallsSection calls={calls} />
         </div>
       )}
