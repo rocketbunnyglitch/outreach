@@ -179,6 +179,15 @@ export const connectedAccounts = pgTable(
      *  countdown ring. NULL = no active cooldown. Warm/replies are unaffected. */
     coldSendCooldownUntil: timestamp("cold_send_cooldown_until", { withTimezone: true }),
 
+    /** Inbox warm-up ramp (migration 0125). When this inbox started warming
+     *  up; NULL = established, full cap. A newly-connected inbox sends below
+     *  its configured cap and ramps up over ~3 weeks. See lib/inbox-warmup.ts. */
+    warmupStartedAt: timestamp("warmup_started_at", { withTimezone: true }),
+    /** Deliverability pause (migration 0125). While true the send-cap preflight
+     *  blocks COLD sends from this inbox (warm replies still go). Set by the
+     *  bounce/complaint monitor or an admin toggle. */
+    coldSendsPaused: boolean("cold_sends_paused").notNull().default(false),
+
     /** Optional HTML signature appended to outbound mail sent from
      *  this inbox. Edited from /settings/inboxes. The global composer
      *  appends it to the body if the operator hasn't already inlined

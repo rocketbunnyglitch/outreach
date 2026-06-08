@@ -176,6 +176,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
       icon: <Activity className="h-3.5 w-3.5" />,
     },
     {
+      href: "/admin/deliverability",
+      label: "Deliverability",
+      icon: <ShieldCheck className="h-3.5 w-3.5" />,
+    },
+    {
       href: "/admin/cron-health",
       label: "Cron health",
       icon: <Clock className="h-3.5 w-3.5" />,

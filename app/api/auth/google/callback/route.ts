@@ -175,6 +175,9 @@ export async function GET(req: NextRequest) {
           status: "connected",
           lastSyncedAt: new Date(),
           avatarUrl,
+          // Start the warm-up ramp on a freshly-connected inbox so its cold cap
+          // climbs gradually over ~3 weeks instead of blasting day one.
+          warmupStartedAt: new Date(),
           createdBy: staff.id,
           updatedBy: staff.id,
         });

@@ -28,6 +28,7 @@ import {
   users,
 } from "@/db/schema";
 import { db } from "@/lib/db";
+import { warmupRampCap } from "@/lib/inbox-warmup";
 import { logger } from "@/lib/logger";
 import { and, eq, gte, sql } from "drizzle-orm";
 
@@ -105,6 +106,10 @@ export interface SendUsage {
   cooldownUntil: string | null;
   /** True when a cold-send pacing cooldown is currently active. */
   cooldownActive: boolean;
+  /** True while the inbox is still warming up (effective cap < configured). */
+  warming: boolean;
+  /** Operator/auto deliverability pause — cold sends blocked while true. */
+  paused: boolean;
 }
 
 /**
@@ -120,12 +125,19 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
       ownerUserId: staffOutreachEmails.ownerUserId,
       cap: staffOutreachEmails.dailyColdSendCap,
       cooldownUntil: staffOutreachEmails.coldSendCooldownUntil,
+      warmupStartedAt: staffOutreachEmails.warmupStartedAt,
+      coldSendsPaused: staffOutreachEmails.coldSendsPaused,
     })
     .from(staffOutreachEmails)
     .where(eq(staffOutreachEmails.id, connectedAccountId))
     .limit(1);
 
-  const cap = acct[0]?.cap ?? 30;
+  const configuredCap = acct[0]?.cap ?? 30;
+  // Warm-up ramp: a newly-connected inbox sends below its configured cap and
+  // ramps up over ~3 weeks (warmupStartedAt NULL = established -> full cap).
+  const cap = warmupRampCap(acct[0]?.warmupStartedAt ?? null, configuredCap);
+  const warming = cap < configuredCap;
+  const paused = acct[0]?.coldSendsPaused ?? false;
   const ownerId = acct[0]?.ownerUserId;
   // Cold-send pacing cooldown (migration 0106): active only while in the future.
   const cooldownAt = acct[0]?.cooldownUntil ?? null;
@@ -140,6 +152,8 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
       bypassedToday: 0,
       cooldownUntil: null,
       cooldownActive: false,
+      warming: false,
+      paused: false,
     };
   }
 
@@ -182,7 +196,17 @@ export async function loadSendUsage(connectedAccountId: string): Promise<SendUsa
   const bypassedToday = bypassedRow[0]?.n ?? 0;
 
   const remaining = Math.max(0, cap - used);
-  return { used, cap, remaining, atCap: used >= cap, bypassedToday, cooldownUntil, cooldownActive };
+  return {
+    used,
+    cap,
+    remaining,
+    atCap: used >= cap,
+    bypassedToday,
+    cooldownUntil,
+    cooldownActive,
+    warming,
+    paused,
+  };
 }
 
 /**
@@ -205,7 +229,8 @@ export async function classifySend(opts: {
 export type PreflightResult =
   | { ok: true; category: "cold" | "warm"; usage: SendUsage }
   | { ok: false; reason: "at_cap"; usage: SendUsage; category: "cold" }
-  | { ok: false; reason: "cooldown"; usage: SendUsage; category: "cold" };
+  | { ok: false; reason: "cooldown"; usage: SendUsage; category: "cold" }
+  | { ok: false; reason: "paused"; usage: SendUsage; category: "cold" };
 
 /**
  * Run before sending. Classifies the send + checks the cap. Returns
@@ -222,6 +247,12 @@ export async function preflightSend(opts: {
 }): Promise<PreflightResult> {
   const category = await classifySend({ threadId: opts.threadId });
   const usage = await loadSendUsage(opts.connectedAccountId);
+  // Deliverability pause (operator or auto, from bounce/complaint monitoring):
+  // hard-stop cold sends from this inbox until it's resumed. Warm replies still
+  // go through. Admin bypass uses the same bypassCap path as the cap.
+  if (category === "cold" && usage.paused) {
+    return { ok: false, reason: "paused", usage, category };
+  }
   if (category === "cold" && usage.atCap) {
     return { ok: false, reason: "at_cap", usage, category };
   }

@@ -445,6 +445,20 @@ export async function composeAndSendImpl(
   if (!preflight.ok && !intent.operationalForCap) {
     const canBypass = bypassCap && hasMinimumRole(staff, "admin");
     if (!canBypass) {
+      // Deliverability pause (warm-up / bounce monitor): cold sends from this
+      // inbox are paused. Warm replies are never gated here.
+      if (preflight.reason === "paused") {
+        return {
+          ok: false,
+          error: `Cold sends from ${inbox.email} are paused (deliverability protection). ${
+            hasMinimumRole(staff, "admin")
+              ? "Resume the inbox in Admin → Deliverability, or click 'Bypass cap' to send once."
+              : "Use a different inbox, or ask an admin to resume it."
+          }`,
+          capBlocked: true,
+          usage: preflight.usage,
+        };
+      }
       // Cold-send pacing cooldown (migration 0106) gets its own block reason so
       // the composer can show the countdown ring instead of a cap message.
       if (preflight.reason === "cooldown") {
