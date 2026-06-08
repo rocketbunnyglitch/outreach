@@ -13,8 +13,17 @@
  */
 
 import { type Editor, Extension, type Range } from "@tiptap/core";
+import { PluginKey } from "@tiptap/pm/state";
 import type { SuggestionOptions } from "@tiptap/suggestion";
 import Suggestion from "@tiptap/suggestion";
+
+// Distinct plugin key. @tiptap/suggestion defaults every Suggestion plugin to
+// the key "suggestion", so a SECOND suggestion extension (we already ship the
+// "/" SlashCommands one) collides -> ProseMirror throws "Adding different
+// instances of a keyed plugin (suggestion$)" and the whole editor fails to
+// build (the composer then renders nothing). A unique key per suggestion
+// extension is the documented fix for running more than one.
+const SNIPPET_SUGGESTION_KEY = new PluginKey("snippetExpander");
 
 export interface SnippetItem {
   trigger: string;
@@ -89,6 +98,9 @@ export const SnippetExpander = Extension.create<SnippetExpanderOptions, SnippetS
       Suggestion({
         editor: this.editor,
         ...this.options.suggestion,
+        // Force a unique key so this doesn't collide with SlashCommands'
+        // default "suggestion" key (placed AFTER the spread so nothing overrides it).
+        pluginKey: SNIPPET_SUGGESTION_KEY,
       }),
     ];
   },
