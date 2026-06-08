@@ -547,6 +547,8 @@ export async function sendDraft(
     bypassAmbiguousIntent?: boolean;
     ackDuplicates?: boolean;
     cadenceOverrideReason?: string;
+    /** Send a single text/plain part (no HTML) -- best cold deliverability. */
+    plainText?: boolean;
   } = {},
 ): Promise<
   ActionResult<{ threadId: string }> & {
@@ -585,6 +587,7 @@ export async function sendDraft(
     bypassAmbiguousIntent: opts.bypassAmbiguousIntent,
     ackDuplicates: opts.ackDuplicates,
     cadenceOverrideReason: opts.cadenceOverrideReason,
+    plainText: opts.plainText,
   });
 }
 
@@ -604,6 +607,7 @@ async function sendDraftAsUser(input: {
   bypassAmbiguousIntent?: boolean;
   ackDuplicates?: boolean;
   cadenceOverrideReason?: string;
+  plainText?: boolean;
 }): Promise<
   ActionResult<{ threadId: string }> & {
     capBlocked?: boolean;
@@ -713,6 +717,7 @@ async function sendDraftAsUser(input: {
   if (input.bypassRelationship) fd.set("bypassRelationship", "1");
   if (input.bypassWrongAccount) fd.set("bypassWrongAccount", "1");
   if (input.bypassAmbiguousIntent) fd.set("bypassAmbiguousIntent", "1");
+  if (input.plainText) fd.set("plainText", "1");
   // Admin cadence-floor override reason (Phase 1.9). Present only when an
   // admin chose to send despite the floor; logged on the send event.
   if (input.cadenceOverrideReason) {

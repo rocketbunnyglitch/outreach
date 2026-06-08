@@ -434,6 +434,9 @@ export async function composeAndSendImpl(
   // `bypassCap` is scoped to the cold cap + its pacing cooldown (one
   // subsystem); the others are independent. All still require admin server-side.
   const bypassCap = String(formData.get("bypassCap") ?? "") === "1";
+  // Plain-text send mode (best cold-send deliverability): send a single
+  // text/plain part, no HTML. Skips the open pixel (which is HTML-only).
+  const plainText = String(formData.get("plainText") ?? "") === "1";
   const bypassRelationship = String(formData.get("bypassRelationship") ?? "") === "1";
   const bypassWrongAccount = String(formData.get("bypassWrongAccount") ?? "") === "1";
   const bypassAmbiguousIntent = String(formData.get("bypassAmbiguousIntent") ?? "") === "1";
@@ -741,7 +744,7 @@ export async function composeAndSendImpl(
   // -------------------------------------------------------------------
   let trackingTokenToStore: string | null = null;
   let htmlBodyForSend = sendHtml;
-  if (replyToThreadId && isOpenTrackingEnvOn() && env.TRACKING_BASE_URL) {
+  if (replyToThreadId && !plainText && isOpenTrackingEnvOn() && env.TRACKING_BASE_URL) {
     try {
       const [thr] = await db
         .select({ direction: emailThreads.direction, venueDnc: venues.doNotContact })
@@ -918,6 +921,7 @@ export async function composeAndSendImpl(
       threadId: replyThreadGmailId ?? undefined,
       replyToMessageId: replyMessageRfc822Id ?? undefined,
       attachments: gmailAttachments.length > 0 ? gmailAttachments : undefined,
+      plainTextOnly: plainText,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, to }, "composeAndSend: gmail send failed");

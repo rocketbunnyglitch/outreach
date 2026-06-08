@@ -335,6 +335,9 @@ export async function sendGmailMessage(opts: {
   subject: string;
   htmlBody: string;
   textBody?: string;
+  /** Send a single text/plain part (no HTML) -- best cold-send deliverability.
+   *  Ignored when attachments are present (those need a multipart container). */
+  plainTextOnly?: boolean;
   threadId?: string;
   replyToMessageId?: string;
   attachments?: GmailAttachment[];
@@ -384,12 +387,17 @@ export async function sendGmailMessage(opts: {
   const headers = [`From: ${encFrom(opts.from)}`, `To: ${toList.join(", ")}`];
   if (ccList.length > 0) headers.push(`Cc: ${ccList.join(", ")}`);
   if (bccList.length > 0) headers.push(`Bcc: ${bccList.join(", ")}`);
+  // Plain-text-only mode = a single text/plain part (best cold deliverability).
+  // Attachments force a multipart container, so they override it.
+  const plainTextOnly = Boolean(opts.plainTextOnly) && !hasAttachments;
   headers.push(
     `Subject: ${encText(opts.subject)}`,
     "MIME-Version: 1.0",
-    hasAttachments
-      ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`
-      : `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    plainTextOnly
+      ? "Content-Type: text/plain; charset=UTF-8"
+      : hasAttachments
+        ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`
+        : `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
   );
   if (opts.replyToMessageId) {
     headers.push(`In-Reply-To: ${opts.replyToMessageId}`);
@@ -411,7 +419,10 @@ export async function sendGmailMessage(opts: {
   ].join("\r\n");
 
   let bodyParts: string[];
-  if (!hasAttachments) {
+  if (plainTextOnly) {
+    // Single text/plain body -- no MIME boundaries, no HTML part.
+    bodyParts = [headers.join("\r\n"), "", opts.textBody ?? stripHtml(opts.htmlBody)];
+  } else if (!hasAttachments) {
     bodyParts = [headers.join("\r\n"), "", altPart];
   } else {
     bodyParts = [

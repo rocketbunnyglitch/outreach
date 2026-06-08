@@ -220,6 +220,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [undoActive, setUndoActive] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // Plain-text send mode (best cold-send deliverability): send a single
+  // text/plain part with no HTML. Per-composer toggle in the footer.
+  const [plainTextMode, setPlainTextMode] = useState(false);
 
   // Toolbar visibility — Gmail collapses the formatting toolbar by
   // default and surfaces it via the Aa toggle. We default to open
@@ -634,6 +637,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         bypassAmbiguousIntent: opts.bypassAmbiguousIntent,
         ackDuplicates: opts.ackDuplicates,
         cadenceOverrideReason: opts.cadenceOverrideReason,
+        plainText: plainTextMode,
       });
       setUndoActive(false);
       if (!sendRes.ok) {
@@ -1567,6 +1571,23 @@ export function ComposerWindow({ instance, isMobile }: Props) {
               {deliverability.score}
             </span>
           )}
+          {/* Plain-text send mode — a single text/plain part (no HTML) lands
+              best for cold openers. Off by default. */}
+          <button
+            type="button"
+            onClick={() => setPlainTextMode((v) => !v)}
+            title="Send as plain text (no HTML) — best deliverability for cold openers"
+            aria-pressed={plainTextMode}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium text-[11px]",
+              plainTextMode
+                ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-zinc-300 text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400",
+            )}
+          >
+            <PenLine className="h-3 w-3" />
+            Plain text
+          </button>
           {capBlocked && instance.isAdmin && (
             <button
               type="button"
