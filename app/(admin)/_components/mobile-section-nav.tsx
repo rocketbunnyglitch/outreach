@@ -161,6 +161,7 @@ const ADMIN_SECTION: Section = {
     { href: "/admin/users", label: "Users", icon: <Users className="h-3 w-3" /> },
     { href: "/admin/roles", label: "Roles", icon: <ShieldCheck className="h-3 w-3" /> },
     { href: "/admin/labels", label: "Labels", icon: <Tag className="h-3 w-3" /> },
+    { href: "/admin/snippets", label: "Snippets", icon: <FileCode className="h-3 w-3" /> },
     {
       href: "/admin/suppression",
       label: "Suppression",

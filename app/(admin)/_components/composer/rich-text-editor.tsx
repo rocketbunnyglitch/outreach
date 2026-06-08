@@ -82,6 +82,8 @@ import { FontSize } from "./tiptap-font-size";
 import { SignatureBlock } from "./tiptap-signature-block";
 import { SlashCommands } from "./tiptap-slash-commands";
 import { SlashCommandsList, type SlashCommandsListRef } from "./tiptap-slash-commands-list";
+import { SnippetExpander, type SnippetItem } from "./tiptap-snippets";
+import { SnippetsList, type SnippetsListRef } from "./tiptap-snippets-list";
 
 interface Props {
   /** HTML representation (the canonical source for the editor). */
@@ -105,6 +107,9 @@ interface Props {
    *  scrolling -- Gmail's inline-reply behavior. Off = fixed-height editor
    *  that scrolls internally (docked / fullscreen windows). */
   autoGrow?: boolean;
+  /** Team snippets (merge-rendered) for the ";trigger" text-expander. Synced
+   *  into the SnippetExpander extension's storage. Omit/empty -> no expander. */
+  snippets?: SnippetItem[];
 }
 
 const FONT_SIZES: Array<{ label: string; value: string }> = [
@@ -142,6 +147,7 @@ export function RichTextEditor({
   showToolbar = true,
   autofocus = false,
   autoGrow = false,
+  snippets,
 }: Props) {
   // Track last-emitted HTML so we don't re-seed the editor on our
   // own round-trip (which would jump the cursor to the start).
@@ -244,6 +250,81 @@ export function RichTextEditor({
           },
         },
       }),
+      // ";trigger" snippet text-expander. Mirrors SlashCommands but the popup is
+      // suppressed entirely when there are no matching snippets, so a stray ";"
+      // in normal prose never pops an empty box.
+      SnippetExpander.configure({
+        suggestion: {
+          char: ";",
+          startOfLine: false,
+          render: () => {
+            let component: ReactRenderer<SnippetsListRef> | null = null;
+            let popup: TippyInstance | null = null;
+            const hasItems = (props: { items: unknown[] }) => props.items.length > 0;
+
+            return {
+              onStart: (props) => {
+                if (!hasItems(props)) return;
+                component = new ReactRenderer(SnippetsList, { props, editor: props.editor });
+                const clientRect = props.clientRect?.();
+                if (!clientRect) return;
+                popup = tippy(document.body, {
+                  getReferenceClientRect: () => clientRect,
+                  appendTo: () => document.body,
+                  content: component.element,
+                  showOnCreate: true,
+                  interactive: true,
+                  trigger: "manual",
+                  placement: "bottom-start",
+                  popperOptions: { modifiers: [{ name: "flip", enabled: true }] },
+                });
+              },
+              onUpdate: (props) => {
+                if (!hasItems(props)) {
+                  popup?.hide();
+                  return;
+                }
+                if (!component) {
+                  // Items appeared after an empty start -- mount now.
+                  component = new ReactRenderer(SnippetsList, { props, editor: props.editor });
+                  const rect = props.clientRect?.();
+                  if (!rect) return;
+                  popup = tippy(document.body, {
+                    getReferenceClientRect: () => rect,
+                    appendTo: () => document.body,
+                    content: component.element,
+                    showOnCreate: true,
+                    interactive: true,
+                    trigger: "manual",
+                    placement: "bottom-start",
+                    popperOptions: { modifiers: [{ name: "flip", enabled: true }] },
+                  });
+                  return;
+                }
+                component.updateProps(props);
+                const clientRect = props.clientRect?.();
+                if (clientRect && popup) {
+                  popup.show();
+                  popup.setProps({ getReferenceClientRect: () => clientRect });
+                }
+              },
+              onKeyDown: (props) => {
+                if (props.event.key === "Escape") {
+                  popup?.hide();
+                  return true;
+                }
+                return component?.ref?.onKeyDown(props) ?? false;
+              },
+              onExit: () => {
+                popup?.destroy();
+                component?.destroy();
+                popup = null;
+                component = null;
+              },
+            };
+          },
+        },
+      }),
     ],
     content: valueHtml ?? "",
     // Gmail-style: land the caret at the end of the body on mount for
@@ -285,6 +366,14 @@ export function RichTextEditor({
     editor.commands.setContent(valueHtml, false);
     lastEmittedRef.current = valueHtml;
   }, [valueHtml, editor]);
+
+  // Keep the snippet expander's storage in sync with the latest team snippets
+  // (merge-rendered by the composer). The extension's items() reads from here.
+  useEffect(() => {
+    if (!editor) return;
+    const storage = editor.storage.snippetExpander as { items: SnippetItem[] } | undefined;
+    if (storage) storage.items = snippets ?? [];
+  }, [editor, snippets]);
 
   const insertLink = useCallback(() => {
     if (!editor) return;

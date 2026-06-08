@@ -71,6 +71,7 @@ import {
   upsertDraft,
 } from "../../_actions/email-drafts";
 import { type EnginePickResult, pickTemplateForComposer } from "../../_actions/engine-pick";
+import { type SnippetRow, listTeamSnippets } from "../../admin/snippets/_actions";
 import { SafetyWarningDialog } from "./SafetyWarningDialog";
 import { AttachmentList } from "./attachment-list";
 import { type ComposerInstance, type ComposerMode, useComposer } from "./composer-store";
@@ -80,6 +81,15 @@ import { RecipientChips } from "./recipient-chips";
 import { RichTextEditor } from "./rich-text-editor";
 import { SendMenu } from "./send-menu";
 import { SubjectSuggestButton } from "./subject-suggest-button";
+import type { SnippetItem } from "./tiptap-snippets";
+
+// Team snippets are the same for every compose window, so fetch once per page
+// load and share the promise across windows (avoids N calls for N windows).
+let teamSnippetsPromise: Promise<SnippetRow[]> | null = null;
+function getTeamSnippetsCached(): Promise<SnippetRow[]> {
+  if (!teamSnippetsPromise) teamSnippetsPromise = listTeamSnippets().catch(() => []);
+  return teamSnippetsPromise;
+}
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 /** Gmail's undo-send window is configurable up to 30s; 15s is the
@@ -226,6 +236,9 @@ export function ComposerWindow({ instance, isMobile }: Props) {
    *  Fetched once per venue/city change; null until resolved or N/A. */
   const [sendTimeHint, setSendTimeHint] = useState<BestSendTimeResult | null>(null);
   const sendTimeHintKeyRef = useRef<string | null>(null);
+  /** Team snippets (raw) + merge-rendered for the ";trigger" expander. */
+  const [snippetRows, setSnippetRows] = useState<SnippetRow[]>([]);
+  const [editorSnippets, setEditorSnippets] = useState<SnippetItem[]>([]);
   // Plain-text send mode (best cold-send deliverability): send a single
   // text/plain part with no HTML. Per-composer toggle in the footer.
   const [plainTextMode, setPlainTextMode] = useState(false);
@@ -383,6 +396,42 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       cancelled = true;
     };
   }, [instance.venueId, instance.cityCampaignId]);
+
+  // -------------------------------------------------------------
+  // Snippets (Tier-2). Load the team's snippets once (shared promise), then
+  // merge-render their bodies against this window's context so an inserted
+  // ";trigger" already has {{venue_name}} etc. substituted.
+  // -------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+    void getTeamSnippetsCached().then((rows) => {
+      if (!cancelled) setSnippetRows(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (snippetRows.length === 0) {
+      setEditorSnippets([]);
+      return;
+    }
+    let cancelled = false;
+    void import("@/lib/template-render").then(({ renderTemplate }) => {
+      if (cancelled) return;
+      setEditorSnippets(
+        snippetRows.map((s) => ({
+          trigger: s.trigger,
+          label: s.label,
+          body: renderTemplate(s.body, renderContext).output,
+        })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [snippetRows, renderContext]);
 
   // -------------------------------------------------------------
   // Engine template auto-pick (Phase 1.5).
@@ -1475,6 +1524,8 @@ export function ComposerWindow({ instance, isMobile }: Props) {
           // Inline reply grows with content (no internal scroll) so the
           // window grows to its cap, Gmail-style, before any scroll.
           autoGrow={effectiveMode === "inline"}
+          // Team snippets (merge-rendered) for the ";trigger" text-expander.
+          snippets={editorSnippets}
         />
 
         {/* Collapsed quoted-thread chip — Gmail-parity. Shows when
