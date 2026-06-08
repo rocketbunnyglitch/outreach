@@ -16,7 +16,7 @@
 
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail } from "@/lib/inbox-data";
-import { Eye } from "lucide-react";
+import { Check, CheckCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -137,10 +137,11 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
             >
               {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
             </time>
-            <SeenIndicator
+            <ReadReceipt
               outbound={!isInbound}
-              firstOpenedAt={message.firstOpenedAt}
+              isTracked={message.isTracked}
               hasRealOpen={message.hasRealOpen}
+              opens={message.opens}
               mounted={mounted}
             />
           </div>
@@ -257,40 +258,101 @@ function isoStamp(d: Date): string {
 }
 
 /**
- * Warm-only open-tracking read receipt, shown on OUR sent (outbound) messages.
- * "Seen" (confident) when a non-proxy open exists; "Loaded" (hedged) when the
- * only opens look like a mail-proxy pre-fetch (Gmail/Apple MPP), so operators
- * aren't misled. Informational only -- opens never drive any automation.
+ * Warm-only open-tracking read receipt (MailSuite-style), shown on OUR sent
+ * (outbound) tracked messages:
+ *   - single gray check  = tracked + sent, not opened yet
+ *   - double green check = read (a non-proxy open exists) -> "Read N times"
+ *   - double gray check  = only mail-proxy pre-fetch opens (Gmail/Apple MPP),
+ *                          hedged as "Loaded" so operators aren't misled
+ * Hovering the checks reveals a popover listing every open time, with a
+ * "pre-fetch" badge on proxy hits. Informational only -- opens never drive any
+ * automation. Untracked (cold) sends render nothing.
  */
-function SeenIndicator({
+function ReadReceipt({
   outbound,
-  firstOpenedAt,
+  isTracked,
   hasRealOpen,
+  opens,
   mounted,
 }: {
   outbound: boolean;
-  firstOpenedAt: Date | null;
+  isTracked: boolean;
   hasRealOpen: boolean;
+  opens: Array<{ openedAt: string; isLikelyProxy: boolean }>;
   mounted: boolean;
 }) {
-  if (!outbound || !firstOpenedAt) return null;
-  const label = hasRealOpen ? "Seen" : "Loaded";
-  const when = mounted ? formatTime(firstOpenedAt) : isoStamp(firstOpenedAt);
+  const [hover, setHover] = useState(false);
+  if (!outbound || !isTracked) return null;
+
+  const opened = opens.length > 0;
+  const realCount = opens.filter((o) => !o.isLikelyProxy).length;
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return mounted ? formatTime(d) : isoStamp(d);
+  };
+
+  const summary = !opened
+    ? "Sent · not opened yet"
+    : hasRealOpen
+      ? `Read ${realCount} time${realCount === 1 ? "" : "s"}`
+      : "Loaded (likely a mail-proxy pre-fetch, not a confirmed read)";
+
   return (
     <span
-      suppressHydrationWarning
-      title={
-        hasRealOpen
-          ? `Opened ${isoStamp(firstOpenedAt)}`
-          : `Image loaded ${isoStamp(firstOpenedAt)} -- may be a mail-proxy pre-fetch, not a confirmed read`
-      }
-      className={cn(
-        "inline-flex items-center gap-1 font-medium text-[10px]",
-        hasRealOpen ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400 dark:text-zinc-500",
-      )}
+      className="relative inline-flex"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
     >
-      <Eye className="h-3 w-3" />
-      {label} {when}
+      <button
+        type="button"
+        aria-label={summary}
+        className={cn(
+          "inline-flex items-center font-medium text-[10px]",
+          opened && hasRealOpen
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-zinc-400 dark:text-zinc-500",
+        )}
+      >
+        {opened ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+      </button>
+
+      {hover && (
+        <span className="absolute top-full right-0 z-30 mt-1 w-56 rounded-lg border border-zinc-200 bg-white p-2 text-left shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+          <span className="mb-1 block font-medium text-[11px] text-zinc-900 dark:text-zinc-100">
+            {summary}
+          </span>
+          {opened ? (
+            <span className="block max-h-40 space-y-0.5 overflow-y-auto">
+              {opens.map((o, i) => (
+                <span
+                  key={`${o.openedAt}-${i}`}
+                  suppressHydrationWarning
+                  className="flex items-center justify-between gap-2 text-[11px] text-zinc-600 dark:text-zinc-400"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <CheckCheck
+                      className={cn(
+                        "h-3 w-3",
+                        o.isLikelyProxy ? "text-zinc-400 dark:text-zinc-500" : "text-emerald-500",
+                      )}
+                    />
+                    {fmt(o.openedAt)}
+                  </span>
+                  {o.isLikelyProxy && (
+                    <span className="rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                      pre-fetch
+                    </span>
+                  )}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="block text-[11px] text-zinc-500 dark:text-zinc-400">
+              We'll show each open here once the recipient loads the email.
+            </span>
+          )}
+        </span>
+      )}
     </span>
   );
 }

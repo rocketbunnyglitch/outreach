@@ -1046,10 +1046,14 @@ export interface InboxThreadDetail {
     // Warm-only open tracking (outbound only). firstOpenedAt is null when the
     // message was never tracked (cold) or never opened. hasRealOpen is true
     // only when at least one open was NOT a likely proxy pre-fetch -- so the UI
-    // can show a confident "Seen" vs a hedged "Loaded".
+    // can show a confident "Read" vs a hedged "Loaded". isTracked is true when
+    // a pixel was embedded (warm send). opens is every hit, oldest-first, for
+    // the read-times hover popover.
     firstOpenedAt: Date | null;
     openCount: number;
     hasRealOpen: boolean;
+    isTracked: boolean;
+    opens: Array<{ openedAt: string; isLikelyProxy: boolean }>;
   }>;
 }
 
@@ -1145,6 +1149,12 @@ export async function fetchThreadDetail(
       openCount: emailMessages.openCount,
       // True only when a non-proxy (likely-human) open exists for this message.
       hasRealOpen: sql<boolean>`EXISTS (SELECT 1 FROM email_open_events oe WHERE oe.email_message_id = ${emailMessages.id} AND oe.is_likely_proxy = false)`,
+      // True when a tracking pixel was embedded (warm send) -> show a receipt.
+      isTracked: sql<boolean>`${emailMessages.trackingToken} IS NOT NULL`,
+      // Every open hit, oldest-first, for the read-times popover.
+      opens: sql<
+        Array<{ openedAt: string; isLikelyProxy: boolean }>
+      >`COALESCE((SELECT json_agg(json_build_object('openedAt', oe.opened_at, 'isLikelyProxy', oe.is_likely_proxy) ORDER BY oe.opened_at) FROM email_open_events oe WHERE oe.email_message_id = ${emailMessages.id}), '[]'::json)`,
     })
     .from(emailMessages)
     .leftJoin(staffMembers, eq(staffMembers.id, emailMessages.sentByStaffId))
