@@ -3,7 +3,7 @@
  * See migration 0049 for the table layout.
  */
 
-import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { emailThreads } from "./outreach";
 import { teams } from "./teams";
 import { emailTemplates } from "./templates";
@@ -75,6 +75,10 @@ export const emailSendEvents = pgTable(
     cadenceManaged: boolean("cadence_managed"),
     appliedCadenceFloor: boolean("applied_cadence_floor"),
     recordedCadenceTouch: boolean("recorded_cadence_touch"),
+    /** Subject-line A/B variant index that sent (Tier-2), into the template's
+     *  subject_variants array. NULL for non-A/B sends. Analytics groups sends
+     *  by this to compute per-variant reply rate. */
+    subjectVariantIndex: integer("subject_variant_index"),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

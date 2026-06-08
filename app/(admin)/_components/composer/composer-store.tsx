@@ -67,6 +67,9 @@ export interface ComposerInstance {
   cityCampaignId: string | null;
   /** Picked template id (drives merge + AI+template mode). */
   templateId: string | null;
+  /** Subject-line A/B variant index chosen for this draft (Tier-2). NULL when
+   *  the template has no variants. Recorded on send for reply-rate ranking. */
+  subjectVariantIndex: number | null;
   /** Template the engine auto-picked when this composer opened (Phase 1.5).
    *  Stays fixed even if the operator swaps templateId, so the draft records
    *  the original engine suggestion for override tracking. */
@@ -261,6 +264,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
       venueId: input.venueId ?? null,
       cityCampaignId: input.cityCampaignId ?? null,
       templateId: input.templateId ?? null,
+      subjectVariantIndex: null,
       enginePickedTemplateId: null,
       attachments: [],
       scheduledFor: null,
@@ -393,6 +397,7 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
             venueId: row.venueId,
             cityCampaignId: row.cityCampaignId,
             templateId: row.templateId,
+            subjectVariantIndex: row.subjectVariantIndex ?? null,
             enginePickedTemplateId: row.enginePickedTemplateId,
             attachments: (row.attachments ?? []).map((a, i) => ({
               id: `${row.id}-att-${i}`,

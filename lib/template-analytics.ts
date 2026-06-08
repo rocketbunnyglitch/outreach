@@ -202,6 +202,102 @@ export async function loadTemplatePerformance(
 }
 
 // =========================================================================
+// Subject-line A/B performance (Tier-2)
+// =========================================================================
+
+export interface SubjectVariantRow {
+  templateId: string;
+  templateName: string;
+  variantIndex: number;
+  /** The variant's subject text (raw template). null if it's been removed. */
+  variantText: string | null;
+  sentCount: number;
+  replyCount: number;
+  /** 0..1, replyCount / sentCount. */
+  replyRate: number;
+  lowSample: boolean;
+}
+
+/**
+ * Per-subject-variant reply rate (Tier-2 A/B). Groups cold sends that recorded
+ * a subject_variant_index by (template, variant) and computes the reply rate
+ * (threads that got an inbound reply). NO open pixels -- reply is the only
+ * signal. Returned grouped by template, variant order ascending.
+ */
+export async function loadSubjectVariantPerformance(
+  opts: TemplateAnalyticsOpts,
+): Promise<SubjectVariantRow[]> {
+  const from = opts.from ?? new Date(Date.now() - DEFAULT_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const to = opts.to ?? new Date();
+
+  try {
+    const rows = (await db.execute<{
+      template_id: string;
+      template_name: string | null;
+      subject_variants: string[] | null;
+      variant_index: number;
+      sent_count: number;
+      reply_count: number;
+    }>(sql`
+      WITH sends AS (
+        SELECT ese.template_id, ese.subject_variant_index AS vidx, ese.thread_id
+        FROM ${emailSendEvents} ese
+        WHERE ese.team_id = ${opts.teamId}
+          AND ese.category = 'cold'
+          AND ese.template_id IS NOT NULL
+          AND ese.subject_variant_index IS NOT NULL
+          AND ese.sent_at >= ${from}
+          AND ese.sent_at <= ${to}
+      ),
+      replies AS (
+        SELECT DISTINCT thread_id FROM ${emailMessages} WHERE direction = 'inbound'
+      )
+      SELECT
+        s.template_id,
+        t.name AS template_name,
+        t.subject_variants AS subject_variants,
+        s.vidx AS variant_index,
+        COUNT(*)::int AS sent_count,
+        SUM(CASE WHEN r.thread_id IS NOT NULL THEN 1 ELSE 0 END)::int AS reply_count
+      FROM sends s
+      LEFT JOIN replies r ON r.thread_id = s.thread_id
+      LEFT JOIN ${emailTemplates} t ON t.id = s.template_id
+      GROUP BY s.template_id, t.name, t.subject_variants, s.vidx
+      ORDER BY s.template_id, s.vidx
+    `)) as unknown;
+
+    const list: Array<{
+      template_id: string;
+      template_name: string | null;
+      subject_variants: string[] | null;
+      variant_index: number;
+      sent_count: number;
+      reply_count: number;
+    }> = Array.isArray(rows) ? (rows as typeof list) : ((rows as { rows: typeof list }).rows ?? []);
+
+    return list.map((r) => {
+      const sent = Number(r.sent_count) || 0;
+      const reply = Number(r.reply_count) || 0;
+      const vidx = Number(r.variant_index);
+      const variants = Array.isArray(r.subject_variants) ? r.subject_variants : null;
+      return {
+        templateId: r.template_id,
+        templateName: r.template_name ?? "(deleted template)",
+        variantIndex: vidx,
+        variantText: variants?.[vidx] ?? null,
+        sentCount: sent,
+        replyCount: reply,
+        replyRate: sent > 0 ? reply / sent : 0,
+        lowSample: sent < MIN_SAMPLE,
+      };
+    });
+  } catch (err) {
+    logger.warn({ err, teamId: opts.teamId }, "[loadSubjectVariantPerformance] failed");
+    return [];
+  }
+}
+
+// =========================================================================
 // Best-send-time analysis — Phase C.3
 // =========================================================================
 

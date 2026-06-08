@@ -30,6 +30,7 @@ interface Props {
     stage: string;
     name: string;
     subjectTemplate: string;
+    subjectVariants?: string[] | null;
     bodyTemplateText: string;
     bodyTemplateHtml: string | null;
     isDefaultForStage: boolean;
@@ -51,6 +52,9 @@ interface Props {
 export function TemplateForm({ mode, initial, brands, action }: Props) {
   const [state, formAction] = useActionState(action, null);
   const [subject, setSubject] = useState(initial?.subjectTemplate ?? "");
+  const [subjectVariants, setSubjectVariants] = useState(
+    (initial?.subjectVariants ?? []).join("\n"),
+  );
   const [body, setBody] = useState(initial?.bodyTemplateText ?? "");
 
   // Live extraction of merge fields used in the current draft. Helps
@@ -154,6 +158,24 @@ export function TemplateForm({ mode, initial, brands, action }: Props) {
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Want to host part of our {{event.dateFormatted}} crawl?"
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="subjectVariants">Subject A/B variants (optional)</Label>
+              <Textarea
+                id="subjectVariants"
+                name="subjectVariants"
+                value={subjectVariants}
+                onChange={(e) => setSubjectVariants(e.target.value)}
+                rows={3}
+                placeholder={
+                  "One subject per line. Add 2+ to A/B test.\nWant a stop on our {{city}} crawl?\n{{venue_name}} + our Halloween crawl?"
+                }
+              />
+              <p className="text-xs text-zinc-500">
+                When 2+ lines are present, the composer picks one per draft (merge fields render
+                normally) and analytics ranks them by reply rate. Leave empty to use the single
+                subject above.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="bodyTemplateText">Body (plain text)</Label>

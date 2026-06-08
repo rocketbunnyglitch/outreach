@@ -100,6 +100,10 @@ export const emailTemplates = pgTable(
     // variants; the sender picks based on the recipient or includes both
     // in a multipart message.
     subjectTemplate: text("subject_template").notNull(),
+    /** Subject-line A/B variants (Tier-2). Array of raw subject-template
+     *  strings; 2+ enables A/B. NULL/empty = use subjectTemplate as before.
+     *  The composer picks one per draft and records the chosen index. */
+    subjectVariants: jsonb("subject_variants").$type<string[]>(),
     bodyTemplateHtml: text("body_template_html"),
     bodyTemplateText: text("body_template_text").notNull(),
 

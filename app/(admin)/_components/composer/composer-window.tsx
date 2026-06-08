@@ -115,11 +115,32 @@ function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
 
+/**
+ * Deterministic per-draft variant pick (Tier-2 subject A/B). Hashing the draft
+ * id means a draft always resolves to the same variant (a reopened draft never
+ * flips subjects), while across many drafts the choice spreads -- a mix, like
+ * spintax's seeded pick.
+ */
+function pickVariantIndex(seedStr: string, n: number): number {
+  let h = 2166136261;
+  for (let i = 0; i < seedStr.length; i++) {
+    h ^= seedStr.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return Math.abs(h) % n;
+}
+
 async function applyTemplate(
   templateId: string,
   templates: ComposeTemplate[],
   renderContext: ComposeRenderContext,
-  setPatch: (patch: { subject: string; bodyText: string; bodyHtml: string | null }) => void,
+  draftId: string,
+  setPatch: (patch: {
+    subject: string;
+    bodyText: string;
+    bodyHtml: string | null;
+    subjectVariantIndex: number | null;
+  }) => void,
 ) {
   const t = templates.find((x) => x.id === templateId);
   if (!t) return;
@@ -130,7 +151,16 @@ async function applyTemplate(
   const ctx = renderContext.company_name?.trim()
     ? renderContext
     : { ...renderContext, company_name: t.brandName ?? renderContext.company_name ?? "" };
-  const subj = renderTemplate(t.subjectTemplate, ctx);
+  // Subject-line A/B: when the template carries 2+ variants, pick one per draft
+  // (deterministic by draft id). The operator sees the chosen subject and can
+  // edit it; the index is recorded on send for per-variant reply-rate ranking.
+  let subjectTemplateToUse = t.subjectTemplate;
+  let subjectVariantIndex: number | null = null;
+  if (t.subjectVariants && t.subjectVariants.length >= 2) {
+    subjectVariantIndex = pickVariantIndex(draftId, t.subjectVariants.length);
+    subjectTemplateToUse = t.subjectVariants[subjectVariantIndex] ?? t.subjectTemplate;
+  }
+  const subj = renderTemplate(subjectTemplateToUse, ctx);
   const body = renderTemplate(t.bodyTemplateText, ctx);
   // Convert the plain-text template body to minimal HTML for the rich text
   // editor. Paragraphs (separated by a blank line in the source) are joined
@@ -140,7 +170,12 @@ async function applyTemplate(
     .split(/\n{2,}/)
     .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("<p></p>");
-  setPatch({ subject: subj.output, bodyText: body.output, bodyHtml: html });
+  setPatch({
+    subject: subj.output,
+    bodyText: body.output,
+    bodyHtml: html,
+    subjectVariantIndex,
+  });
 }
 
 function escapeHtml(s: string): string {
@@ -479,7 +514,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         // list (so applyTemplate can resolve subject/body for it).
         if (!templates.some((t) => t.id === pick.templateId)) return;
         setEnginePick(res.data);
-        void applyTemplate(pick.templateId, templates, renderContext, (patch) =>
+        void applyTemplate(pick.templateId, templates, renderContext, instance.id, (patch) =>
           setField(instance.id, {
             ...patch,
             templateId: pick.templateId,
@@ -510,7 +545,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     const key = `${instance.fromAccountId}|${instance.templateId}`;
     if (reapplyKeyRef.current === key) return;
     reapplyKeyRef.current = key;
-    void applyTemplate(instance.templateId, templates, renderContext, (patch) =>
+    void applyTemplate(instance.templateId, templates, renderContext, instance.id, (patch) =>
       setField(instance.id, patch),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -523,7 +558,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     (templateId: string) => {
       if (!templates) return;
       setEnginePickOpen(false);
-      void applyTemplate(templateId, templates, renderContext, (patch) =>
+      void applyTemplate(templateId, templates, renderContext, instance.id, (patch) =>
         setField(instance.id, { ...patch, templateId }),
       );
     },
@@ -535,7 +570,13 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const handleUseBlank = useCallback(() => {
     setEnginePickDismissed(true);
     setEnginePickOpen(false);
-    setField(instance.id, { templateId: null, subject: "", bodyText: "", bodyHtml: null });
+    setField(instance.id, {
+      templateId: null,
+      subjectVariantIndex: null,
+      subject: "",
+      bodyText: "",
+      bodyHtml: null,
+    });
   }, [instance.id, setField]);
 
   // -------------------------------------------------------------
@@ -564,6 +605,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         venueId: inst.venueId,
         cityCampaignId: inst.cityCampaignId,
         templateId: inst.templateId,
+        subjectVariantIndex: inst.subjectVariantIndex,
         enginePickedTemplateId: inst.enginePickedTemplateId,
         attachments: inst.attachments.map((a) => ({
           name: a.name,
@@ -699,6 +741,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         venueId: opts.testOnly ? null : instance.venueId,
         cityCampaignId: opts.testOnly ? null : instance.cityCampaignId,
         templateId: instance.templateId,
+        subjectVariantIndex: instance.subjectVariantIndex,
         enginePickedTemplateId: opts.testOnly ? null : instance.enginePickedTemplateId,
         attachments: instance.attachments,
         scheduledFor: null,
@@ -868,6 +911,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         venueId: instance.venueId,
         cityCampaignId: instance.cityCampaignId,
         templateId: instance.templateId,
+        subjectVariantIndex: instance.subjectVariantIndex,
         enginePickedTemplateId: instance.enginePickedTemplateId,
         attachments: instance.attachments,
         scheduledFor: null,
@@ -1409,7 +1453,7 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 const tid = e.target.value || null;
                 setField(instance.id, { templateId: tid });
                 if (tid) {
-                  applyTemplate(tid, templates, renderContext, (patch) =>
+                  applyTemplate(tid, templates, renderContext, instance.id, (patch) =>
                     setField(instance.id, patch),
                   );
                 }

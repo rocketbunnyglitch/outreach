@@ -100,6 +100,7 @@ export default async function EditTemplatePage({ params, searchParams }: PagePro
           stage: template.stage,
           name: template.name,
           subjectTemplate: template.subjectTemplate,
+          subjectVariants: template.subjectVariants,
           bodyTemplateText: template.bodyTemplateText,
           bodyTemplateHtml: template.bodyTemplateHtml,
           isDefaultForStage: template.isDefaultForStage,

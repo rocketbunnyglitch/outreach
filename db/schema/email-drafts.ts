@@ -9,7 +9,16 @@
  *     (row deleted)
  */
 
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { teams } from "./teams";
 import { connectedAccounts, users } from "./users";
 
@@ -99,6 +108,9 @@ export const emailDrafts = pgTable(
       .default("venue"),
     /** Template/touch code (e.g. T1, T9, T14) or category, for safety + analytics. */
     touchType: text("touch_type"),
+    /** Subject-line A/B variant index chosen for this draft (Tier-2), into the
+     *  template's subject_variants array. NULL = not an A/B send. */
+    subjectVariantIndex: integer("subject_variant_index"),
     /** The specific venue_event/night this draft belongs to. Lets cancellation
      *  scope cleanup to ONE night of a multi-night venue. FK in migration 0119. */
     venueEventId: uuid("venue_event_id"),

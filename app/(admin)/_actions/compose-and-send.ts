@@ -206,6 +206,9 @@ export interface ComposeTemplate {
   isDefaultForStage: boolean;
   /** Raw subject template (Mustache-style merge fields). */
   subjectTemplate: string;
+  /** Subject-line A/B variants (Tier-2). 2+ enables A/B; the composer picks
+   *  one per draft. Null/empty = no A/B (use subjectTemplate). */
+  subjectVariants: string[] | null;
   /** Raw text body template. */
   bodyTemplateText: string;
 }
@@ -274,6 +277,7 @@ export async function listComposeContext(
         brandName: outreachBrands.displayName,
         isDefaultForStage: emailTemplates.isDefaultForStage,
         subjectTemplate: emailTemplates.subjectTemplate,
+        subjectVariants: emailTemplates.subjectVariants,
         bodyTemplateText: emailTemplates.bodyTemplateText,
       })
       .from(emailTemplates)

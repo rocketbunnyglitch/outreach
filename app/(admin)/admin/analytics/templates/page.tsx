@@ -1,5 +1,9 @@
 import { requireAdmin } from "@/lib/auth";
-import { loadTemplatePerformance } from "@/lib/template-analytics";
+import {
+  type SubjectVariantRow,
+  loadSubjectVariantPerformance,
+  loadTemplatePerformance,
+} from "@/lib/template-analytics";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 
@@ -25,10 +29,10 @@ export default async function TemplateAnalyticsPage({
   const days = Number.isFinite(windowDays) && windowDays > 0 ? windowDays : 90;
   const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const rows = await loadTemplatePerformance({
-    teamId: staff.teamId,
-    from,
-  });
+  const [rows, variantRows] = await Promise.all([
+    loadTemplatePerformance({ teamId: staff.teamId, from }),
+    loadSubjectVariantPerformance({ teamId: staff.teamId, from }),
+  ]);
 
   // Pre-sort by reply rate among non-low-sample rows; low-sample
   // rows fall to the bottom so they don't crowd out trustworthy
@@ -120,6 +124,8 @@ export default async function TemplateAnalyticsPage({
         </div>
       )}
 
+      <SubjectVariantSection rows={variantRows} />
+
       <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
         <Sparkles className="h-3.5 w-3.5 text-violet-500" />
         <span>
@@ -128,6 +134,79 @@ export default async function TemplateAnalyticsPage({
         </span>
       </div>
     </main>
+  );
+}
+
+/** Subject-line A/B breakdown: per-variant reply rate, grouped by template.
+ *  Ranked by reply rate (no open pixels). */
+function SubjectVariantSection({ rows }: { rows: SubjectVariantRow[] }) {
+  if (rows.length === 0) return null;
+  // Group by template, preserving variant order; rank variants within a
+  // template by reply rate so the winner is on top.
+  const byTemplate = new Map<string, { name: string; variants: SubjectVariantRow[] }>();
+  for (const r of rows) {
+    const g = byTemplate.get(r.templateId) ?? { name: r.templateName, variants: [] };
+    g.variants.push(r);
+    byTemplate.set(r.templateId, g);
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="font-semibold text-xl tracking-tight">Subject-line A/B</h2>
+      <p className="mt-1 text-sm text-zinc-500">
+        Reply rate per subject variant (the winner sits on top). Reply-based only — no open
+        tracking.
+      </p>
+      <div className="mt-4 flex flex-col gap-6">
+        {[...byTemplate.entries()].map(([templateId, g]) => {
+          const ranked = [...g.variants].sort((a, b) => b.replyRate - a.replyRate);
+          return (
+            <div
+              key={templateId}
+              className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
+            >
+              <div className="border-zinc-200 border-b bg-zinc-50 px-4 py-2 font-medium text-sm dark:border-zinc-800 dark:bg-zinc-900/40">
+                {g.name}
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {ranked.map((v, i) => (
+                    <tr
+                      key={v.variantIndex}
+                      className={`border-zinc-100 border-t dark:border-zinc-900 ${
+                        v.lowSample ? "opacity-60" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          {i === 0 && !v.lowSample && (
+                            <span className="rounded bg-emerald-100 px-1 py-0.5 font-mono text-[9px] text-emerald-800 uppercase tracking-wider dark:bg-emerald-950/40 dark:text-emerald-200">
+                              winner
+                            </span>
+                          )}
+                          <span className="text-zinc-700 dark:text-zinc-200">
+                            {v.variantText ?? `Variant ${v.variantIndex + 1}`}
+                          </span>
+                          {v.lowSample && (
+                            <span className="rounded bg-amber-100 px-1 py-0.5 font-mono text-[9px] text-amber-800 uppercase tracking-wider dark:bg-amber-950/40 dark:text-amber-200">
+                              low sample
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono text-zinc-500">
+                        {v.sentCount} sent
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono">{formatPct(v.replyRate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

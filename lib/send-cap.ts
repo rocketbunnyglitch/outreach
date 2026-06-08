@@ -331,6 +331,8 @@ export async function recordSendEvent(opts: {
   cadenceManaged?: boolean | null;
   appliedCadenceFloor?: boolean | null;
   recordedCadenceTouch?: boolean | null;
+  /** Subject-line A/B variant index that sent (Tier-2). NULL for non-A/B. */
+  subjectVariantIndex?: number | null;
 }): Promise<void> {
   // send_type defaults to the cap category so existing callers (which
   // don't pass intent) record 'cold'/'warm' exactly as before.
@@ -363,5 +365,6 @@ export async function recordSendEvent(opts: {
     cadenceManaged: opts.cadenceManaged ?? null,
     appliedCadenceFloor: opts.appliedCadenceFloor ?? null,
     recordedCadenceTouch: opts.recordedCadenceTouch ?? null,
+    subjectVariantIndex: opts.subjectVariantIndex ?? null,
   });
 }

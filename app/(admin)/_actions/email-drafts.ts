@@ -49,6 +49,8 @@ export interface UpsertDraftInput {
   venueId?: string | null;
   cityCampaignId?: string | null;
   templateId?: string | null;
+  /** Subject-line A/B variant index chosen for this draft (Tier-2). */
+  subjectVariantIndex?: number | null;
   /** Template the engine auto-picked when the composer opened (Phase 1.5).
    *  Set once on auto-load; left untouched when the operator swaps the
    *  loaded template, so it preserves the original engine suggestion. */
@@ -143,6 +145,7 @@ export async function upsertDraft(
           venueId: input.venueId ?? null,
           cityCampaignId: input.cityCampaignId ?? null,
           templateId: input.templateId ?? null,
+          subjectVariantIndex: input.subjectVariantIndex ?? null,
           enginePickedTemplateId: input.enginePickedTemplateId ?? null,
           attachments: input.attachments ?? [],
           scheduledFor: input.scheduledFor ? new Date(input.scheduledFor) : null,
@@ -177,6 +180,8 @@ export async function upsertDraft(
   if (input.venueId !== undefined) patch.venueId = input.venueId;
   if (input.cityCampaignId !== undefined) patch.cityCampaignId = input.cityCampaignId;
   if (input.templateId !== undefined) patch.templateId = input.templateId;
+  if (input.subjectVariantIndex !== undefined)
+    patch.subjectVariantIndex = input.subjectVariantIndex;
   if (input.enginePickedTemplateId !== undefined) {
     patch.enginePickedTemplateId = input.enginePickedTemplateId;
   }
@@ -221,6 +226,7 @@ export async function listMyDrafts(): Promise<
     venueId: string | null;
     cityCampaignId: string | null;
     templateId: string | null;
+    subjectVariantIndex: number | null;
     enginePickedTemplateId: string | null;
     attachments: EmailDraftAttachment[];
     scheduledFor: string | null;
@@ -250,6 +256,7 @@ export async function listMyDrafts(): Promise<
     venueId: r.venueId,
     cityCampaignId: r.cityCampaignId,
     templateId: r.templateId,
+    subjectVariantIndex: r.subjectVariantIndex ?? null,
     enginePickedTemplateId: r.enginePickedTemplateId,
     attachments: (r.attachments as EmailDraftAttachment[]) ?? [],
     scheduledFor: r.scheduledFor ? r.scheduledFor.toISOString() : null,
@@ -684,6 +691,11 @@ async function sendDraftAsUser(input: {
   // primary signal; these refine it for non-template or ambiguous cases.)
   if (draft.touchType) fd.set("touchType", draft.touchType);
   if (draft.recipientType) fd.set("recipientType", draft.recipientType);
+  // Subject-line A/B (Tier-2): forward the chosen variant index so the audit
+  // row records which subject sent (for per-variant reply-rate ranking).
+  if (draft.subjectVariantIndex != null) {
+    fd.set("subjectVariantIndex", String(draft.subjectVariantIndex));
+  }
   if (draft.venueEventId) fd.set("venueEventId", draft.venueEventId);
   // Reply/forward context — composeAndSendImpl branches on these to
   // attach the new message to the existing Gmail thread instead of

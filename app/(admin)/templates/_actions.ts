@@ -41,6 +41,20 @@ function wrapDbError(err: unknown, action: string): ActionResult<never> {
   return { ok: false, error: "Unexpected database error. See server logs." };
 }
 
+/**
+ * Parse the subject-variants textarea (one variant per line) into the jsonb
+ * array (Tier-2 A/B). Returns null when there are fewer than 2 variants -- A/B
+ * needs at least two; a single line just means "no A/B, use subjectTemplate".
+ */
+function parseSubjectVariants(raw: FormDataEntryValue | null): string[] | null {
+  if (typeof raw !== "string") return null;
+  const lines = raw
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return lines.length >= 2 ? lines : null;
+}
+
 export async function createEmailTemplate(
   _prev: unknown,
   formData: FormData,
@@ -78,6 +92,7 @@ export async function createEmailTemplate(
           stage: input.stage,
           name: input.name,
           subjectTemplate: input.subjectTemplate,
+          subjectVariants: parseSubjectVariants(formData.get("subjectVariants")),
           bodyTemplateText: input.bodyTemplateText,
           bodyTemplateHtml: input.bodyTemplateHtml,
           isDefaultForStage: input.isDefaultForStage,
@@ -131,6 +146,9 @@ export async function updateEmailTemplate(
   };
   if (input.name !== undefined) patch.name = input.name;
   if (input.subjectTemplate !== undefined) patch.subjectTemplate = input.subjectTemplate;
+  // Subject-line A/B (Tier-2): always set from the form so clearing the textarea
+  // turns A/B off (null). parseSubjectVariants returns null for <2 lines.
+  patch.subjectVariants = parseSubjectVariants(formData.get("subjectVariants"));
   if (input.bodyTemplateText !== undefined) patch.bodyTemplateText = input.bodyTemplateText;
   if (input.bodyTemplateHtml !== undefined) patch.bodyTemplateHtml = input.bodyTemplateHtml;
   if (input.isDefaultForStage !== undefined) patch.isDefaultForStage = input.isDefaultForStage;

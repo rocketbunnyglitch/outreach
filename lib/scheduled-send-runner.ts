@@ -197,6 +197,11 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     // touch_type / template_code.
     if (draft.touchType) fd.set("touchType", draft.touchType);
     if (draft.recipientType) fd.set("recipientType", draft.recipientType);
+    // Subject-line A/B (Tier-2): forward the variant index the composer chose so
+    // the audit row records which subject sent (for per-variant reply-rate).
+    if (draft.subjectVariantIndex != null) {
+      fd.set("subjectVariantIndex", String(draft.subjectVariantIndex));
+    }
     if (draft.venueEventId) fd.set("venueEventId", draft.venueEventId);
     // Reply/forward context -- composeAndSendImpl branches on these to
     // attach the new message to the existing Gmail thread (keeps

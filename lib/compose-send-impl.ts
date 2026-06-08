@@ -380,6 +380,15 @@ export async function composeAndSendImpl(
   // cold cadence -- a template-less new venue thread is "unknown".
   // -----------------------------------------------------------------
   const touchTypeRaw = String(formData.get("touchType") ?? "").trim();
+  // Subject-line A/B (Tier-2): the variant index the composer chose for this
+  // send, recorded on the audit row so analytics can rank variants by reply
+  // rate. The subject text itself already carries the variant -- this is just
+  // the label. Content choice only; never affects who/whether we send.
+  const subjectVariantRaw = String(formData.get("subjectVariantIndex") ?? "").trim();
+  const subjectVariantIndex =
+    subjectVariantRaw !== "" && Number.isInteger(Number(subjectVariantRaw))
+      ? Number(subjectVariantRaw)
+      : null;
   const venueEventIdRaw = String(formData.get("venueEventId") ?? "").trim();
   const sendVenueEventId =
     venueEventIdRaw && UUID_RE.test(venueEventIdRaw) ? venueEventIdRaw : null;
@@ -1157,6 +1166,7 @@ export async function composeAndSendImpl(
       cadenceManaged: intent.cadenceManaged,
       appliedCadenceFloor: intent.appliesCadenceFloor,
       recordedCadenceTouch: intent.recordsCadenceTouch,
+      subjectVariantIndex,
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
