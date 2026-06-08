@@ -902,7 +902,13 @@ export async function composeAndSendImpl(
           // follow-up, RE: subject, no reply yet) must keep direction
           // "outbound" so it stays in Sent, not the Inbox. Once the venue
           // replies, the poll ingestion flips it to inbound/mixed.
-          direction: sql`case when ${emailThreads.direction} = 'outbound' then 'outbound' else 'mixed' end`,
+          // Cast to the enum: the bare 'outbound'/'mixed' string literals in
+          // this CASE are typed text by Postgres, and assigning text to the
+          // thread_direction enum column errors 42804 without the cast. This
+          // failed the immediate reply-save (the poll worker backfilled it
+          // later, masking the bug) and prevented warm-reply open-tracking from
+          // persisting its tracking_token.
+          direction: sql`(case when ${emailThreads.direction} = 'outbound' then 'outbound' else 'mixed' end)::thread_direction`,
           messageCount: sql`${emailThreads.messageCount} + 1`,
           lastOutboundAt: now,
           lastSenderName: inbox.email,
