@@ -369,7 +369,11 @@ export function ColdOutreachTable({
     // set (AI/inbox auto-status writes status directly), and the
     // operator's mental model is "interested == warm".
     if (mode === "warm") return rawEntries.filter((e) => e.isWarm || e.status === "interested");
-    return rawEntries;
+    // Cold panel: exclude rows that have been promoted to warm (is_warm) or are
+    // already 'interested' -- once a venue is warm it lives in the Warm tab, not
+    // the cold mass-outreach queue (operator request 2026-06-08, reversing the
+    // earlier "show in both tables" behaviour). Warm and cold are now disjoint.
+    return rawEntries.filter((e) => !(e.isWarm || e.status === "interested"));
   }, [rawEntries, mode]);
 
   const [adding, setAdding] = useState(false);
@@ -1601,38 +1605,41 @@ function ColdRow({
                 onCommit={editVenueField("email")}
               />
             </div>
+            {/* Direct-email compose icon -- ALWAYS shown so the operator can
+                email any row in one click (prefilled with the stored address
+                when there is one; otherwise an empty To they fill in). */}
+            <ComposeEmailButton
+              defaultTo={entry.venueEmail ?? ""}
+              venueId={entry.venueId}
+              ariaLabel={
+                entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"
+              }
+              className="shrink-0 rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <Mail className="h-3.5 w-3.5" />
+            </ComposeEmailButton>
             {entry.venueEmail && (
-              <>
-                <ComposeEmailButton
-                  defaultTo={entry.venueEmail}
-                  venueId={entry.venueId}
-                  ariaLabel={`Compose email to ${entry.venueEmail}`}
-                  className="shrink-0 rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
-                >
-                  <Mail className="h-3 w-3" />
-                </ComposeEmailButton>
-                <AiDraftButton
-                  venueId={entry.venueId}
-                  venueName={entry.venueName}
-                  cityCampaignId={cityCampaignId}
-                  onUseDraft={(draft) => {
-                    // Open the in-app composer instead of mailto. The
-                    // AiDraftButton can't render the modal itself
-                    // (its child is a button), so we surface the draft
-                    // through window event the composer listens for.
-                    window.dispatchEvent(
-                      new CustomEvent("compose-email", {
-                        detail: {
-                          to: entry.venueEmail ?? "",
-                          subject: draft.subject,
-                          body: draft.body,
-                          venueId: entry.venueId,
-                        },
-                      }),
-                    );
-                  }}
-                />
-              </>
+              <AiDraftButton
+                venueId={entry.venueId}
+                venueName={entry.venueName}
+                cityCampaignId={cityCampaignId}
+                onUseDraft={(draft) => {
+                  // Open the in-app composer instead of mailto. The
+                  // AiDraftButton can't render the modal itself
+                  // (its child is a button), so we surface the draft
+                  // through window event the composer listens for.
+                  window.dispatchEvent(
+                    new CustomEvent("compose-email", {
+                      detail: {
+                        to: entry.venueEmail ?? "",
+                        subject: draft.subject,
+                        body: draft.body,
+                        venueId: entry.venueId,
+                      },
+                    }),
+                  );
+                }}
+              />
             )}
             {!entry.venueEmail && (
               <FindEmailButton
@@ -1860,34 +1867,34 @@ function ColdRow({
               onCommit={editVenueField("email")}
             />
           </div>
+          {/* Direct-email compose icon -- ALWAYS visible (was hover-only) so
+              every row offers a one-click email. */}
+          <ComposeEmailButton
+            defaultTo={entry.venueEmail ?? ""}
+            venueId={entry.venueId}
+            ariaLabel={entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"}
+            className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            <Mail className="h-3 w-3" />
+          </ComposeEmailButton>
           {entry.venueEmail && (
-            <>
-              <ComposeEmailButton
-                defaultTo={entry.venueEmail}
-                venueId={entry.venueId}
-                ariaLabel={`Compose email to ${entry.venueEmail}`}
-                className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
-              >
-                <Mail className="h-2.5 w-2.5" />
-              </ComposeEmailButton>
-              <AiDraftButton
-                venueId={entry.venueId}
-                venueName={entry.venueName}
-                cityCampaignId={cityCampaignId}
-                onUseDraft={(draft) => {
-                  window.dispatchEvent(
-                    new CustomEvent("compose-email", {
-                      detail: {
-                        to: entry.venueEmail ?? "",
-                        subject: draft.subject,
-                        body: draft.body,
-                        venueId: entry.venueId,
-                      },
-                    }),
-                  );
-                }}
-              />
-            </>
+            <AiDraftButton
+              venueId={entry.venueId}
+              venueName={entry.venueName}
+              cityCampaignId={cityCampaignId}
+              onUseDraft={(draft) => {
+                window.dispatchEvent(
+                  new CustomEvent("compose-email", {
+                    detail: {
+                      to: entry.venueEmail ?? "",
+                      subject: draft.subject,
+                      body: draft.body,
+                      venueId: entry.venueId,
+                    },
+                  }),
+                );
+              }}
+            />
           )}
           {!entry.venueEmail && (
             <FindEmailButton

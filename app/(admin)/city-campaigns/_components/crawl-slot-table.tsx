@@ -1618,16 +1618,25 @@ function SlotStaffSelect({
       value={value}
       onChange={(e) => handleChange(e.target.value)}
       disabled={disabled || pending}
+      // Explicit text colour so the trigger label is readable on the white
+      // cell; explicit bg+text on the options so the open dropdown isn't
+      // white-on-white (the native popup inherits white text otherwise).
       className={cn(
-        "w-full appearance-none rounded-md border border-transparent bg-transparent px-2 py-1 text-xs transition-colors",
+        "w-full appearance-none rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-zinc-900 transition-colors dark:text-zinc-100",
         "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
         "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
         disabled && "cursor-not-allowed opacity-50",
       )}
     >
-      <option value="">—</option>
+      <option value="" className="bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
+        —
+      </option>
       {staff.map((s) => (
-        <option key={s.id} value={s.id}>
+        <option
+          key={s.id}
+          value={s.id}
+          className="bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100"
+        >
           {s.displayName.split(" ")[0]}
         </option>
       ))}

@@ -542,7 +542,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
     if (instance.composeMode !== "new") return;
     if (instance.userEdited) return;
     if (!instance.templateId || !templates) return;
-    const key = `${instance.fromAccountId}|${instance.templateId}`;
+    // Include a render-context signature fingerprint in the key: the account's
+    // {{signature_block}}/{{your_name}}/{{company_name}} resolve via an async
+    // listComposeContext refetch that can land AFTER the template was first
+    // applied. Without this, the key (fromAccountId|templateId) is unchanged so
+    // the re-apply is skipped and the body keeps the stale/default signature.
+    // Re-applying is safe here -- it's gated on !userEdited.
+    const sigFingerprint = `${renderContext.signature_block ?? ""}|${renderContext.your_name ?? ""}|${renderContext.company_name ?? ""}`;
+    const key = `${instance.fromAccountId}|${instance.templateId}|${sigFingerprint}`;
     if (reapplyKeyRef.current === key) return;
     reapplyKeyRef.current = key;
     void applyTemplate(instance.templateId, templates, renderContext, instance.id, (patch) =>
