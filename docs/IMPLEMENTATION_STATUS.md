@@ -198,3 +198,18 @@ The engine exposes a public-safe confirmed-lineup JSON API (app/api/engine/lineu
 ## 7.15 Operator debrief (mirrors section 7.15)
 
 The event page has a post-event debrief notes field (events.debrief_notes) -- a single last-writer-wins field stamped with who/when, for the whole crawl night.
+
+---
+
+## 6.x Warm-only email open tracking [ENGINE - current behavior]
+
+The engine can see when a venue READS our email, but ONLY on WARM threads (the venue has already replied; thread direction inbound/mixed). It NEVER tracks cold / no-reply sends -- open pixels are a spam-filter fingerprint that wreck cold inbox placement, so this stays inside the same boundary as the locked anti-spam rule (reference doc 6 / DECISIONS #011: no open tracking on cold).
+
+Business rule (to fold into reference doc section 6 the next time that LOCKED section is intentionally revised + re-loaded): "Open tracking is permitted ONLY on warm/replied threads, never on cold outreach. Opens are a SOFT signal -- they never advance cadence, set relationship flags, or trigger sends. Cadence stays time + reply based."
+
+How it works:
+- `lib/open-tracking-gate.ts` `shouldTrackOpens()` is the single source of truth: true only for thread direction inbound/mixed + venue recipient. Cold/outbound/null -> false. Unit-tested.
+- `lib/compose-send-impl.ts` injects a 1x1 first-party pixel into the SENT html only (never the stored row, so our own inbox render can't fire a false open) when the gate passes AND env is on AND the per-team kill-switch is off AND the venue is not DNC / relationship!=bad. New threads are cold -> never tracked. Open-pixel only -- no link rewriting.
+- `app/api/track/o/[token]/route.ts` is the public pixel endpoint: always returns a 1x1 gif, never 500s, records an `email_open_events` row + bumps `email_messages.open_count/first_opened_at/last_opened_at`. Flags `is_likely_proxy` for opens within ~10s of send or known mail-proxy UAs.
+- Inbox `MessageCard` shows a "Seen <time>" eye on our sent messages with a real (non-proxy) open, or a hedged "Loaded" when the only open looks like a proxy pre-fetch.
+- Gated by env `TRACKING_BASE_URL` (first-party domain; feature inert until set) + `EMAIL_OPEN_TRACKING_ENABLED`, and a runtime kill-switch `teams.open_tracking_paused` (admin can pause instantly: `UPDATE teams SET open_tracking_paused = true;`). Migration 0124.

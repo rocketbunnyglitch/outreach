@@ -1043,6 +1043,13 @@ export interface InboxThreadDetail {
     sentAt: Date;
     readAt: Date | null;
     sentByStaffName: string | null;
+    // Warm-only open tracking (outbound only). firstOpenedAt is null when the
+    // message was never tracked (cold) or never opened. hasRealOpen is true
+    // only when at least one open was NOT a likely proxy pre-fetch -- so the UI
+    // can show a confident "Seen" vs a hedged "Loaded".
+    firstOpenedAt: Date | null;
+    openCount: number;
+    hasRealOpen: boolean;
   }>;
 }
 
@@ -1134,6 +1141,10 @@ export async function fetchThreadDetail(
       sentAt: emailMessages.sentAt,
       readAt: emailMessages.readAt,
       sentByStaffName: staffMembers.displayName,
+      firstOpenedAt: emailMessages.firstOpenedAt,
+      openCount: emailMessages.openCount,
+      // True only when a non-proxy (likely-human) open exists for this message.
+      hasRealOpen: sql<boolean>`EXISTS (SELECT 1 FROM email_open_events oe WHERE oe.email_message_id = ${emailMessages.id} AND oe.is_likely_proxy = false)`,
     })
     .from(emailMessages)
     .leftJoin(staffMembers, eq(staffMembers.id, emailMessages.sentByStaffId))

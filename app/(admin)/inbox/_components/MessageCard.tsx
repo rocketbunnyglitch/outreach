@@ -16,6 +16,7 @@
 
 import { cn } from "@/lib/cn";
 import type { InboxThreadDetail } from "@/lib/inbox-data";
+import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Props {
@@ -128,13 +129,21 @@ export function MessageCard({ message, isLast, defaultCollapsed }: Props) {
               </p>
             )}
           </div>
-          <time
-            dateTime={message.sentAt.toISOString()}
-            suppressHydrationWarning
-            className="shrink-0 font-mono text-[10px] text-zinc-500 tabular-nums"
-          >
-            {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
-          </time>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <time
+              dateTime={message.sentAt.toISOString()}
+              suppressHydrationWarning
+              className="font-mono text-[10px] text-zinc-500 tabular-nums"
+            >
+              {mounted ? formatTime(message.sentAt) : isoStamp(message.sentAt)}
+            </time>
+            <SeenIndicator
+              outbound={!isInbound}
+              firstOpenedAt={message.firstOpenedAt}
+              hasRealOpen={message.hasRealOpen}
+              mounted={mounted}
+            />
+          </div>
         </div>
       </header>
 
@@ -245,4 +254,43 @@ function formatTime(d: Date): string {
 // first client pass match (no #418 bail). Swapped for formatTime on mount.
 function isoStamp(d: Date): string {
   return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+/**
+ * Warm-only open-tracking read receipt, shown on OUR sent (outbound) messages.
+ * "Seen" (confident) when a non-proxy open exists; "Loaded" (hedged) when the
+ * only opens look like a mail-proxy pre-fetch (Gmail/Apple MPP), so operators
+ * aren't misled. Informational only -- opens never drive any automation.
+ */
+function SeenIndicator({
+  outbound,
+  firstOpenedAt,
+  hasRealOpen,
+  mounted,
+}: {
+  outbound: boolean;
+  firstOpenedAt: Date | null;
+  hasRealOpen: boolean;
+  mounted: boolean;
+}) {
+  if (!outbound || !firstOpenedAt) return null;
+  const label = hasRealOpen ? "Seen" : "Loaded";
+  const when = mounted ? formatTime(firstOpenedAt) : isoStamp(firstOpenedAt);
+  return (
+    <span
+      suppressHydrationWarning
+      title={
+        hasRealOpen
+          ? `Opened ${isoStamp(firstOpenedAt)}`
+          : `Image loaded ${isoStamp(firstOpenedAt)} -- may be a mail-proxy pre-fetch, not a confirmed read`
+      }
+      className={cn(
+        "inline-flex items-center gap-1 font-medium text-[10px]",
+        hasRealOpen ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-400 dark:text-zinc-500",
+      )}
+    >
+      <Eye className="h-3 w-3" />
+      {label} {when}
+    </span>
+  );
 }
