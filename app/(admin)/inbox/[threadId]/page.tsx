@@ -1,3 +1,4 @@
+import { ComposeEmailButton } from "@/app/(admin)/_components/composer/compose-email-button";
 import { parseAccountIds } from "@/lib/account-filter";
 import { enrichNextActionAsync } from "@/lib/ai-next-action";
 import { generateQuickRepliesAsync, isEligibleForQuickReplies } from "@/lib/ai-quick-replies";
@@ -28,6 +29,7 @@ import {
 import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVenueCommunication } from "@/lib/venue-communication";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
+import { Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AccountSwitcher } from "../_components/AccountSwitcher";
 import { CampaignScopeBanner } from "../_components/CampaignScopeBanner";
@@ -322,6 +324,15 @@ export default async function InboxThreadPage({ params, searchParams }: Props) {
         middle={
           <div className="flex h-full flex-col">
             <div className="flex items-center gap-2">
+              {/* Always-visible Compose (the rail's is hidden below lg / when
+                  collapsed). */}
+              <ComposeEmailButton
+                ariaLabel="New email"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5 font-medium text-white text-xs shadow-sm transition-colors hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Compose</span>
+              </ComposeEmailButton>
               <div className="min-w-0 flex-1">
                 <InboxScopeBar mentionCount={mentionCount} />
               </div>

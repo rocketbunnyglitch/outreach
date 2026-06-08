@@ -1,3 +1,4 @@
+import { ComposeEmailButton } from "@/app/(admin)/_components/composer/compose-email-button";
 import { parseAccountIds } from "@/lib/account-filter";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
@@ -15,7 +16,7 @@ import { loadSavedSearches } from "@/lib/inbox-saved-searches";
 import { countUnacknowledgedMentions } from "@/lib/thread-notes";
 import { getUserPreferences } from "@/lib/user-preferences";
 import { loadVisibleAccounts } from "@/lib/visible-accounts";
-import { Inbox as InboxIcon } from "lucide-react";
+import { Inbox as InboxIcon, Pencil } from "lucide-react";
 import { AccountSwitcher } from "./_components/AccountSwitcher";
 import { CampaignScopeBanner } from "./_components/CampaignScopeBanner";
 import { DraftList } from "./_components/DraftList";
@@ -339,6 +340,16 @@ export default async function InboxPage({ searchParams }: Props) {
             <div className="flex items-center gap-2 px-2 lg:px-0">
               {/* Mobile-only: opens the folder/settings rail drawer. */}
               <InboxRailTrigger />
+              {/* Always-visible Compose. The rail also has one, but the rail is
+                  hidden below lg + when collapsed, so this guarantees Compose is
+                  reachable at every width / rail state. */}
+              <ComposeEmailButton
+                ariaLabel="New email"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5 font-medium text-white text-xs shadow-sm transition-colors hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Compose</span>
+              </ComposeEmailButton>
               <div className="min-w-0 flex-1">
                 <InboxScopeBar mentionCount={mentionCount} />
               </div>
