@@ -20,6 +20,7 @@ import { logger } from "@/lib/logger";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
+import { loadVenueActivity } from "@/lib/venue-activity";
 import {
   loadVenueCommunication,
   loadVenueConfirmationCalls,
@@ -43,6 +44,7 @@ import { addDomainAlias, removeDomainAlias } from "../_alias-actions";
 import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
 import { DomainAliasList } from "../_components/domain-alias-list";
 import { OutreachLogSection } from "../_components/outreach-log-section";
+import { VenueActivityTimeline } from "../_components/venue-activity-timeline";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
 import { VenueConfirmationSection } from "../_components/venue-confirmation-section";
 import { VenueDealRoom } from "../_components/venue-deal-room";
@@ -344,6 +346,15 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     console.error("[venue] wristband shipping query failed", err);
   }
 
+  // Unified activity timeline (Phase 6): every venue touch in one feed.
+  // Guarded so a single bad source degrades to an empty timeline instead of
+  // 500-ing the page (CLAUDE.md 12.3/12.4); the loader itself also guards each
+  // source internally.
+  const venueActivity = await loadVenueActivity(id, staff.teamId).catch((err) => {
+    logger.error({ err, venueId: id }, "loadVenueActivity failed");
+    return { entries: [], campaigns: [] as Array<{ id: string; name: string }> };
+  });
+
   // Contact-enrichment card props (PHASE E5). Date formatted server-side
   // (pinned tz) so the client renders a plain string — no hydration risk.
   const enrichmentLastAttemptLabel = venue.lastEnrichmentAttemptAt
@@ -436,6 +447,17 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
           </div>
         }
         tabs={[
+          {
+            id: "timeline",
+            label: "Timeline",
+            count: venueActivity.entries.length,
+            content: (
+              <VenueActivityTimeline
+                entries={venueActivity.entries}
+                campaigns={venueActivity.campaigns}
+              />
+            ),
+          },
           {
             id: "email",
             label: "Email thread",
