@@ -1,4 +1,12 @@
-import { type LaneKey, groupByLane, venueEventToLane } from "@/lib/pipeline-board-core";
+import {
+  type LaneKey,
+  checkStageGate,
+  groupByLane,
+  isDraggableLane,
+  isDropTarget,
+  laneToStatus,
+  venueEventToLane,
+} from "@/lib/pipeline-board-core";
 import { describe, expect, it } from "vitest";
 
 describe("venueEventToLane", () => {
@@ -76,5 +84,52 @@ describe("groupByLane", () => {
       { id: "3", lane: "warm" },
     ]);
     expect(out.find((l) => l.key === "warm")?.items.map((i) => i.id)).toEqual(["1", "2", "3"]);
+  });
+});
+
+describe("laneToStatus", () => {
+  it("maps move-target lanes to their status", () => {
+    expect(laneToStatus("lead")).toBe("lead");
+    expect(laneToStatus("warm")).toBe("interested");
+    expect(laneToStatus("negotiating")).toBe("negotiating");
+    expect(laneToStatus("confirmed")).toBe("confirmed");
+  });
+  it("returns null for derived / flow-only lanes", () => {
+    expect(laneToStatus("ready")).toBeNull();
+    expect(laneToStatus("completed")).toBeNull();
+    expect(laneToStatus("cancelled")).toBeNull();
+  });
+});
+
+describe("drag rules", () => {
+  it("only pre-confirm lanes are draggable", () => {
+    expect(isDraggableLane("lead")).toBe(true);
+    expect(isDraggableLane("negotiating")).toBe(true);
+    expect(isDraggableLane("confirmed")).toBe(false);
+    expect(isDraggableLane("ready")).toBe(false);
+    expect(isDraggableLane("cancelled")).toBe(false);
+  });
+  it("drop targets are the pre-confirm lanes plus confirmed", () => {
+    expect(isDropTarget("confirmed")).toBe(true);
+    expect(isDropTarget("lead")).toBe(true);
+    expect(isDropTarget("ready")).toBe(false);
+    expect(isDropTarget("completed")).toBe(false);
+    expect(isDropTarget("cancelled")).toBe(false);
+  });
+});
+
+describe("checkStageGate", () => {
+  it("ungates the pre-confirm lanes", () => {
+    expect(checkStageGate("negotiating", { hasContact: false, hasHours: false }).ok).toBe(true);
+  });
+  it("blocks confirm when contact or hours are missing", () => {
+    const r = checkStageGate("confirmed", { hasContact: false, hasHours: false });
+    expect(r.ok).toBe(false);
+    expect(r.missing).toHaveLength(2);
+    expect(checkStageGate("confirmed", { hasContact: true, hasHours: false }).ok).toBe(false);
+    expect(checkStageGate("confirmed", { hasContact: false, hasHours: true }).ok).toBe(false);
+  });
+  it("allows confirm when contact and hours are present", () => {
+    expect(checkStageGate("confirmed", { hasContact: true, hasHours: true }).ok).toBe(true);
   });
 });

@@ -12,7 +12,13 @@ import "server-only";
 import { events, campaigns, cities, cityCampaigns, venueEvents, venues } from "@/db/schema";
 import { db } from "@/lib/db";
 import { readinessFromRow } from "@/lib/event-readiness-core";
-import { type Lane, type LaneKey, groupByLane, venueEventToLane } from "@/lib/pipeline-board-core";
+import {
+  type Lane,
+  type LaneKey,
+  checkStageGate,
+  groupByLane,
+  venueEventToLane,
+} from "@/lib/pipeline-board-core";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 export interface BoardCard {
@@ -24,7 +30,13 @@ export interface BoardCard {
   role: string;
   status: string;
   eventDate: string;
+  /** Server-formatted (UTC-pinned) short date, e.g. "Oct 31". */
+  dateLabel: string;
   daysToEvent: number | null;
+  /** Whether this card passes the Confirmed stage gate (contact + hours). */
+  canConfirm: boolean;
+  /** What's missing to confirm (empty when canConfirm). */
+  confirmMissing: string[];
 }
 
 export interface LifecycleBoard {
@@ -37,6 +49,13 @@ export interface LifecycleBoard {
 /** How many venue_events to pull. Bounds the payload on a large campaign; the
  *  board shows the most-recently-updated when this is exceeded. */
 const FETCH_CAP = 1200;
+
+/** "2026-10-31" -> "Oct 31" (UTC-pinned; the column is a plain date). */
+function shortDate(eventDate: string): string {
+  const d = new Date(`${eventDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return eventDate;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
 
 export async function loadVenueLifecycleBoard(campaignId: string | null): Promise<LifecycleBoard> {
   const campaignFilter = campaignId ? eq(cityCampaigns.campaignId, campaignId) : undefined;
@@ -51,6 +70,14 @@ export async function loadVenueLifecycleBoard(campaignId: string | null): Promis
       status: venueEvents.status,
       eventDate: events.eventDate,
       daysToEvent: sql<number | null>`(${events.eventDate} - now()::date)`,
+      // Stage-gate inputs (Phase 5): contact method + proposed hours.
+      email: venues.email,
+      phoneE164: venues.phoneE164,
+      contactName: venues.contactName,
+      slotStartTime: venueEvents.slotStartTime,
+      agreedHoursText: venueEvents.agreedHoursText,
+      nightOfContactName: venueEvents.nightOfContactName,
+      nightOfContactPhone: venueEvents.nightOfContactPhoneE164,
       confirmedAt: venueEvents.confirmedAt,
       twoWeekEmailSentAt: venueEvents.twoWeekEmailSentAt,
       oneWeekEmailSentAt: venueEvents.oneWeekEmailSentAt,
@@ -88,6 +115,11 @@ export async function loadVenueLifecycleBoard(campaignId: string | null): Promis
       daysToEvent,
       readinessReady: readiness.status === "ready",
     });
+    const hasContact = Boolean(
+      r.email || r.phoneE164 || r.contactName || r.nightOfContactName || r.nightOfContactPhone,
+    );
+    const hasHours = Boolean(r.slotStartTime || r.agreedHoursText?.trim());
+    const gate = checkStageGate("confirmed", { hasContact, hasHours });
     return {
       lane,
       venueEventId: r.venueEventId,
@@ -97,7 +129,10 @@ export async function loadVenueLifecycleBoard(campaignId: string | null): Promis
       role: r.role,
       status: r.status,
       eventDate: String(r.eventDate),
+      dateLabel: shortDate(String(r.eventDate)),
       daysToEvent,
+      canConfirm: gate.ok,
+      confirmMissing: gate.missing,
     };
   });
 

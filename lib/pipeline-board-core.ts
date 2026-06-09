@@ -88,3 +88,75 @@ export function groupByLane<T extends { lane: LaneKey }>(items: T[]): Lane<T>[] 
     items: byKey.get(lane.key) ?? [],
   }));
 }
+
+// ===========================================================================
+// Drag-to-move + stage gates
+// ===========================================================================
+
+/**
+ * The status a drop into this lane sets. Only the status-backed pre-confirm
+ * lanes + Confirmed are move targets. Ready/Completed are DERIVED (readiness +
+ * event date), and Cancelled needs the dedicated cancellation flow -- none are
+ * settable by a drag, so they map to null.
+ */
+const LANE_STATUS: Partial<Record<LaneKey, string>> = {
+  lead: "lead",
+  contacted: "contacted",
+  warm: "interested",
+  negotiating: "negotiating",
+  confirmed: "confirmed",
+};
+
+export function laneToStatus(lane: LaneKey): string | null {
+  return LANE_STATUS[lane] ?? null;
+}
+
+/** Lanes whose cards can be picked up. Confirmed+ cards are locked on the board
+ *  -- un-confirming / cancelling must go through their proper flows. */
+export const DRAGGABLE_LANES: ReadonlySet<LaneKey> = new Set<LaneKey>([
+  "lead",
+  "contacted",
+  "warm",
+  "negotiating",
+]);
+
+/** Lanes a card can be dropped into. */
+export const DROP_TARGET_LANES: ReadonlySet<LaneKey> = new Set<LaneKey>([
+  "lead",
+  "contacted",
+  "warm",
+  "negotiating",
+  "confirmed",
+]);
+
+export function isDraggableLane(lane: LaneKey): boolean {
+  return DRAGGABLE_LANES.has(lane);
+}
+export function isDropTarget(lane: LaneKey): boolean {
+  return DROP_TARGET_LANES.has(lane);
+}
+
+export interface StageGateFields {
+  /** Any usable contact: venue email/phone/contact name or night-of contact. */
+  hasContact: boolean;
+  /** Proposed hours: a slot start time or free-text agreed hours. */
+  hasHours: boolean;
+}
+
+export interface StageGateResult {
+  ok: boolean;
+  missing: string[];
+}
+
+/**
+ * Stage-required-fields gate (Phase 5). Only Confirmed is gated: a venue can't
+ * be moved to Confirmed without a contact method AND proposed hours. The
+ * earlier pipeline lanes are ungated (you can always walk a lead forward).
+ */
+export function checkStageGate(targetLane: LaneKey, fields: StageGateFields): StageGateResult {
+  if (targetLane !== "confirmed") return { ok: true, missing: [] };
+  const missing: string[] = [];
+  if (!fields.hasContact) missing.push("a contact (email, phone or contact name)");
+  if (!fields.hasHours) missing.push("proposed hours or a slot time");
+  return { ok: missing.length === 0, missing };
+}
