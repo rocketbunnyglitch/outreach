@@ -56,6 +56,7 @@ import { AiDraftButton } from "./ai-draft-button";
 import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { BulkPasteModal } from "./bulk-paste-modal";
+import { BulkEnrichButton, ContactDot } from "./contact-enrichment";
 import { EscalationPopover } from "./escalation-popover";
 import { EscalationStatusPopover } from "./escalation-status-popover";
 import { FindEmailButton } from "./find-email-button";
@@ -67,6 +68,7 @@ import { VenueAutocomplete } from "./venue-autocomplete";
 type SortKey =
   | "venue"
   | "email"
+  | "contact"
   | "status"
   | "assignee"
   | "zb"
@@ -87,6 +89,10 @@ interface ColdEntry {
   /** Tag array (["bar", "club", ...]) — fallback signal for the
    *  call-window heuristic when hours can't be parsed. */
   venueType: string[];
+  /** Contact-enrichment signals (E6) for the per-row status dot. */
+  hasScrapedEmail: boolean;
+  lastEnrichmentStatus: string | null;
+  enrichmentAttempted: boolean;
   /**
    * IANA timezone of the venue's city. The call-window suggester
    * uses this to compute "currently open?" against the venue's
@@ -559,6 +565,18 @@ export function ColdOutreachTable({
         case "email":
           cmp = (a.venueEmail ?? "").localeCompare(b.venueEmail ?? "");
           break;
+        case "contact": {
+          // Scrapeable-but-not-done first (asc): never -> attempted -> no
+          // website -> has email. Floats the actionable rows to the top.
+          const rank = (e: ColdEntry): number => {
+            if (e.venueEmail || e.hasScrapedEmail) return 3;
+            if (!e.venueWebsite?.trim()) return 2;
+            if (e.enrichmentAttempted) return 1;
+            return 0;
+          };
+          cmp = rank(a) - rank(b);
+          break;
+        }
         case "status": {
           // Pipeline-order sort so 'pending' floats to the top in asc
           const order: Record<string, number> = {
@@ -919,6 +937,9 @@ export function ColdOutreachTable({
               entries.filter((e) => e.aiLeadScore === null || e.aiLeadScoreAt === null).length
             }
           />
+          {/* Bulk contact enrichment (E6) — scrapes eligible venues in the
+              current filtered view; preview + live progress in a modal. */}
+          <BulkEnrichButton venueIds={displayed.map((e) => e.venueId)} />
           <p className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] sm:block dark:text-zinc-400">
             status + ZeroBounce auto-tracked
           </p>
@@ -992,6 +1013,18 @@ export function ColdOutreachTable({
                 onClick={() => toggleSort("email")}
                 width="w-40 px-1"
               />
+              {/* Contact-enrichment status dot (E6). Sortable; click the
+                  dot in a row to scrape that one venue inline. */}
+              <th className="w-10 px-1 py-2.5" title="Contact enrichment status">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("contact")}
+                  className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
+                  title="Contact enrichment status — click a dot to scrape that venue"
+                >
+                  ✉?
+                </button>
+              </th>
               {/* ZB — abbreviated from "ZeroBounce" so the column can
                   shrink to icon-width. Cell renders a green check
                   (valid), red X (invalid family), or amber/grey
@@ -1594,6 +1627,13 @@ function ColdRow({
 
           {/* Email + AI draft */}
           <div className="flex items-center gap-1.5 pl-6">
+            <ContactDot
+              venueId={entry.venueId}
+              venueEmail={entry.venueEmail}
+              hasScrapedEmail={entry.hasScrapedEmail}
+              venueWebsite={entry.venueWebsite}
+              enrichmentAttempted={entry.enrichmentAttempted}
+            />
             <Mail className="h-3 w-3 shrink-0 text-zinc-400" />
             <div className="min-w-0 flex-1">
               <InlineCell
@@ -1910,6 +1950,17 @@ function ColdRow({
             />
           )}
         </div>
+      </td>
+
+      {/* Contact enrichment dot (E6). Click to scrape this venue inline. */}
+      <td className="w-10 px-1 py-2 text-center align-middle">
+        <ContactDot
+          venueId={entry.venueId}
+          venueEmail={entry.venueEmail}
+          hasScrapedEmail={entry.hasScrapedEmail}
+          venueWebsite={entry.venueWebsite}
+          enrichmentAttempted={entry.enrichmentAttempted}
+        />
       </td>
 
       {/* ZB — compact icon-only column. Green check = valid, red X =

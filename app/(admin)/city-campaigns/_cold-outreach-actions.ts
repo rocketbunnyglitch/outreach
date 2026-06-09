@@ -1125,6 +1125,10 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
      * incomplete.
      */
     venueType: string[];
+    /** Contact-enrichment signals (E6) for the per-row status dot. */
+    hasScrapedEmail: boolean;
+    lastEnrichmentStatus: string | null;
+    enrichmentAttempted: boolean;
     /**
      * IANA timezone of the venue's city (from cities.timezone).
      * Used by the call-window suggester so the "currently open" check
@@ -1200,6 +1204,10 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueInstagramHandle: venues.instagramHandle,
       venueHours: venues.hours,
       venueType: venues.venueType,
+      // Contact-enrichment signals (E6) for the per-row status dot.
+      scrapedEmails: venues.scrapedEmails,
+      lastEnrichmentStatus: venues.lastEnrichmentStatus,
+      lastEnrichmentAttemptAt: venues.lastEnrichmentAttemptAt,
       cityName: cities.name,
       venueTimezone: cities.timezone,
       venueUpdatedAt: venues.updatedAt,
@@ -1332,6 +1340,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueInstagramHandle: r.venueInstagramHandle,
       venueHours: r.venueHours,
       venueType: r.venueType,
+      hasScrapedEmail: (r.scrapedEmails?.length ?? 0) > 0,
+      lastEnrichmentStatus: r.lastEnrichmentStatus,
+      enrichmentAttempted: r.lastEnrichmentAttemptAt != null,
       cityName: r.cityName,
       // cities.timezone is NOT NULL in schema, but LEFT JOIN means r could
       // have a null cities row (a venue without a city — edge case). Fall
