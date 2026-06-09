@@ -48,6 +48,7 @@ import { VenueConfirmationSection } from "../_components/venue-confirmation-sect
 import { VenueDealRoom } from "../_components/venue-deal-room";
 import { VenueEmailButton } from "../_components/venue-email-button";
 import { VenueEnrichButton } from "../_components/venue-enrich-button";
+import { VenueEnrichmentCard } from "../_components/venue-enrichment-card";
 import { VenueForm } from "../_components/venue-form";
 import {
   type VenueRelationshipRow,
@@ -343,6 +344,18 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
     console.error("[venue] wristband shipping query failed", err);
   }
 
+  // Contact-enrichment card props (PHASE E5). Date formatted server-side
+  // (pinned tz) so the client renders a plain string — no hydration risk.
+  const enrichmentLastAttemptLabel = venue.lastEnrichmentAttemptAt
+    ? new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "America/Toronto",
+      }).format(venue.lastEnrichmentAttemptAt)
+    : null;
+
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
     return updateVenue(id, prev, fd);
@@ -387,6 +400,17 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
               relationships={relationshipRows}
               setAction={setVenueRelationship}
               removeAction={removeVenueRelationship}
+            />
+            <VenueEnrichmentCard
+              venueId={venue.id}
+              hasContactEmail={Boolean(venue.email) || (venue.alternateEmails?.length ?? 0) > 0}
+              hasWebsite={Boolean(venue.websiteUrl?.trim())}
+              status={venue.lastEnrichmentStatus}
+              lastAttemptLabel={enrichmentLastAttemptLabel}
+              scrapedEmails={venue.scrapedEmails}
+              scrapedInstagram={venue.scrapedInstagram}
+              scrapedFacebook={venue.scrapedFacebook}
+              hasAttempted={Boolean(venue.lastEnrichmentAttemptAt)}
             />
           </>
         }
