@@ -247,16 +247,44 @@ export async function enrichVenue(
       })
       .where(eq(venueEnrichmentAttempts.id, attemptId ?? ""));
 
-    await db
-      .update(venues)
-      .set({
-        scrapedEmails: scrape.emails,
-        scrapedInstagram: scrape.instagram,
-        scrapedFacebook: scrape.facebook,
-        lastEnrichmentAttemptAt: new Date(),
-        lastEnrichmentStatus: scrape.status,
-      })
-      .where(eq(venues.id, venueId));
+    // Promote scraped emails onto the venue's ACTIONABLE contact fields so the
+    // operator can just hit "Email this venue" -- but only when the venue has
+    // no human-entered email yet, so a scrape never overwrites a verified
+    // contact (the scraped_* columns keep the full provenance regardless).
+    // Best (highest-confidence) email -> email; the rest -> alternate_emails.
+    const hadContactEmail =
+      (venue.email?.trim().length ?? 0) > 0 || (venue.alternateEmails?.length ?? 0) > 0;
+    const promote = !hadContactEmail && scrape.emails.length > 0;
+    const promotedPrimary = promote ? (scrape.emails[0]?.email ?? null) : null;
+
+    const venuePatch: Partial<typeof venues.$inferInsert> = {
+      scrapedEmails: scrape.emails,
+      scrapedInstagram: scrape.instagram,
+      scrapedFacebook: scrape.facebook,
+      lastEnrichmentAttemptAt: new Date(),
+      lastEnrichmentStatus: scrape.status,
+    };
+    if (promote && promotedPrimary) {
+      venuePatch.email = promotedPrimary;
+      venuePatch.alternateEmails = scrape.emails.slice(1).map((e) => e.email);
+      venuePatch.updatedBy = options.triggeredByUserId;
+    }
+
+    await db.update(venues).set(venuePatch).where(eq(venues.id, venueId));
+
+    // Validate the newly promoted address in the background (same pattern as
+    // setVenueEmailFromSearch) so the ZeroBounce pill populates. Best-effort.
+    if (promotedPrimary) {
+      try {
+        const { validateEmailInBackground } = await import("@/lib/zerobounce");
+        validateEmailInBackground(promotedPrimary, options.triggeredByUserId);
+      } catch (err) {
+        logger.warn(
+          { venueId, err: String(err) },
+          "zerobounce validation skipped after enrichment",
+        );
+      }
+    }
 
     return {
       venue_id: venueId,

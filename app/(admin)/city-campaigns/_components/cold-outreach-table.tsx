@@ -81,6 +81,9 @@ interface ColdEntry {
   venueId: string;
   venueName: string;
   venueEmail: string | null;
+  /** Additional known addresses (incl. emails promoted from a scrape) so the
+   *  compose button can email every known address at once. */
+  venueAlternateEmails: string[];
   venuePhone: string | null;
   venueWebsite: string | null;
   venueInstagramHandle: string | null;
@@ -1649,7 +1652,9 @@ function ColdRow({
                 email any row in one click (prefilled with the stored address
                 when there is one; otherwise an empty To they fill in). */}
             <ComposeEmailButton
-              defaultTo={entry.venueEmail ?? ""}
+              defaultTo={[entry.venueEmail, ...entry.venueAlternateEmails]
+                .filter((e): e is string => Boolean(e?.trim()))
+                .join(", ")}
               venueId={entry.venueId}
               ariaLabel={
                 entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"
@@ -1910,7 +1915,9 @@ function ColdRow({
           {/* Direct-email compose icon -- ALWAYS visible (was hover-only) so
               every row offers a one-click email. */}
           <ComposeEmailButton
-            defaultTo={entry.venueEmail ?? ""}
+            defaultTo={[entry.venueEmail, ...entry.venueAlternateEmails]
+              .filter((e): e is string => Boolean(e?.trim()))
+              .join(", ")}
             venueId={entry.venueId}
             ariaLabel={entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"}
             className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"

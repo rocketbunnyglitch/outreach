@@ -14,14 +14,21 @@ import { Mail } from "lucide-react";
 export function VenueEmailButton({
   venueId,
   email,
+  alternateEmails = [],
 }: {
   venueId: string;
   email: string | null;
+  /** Additional known addresses (e.g. promoted from a contact scrape). When
+   *  present, the composer is pre-filled to email ALL of them at once. */
+  alternateEmails?: string[];
 }) {
   function open() {
+    const all = [email, ...alternateEmails].filter((e): e is string => Boolean(e?.trim()));
+    const deduped = [...new Map(all.map((e) => [e.toLowerCase(), e])).values()];
+    const to = deduped.length > 0 ? deduped.join(", ") : undefined;
     window.dispatchEvent(
       new CustomEvent("compose-email", {
-        detail: { venueId, to: email ?? undefined },
+        detail: { venueId, to },
       }),
     );
   }

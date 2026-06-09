@@ -417,7 +417,11 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
         right={
           <div className="card-surface flex flex-col gap-3 p-4">
             <h3 className="font-semibold text-sm tracking-tight">Quick actions</h3>
-            <VenueEmailButton venueId={venue.id} email={venue.email} />
+            <VenueEmailButton
+              venueId={venue.id}
+              email={venue.email}
+              alternateEmails={venue.alternateEmails}
+            />
             <VenueEnrichButton venueId={venue.id} />
             <VenueQuickLinks
               venueId={venue.id}

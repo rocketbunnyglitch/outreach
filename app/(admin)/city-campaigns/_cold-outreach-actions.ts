@@ -1109,6 +1109,9 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     venueId: string;
     venueName: string;
     venueEmail: string | null;
+    /** Additional contact addresses (incl. emails promoted from a scrape).
+     *  Lets the compose button email every known address at once. */
+    venueAlternateEmails: string[];
     venuePhone: string | null;
     venueWebsite: string | null;
     venueInstagramHandle: string | null;
@@ -1199,6 +1202,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueId: venues.id,
       venueName: venues.name,
       venueEmail: venues.email,
+      venueAlternateEmails: venues.alternateEmails,
       venuePhone: venues.phoneE164,
       venueWebsite: venues.websiteUrl,
       venueInstagramHandle: venues.instagramHandle,
@@ -1335,6 +1339,7 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       venueId: r.venueId,
       venueName: r.venueName,
       venueEmail: r.venueEmail,
+      venueAlternateEmails: r.venueAlternateEmails ?? [],
       venuePhone: r.venuePhone,
       venueWebsite: r.venueWebsite,
       venueInstagramHandle: r.venueInstagramHandle,
