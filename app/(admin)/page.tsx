@@ -2,6 +2,8 @@ import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { loadDashboardData } from "@/lib/dashboard-queries";
 import { loadPendingEscalationsForStaff } from "@/lib/escalations-data";
+import { loadCampaignHealth } from "@/lib/health-score";
+import { staffWorkloadHealthFromInputs } from "@/lib/health-score-core";
 import { loadInboxWidget } from "@/lib/inbox-widget-data";
 import { captureException } from "@/lib/logger";
 import { loadNextBestActions } from "@/lib/next-best-actions";
@@ -13,6 +15,7 @@ import { redirect } from "next/navigation";
 import { ClientOnly } from "./_components/client-only";
 import { CitiesCompletedKpi } from "./_components/dashboard/cities-completed-kpi";
 import { CitiesTable } from "./_components/dashboard/cities-table";
+import { CommandCenterCard } from "./_components/dashboard/command-center-card";
 import { EscalationsWidget } from "./_components/dashboard/escalations-widget";
 import { InboxWidget } from "./_components/dashboard/inbox-widget";
 import { KpiCard } from "./_components/dashboard/kpi-strip";
@@ -99,6 +102,7 @@ export default async function DashboardHome({
     teamActivity,
     pendingEscalations,
     inboxWidget,
+    healthSummary,
   ] = await Promise.all([
     campaignId
       ? loadTrackerData({ campaignId }).catch(async (err) => {
@@ -127,8 +131,29 @@ export default async function DashboardHome({
       // Empty data — widget hides itself when nothing to show.
       return { threads: [], myInboxes: [], totalNeedsReply: 0 };
     }),
+    loadCampaignHealth(campaignId).catch(async (err) => {
+      await captureException(err, { widget: "command_center", campaignId });
+      return {
+        campaign: {
+          score: 100,
+          color: "green" as const,
+          statusLabel: "On track",
+          reasons: [],
+          blockers: [],
+          nextAction: null,
+        },
+        cities: [],
+        atRiskCrawls: [],
+      };
+    }),
   ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
+
+  // Viewer's own workload health — composed from the task KPIs already loaded.
+  const staffWorkload = staffWorkloadHealthFromInputs({
+    openTasks: data.kpis.openTaskCount,
+    overdueTasks: data.kpis.overdueTaskCount,
+  });
 
   // ----------------------------------------------------------------
   // KPI tiles — operator: "this tile needs to have venues confirmed
@@ -285,6 +310,12 @@ export default async function DashboardHome({
           ))}
         </div>
       </div>
+
+      {/* Command center — surfaces at-risk crawls (problems, not everything)
+          high on the page, right under the KPI band. Renders nothing when no
+          crawls are in scope; collapses to a one-line "all on track" when
+          everything is green. */}
+      <CommandCenterCard summary={healthSummary} staffWorkload={staffWorkload} />
 
       {/* Escalations widget — only renders when this staffer actually
           has pending escalations parked with them. Empty array = hide

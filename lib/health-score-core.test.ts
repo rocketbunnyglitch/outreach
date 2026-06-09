@@ -3,6 +3,7 @@ import {
   campaignHealthFromInputs,
   cityHealthFromInputs,
   crawlHealthFromInputs,
+  staffWorkloadHealthFromInputs,
   venueHealthFromInputs,
 } from "@/lib/health-score-core";
 import { describe, expect, it } from "vitest";
@@ -85,10 +86,36 @@ describe("crawlHealthFromInputs -- Phase 2 acceptance criteria", () => {
 });
 
 describe("crawlHealthFromInputs -- supporting behavior", () => {
-  it("a fully-staffed early crawl with no sales is too early to judge, not red", () => {
-    const h = crawlHealthFromInputs(baseCrawl());
+  it("a far-out crawl with an unbooked lineup is too early to judge (green, not noise)", () => {
+    // 142 days out, nothing booked, no sales -- the real state right after a
+    // campaign is scheduled. An empty lineup this early is EXPECTED, so it must
+    // stay green and NOT flood the command center as "needs attention".
+    const h = crawlHealthFromInputs(
+      baseCrawl({ daysToEvent: 142, wristbandFilled: 0, middleFilled: 0, finalFilled: 0 }),
+    );
     expect(h.viability).toBe("too_early_to_judge");
-    expect(h.color).not.toBe("red");
+    expect(h.color).toBe("green");
+    expect(h.blockers).toHaveLength(0);
+    expect(h.reasons).toHaveLength(0);
+  });
+
+  it("a strong seller with a lineup gap is flagged even when far out", () => {
+    // The exception to the far-out rule: real demand + an empty slot = urgent.
+    const h = crawlHealthFromInputs(
+      baseCrawl({ daysToEvent: 60, ticketsSold: 40, finalFilled: 0 }),
+    );
+    expect(h.viability).toBe("sales_strong_lineup_weak");
+    expect(h.color).toBe("red");
+    expect(h.nextAction).toBe("Prioritize final venue calls today");
+  });
+
+  it("an unbooked crawl inside the booking window needs attention", () => {
+    // 21 days out with an empty lineup -- now it's time to act.
+    const h = crawlHealthFromInputs(
+      baseCrawl({ daysToEvent: 21, wristbandFilled: 0, middleFilled: 0, finalFilled: 0 }),
+    );
+    expect(h.viability).toBe("needs_attention");
+    expect(h.color).toBe("yellow");
   });
 
   it("day_party format never flags a missing final", () => {
@@ -192,5 +219,26 @@ describe("campaignHealthFromInputs", () => {
     const camp = campaignHealthFromInputs({ cities: [redCity, greenCity] });
     expect(camp.reasons.some((r) => /at risk/i.test(r))).toBe(true);
     expect(camp.nextAction).toBe("Run cancellation review");
+  });
+});
+
+describe("staffWorkloadHealthFromInputs", () => {
+  it("overdue tasks are a red blocker with a clear CTA", () => {
+    const h = staffWorkloadHealthFromInputs({ openTasks: 8, overdueTasks: 3 });
+    expect(h.color).toBe("red");
+    expect(h.blockers.some((b) => /overdue/i.test(b))).toBe(true);
+    expect(h.nextAction).toBe("Clear overdue tasks");
+  });
+
+  it("a heavy-but-current load is yellow", () => {
+    const h = staffWorkloadHealthFromInputs({ openTasks: 20, overdueTasks: 0 });
+    expect(h.color).toBe("yellow");
+    expect(h.nextAction).toBe("Rebalance or delegate workload");
+  });
+
+  it("a light, current load is green", () => {
+    const h = staffWorkloadHealthFromInputs({ openTasks: 4, overdueTasks: 0 });
+    expect(h.color).toBe("green");
+    expect(h.nextAction).toBeNull();
   });
 });

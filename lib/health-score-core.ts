@@ -82,6 +82,12 @@ export const EVENT_WEEK_DAYS = 7;
 export const CANCELLATION_REVIEW_DAYS = 5;
 /** Earlier than this, there is not enough signal to call viability. */
 export const TOO_EARLY_DAYS = 21;
+/** Beyond this many days out, an unbooked lineup is EXPECTED -- missing slots
+ *  do not count against a crawl's health until the booking window opens. The
+ *  exception is a strong seller with a gap, which is worth chasing at any
+ *  distance. Keeps far-out crawls quiet instead of flooding the command center
+ *  with "needs attention" the moment a campaign is scheduled. */
+export const LINEUP_EXPECTED_DAYS = 30;
 
 // Score deltas.
 const BLOCKER_PENALTY = 25;
@@ -216,12 +222,15 @@ function computeViability(input: CrawlHealthInput): ViabilityVerdict {
   // Lineup is set but sales are soft this close in.
   if (eventWeek && !salesRunnable && !missingAny) return "lineup_strong_sales_weak";
 
-  // Too early to judge -- but a missing slot is still worth flagging softly.
-  if (d == null || d > TOO_EARLY_DAYS) {
-    return missingAny ? "needs_attention" : "too_early_to_judge";
-  }
+  // Far out (or undated): an unbooked lineup is expected, not a problem -- we
+  // do not judge sales or lineup yet. (A strong seller with a gap was already
+  // caught above, so it still surfaces at any distance.)
+  if (d == null || d > LINEUP_EXPECTED_DAYS) return "too_early_to_judge";
 
-  return missingAny || !salesRunnable ? "needs_attention" : "likely_to_run";
+  // Inside the booking window (~a month out): a lineup gap is the thing to
+  // chase. Low sales alone isn't judged until the pivot window / event week
+  // (handled above). A clean, on-pace crawl leans run.
+  return missingAny ? "needs_attention" : "likely_to_run";
 }
 
 /** Grade a single crawl (an `events` row). */
@@ -249,6 +258,9 @@ export function crawlHealthFromInputs(input: CrawlHealthInput): CrawlHealth {
   const d = input.daysToEvent;
   const eventWeek = d != null && d >= 0 && d <= EVENT_WEEK_DAYS;
   const salesStrong = input.ticketsSold >= HIGH_SALES_TICKETS;
+  // Far out, an unbooked lineup is expected -- only flag slot gaps once the
+  // booking window is open, or when strong sales make a gap urgent regardless.
+  const lineupRelevant = d == null || d <= LINEUP_EXPECTED_DAYS || salesStrong;
 
   const reasons: string[] = [];
   const blockers: string[] = [];
@@ -256,23 +268,25 @@ export function crawlHealthFromInputs(input: CrawlHealthInput): CrawlHealth {
   // ---- Slot gaps -----------------------------------------------------------
   const missingWristband =
     input.wristbandRequired > 0 && input.wristbandFilled < input.wristbandRequired;
-  if (missingWristband) {
-    const msg = `Wristband venue not confirmed${when}`;
-    if (eventWeek) blockers.push(msg);
-    else reasons.push(msg);
-  }
-
-  if (missingFinalApplies(input)) {
-    const msg = `Final venue not confirmed${when}`;
-    if (salesStrong || eventWeek) blockers.push(msg);
-    else reasons.push(msg);
-  }
-
+  const missingFinal = missingFinalApplies(input);
   const missingMiddleCount = Math.max(0, input.middleRequired - input.middleFilled);
-  if (missingMiddleCount > 0) {
-    const msg = `${missingMiddleCount} middle slot${missingMiddleCount > 1 ? "s" : ""} unfilled`;
-    if (eventWeek && missingMiddleCount >= 2) blockers.push(msg);
-    else reasons.push(msg);
+
+  if (lineupRelevant) {
+    if (missingWristband) {
+      const msg = `Wristband venue not confirmed${when}`;
+      if (eventWeek) blockers.push(msg);
+      else reasons.push(msg);
+    }
+    if (missingFinal) {
+      const msg = `Final venue not confirmed${when}`;
+      if (salesStrong || eventWeek) blockers.push(msg);
+      else reasons.push(msg);
+    }
+    if (missingMiddleCount > 0) {
+      const msg = `${missingMiddleCount} middle slot${missingMiddleCount > 1 ? "s" : ""} unfilled`;
+      if (eventWeek && missingMiddleCount >= 2) blockers.push(msg);
+      else reasons.push(msg);
+    }
   }
 
   // ---- Readiness / V2 ------------------------------------------------------
@@ -304,9 +318,10 @@ export function crawlHealthFromInputs(input: CrawlHealthInput): CrawlHealth {
   }
 
   const nextAction = deriveCrawlNextAction({
-    missingWristband,
-    missingFinal: missingFinalApplies(input),
-    missingMiddleCount,
+    // Don't suggest filling a slot that's too far out to act on yet.
+    missingWristband: lineupRelevant && missingWristband,
+    missingFinal: lineupRelevant && missingFinal,
+    missingMiddleCount: lineupRelevant ? missingMiddleCount : 0,
     viability,
     readinessBlocker: !!input.readinessBlocker,
   });
@@ -499,4 +514,40 @@ export function campaignHealthFromInputs(input: CampaignHealthInput): HealthScor
     blockers,
     nextAction: worst?.nextAction ?? null,
   };
+}
+
+// ============================================================================
+// Staff workload health -- is this operator over/under-loaded?
+// ============================================================================
+
+/** Open-task count at/above which an operator is carrying a heavy load. */
+export const WORKLOAD_HEAVY_OPEN_TASKS = 15;
+
+export interface StaffWorkloadInput {
+  /** Open (pending + in-progress) tasks assigned to this operator. */
+  openTasks: number;
+  /** Of those, how many are past due. */
+  overdueTasks: number;
+  /** Cities this operator owns, if known (informational). */
+  assignedCities?: number;
+}
+
+export function staffWorkloadHealthFromInputs(input: StaffWorkloadInput): HealthScore {
+  const overdue = Math.max(0, Math.floor(input.overdueTasks || 0));
+  const open = Math.max(0, Math.floor(input.openTasks || 0));
+
+  const reasons: string[] = [];
+  const blockers: string[] = [];
+
+  // Overdue work is the hard problem; a heavy-but-current load is a soft
+  // concern. A light, current load is healthy -- a few open tasks is normal
+  // and must not drag the color, so it is NOT recorded as a reason.
+  if (overdue > 0) blockers.push(`${overdue} overdue task${overdue > 1 ? "s" : ""}`);
+  if (open >= WORKLOAD_HEAVY_OPEN_TASKS) reasons.push(`${open} open tasks -- heavy load`);
+
+  let nextAction: string | null = null;
+  if (overdue > 0) nextAction = "Clear overdue tasks";
+  else if (open >= WORKLOAD_HEAVY_OPEN_TASKS) nextAction = "Rebalance or delegate workload";
+
+  return gradeFromSignals(reasons, blockers, nextAction);
 }
