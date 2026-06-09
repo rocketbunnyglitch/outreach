@@ -40,6 +40,7 @@ import {
   ChevronDown,
   ClipboardCheck,
   Clock,
+  Columns3,
   FileCode,
   Globe,
   Globe2,
@@ -80,6 +81,7 @@ const SECTIONS: Array<{
       { href: "/worklist", label: "Daily Worklist", icon: <ListChecks className="h-3.5 w-3.5" /> },
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3.5 w-3.5" /> },
       { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3.5 w-3.5" /> },
+      { href: "/pipeline", label: "Pipeline", icon: <Columns3 className="h-3.5 w-3.5" /> },
       {
         href: "/crawl-management",
         label: "Crawl Management",
