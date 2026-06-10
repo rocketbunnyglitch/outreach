@@ -249,6 +249,11 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
         ),
         inArray(emailThreads.state, ["needs_reply", "follow_up_due"]),
         isNull(emailThreads.deletedAt),
+        // Campaign-era scope (operator request 2026-06-10): replies from
+        // before the Halloween International 2026 push must not clutter
+        // today's worklist. Proper per-campaign label scoping is a follow-up;
+        // the cutoff covers it while one campaign runs at a time.
+        sql`${emailThreads.lastMessageAt} >= '2026-06-01'::timestamptz`,
       ),
     )
     .orderBy(desc(emailThreads.lastMessageAt))
