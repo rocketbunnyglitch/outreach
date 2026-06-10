@@ -27,6 +27,10 @@ export interface EmailQueueItem {
   scheduledFor: string | null;
   /** ISO; when it actually sent (sent bucket) or null. */
   sentAt: string | null;
+  /** Last cron dispatch error, if the send keeps failing (migration 0132). */
+  lastSendError: string | null;
+  /** Failed dispatch attempts so far. */
+  sendAttempts: number;
 }
 
 export interface EmailQueueData {
@@ -42,6 +46,8 @@ function toItem(r: {
   venueName: string | null;
   scheduledFor: Date | null;
   sentAt: Date | null;
+  lastSendError: string | null;
+  sendAttempts: number;
 }): EmailQueueItem {
   return {
     id: r.id,
@@ -50,6 +56,8 @@ function toItem(r: {
     venueName: r.venueName,
     scheduledFor: r.scheduledFor ? r.scheduledFor.toISOString() : null,
     sentAt: r.sentAt ? r.sentAt.toISOString() : null,
+    lastSendError: r.lastSendError,
+    sendAttempts: r.sendAttempts,
   };
 }
 
@@ -76,6 +84,8 @@ export async function loadEmailQueue(ownerUserId: string): Promise<EmailQueueDat
     venueName: venues.name,
     scheduledFor: emailDrafts.scheduledFor,
     sentAt: emailDrafts.sentAt,
+    lastSendError: emailDrafts.lastSendError,
+    sendAttempts: emailDrafts.sendAttempts,
   };
 
   const [queuedRows, sendingRows, sentRows] = await Promise.all([

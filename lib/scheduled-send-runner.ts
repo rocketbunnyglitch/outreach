@@ -32,7 +32,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { shouldBlockLifecycleSend } from "@/lib/relationship-send-gate";
 import { cronMaySendDraft } from "@/lib/send-mode-gate";
-import { and, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
 export interface ScheduledSendResult {
   attempted: number;
@@ -239,10 +239,16 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     try {
       const result = await composeAndSendImpl(owner, fd);
       if (result.ok) {
-        // Already claimed (sent_at set above); just link the thread.
+        // Already claimed (sent_at set above); link the thread + clear any
+        // failure record from earlier retries.
         await db
           .update(emailDrafts)
-          .set({ sentThreadId: result.threadId, updatedAt: new Date() })
+          .set({
+            sentThreadId: result.threadId,
+            lastSendError: null,
+            lastSendErrorAt: null,
+            updatedAt: new Date(),
+          })
           .where(eq(emailDrafts.id, draft.id));
         sent += 1;
       } else {
@@ -250,12 +256,18 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         // accepted the message (gmailSent), in which case releasing would
         // double-send. A gmail-sent-but-not-saved draft stays claimed (sent_at
         // set, no thread id) = the blocked-not-delivered marker (like T17).
-        if (!result.gmailSent) {
-          await db
-            .update(emailDrafts)
-            .set({ sentAt: null, updatedAt: new Date() })
-            .where(eq(emailDrafts.id, draft.id));
-        }
+        // Either way, record the failure so /email-queue can SHOW it instead
+        // of an eternal "sending now" spinner (migration 0132).
+        await db
+          .update(emailDrafts)
+          .set({
+            ...(result.gmailSent ? {} : { sentAt: null }),
+            sendAttempts: sql`${emailDrafts.sendAttempts} + 1`,
+            lastSendError: (result.error ?? "send failed").slice(0, 500),
+            lastSendErrorAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(emailDrafts.id, draft.id));
         failed += 1;
         logger.warn(
           { draftId: draft.id, owner: owner.id, error: result.error, gmailSent: result.gmailSent },
@@ -265,10 +277,17 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     } catch (err) {
       // A throw from composeAndSendImpl is pre-Gmail (it catches its own
       // post-send DB errors and returns ok:false instead of throwing), so it's
-      // safe to release the claim for a retry.
+      // safe to release the claim for a retry. Record the failure for the
+      // queue UI (migration 0132).
       await db
         .update(emailDrafts)
-        .set({ sentAt: null, updatedAt: new Date() })
+        .set({
+          sentAt: null,
+          sendAttempts: sql`${emailDrafts.sendAttempts} + 1`,
+          lastSendError: (err instanceof Error ? err.message : String(err)).slice(0, 500),
+          lastSendErrorAt: new Date(),
+          updatedAt: new Date(),
+        })
         .where(eq(emailDrafts.id, draft.id));
       failed += 1;
       logger.error({ err, draftId: draft.id }, "scheduled send threw unexpectedly");

@@ -111,6 +111,15 @@ export const emailDrafts = pgTable(
     /** Subject-line A/B variant index chosen for this draft (Tier-2), into the
      *  template's subject_variants array. NULL = not an A/B send. */
     subjectVariantIndex: integer("subject_variant_index"),
+    // --- Scheduled-send failure tracking (migration 0132) ---
+    /** Cron dispatch attempts that FAILED (success doesn't increment).
+     *  Together with last_send_error this makes a stuck draft visible on
+     *  /email-queue instead of spinning as "sending now" forever. */
+    sendAttempts: integer("send_attempts").notNull().default(0),
+    /** Last cron dispatch error message (truncated server-side). Cleared on a
+     *  successful send. */
+    lastSendError: text("last_send_error"),
+    lastSendErrorAt: timestamp("last_send_error_at", { withTimezone: true }),
     /** The specific venue_event/night this draft belongs to. Lets cancellation
      *  scope cleanup to ONE night of a multi-night venue. FK in migration 0119. */
     venueEventId: uuid("venue_event_id"),

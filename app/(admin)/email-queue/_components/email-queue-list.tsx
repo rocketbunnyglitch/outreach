@@ -175,13 +175,21 @@ function QueueRow({
         </p>
         <p className="mt-0.5 font-mono text-[10px] text-zinc-400 tabular-nums">
           {state === "sending"
-            ? "sending now..."
+            ? item.lastSendError
+              ? "retrying..."
+              : "sending now..."
             : state === "sent"
               ? `sent ${absolute}`
               : `sends ${absolute}${relative ? ` (${relative})` : ""}`}
         </p>
+        {state !== "sent" && item.lastSendError && (
+          <p className="mt-1 rounded bg-rose-500/[0.07] px-1.5 py-0.5 font-mono text-[10px] text-rose-600 dark:text-rose-400">
+            failed {item.sendAttempts} time{item.sendAttempts === 1 ? "" : "s"}:{" "}
+            {item.lastSendError.slice(0, 160)} -- retries every 5 min; cancel to stop
+          </p>
+        )}
       </div>
-      {state === "queued" && (
+      {(state === "queued" || (state === "sending" && item.lastSendError)) && (
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
