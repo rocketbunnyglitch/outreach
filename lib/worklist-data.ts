@@ -20,6 +20,7 @@ import {
   venueEvents,
   venues,
 } from "@/db/schema";
+import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -40,6 +41,38 @@ import { planFromState } from "./cadence-engine-core";
 import { computeEffectivePriority } from "./effective-priority";
 import { type EngagementBand, scoreEngagement } from "./engagement-score";
 import { type EventReadiness, readinessFromRow } from "./event-readiness";
+
+/**
+ * Campaign scope for the thread-driven worklist queues (operator request
+ * 2026-06-10): only threads tagged with the CURRENT campaign's gmail label
+ * (campaigns.outreach_gmail_label, e.g. "halloween 2026") belong on today's
+ * worklist -- older campaigns' mail must not surface. Falls back to a
+ * campaign-era date cutoff when no label is configured, and to no filter at
+ * all if campaign resolution fails (worklist must never go empty from a
+ * scoping hiccup).
+ */
+async function currentCampaignThreadScope() {
+  try {
+    const current = await getCurrentCampaign();
+    if (!current) return undefined;
+    const [row] = await db
+      .select({ label: campaigns.outreachGmailLabel })
+      .from(campaigns)
+      .where(eq(campaigns.id, current.campaign.id))
+      .limit(1);
+    const label = row?.label?.trim();
+    if (!label) return sql`${emailThreads.lastMessageAt} >= '2026-06-01'::timestamptz`;
+    return sql`EXISTS (
+      SELECT 1 FROM email_thread_labels tl
+      JOIN team_labels l ON l.id = tl.team_label_id
+      WHERE tl.thread_id = ${emailThreads.id}
+        AND lower(l.name) = lower(${label})
+    )`;
+  } catch (err) {
+    logger.warn({ err }, "worklist campaign scope skipped");
+    return undefined;
+  }
+}
 
 /**
  * Effective priority per city campaign (Phase 2.15). Sums ticket sales and
@@ -209,6 +242,7 @@ function replyUrgencyRank(classification: string): number {
  */
 export async function loadWorklistReplies(opts: { staffId: string }): Promise<WorklistReplyRow[]> {
   const now = new Date();
+  const campaignScope = await currentCampaignThreadScope();
   const rows = await db
     .select({
       id: emailThreads.id,
@@ -249,11 +283,8 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
         ),
         inArray(emailThreads.state, ["needs_reply", "follow_up_due"]),
         isNull(emailThreads.deletedAt),
-        // Campaign-era scope (operator request 2026-06-10): replies from
-        // before the Halloween International 2026 push must not clutter
-        // today's worklist. Proper per-campaign label scoping is a follow-up;
-        // the cutoff covers it while one campaign runs at a time.
-        sql`${emailThreads.lastMessageAt} >= '2026-06-01'::timestamptz`,
+        // Only this campaign's mail (gmail label "halloween 2026" etc).
+        campaignScope,
       ),
     )
     .orderBy(desc(emailThreads.lastMessageAt))
@@ -353,6 +384,7 @@ export async function loadWorklistNoReplyNudges(opts: {
   const now = new Date();
   const businessDays = opts.businessDays ?? NO_REPLY_NUDGE_BUSINESS_DAYS;
   const cutoff = businessDaysAgo(now, businessDays);
+  const campaignScope = await currentCampaignThreadScope();
 
   const rows = await db
     .select({
@@ -376,6 +408,8 @@ export async function loadWorklistNoReplyNudges(opts: {
         ),
         // Silent for at least N business days.
         lte(emailThreads.lastOutboundAt, cutoff),
+        // Only this campaign's mail (gmail label scope).
+        campaignScope,
         // Not already handled by the cadence engine (no planned next touch).
         isNull(emailThreads.cadenceNextDueAt),
         // Exclude closed / archived and threads awaiting OUR reply (those are
@@ -467,6 +501,7 @@ export async function loadWorklistFollowUps(opts: {
 }): Promise<WorklistFollowUpRow[]> {
   const now = new Date();
   const horizon = new Date(now.getTime() + 7 * DAY_MS);
+  const campaignScope = await currentCampaignThreadScope();
 
   const cadenceRows = await db
     .select({
@@ -494,6 +529,8 @@ export async function loadWorklistFollowUps(opts: {
         gt(emailThreads.cadenceNextDueAt, now),
         lte(emailThreads.cadenceNextDueAt, horizon),
         isNull(emailThreads.deletedAt),
+        // Only this campaign's mail (gmail label scope).
+        campaignScope,
       ),
     );
 
