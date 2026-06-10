@@ -56,6 +56,7 @@ import { AiDraftButton } from "./ai-draft-button";
 import { AiSuggestVenuesModal } from "./ai-suggest-venues-modal";
 import { BulkAiDraftModal } from "./bulk-ai-draft-modal";
 import { BulkPasteModal } from "./bulk-paste-modal";
+import { ColdAllModal } from "./cold-all-modal";
 import { BulkEnrichButton, ContactDot } from "./contact-enrichment";
 import { EscalationPopover } from "./escalation-popover";
 import { EscalationStatusPopover } from "./escalation-status-popover";
@@ -388,6 +389,7 @@ export function ColdOutreachTable({
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [coldAllOpen, setColdAllOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteRaw, setPasteRaw] = useState<string>("");
   const router = useRouter();
@@ -922,12 +924,17 @@ export function ColdOutreachTable({
           </span>
           <button
             type="button"
-            onClick={() => setSuggestOpen(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50/40 px-2.5 py-1 font-mono text-[10px] text-violet-700 uppercase tracking-[0.08em] transition-colors hover:bg-violet-100/60 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-300 dark:hover:bg-violet-950/50"
-            title="Have Claude suggest new venues to add"
+            onClick={() => setColdAllOpen(true)}
+            disabled={selected.size === 0}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-zinc-900 px-2.5 py-1 font-mono text-[10px] text-white uppercase tracking-[0.08em] transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            title={
+              selected.size === 0
+                ? "Select venues first, then Cold All sends them a T1 cold email"
+                : `Cold-email ${selected.size} selected venue(s)`
+            }
           >
-            <Sparkles className="h-2.5 w-2.5" />
-            Suggest venues
+            <Mail className="h-2.5 w-2.5" />
+            Cold All{selected.size > 0 ? ` (${selected.size})` : ""}
           </button>
           {/* AI lead-score backfill (Haiku ROI #5). Renders for
               admins only and only when there are un-scored or stale
@@ -1178,6 +1185,13 @@ export function ColdOutreachTable({
         onClose={() => setSuggestOpen(false)}
         onAdded={() => router.refresh()}
         googleMapsApiKey={googleMapsApiKey}
+      />
+
+      <ColdAllModal
+        open={coldAllOpen}
+        onClose={() => setColdAllOpen(false)}
+        entryIds={Array.from(selected)}
+        cityCampaignId={cityCampaignId}
       />
 
       <BulkPasteModal
