@@ -236,4 +236,21 @@ Pre-deploy smoke test for shell components: load `/`, `/venues`, `/campaigns`, `
 
 The transcript header from a compacted prior session lists column names. Those notes are second-hand and have been wrong (they had `staffOutreachEmails.emailAddress` documented correctly but I still tried to select a different non-existent column from that same table). The transcript is for context, not source-of-truth. `db/schema/*.ts` is source-of-truth.
 
-Last updated: 2026-05-27 — added §12 after 4 production-breaking commits in one session.
+### 12.6 Migrations must be expand/contract safe (atomic-release deploys)
+
+Since 2026-06-10 deploys are atomic-release: migrations run against the shared
+DB BEFORE the symlink cutover, and an auto-rollback can put the PREVIOUS
+release back in front of the NEW schema at any time. So every migration must
+be backwards-compatible with the release that is currently running:
+
+- ADD COLUMN: nullable, or NOT NULL **with a DEFAULT**. Never bare NOT NULL.
+- DROP COLUMN / DROP TABLE / RENAME anything / narrowing type changes: NOT in
+  the same deploy as the code change. Ship additive first ("expand"), migrate
+  reads/writes, then drop/rename in a LATER deploy once no running release
+  references the old shape ("contract").
+- `scripts/deploy.sh` enforces this with a pattern scan over new migrations
+  and aborts on violations. `--allow-unsafe-migration` bypasses it -- only
+  after a human has confirmed the old release genuinely tolerates the change
+  (or accepted the downtime).
+
+Last updated: 2026-06-10 — added §12.6 (expand/contract migrations) with the atomic-release deploy.
