@@ -1,21 +1,24 @@
 import { requireStaff } from "@/lib/auth";
+import { loadCrawlGantt } from "@/lib/crawl-gantt";
 import {
   loadCrawlIssues,
   loadCrawlSupport,
   loadRecentCalls,
   loadSupportStaff,
 } from "@/lib/crawl-support";
+import { CrawlGantt } from "./_components/crawl-gantt";
 import { CrawlSupportBoard } from "./_components/crawl-support-board";
 
 export const dynamic = "force-dynamic";
 
 export default async function CrawlSupportPage() {
   await requireStaff();
-  const [data, issues, staff, calls] = await Promise.all([
+  const [data, issues, staff, calls, gantt] = await Promise.all([
     loadCrawlSupport({ now: new Date() }),
     loadCrawlIssues(),
     loadSupportStaff(),
     loadRecentCalls(),
+    loadCrawlGantt(),
   ]);
 
   return (
@@ -28,6 +31,10 @@ export default async function CrawlSupportPage() {
           Calls and urgent-issue logging arrive once their tables are migrated.
         </p>
       </header>
+
+      {/* Crawl-overlap timeline (scaffold): every upcoming crawl on one date
+          axis, one row per city, so overlapping nights jump out. */}
+      <CrawlGantt rows={gantt.rows} ticks={gantt.ticks} rangeLabel={gantt.rangeLabel} />
 
       <CrawlSupportBoard data={data} issues={issues} staff={staff} calls={calls} />
     </div>
