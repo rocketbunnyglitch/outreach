@@ -368,3 +368,5 @@ This server (`203.161.61.240`) runs two engines:
 2. **outreach (this engine)** at `/var/www/outreach`, port 3001. New deployment.
 
 Both are managed by the same PM2 instance. `pm2 list` shows both. They share nothing — separate databases (`promoter` and `crawl_engine`), separate code, separate logs. They just happen to share the same nginx and the same machine.
+
+<!-- atomic-release pipeline verified 2026-06-10: normal deploy / instant rollback / broken-build auto-rollback evidence runs -->
