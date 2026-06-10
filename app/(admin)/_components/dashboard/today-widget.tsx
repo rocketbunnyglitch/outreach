@@ -231,6 +231,10 @@ function RecentWinsColumn({ rows }: { rows: TodayDigest["recentWins"] }) {
                     <span className="text-emerald-600 dark:text-emerald-400">
                       {r.daysAgo === 0 ? "today" : `${r.daysAgo}d ago`}
                     </span>
+                    {/* Who owns the win (operator request 2026-06-10). */}
+                    {r.winnerName && (
+                      <span className="text-zinc-600 dark:text-zinc-300"> · {r.winnerName}</span>
+                    )}
                   </p>
                 </div>
               </Link>

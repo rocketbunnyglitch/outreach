@@ -56,6 +56,8 @@ export interface RecentWin {
   role: string;
   confirmedAt: string;
   daysAgo: number;
+  /** Who owns the win (the venue's "Scheduled by" staffer), or null. */
+  winnerName: string | null;
 }
 
 export interface TodayDigest {
@@ -227,7 +229,8 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
       c.name AS city_name,
       ve.role::text AS role,
       ve.confirmed_at::text AS confirmed_at,
-      (EXTRACT(EPOCH FROM (NOW() - ve.confirmed_at)) / 86400)::int AS days_ago
+      (EXTRACT(EPOCH FROM (NOW() - ve.confirmed_at)) / 86400)::int AS days_ago,
+      (SELECT u.display_name FROM users u WHERE u.id = ve.our_contact_staff_id) AS winner_name
     FROM venue_events ve
     JOIN events e ON e.id = ve.event_id
     JOIN city_campaigns cc ON cc.id = e.city_campaign_id
@@ -249,6 +252,7 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
     role: string;
     confirmed_at: string;
     days_ago: number;
+    winner_name: string | null;
   };
   const rows: Row[] = Array.isArray(result)
     ? (result as unknown as Row[])
@@ -261,5 +265,6 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
     role: r.role,
     confirmedAt: r.confirmed_at,
     daysAgo: r.days_ago,
+    winnerName: r.winner_name,
   }));
 }
