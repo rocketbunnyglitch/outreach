@@ -103,6 +103,50 @@ interface Survivor {
   email: string;
 }
 
+/** Run an async mapper over items with bounded concurrency (no deps). */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      const item = items[i];
+      if (item !== undefined) results[i] = await fn(item);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+// Cold sends only land 9:00-21:00 Toronto time. A batch queued in the evening
+// previously kept spacing 6-12 min into the middle of the night -- bad optics
+// and worse deliverability than business-hours sends.
+const SEND_WINDOW_START_H = 9;
+const SEND_WINDOW_END_H = 21;
+const TORONTO_HOUR_FMT = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  hourCycle: "h23",
+  timeZone: "America/Toronto",
+});
+function torontoHour(ms: number): number {
+  return Number(TORONTO_HOUR_FMT.format(new Date(ms)));
+}
+/** Advance a timestamp (30-min steps, DST-safe) until it falls inside the
+ *  send window. Worst case one hop to the next morning. */
+function clampToSendWindow(ms: number): number {
+  let out = ms;
+  for (let i = 0; i < 48; i++) {
+    const h = torontoHour(out);
+    if (h >= SEND_WINDOW_START_H && h < SEND_WINDOW_END_H) return out;
+    out += 30 * 60_000;
+  }
+  return out;
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -138,6 +182,7 @@ function scheduleTimes(
       dayCap = Math.max(1, warmupRampCap(acct.warmupStartedAt, acct.dailyCap, dayDate));
       cursor = now + day * DAY_MS + (1 + Math.random() * 3) * 60_000;
     }
+    cursor = clampToSendWindow(cursor); // never schedule into the night (Toronto)
     times.push(new Date(cursor));
     if (day > maxDay) maxDay = day;
     placedThisDay += 1;
@@ -330,7 +375,12 @@ export async function coldAllSelectedVenues(input: {
     if (!input.dryRun) {
       const uncached = lowerEmails.filter((e) => !valMap.has(e));
       if (uncached.length > 0) {
-        await validateEmailsBatch(uncached, staff.id);
+        // ZeroBounce validates one email per API call; fully sequential this
+        // was ~0.5s x N and a 400-venue batch blew past the proxy timeout.
+        // Chunk + 4 concurrent workers keeps it polite but bounded.
+        const chunks: string[][] = [];
+        for (let i = 0; i < uncached.length; i += 10) chunks.push(uncached.slice(i, i + 10));
+        await mapWithConcurrency(chunks, 4, (c) => validateEmailsBatch(c, staff.id));
         await loadVerdicts(uncached);
       }
     }
@@ -432,39 +482,45 @@ export async function coldAllSelectedVenues(input: {
   // 9. Render + insert drafts, mark entries emailed. Rendering reuses the same
   //    merge path as the composer so {{company_name}}/{{your_name}}/
   //    {{signature_block}} resolve to the sending inbox's brand + alias.
-  const draftValues: (typeof emailDrafts.$inferInsert)[] = [];
-  for (const p of planned) {
-    const tpl = pickT1(p.brandId);
-    const fields = await buildFlatMergeContext({
-      venueId: p.venueId,
-      campaignId,
-      cityCampaignId: input.cityCampaignId,
-      staffId: staff.id,
-      sendingAccountId: p.accountId,
-    });
-    const subject = renderTemplate(tpl.subjectTemplate, fields).output;
-    const bodyText = renderTemplate(tpl.bodyTemplateText, fields).output;
-    draftValues.push({
-      teamId: staff.teamId,
-      ownerUserId: staff.id,
-      connectedAccountId: p.accountId,
-      toAddresses: [p.email],
-      subject,
-      bodyText,
-      bodyHtml: textToHtml(bodyText),
-      venueId: p.venueId,
-      cityCampaignId: input.cityCampaignId,
-      templateId: tpl.id,
-      scheduledFor: p.scheduledFor,
-      sendMode: "operator_scheduled",
-      requiresHumanApproval: false,
-      approvedByStaffId: staff.id,
-      approvedAt: new Date(),
-      autoSendAllowed: false,
-      recipientType: "venue",
-      touchType: "T1",
-    });
-  }
+  // Merge-context building is several queries per venue; sequential it was the
+  // dominant cost (a 400-venue batch ran minutes and risked the proxy timeout).
+  // Bounded concurrency keeps order via index mapping.
+  const draftValues: (typeof emailDrafts.$inferInsert)[] = await mapWithConcurrency(
+    planned,
+    8,
+    async (p) => {
+      const tpl = pickT1(p.brandId);
+      const fields = await buildFlatMergeContext({
+        venueId: p.venueId,
+        campaignId,
+        cityCampaignId: input.cityCampaignId,
+        staffId: staff.id,
+        sendingAccountId: p.accountId,
+      });
+      const subject = renderTemplate(tpl.subjectTemplate, fields).output;
+      const bodyText = renderTemplate(tpl.bodyTemplateText, fields).output;
+      return {
+        teamId: staff.teamId,
+        ownerUserId: staff.id,
+        connectedAccountId: p.accountId,
+        toAddresses: [p.email],
+        subject,
+        bodyText,
+        bodyHtml: textToHtml(bodyText),
+        venueId: p.venueId,
+        cityCampaignId: input.cityCampaignId,
+        templateId: tpl.id,
+        scheduledFor: p.scheduledFor,
+        sendMode: "operator_scheduled",
+        requiresHumanApproval: false,
+        approvedByStaffId: staff.id,
+        approvedAt: new Date(),
+        autoSendAllowed: false,
+        recipientType: "venue",
+        touchType: "T1",
+      };
+    },
+  );
 
   const queuedEntryIds = planned.map((p) => p.entryId);
   try {
