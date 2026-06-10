@@ -993,7 +993,9 @@ export function ColdOutreachTable({
           going to fit on a phone; the card layout below shows the
           same data + same actions vertically. */}
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-sm">
+        {/* min-width: below this the columns crush inline-edit fields into
+            slivers -- prefer a deliberate horizontal scroll. */}
+        <table className="w-full min-w-[1080px] text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40 dark:text-zinc-400">
               {/* Checkbox + per-row actions stack — row actions

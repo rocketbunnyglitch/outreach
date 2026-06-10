@@ -234,6 +234,10 @@ export function ComposerWindow({ instance, isMobile }: Props) {
   const enginePickRanRef = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Queue-time safety warning awaiting the operator's explicit go-ahead
+  // (rendered as an inline amber bar, same pattern as the cadence block --
+  // NOT window.confirm, which looked off-brand and blocked the tab).
+  const [queueWarning, setQueueWarning] = useState<string | null>(null);
   const [capBlocked, setCapBlocked] = useState(false);
   const [cooldownBlocked, setCooldownBlocked] = useState(false);
   const [wrongAccountBlocked, setWrongAccountBlocked] = useState(false);
@@ -921,7 +925,14 @@ export function ComposerWindow({ instance, isMobile }: Props) {
    * operators asked for once the cold-send cooldown was added.
    */
   function handleQueue() {
+    doQueue(false);
+  }
+
+  /** ackWarnings=true re-runs the queue after the operator confirmed the
+   *  queue-time safety warning in the inline bar below. */
+  function doQueue(ackWarnings: boolean) {
     setSendError(null);
+    setQueueWarning(null);
     const err = validate();
     if (err) {
       setSendError(err);
@@ -954,18 +965,17 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setSendError(saveRes.error);
         return;
       }
-      let qRes = await queueColdSend(instance.id);
+      const qRes = await queueColdSend(
+        instance.id,
+        ackWarnings ? { ackWarnings: true } : undefined,
+      );
       // Queue-time safety surfacing: the cron forwards this Queue click as
       // the acknowledgment for send-time warnings, so the staffer must see
-      // them NOW. needsAck = warning (confirmable); a plain error (e.g.
-      // suppressed recipient) stays a hard stop.
+      // them NOW. needsAck = warning (confirmable via the inline bar); a
+      // plain error (e.g. suppressed recipient) stays a hard stop.
       if (!qRes.ok && "needsAck" in qRes && qRes.needsAck) {
-        const proceed = window.confirm(`${qRes.error}\n\nQueue it anyway?`);
-        if (!proceed) {
-          toast.show({ kind: "info", message: "Not queued. The draft is still here." });
-          return;
-        }
-        qRes = await queueColdSend(instance.id, { ackWarnings: true });
+        setQueueWarning(qRes.error);
+        return;
       }
       if (!qRes.ok) {
         setSendError(qRes.error);
@@ -1719,6 +1729,38 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                 className="rounded-md border border-amber-400 bg-amber-200 px-2 py-1 font-medium text-amber-900 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-800/50 dark:text-amber-100"
               >
                 Override + send
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Queue-time safety warning (bounce-risk address / duplicate thread /
+            recent decline / teammate overlap). Queuing proceeds only on an
+            explicit go-ahead -- that click is what the scheduled-send cron
+            forwards as the acknowledgment at dispatch time. */}
+        {queueWarning && (
+          <div className="flex flex-col gap-2 border-zinc-200 border-t bg-amber-50 px-3 py-2 text-amber-900 text-xs dark:border-zinc-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">Check before queueing</p>
+                <p className="mt-0.5 opacity-90">{queueWarning}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setQueueWarning(null)}
+                className="rounded-md border border-amber-300 bg-white px-2 py-1 text-amber-800 dark:border-amber-900/40 dark:bg-zinc-900 dark:text-amber-200"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={() => doQueue(true)}
+                className="rounded-md border border-amber-400 bg-amber-200 px-2 py-1 font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-800/50 dark:text-amber-100"
+              >
+                Queue anyway
               </button>
             </div>
           </div>

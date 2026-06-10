@@ -790,7 +790,10 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
       {/* Desktop table — hidden on mobile. 9 columns won't fit
           a phone, the cards below cover that case. */}
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full text-sm">
+        {/* min-width: below this the 11 columns crush their inline-edit
+            fields into unreadable slivers -- prefer a deliberate horizontal
+            scroll (the wrapper already scrolls). */}
+        <table className="w-full min-w-[1080px] text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
               <th className="w-28 px-3 py-2">Slot</th>
@@ -1188,7 +1191,11 @@ function SlotTableRow({
         {/* Venue metadata — email + capacity, read-only */}
         {slot.venueEventId && (
           <div className="flex items-center gap-4 font-mono text-[10px] text-zinc-500">
-            {slot.venueEmail && <span className="truncate">✉ {slot.venueEmail}</span>}
+            {slot.venueEmail && (
+              <span className="truncate" title={slot.venueEmail}>
+                ✉ {slot.venueEmail}
+              </span>
+            )}
             {slot.venuePhone && <span className="whitespace-nowrap">☎ {slot.venuePhone}</span>}
             {slot.venueCapacity != null && <span>Cap {slot.venueCapacity}</span>}
           </div>
@@ -1323,7 +1330,10 @@ function SlotTableRow({
 
         {/* Email — read-only, comes from venues table */}
         <td className="px-2 py-2 align-middle">
-          <span className="block max-w-[180px] truncate font-mono text-[11px] text-zinc-500">
+          <span
+            className="block max-w-[180px] truncate font-mono text-[11px] text-zinc-500"
+            title={slot.venueEmail ?? undefined}
+          >
             {slot.venueEmail ?? "—"}
           </span>
         </td>
