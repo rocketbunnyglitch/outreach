@@ -536,6 +536,18 @@ export async function coldAllSelectedVenues(input: {
     return { ok: false, error: "Failed to queue the cold emails. See server logs." };
   }
 
+  // Tracker auto-assign: bulk-scheduling a city's cold outreach claims the
+  // city for this operator IF unassigned (mirrors queueColdSend; never
+  // steals an existing assignment). Best-effort.
+  try {
+    await db
+      .update(cityCampaigns)
+      .set({ leadStaffId: staff.id, updatedBy: staff.id })
+      .where(and(eq(cityCampaigns.id, input.cityCampaignId), isNull(cityCampaigns.leadStaffId)));
+  } catch (err) {
+    logger.warn({ err }, "coldAll: tracker auto-assign skipped (non-fatal)");
+  }
+
   logger.info(
     { queued: planned.length, accounts: byAccount.length, daySpan: plan.daySpan, by: staff.id },
     "Cold All queued",

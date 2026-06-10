@@ -19,7 +19,12 @@
  *   drafts (intentional — drafts are private until sent).
  */
 
-import { type EmailDraftAttachment, emailDrafts, staffInfoSheets } from "@/db/schema";
+import {
+  type EmailDraftAttachment,
+  cityCampaigns,
+  emailDrafts,
+  staffInfoSheets,
+} from "@/db/schema";
 import {
   createSignedUpload,
   deleteAttachment,
@@ -372,6 +377,7 @@ export async function queueColdSend(
         ccAddresses: emailDrafts.ccAddresses,
         bccAddresses: emailDrafts.bccAddresses,
         venueId: emailDrafts.venueId,
+        cityCampaignId: emailDrafts.cityCampaignId,
         sentAt: emailDrafts.sentAt,
       })
       .from(emailDrafts)
@@ -469,6 +475,23 @@ export async function queueColdSend(
         updatedAt: now,
       })
       .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)));
+
+    // Tracker auto-assign (operator request 2026-06-10): scheduling outreach
+    // for a city claims that city for the sender IF nobody owns it yet --
+    // never steals an existing assignment. Best-effort.
+    if (draft.cityCampaignId) {
+      try {
+        await db
+          .update(cityCampaigns)
+          .set({ leadStaffId: staff.id, updatedBy: staff.id })
+          .where(
+            and(eq(cityCampaigns.id, draft.cityCampaignId), isNull(cityCampaigns.leadStaffId)),
+          );
+        revalidatePath("/tracker");
+      } catch (err) {
+        logger.warn({ err, draftId }, "queueColdSend: tracker auto-assign skipped (non-fatal)");
+      }
+    }
 
     revalidatePath("/email-queue");
     revalidatePath("/inbox");

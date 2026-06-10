@@ -13,14 +13,23 @@ export const dynamic = "force-dynamic";
  * staff live in. Same inline-editable table, but its own page and defaulting
  * to "Show all" (no priority filtering) since this is the dedicated view.
  */
-export default async function TrackerPage() {
+export default async function TrackerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
   const { staff } = await requireStaff();
+  const { view } = await searchParams;
+  // "My assignments" tab (operator request 2026-06-10): the same tracker
+  // table filtered to the cities assigned to the viewer.
+  const mine = view === "mine";
   const currentCampaign = await getCurrentCampaign();
   const campaignId = currentCampaign ? currentCampaign.campaign.id : null;
 
-  const { rows, staff: staffOpts } = campaignId
+  const { rows: allRows, staff: staffOpts } = campaignId
     ? await loadTrackerData({ campaignId }).catch(() => ({ rows: [], staff: [] }))
     : { rows: [], staff: [] };
+  const rows = mine ? allRows.filter((r) => r.leadStaffId === staff.id) : allRows;
 
   return (
     <div className="flex flex-col gap-6">
@@ -36,7 +45,31 @@ export default async function TrackerPage() {
         </div>
       </header>
 
-      {campaignId && (
+      {/* Tabs: every city vs just the viewer's assigned cities. */}
+      <div className="flex items-center gap-1.5">
+        <Link
+          href="/tracker"
+          className={`rounded-full px-3.5 py-1.5 font-medium text-sm transition-colors ${
+            mine
+              ? "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+              : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          }`}
+        >
+          All cities
+        </Link>
+        <Link
+          href="/tracker?view=mine"
+          className={`rounded-full px-3.5 py-1.5 font-medium text-sm transition-colors ${
+            mine
+              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+          }`}
+        >
+          My assignments
+        </Link>
+      </div>
+
+      {campaignId && !mine && (
         <BulkRenameCrawls campaignId={campaignId} isAdmin={hasMinimumRole(staff, "admin")} />
       )}
 
@@ -45,14 +78,31 @@ export default async function TrackerPage() {
       ) : (
         <div className="rounded-2xl border border-zinc-200 border-dashed p-12 text-center dark:border-zinc-800">
           <p className="font-medium text-base text-zinc-700 dark:text-zinc-300">
-            {campaignId ? "No cities in this campaign yet" : "No campaign selected"}
+            {!campaignId
+              ? "No campaign selected"
+              : mine
+                ? "No cities assigned to you yet"
+                : "No cities in this campaign yet"}
           </p>
           <p className="mt-1.5 text-xs text-zinc-500">
-            Add cities from{" "}
-            <Link href="/admin" className="underline underline-offset-2">
-              Admin
-            </Link>{" "}
-            or pick a current campaign first.
+            {mine ? (
+              <>
+                Queue an email in a city to claim it automatically, or set yourself in the Assign
+                column on{" "}
+                <Link href="/tracker" className="underline underline-offset-2">
+                  All cities
+                </Link>
+                .
+              </>
+            ) : (
+              <>
+                Add cities from{" "}
+                <Link href="/admin" className="underline underline-offset-2">
+                  Admin
+                </Link>{" "}
+                or pick a current campaign first.
+              </>
+            )}
           </p>
         </div>
       )}
