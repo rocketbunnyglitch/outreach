@@ -13,6 +13,7 @@
  */
 
 import { requireStaff } from "@/lib/auth";
+import { loadCityFocus } from "@/lib/city-focus";
 import {
   loadWorklistCalls,
   loadWorklistComebacks,
@@ -25,6 +26,7 @@ import {
   loadWorklistSlotChanges,
 } from "@/lib/worklist-data";
 import { CallsSection } from "./_components/calls-section";
+import { CityFocusSection } from "./_components/city-focus-section";
 import { ComebacksSection } from "./_components/comebacks-section";
 import { DraftsSection } from "./_components/drafts-section";
 import { FloorStaffCallsSection } from "./_components/floor-staff-calls-section";
@@ -53,6 +55,7 @@ export default async function WorklistPage() {
     floorStaffCalls,
     slotChanges,
     noReplyNudges,
+    cityFocus,
   ] = await Promise.all([
     loadWorklistDrafts({ staffId: staff.id }),
     loadWorklistReplies({ staffId: staff.id }),
@@ -63,6 +66,7 @@ export default async function WorklistPage() {
     loadWorklistFloorStaffCalls({ staffId: staff.id }),
     loadWorklistSlotChanges({ staffId: staff.id }),
     loadWorklistNoReplyNudges({ staffId: staff.id }),
+    loadCityFocus({ staffId: staff.id }),
   ]);
   const allEmpty =
     drafts.length === 0 &&
@@ -84,6 +88,11 @@ export default async function WorklistPage() {
           Everything you need to do today.
         </p>
       </header>
+
+      {/* Always first: which cities to cold-email today. Renders even when
+          the reactive queues are empty -- proactive outreach IS the job on a
+          quiet day. */}
+      <CityFocusSection focus={cityFocus} />
 
       {allEmpty ? (
         <WorklistAllCaughtUp staffId={staff.id} />
