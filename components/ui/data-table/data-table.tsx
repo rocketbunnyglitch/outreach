@@ -28,7 +28,6 @@
 import { cn } from "@/lib/cn";
 import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
 import type { UseColumnFilterReturn } from "./use-column-filter";
 import type { UseColumnSortReturn } from "./use-column-sort";
 
@@ -197,31 +196,11 @@ export function FilterTextInput({
   placeholder?: string;
   width?: string;
 }) {
-  const urlValue = filter.value(column)[0] ?? "";
-  // Locally-controlled draft + debounced URL commit. The previous version
-  // bound the input DIRECTLY to the URL param and router.replace()d on every
-  // keystroke -- on a heavy page each keystroke kicked a server re-render and
-  // the controlled value snapped back to the old param mid-flight, eating
-  // keypresses ("the filter bar isn't working", 2026-06-10). Typing now hits
-  // local state instantly; the URL (and the actual filtering) follows 300ms
-  // after the operator pauses.
-  const [draft, setDraft] = useState(urlValue);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastCommittedRef = useRef(urlValue);
-  // Sync back/forward navigation and external clears into the box -- but
-  // ONLY genuinely external changes. Our own commit echoing back through the
-  // URL must not clobber keystrokes typed during the round-trip.
-  useEffect(() => {
-    if (urlValue !== lastCommittedRef.current) {
-      lastCommittedRef.current = urlValue;
-      setDraft(urlValue);
-    }
-  }, [urlValue]);
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
+  // Direct binding is safe (and instant) now that useColumnFilter keeps
+  // filter state in memory and mirrors the URL via history.replaceState --
+  // no router navigation, so the controlled value updates synchronously and
+  // never snaps back mid-typing.
+  const value = filter.value(column)[0] ?? "";
   return (
     <th className={cn("px-2 py-1.5", width)}>
       <div className="relative">
@@ -231,16 +210,8 @@ export function FilterTextInput({
         />
         <input
           type="text"
-          value={draft}
-          onChange={(e) => {
-            const v = e.target.value;
-            setDraft(v);
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-            debounceRef.current = setTimeout(() => {
-              lastCommittedRef.current = v;
-              filter.set(column, v ? [v] : []);
-            }, 300);
-          }}
+          value={value}
+          onChange={(e) => filter.set(column, e.target.value ? [e.target.value] : [])}
           placeholder={placeholder}
           className={cn(
             "w-full rounded-sm border border-zinc-200 bg-white py-0.5 pr-1.5 pl-5 font-normal text-xs",

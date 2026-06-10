@@ -35,8 +35,8 @@
  *   });
  */
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 
 const PARAM_PREFIX = "f.";
 const VALUE_SEP = ",";
@@ -59,38 +59,62 @@ export interface UseColumnFilterReturn {
 }
 
 export function useColumnFilter(): UseColumnFilterReturn {
-  const router = useRouter();
   const params = useSearchParams();
+  // IN-MEMORY overlay, authoritative once any filter is touched. The
+  // previous version pushed every change through router.replace() -- a full
+  // RSC navigation that re-rendered the (often heavy) server page just to
+  // filter rows the client ALREADY HAS, making filter bars feel laggy/dead
+  // ("super laggy", 2026-06-10). Filtering is now a pure client state
+  // update (instant); the URL is kept shareable via history.replaceState,
+  // which Next ignores (no server round-trip). Deep links still work: the
+  // overlay seeds from the URL params on first write.
+  const [overlay, setOverlay] = useState<Record<string, string[]> | null>(null);
 
-  const activeColumns = useMemo<string[]>(() => {
-    const cols: string[] = [];
-    for (const [k] of params.entries()) {
-      if (k.startsWith(PARAM_PREFIX)) cols.push(k.slice(PARAM_PREFIX.length));
+  const paramFilters = useMemo<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of params.entries()) {
+      if (k.startsWith(PARAM_PREFIX)) {
+        const vals = v.split(VALUE_SEP).filter(Boolean);
+        if (vals.length > 0) out[k.slice(PARAM_PREFIX.length)] = vals;
+      }
     }
-    return Array.from(new Set(cols));
+    return out;
   }, [params]);
 
-  const value = useCallback(
-    (column: string): string[] => {
-      const raw = params.get(`${PARAM_PREFIX}${column}`);
-      if (!raw) return [];
-      return raw.split(VALUE_SEP).filter(Boolean);
-    },
-    [params],
+  const effective = overlay ?? paramFilters;
+
+  const activeColumns = useMemo<string[]>(
+    () => Object.keys(effective).filter((c) => (effective[c]?.length ?? 0) > 0),
+    [effective],
   );
+
+  const value = useCallback((column: string): string[] => effective[column] ?? [], [effective]);
+
+  /** Mirror the overlay into the address bar WITHOUT a Next navigation. */
+  const syncUrl = useCallback((filters: Record<string, string[]>) => {
+    if (typeof window === "undefined") return;
+    const newParams = new URLSearchParams(window.location.search);
+    for (const k of [...newParams.keys()]) {
+      if (k.startsWith(PARAM_PREFIX)) newParams.delete(k);
+    }
+    for (const [col, vals] of Object.entries(filters)) {
+      if (vals.length > 0) newParams.set(`${PARAM_PREFIX}${col}`, vals.join(VALUE_SEP));
+    }
+    const qs = newParams.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, []);
 
   const writeColumn = useCallback(
     (column: string, values: string[]) => {
-      const newParams = new URLSearchParams(params.toString());
-      const key = `${PARAM_PREFIX}${column}`;
-      if (values.length === 0) {
-        newParams.delete(key);
-      } else {
-        newParams.set(key, values.join(VALUE_SEP));
-      }
-      router.replace(`?${newParams.toString()}`, { scroll: false });
+      setOverlay((prev) => {
+        const next = { ...(prev ?? paramFilters) };
+        if (values.length === 0) delete next[column];
+        else next[column] = values;
+        syncUrl(next);
+        return next;
+      });
     },
-    [params, router],
+    [paramFilters, syncUrl],
   );
 
   const set = useCallback(
@@ -117,14 +141,9 @@ export function useColumnFilter(): UseColumnFilterReturn {
   );
 
   const clear = useCallback(() => {
-    const newParams = new URLSearchParams(params.toString());
-    const toDelete: string[] = [];
-    for (const [k] of newParams.entries()) {
-      if (k.startsWith(PARAM_PREFIX)) toDelete.push(k);
-    }
-    for (const k of toDelete) newParams.delete(k);
-    router.replace(`?${newParams.toString()}`, { scroll: false });
-  }, [params, router]);
+    setOverlay({});
+    syncUrl({});
+  }, [syncUrl]);
 
   return {
     value,
