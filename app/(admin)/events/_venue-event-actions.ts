@@ -223,6 +223,46 @@ export async function updateVenueEvent(
       }
     }
 
+    // Crawl finalization (migration 0133): if THIS confirm filled the crawl's
+    // last required slot, record who finalized it and broadcast the big
+    // "%name% finalized %city%!" quick win to every active staffer.
+    // Best-effort post-commit; never blocks the confirm.
+    if (isConfirming) {
+      try {
+        const { maybeRecordCrawlFinalization } = await import("@/lib/crawl-finalize");
+        const finalized = await maybeRecordCrawlFinalization({
+          venueEventId: id,
+          staffId: staff.id,
+        });
+        if (finalized) {
+          const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+          const { staffMembers } = await import("@/db/schema");
+          const { eq: eqOp } = await import("drizzle-orm");
+          const everyone = await db
+            .select({ id: staffMembers.id })
+            .from(staffMembers)
+            .where(eqOp(staffMembers.status, "active"));
+          const name = staff.displayName ?? "Someone";
+          for (const person of everyone) {
+            await emitNotification({
+              staffId: person.id,
+              kind: "quick_win",
+              title: `\u{1F389} ${name} finalized ${finalized.cityName}!`,
+              body: `Every slot on the ${finalized.eventDate} crawl is confirmed. Crawl complete!`,
+              linkPath: `/events/${finalized.eventId}`,
+              metadata: { bigWin: true, eventId: finalized.eventId, finalizedBy: staff.id },
+            });
+          }
+          logger.info(
+            { venueEventId: id, eventId: finalized.eventId, by: staff.id },
+            "crawl finalized -- big quick win broadcast",
+          );
+        }
+      } catch (finalizeErr) {
+        logger.error({ err: finalizeErr, venueEventId: id }, "crawl-finalize broadcast failed");
+      }
+    }
+
     const finalRow = txOutput?.result?.[0];
     if (finalRow?.eventId) revalidatePath(`/events/${finalRow.eventId}`);
     revalidatePath("/tasks");

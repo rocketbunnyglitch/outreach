@@ -35,6 +35,7 @@ export * from "./geography";
 export * from "./call-logs";
 export * from "./campaigns";
 export * from "./city-campaigns";
+export * from "./crawl-finalizations";
 export * from "./middle-venue-groups";
 export * from "./internal-hosts";
 export * from "./external-host-shipments";

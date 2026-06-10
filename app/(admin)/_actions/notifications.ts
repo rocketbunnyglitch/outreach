@@ -167,7 +167,9 @@ export async function emitNotification(input: {
     | "email_invalid"
     | "ai_draft_failed"
     | "edit_conflict"
-    | "admin_message";
+    | "admin_message"
+    // Migration 0133 -- big celebration broadcast ("%name% finalized %city%!").
+    | "quick_win";
   title: string;
   body?: string | null;
   linkPath?: string | null;

@@ -27,6 +27,10 @@ export const notificationKind = pgEnum("notification_kind", [
   // Migration 0128 — a WARM venue opened a tracked email (real, non-proxy).
   // Labelled "Seen" in the UI. Soft signal; informational only.
   "seen",
+  // Migration 0133 — celebration broadcast: someone confirmed the venue that
+  // completed a crawl's lineup ("%name% finalized %city%!"). metadata.bigWin
+  // marks it for the larger quick-win treatment in the UI.
+  "quick_win",
 ]);
 
 export const notifications = pgTable(
