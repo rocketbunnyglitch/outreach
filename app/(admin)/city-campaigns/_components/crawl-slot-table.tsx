@@ -796,16 +796,21 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
         <table className="w-full min-w-[1080px] text-sm">
           <thead>
             <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40">
-              <th className="w-28 px-3 py-2">Slot</th>
-              <th className="w-48 px-2 py-2">Venue</th>
-              <th className="w-44 px-2 py-2">Email</th>
-              <th className="w-32 px-2 py-2">Phone</th>
-              <th className="w-28 px-2 py-2">Scheduled by</th>
-              <th className="w-32 px-2 py-2">Bar contact</th>
-              <th className="w-32 px-2 py-2">Hours</th>
-              <th className="w-16 px-2 py-2 text-right">Cap</th>
-              <th className="w-28 px-2 py-2">Drink specials</th>
-              <th className="w-24 px-2 py-2">Status</th>
+              {/* Width budget (operator request): Hours must show a full
+                  "9:00PM-11:00PM" range and Drink specials (the notes
+                  column) gets the most room; the fixed-content columns
+                  (slot/phone/sched-by/cap/status) run as tight as their
+                  content allows. */}
+              <th className="w-24 px-3 py-2">Slot</th>
+              <th className="w-44 px-2 py-2">Venue</th>
+              <th className="w-36 px-2 py-2">Email</th>
+              <th className="w-24 px-2 py-2">Phone</th>
+              <th className="w-24 px-2 py-2">Scheduled by</th>
+              <th className="w-28 px-2 py-2">Bar contact</th>
+              <th className="w-36 px-2 py-2">Hours</th>
+              <th className="w-12 px-2 py-2 text-right">Cap</th>
+              <th className="w-40 px-2 py-2">Drink specials</th>
+              <th className="w-20 px-2 py-2">Status</th>
               <th className="w-8 px-1 py-2" />
             </tr>
           </thead>

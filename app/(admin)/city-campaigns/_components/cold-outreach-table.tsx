@@ -1023,7 +1023,7 @@ export function ColdOutreachTable({
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onClick={() => toggleSort("email")}
-                width="w-40 px-1"
+                width="w-36 px-1"
               />
               {/* Contact-enrichment status dot (E6). Sortable; click the
                   dot in a row to scrape that one venue inline. */}
@@ -1058,7 +1058,7 @@ export function ColdOutreachTable({
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onClick={() => toggleSort("callWindow")}
-                width="w-32 px-2"
+                width="w-24 px-2"
               />
               <SortableTh
                 label="Status"
@@ -1066,7 +1066,7 @@ export function ColdOutreachTable({
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onClick={() => toggleSort("status")}
-                width="w-32 px-2"
+                width="w-24 px-2"
               />
               {/* Engagement (Tier-2). Soft 0-100 signal; sortable so
                   genuinely-interested venues rise. */}
@@ -1076,10 +1076,12 @@ export function ColdOutreachTable({
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onClick={() => toggleSort("engagement")}
-                width="w-24 px-2"
+                width="w-16 px-2"
               />
               {/* Cadence-aware row state (Phase 2.12). Read-only column. */}
-              <th className="w-44 px-2 py-2.5">Cadence</th>
+              {/* Tightened (w-44 -> w-36) so Remarks -- the flex column --
+                  gets the freed width (operator request: wider notes). */}
+              <th className="w-36 px-2 py-2.5">Cadence</th>
               <SortableTh
                 label="Assigned"
                 col="assignee"
