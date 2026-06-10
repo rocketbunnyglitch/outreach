@@ -79,6 +79,10 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         ),
       ),
     )
+    // Oldest due first. Without a deterministic order, a backlog over the
+    // per-tick cap lets Postgres pick an arbitrary 100 -- a perma-failing
+    // draft could starve newer ones indefinitely.
+    .orderBy(emailDrafts.scheduledFor)
     .limit(100);
 
   let sent = 0;
