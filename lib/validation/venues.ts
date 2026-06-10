@@ -10,6 +10,7 @@
  * are required.
  */
 
+import { toE164 } from "@/lib/phone";
 import { z } from "zod";
 
 const uuidSchema = z
@@ -35,9 +36,13 @@ const optionalString = (max = 255) =>
 
 const optionalEmail = z.union([z.literal("").transform(() => undefined), emailSchema]).optional();
 
-const optionalPhone = z
-  .union([z.literal("").transform(() => undefined), e164PhoneSchema])
-  .optional();
+// Auto-normalize any pasted/typed format (Google national, dashed, spaced, no
+// country code) to E.164 BEFORE validating, so staff are never nagged about the
+// format. A bare 10-digit number becomes +1XXXXXXXXXX.
+const optionalPhone = z.preprocess(
+  (v) => (typeof v === "string" ? toE164(v) : v),
+  z.union([z.literal("").transform(() => undefined), e164PhoneSchema]).optional(),
+);
 
 const optionalInt = z
   .union([z.literal("").transform(() => undefined), z.coerce.number().int().positive()])

@@ -3,9 +3,19 @@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { EnrichVenueResult } from "@/lib/enrichment-orchestrator";
-import { Facebook, History, Instagram, Loader2, Mail, RefreshCw, Search } from "lucide-react";
+import {
+  Check,
+  Facebook,
+  History,
+  Instagram,
+  Loader2,
+  Mail,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { setVenueEmailFromSearch } from "../_actions";
 import {
   type EnrichmentHistoryRow,
   getEnrichmentHistory,
@@ -105,12 +115,41 @@ export function VenueEnrichmentCard(props: VenueEnrichmentCardProps) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
+  const [saving, startSaving] = useTransition();
+  const [manualEmail, setManualEmail] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<EnrichmentHistoryRow[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const style = statusStyle(props.status);
+
+  /** Set the venue's contact email from a pasted/scraped address. Reuses the
+   *  existing setVenueEmailFromSearch action (updates venues.email, logs it,
+   *  triggers ZeroBounce validation), then refreshes so the Details tab + this
+   *  card reflect it. */
+  function saveEmail(email: string, source: string) {
+    const e = email.trim();
+    if (!e || saving) return;
+    startSaving(async () => {
+      const fd = new FormData();
+      fd.set("venueId", props.venueId);
+      fd.set("email", e);
+      fd.set("source", source);
+      const res = await setVenueEmailFromSearch(null, fd);
+      if (res.ok) {
+        toast.show({ kind: "success", message: `Saved ${res.data.email} as the contact email.` });
+        setManualEmail("");
+        router.refresh();
+      } else {
+        toast.show({
+          kind: "error",
+          message: res.error ?? "Couldn't save the email.",
+          tag: "venue.email",
+        });
+      }
+    });
+  }
 
   function run(forceRetry: boolean) {
     setConfirmOpen(false);
@@ -185,12 +224,57 @@ export function VenueEnrichmentCard(props: VenueEnrichmentCardProps) {
               <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                 {e.role_hint} · {e.confidence}%
               </span>
+              <button
+                type="button"
+                onClick={() => saveEmail(e.email, `scrape:${e.role_hint}`)}
+                disabled={saving}
+                className="ml-auto shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                title="Set as this venue's contact email"
+              >
+                Use
+              </button>
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-xs text-zinc-400">No scraped emails yet.</p>
       )}
+
+      {/* Manual email entry — paste an address you found (e.g. on Facebook) and
+          Save: sets it as the venue's contact email + ZeroBounce-checks it. */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            value={manualEmail}
+            onChange={(e) => setManualEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                saveEmail(manualEmail, "manual");
+              }
+            }}
+            placeholder="Paste a contact email…"
+            className="min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2 py-1 text-sm outline-none focus:border-zinc-500 dark:border-zinc-700"
+          />
+          <Button
+            type="button"
+            onClick={() => saveEmail(manualEmail, "manual")}
+            disabled={saving || !manualEmail.trim()}
+            className="shrink-0"
+          >
+            {saving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+            Save
+          </Button>
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          Sets the venue's contact email (Details tab) and runs a ZeroBounce check.
+        </p>
+      </div>
 
       {(props.scrapedInstagram || props.scrapedFacebook) && (
         <div className="flex flex-wrap gap-3 text-sm">

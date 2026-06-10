@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { toE164 } from "@/lib/phone";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { DuplicateWarning } from "./duplicate-warning";
@@ -152,7 +153,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
 
       <FormSection
         title="Contact"
-        description="How we reach this venue. Phone in E.164 format (e.g. +14165551234)."
+        description="How we reach this venue. Paste a phone in any format — it's auto-formatted on save."
       >
         <FieldRow>
           <FieldShell label="Contact name" name="contactName">
@@ -163,13 +164,18 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               placeholder="e.g. Sadie, Suraj, Jamal"
             />
           </FieldShell>
-          <FieldShell label="Phone (E.164)" name="phoneE164">
+          <FieldShell label="Phone" name="phoneE164">
             <Input
               id="phoneE164"
               name="phoneE164"
               defaultValue={initial?.phoneE164 ?? ""}
-              placeholder="+14165551234"
-              pattern="\+[1-9]\d{9,14}"
+              placeholder="any format — auto-formatted"
+              // Paste any format; normalize to E.164 on blur so the operator
+              // never has to format by hand (the server re-normalizes on save).
+              onBlur={(e) => {
+                const next = toE164(e.target.value);
+                if (next !== e.target.value) e.target.value = next;
+              }}
             />
           </FieldShell>
         </FieldRow>
