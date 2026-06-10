@@ -526,15 +526,22 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         if (cancelled || !res.ok) return;
         const pick = res.data.pick;
         if (!pick) return;
-        // Defensive: only adopt the pick if its template is in the loaded
-        // list (so applyTemplate can resolve subject/body for it).
-        if (!templates.some((t) => t.id === pick.templateId)) return;
+        // Resolve the pick against the loaded list. The picker is brand-
+        // agnostic (auto_pick_priority lives on one brand's rows), so its id
+        // is often ANOTHER brand's variation of the same code -- remap by
+        // templateCode to the sending brand's row instead of dropping the
+        // pick (which silently killed engine picks for every non-priority
+        // brand inbox).
+        const adoptId = templates.some((t) => t.id === pick.templateId)
+          ? pick.templateId
+          : (templates.find((t) => t.templateCode === pick.templateCode)?.id ?? null);
+        if (!adoptId) return;
         setEnginePick(res.data);
-        void applyTemplate(pick.templateId, templates, renderContext, instance.id, (patch) =>
+        void applyTemplate(adoptId, templates, renderContext, instance.id, (patch) =>
           setField(instance.id, {
             ...patch,
-            templateId: pick.templateId,
-            enginePickedTemplateId: pick.templateId,
+            templateId: adoptId,
+            enginePickedTemplateId: adoptId,
           }),
         );
       })

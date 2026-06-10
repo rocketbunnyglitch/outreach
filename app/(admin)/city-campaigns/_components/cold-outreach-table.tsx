@@ -1670,6 +1670,7 @@ function ColdRow({
                 .filter((e): e is string => Boolean(e?.trim()))
                 .join(", ")}
               venueId={entry.venueId}
+              cityCampaignId={cityCampaignId}
               ariaLabel={
                 entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"
               }
@@ -1694,6 +1695,7 @@ function ColdRow({
                         subject: draft.subject,
                         body: draft.body,
                         venueId: entry.venueId,
+                        cityCampaignId,
                       },
                     }),
                   );
@@ -1933,6 +1935,7 @@ function ColdRow({
               .filter((e): e is string => Boolean(e?.trim()))
               .join(", ")}
             venueId={entry.venueId}
+            cityCampaignId={cityCampaignId}
             ariaLabel={entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"}
             className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
           >
@@ -1951,6 +1954,7 @@ function ColdRow({
                       subject: draft.subject,
                       body: draft.body,
                       venueId: entry.venueId,
+                      cityCampaignId,
                     },
                   }),
                 );
