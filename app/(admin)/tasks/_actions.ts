@@ -245,13 +245,14 @@ export async function bulkClearTasks(input: {
   }
 }
 
-// === Delete (admin only) ===
+// === Delete ===
 
 const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Hard-delete a task. Admin only (tasks have no soft-delete column). */
+/** Hard-delete a task. Any staff (operator request 2026-06-10 -- was admin
+ *  only). The deletion is still attributed via the audit context. */
 export async function deleteTask(id: string): Promise<ActionResult<{ id: string }>> {
-  const { staff } = await requireAdmin();
+  const { staff } = await requireStaff();
   if (!uuidRe.test(id)) return { ok: false, error: "Bad task id." };
   try {
     await withAuditContext(staff.id, async (tx) => {

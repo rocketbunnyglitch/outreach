@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { staffMembers, tasks } from "@/db/schema";
-import { hasMinimumRole, requireStaff } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
@@ -96,7 +96,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
           {task.status === "pending" || task.status === "in_progress" ? (
             <CompleteTaskButton taskId={task.id} version={task.version} />
           ) : null}
-          {hasMinimumRole(currentStaff, "admin") ? <DeleteTaskButton taskId={task.id} /> : null}
+          {/* Any staff may delete (operator request 2026-06-10; was admin-only). */}
+          <DeleteTaskButton taskId={task.id} />
         </div>
       </header>
 
