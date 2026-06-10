@@ -135,7 +135,11 @@ export async function loadCampaignHealth(
       wristbandRequired: events.requiredWristbandCount,
       middleRequired: events.requiredMiddleCount,
       finalRequired: events.requiredFinalCount,
-      daysToEvent: sql<number | null>`(${events.eventDate} - now()::date)`,
+      // Toronto day, not UTC: the VPS runs UTC, so a bare now()::date rolls at
+      // 8pm Toronto -- tonight's crawl would vanish from health mid-evening.
+      daysToEvent: sql<
+        number | null
+      >`(${events.eventDate} - (now() at time zone 'America/Toronto')::date)`,
     })
     .from(events)
     .where(
@@ -145,7 +149,7 @@ export async function loadCampaignHealth(
         // Health is forward-looking: a crawl already in the past is history,
         // not something to action today. Excludes stale/never-run events from
         // the command center.
-        sql`${events.eventDate} >= now()::date`,
+        sql`${events.eventDate} >= (now() at time zone 'America/Toronto')::date`,
       ),
     )
     .orderBy(asc(events.eventDate));

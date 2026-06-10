@@ -69,7 +69,11 @@ export async function loadVenueLifecycleBoard(campaignId: string | null): Promis
       role: venueEvents.role,
       status: venueEvents.status,
       eventDate: events.eventDate,
-      daysToEvent: sql<number | null>`(${events.eventDate} - now()::date)`,
+      // Toronto day, not UTC (UTC rolls at 8pm Toronto -> confirmed cards
+      // would flip to "Completed" on event night before the crawl runs).
+      daysToEvent: sql<
+        number | null
+      >`(${events.eventDate} - (now() at time zone 'America/Toronto')::date)`,
       // Stage-gate inputs (Phase 5): contact method + proposed hours.
       email: venues.email,
       phoneE164: venues.phoneE164,
