@@ -153,6 +153,21 @@ describe("extractFacebook", () => {
       extractFacebook("https://facebook.com/sharer.php?u=x https://facebook.com/realbar"),
     ).toBe("https://facebook.com/realbar");
   });
+  it("skips the FBML namespace (facebook.com/2008/fbml)", () => {
+    const html =
+      '<html xmlns:fb="http://www.facebook.com/2008/fbml"> <a href="https://facebook.com/RealBarPage">FB</a>';
+    expect(extractFacebook(html)).toBe("https://facebook.com/RealBarPage");
+  });
+  it("skips profile.php (id is lost) and bare short-numeric slugs", () => {
+    expect(
+      extractFacebook("facebook.com/profile.php?id=123 facebook.com/2024 facebook.com/goodbar"),
+    ).toBe("https://facebook.com/goodbar");
+  });
+  it("keeps a genuine long numeric page id", () => {
+    expect(extractFacebook("https://facebook.com/100063686313678")).toBe(
+      "https://facebook.com/100063686313678",
+    );
+  });
 });
 
 describe("robotsDisallowsRoot", () => {

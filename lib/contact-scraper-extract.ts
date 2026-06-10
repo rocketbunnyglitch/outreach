@@ -312,9 +312,27 @@ const FB_RESERVED = new Set([
   "policies",
   "privacy",
   "events",
+  // Non-page paths + artifacts that the bare regex used to mis-capture:
+  "2008", // the FBML namespace: <html xmlns:fb="http://www.facebook.com/2008/fbml">
+  "profile.php", // facebook.com/profile.php?id=NNN -> id is in the query we drop, so useless
+  "pages",
+  "pg",
+  "groups",
+  "watch",
+  "marketplace",
+  "story.php",
+  "permalink.php",
+  "photo.php",
+  "media",
+  "people",
+  "public",
+  "search",
+  "hashtag",
 ]);
 
-/** First real Facebook page slug, returned as a normalized page URL. */
+/** First real Facebook page slug, returned as a normalized page URL. Skips
+ *  reserved paths, the FBML namespace, and bare short-numeric ids (years /
+ *  version artifacts; genuine FB numeric page ids are 8+ digits). */
 export function extractFacebook(html: string): string | null {
   const re = /(?:https?:\/\/)?(?:www\.)?facebook\.com\/([a-zA-Z0-9.\-]+)/gi;
   let m: RegExpExecArray | null;
@@ -323,6 +341,9 @@ export function extractFacebook(html: string): string | null {
     const slug = (m[1] ?? "").replace(/\.$/, "");
     if (!slug) continue;
     if (FB_RESERVED.has(slug.toLowerCase())) continue;
+    // Reject bare numeric slugs shorter than a real FB page id (catches the
+    // "2008" FBML namespace, copyright years, SDK version numbers, etc.).
+    if (/^\d+$/.test(slug) && slug.length < 8) continue;
     return `https://facebook.com/${slug}`;
   }
   return null;
