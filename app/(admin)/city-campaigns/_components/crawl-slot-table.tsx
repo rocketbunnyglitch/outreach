@@ -1567,9 +1567,9 @@ function InlineCell({
           className={cn(
             "border-transparent bg-transparent pr-5 transition-colors",
             // Hours + bar-contact render compact mono (operator request:
-            // smaller time + contact name in the crawl tables) so the dense
-            // columns scan like the read-only Phone cell.
-            field === "drinkSpecials" ? "h-7 text-xs" : "h-6 font-mono text-[11px]",
+            // smaller time + contact name -- the values overflowed their
+            // narrow columns at the default size).
+            field === "drinkSpecials" ? "h-7 px-2 text-xs" : "h-6 px-1.5 font-mono text-[10px]",
             "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
             "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
             "placeholder:text-zinc-400/60",
@@ -1693,7 +1693,9 @@ function SlotStatusSelect({
       onChange={(e) => handleChange(e.target.value)}
       disabled={pending}
       className={cn(
-        "w-full appearance-none rounded-md border border-transparent bg-transparent px-2 py-1 font-medium font-mono text-[10px] uppercase tracking-[0.1em] transition-colors",
+        // 9px + tighter tracking/padding: at 10px/0.1em the longer labels
+        // overflowed the narrow Status column (operator request).
+        "w-full appearance-none rounded-md border border-transparent bg-transparent px-1.5 py-1 font-medium font-mono text-[9px] uppercase tracking-[0.05em] transition-colors",
         "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
         "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
         opt?.tone,
