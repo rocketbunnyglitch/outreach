@@ -24,11 +24,18 @@ module.exports = {
       name: "outreach",
       cwd: "/var/www/outreach",
       script: ".next/standalone/server.js",
-      // Single instance for now. Cluster mode can be enabled when CPU-bound;
-      // be careful about BullMQ workers if you do — duplicate workers will
-      // process jobs N times.
+      // CLUSTER mode with a single instance (2026-06-10, atomic-release
+      // deploys): in fork mode `pm2 reload` is stop-then-start -- a 1-5s
+      // outage on :3001, which nginx pins ALL traffic to. Cluster reload
+      // overlaps the old and new worker on the same port (the cluster
+      // master holds the listener), making deploy reloads genuinely
+      // gapless. Still ONE instance: the cron/queue workers are external
+      // (system cron -> /api/cron/*), but keep instances at 1 unless that
+      // has been re-verified -- N instances would also multiply SSE fan-in.
+      // cwd is the /var/www/outreach SYMLINK, so a reload after the deploy
+      // script's symlink flip starts the new worker in the new release.
       instances: 1,
-      exec_mode: "fork",
+      exec_mode: "cluster",
 
       // Environment: PM2 doesn't load .env automatically. Use Node 20+
       // --env-file (we're on Node 22) so the standalone server.js sees
