@@ -879,6 +879,7 @@ export interface WorklistComebackRow {
 export async function loadWorklistComebacks(opts: {
   staffId: string;
 }): Promise<WorklistComebackRow[]> {
+  const campaignScope = await currentCampaignThreadScope();
   const rows = await db
     .select({
       venueEventId: venueEvents.id,
@@ -901,6 +902,8 @@ export async function loadWorklistComebacks(opts: {
         eq(cityCampaigns.leadStaffId, opts.staffId),
         sql`${venueEvents.cancelledAt} IS NOT NULL`,
         sql`${emailThreads.lastInboundAt} > ${venueEvents.cancelledAt}`,
+        // Only this campaign's mail (gmail label scope).
+        campaignScope,
       ),
     )
     .orderBy(desc(emailThreads.lastInboundAt));
@@ -1135,6 +1138,7 @@ export interface WorklistSlotChangeRow {
 export async function loadWorklistSlotChanges(opts: {
   staffId: string;
 }): Promise<WorklistSlotChangeRow[]> {
+  const campaignScope = await currentCampaignThreadScope();
   const rows = await db
     .select({
       threadId: emailThreads.id,
@@ -1156,6 +1160,8 @@ export async function loadWorklistSlotChanges(opts: {
       and(
         eq(emailThreads.slotChangeRequested, true),
         isNull(emailThreads.deletedAt),
+        // Only this campaign's mail (gmail label scope).
+        campaignScope,
         sql`EXISTS (
           SELECT 1 FROM city_campaigns cc
           WHERE cc.lead_staff_id = ${opts.staffId}
