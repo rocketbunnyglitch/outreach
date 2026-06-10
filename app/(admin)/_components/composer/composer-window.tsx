@@ -1355,6 +1355,19 @@ export function ComposerWindow({ instance, isMobile }: Props) {
                   patch.bodyHtml = stripped || null;
                 }
                 setField(instance.id, patch);
+                // An EDITED templated draft keeps its merge-rendered
+                // {{signature_block}} text (the re-apply effect is gated on
+                // !userEdited so we never clobber writing). Warn instead of
+                // silently sending the old brand's sign-off from the new
+                // inbox's domain.
+                if (instance.userEdited && instance.composeMode === "new" && instance.templateId) {
+                  toast.show({
+                    kind: "info",
+                    message:
+                      "Kept your edits — double-check the sign-off in the body still matches the new From inbox before sending.",
+                    tag: "composer.from-swap",
+                  });
+                }
               }}
               className="flex-1 bg-transparent text-xs outline-none"
             >
