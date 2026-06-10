@@ -260,6 +260,7 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
                 crawl={crawl}
                 cityId={sheetData.cityId}
                 cityCampaignId={sheetData.cityCampaignId}
+                campaignId={cc.campaign.id}
                 staff={sheetData.staff}
               />
             </div>

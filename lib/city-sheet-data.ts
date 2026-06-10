@@ -86,6 +86,8 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       crawlName: events.crawlName,
       eventDate: events.eventDate,
       ticketsSold: events.ticketSalesCount,
+      eventbriteEventId: events.eventbriteEventId,
+      eventbriteUrl: events.eventbriteUrl,
       middleVenueGroupId: events.middleVenueGroupId,
       // Drives day_party vs standard slot table layout.
       crawlFormat: events.crawlFormat,
@@ -431,6 +433,8 @@ export async function loadCitySheet(cityCampaignId: string): Promise<CitySheetDa
       crawlName: ev.crawlName ?? null,
       eventDate: String(ev.eventDate ?? ""),
       ticketsSold: ev.ticketsSold ?? 0,
+      eventbriteEventId: ev.eventbriteEventId ?? null,
+      eventbriteUrl: ev.eventbriteUrl ?? null,
       wristbandShip: wbByEvent.get(ev.id)?.ship ?? "none",
       wristbandVenueEventId: wbByEvent.get(ev.id)?.venueEventId ?? null,
       hosts: hostsByEvent.get(ev.id) ?? [],

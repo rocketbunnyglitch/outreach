@@ -121,6 +121,10 @@ export interface CrawlCard {
   routeLabel: string | null;
   eventDate: string;
   ticketsSold: number;
+  /** Linked Eventbrite event (null = not linked). Drives the crawl-card
+   *  corner controls (link / open / sync). */
+  eventbriteEventId: string | null;
+  eventbriteUrl: string | null;
   /**
    * Wristband shipping rollup for this crawl, derived from the
    * wristbands row tied to the wristband-role venue_event. Drives the

@@ -1,5 +1,6 @@
 "use client";
 
+import { EventbriteCell } from "@/app/(admin)/all-crawls/_components/eventbrite-cell";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -15,11 +16,13 @@ import {
   Check,
   CheckCircle2,
   ExternalLink,
+  Globe,
   Loader2,
   MessageSquare,
   PauseCircle,
   Pencil,
   Plus,
+  RefreshCw,
   Repeat2,
   RotateCcw,
   Trash2,
@@ -46,6 +49,8 @@ interface Props {
   crawl: CrawlCard;
   cityId: string;
   cityCampaignId: string;
+  /** Parent campaign -- needed by the Eventbrite corner controls. */
+  campaignId: string;
   staff: Array<{ id: string; displayName: string }>;
 }
 
@@ -643,7 +648,7 @@ function ReuseChip({ reuse }: { reuse: SlotRow["reuse"] }) {
  *     dashboard pill palette so the city dashboard and city sheet read
  *     as the same visual system
  */
-export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) {
+export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staff }: Props) {
   const [extraSlots, setExtraSlots] = useState<
     Array<{ role: "middle" | "alt_final"; slotPosition: number }>
   >([]);
@@ -745,7 +750,14 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, staff }: Props) 
     >
       <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <CrawlHeader crawl={crawl} cityCampaignId={cityCampaignId} />
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
+          <CrawlCornerControls
+            eventId={crawl.eventId}
+            campaignId={campaignId}
+            eventbriteEventId={crawl.eventbriteEventId}
+            eventbriteUrl={crawl.eventbriteUrl}
+            ticketsSold={crawl.ticketsSold}
+          />
           {allVenuesConfirmed && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] ring-1 ring-emerald-500/30 ring-inset dark:text-emerald-300">
               <CheckCircle2 className="h-2.5 w-2.5" />
@@ -1819,6 +1831,67 @@ function DemoteMenu({
           Remove row. No queue changes.
         </span>
       </button>
+    </div>
+  );
+}
+
+/**
+ * Crawl-card corner controls (scaffold, operator request 2026-06-10):
+ *   1. Eventbrite link / open / sync -- REUSES the All-Crawls EventbriteCell
+ *      (paste an EB id to link; popout to the live page; sync pulls sales).
+ *   2. Map sync (stub): will sync this crawl's venues onto the crawl map --
+ *      exact behavior to be specced; the button explains it's coming.
+ *   3. Crawls map link: plain world icon to /maps.
+ */
+function CrawlCornerControls({
+  eventId,
+  campaignId,
+  eventbriteEventId,
+  eventbriteUrl,
+  ticketsSold,
+}: {
+  eventId: string;
+  campaignId: string;
+  eventbriteEventId: string | null;
+  eventbriteUrl: string | null;
+  ticketsSold: number;
+}) {
+  const toast = useToast();
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <EventbriteCell
+        eventId={eventId}
+        campaignId={campaignId}
+        currentEbId={eventbriteEventId}
+        currentEbUrl={eventbriteUrl}
+        ticketsSold={ticketsSold}
+      />
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() =>
+            toast.show({
+              kind: "info",
+              message: "Map sync is scaffolded -- the full venue-to-map sync lands in a follow-up.",
+              tag: "crawl.map-sync",
+            })
+          }
+          title="Map sync -- sync this crawl's venues to the crawl map (coming soon)"
+          aria-label="Sync venues to the crawl map (coming soon)"
+          className="inline-flex items-center gap-0.5 rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+        >
+          <Globe className="h-3 w-3" />
+          <RefreshCw className="h-2.5 w-2.5" />
+        </button>
+        <Link
+          href="/maps"
+          title="Open the crawls map"
+          aria-label="Open the crawls map"
+          className="rounded p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+        >
+          <Globe className="h-3 w-3" />
+        </Link>
+      </div>
     </div>
   );
 }
