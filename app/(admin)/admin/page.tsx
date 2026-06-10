@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { campaigns, cities, cityCampaigns, staffMembers } from "@/db/schema";
+import { campaigns, cities, cityCampaigns, crawlFinalizations, staffMembers } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CAMPAIGN_REGISTRY } from "@/lib/import/campaigns";
@@ -104,6 +104,31 @@ async function renderAdminPage() {
     dataIssues.push(`${label}: ${msg}`);
     return fallback;
   };
+
+  // Crawls finalized per staffer (migration 0133). Separately guarded --
+  // the table is brand new and this card must never take /admin down.
+  let finalizedCounts: Array<{ staffId: string; displayName: string; n: number }> = [];
+  try {
+    const rows = await db
+      .select({
+        staffId: crawlFinalizations.staffId,
+        displayName: staffMembers.displayName,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(crawlFinalizations)
+      .innerJoin(staffMembers, eq(staffMembers.id, crawlFinalizations.staffId))
+      .groupBy(crawlFinalizations.staffId, staffMembers.displayName);
+    finalizedCounts = rows
+      .filter((r) => r.staffId !== null)
+      .map((r) => ({
+        staffId: r.staffId as string,
+        displayName: r.displayName,
+        n: Number(r.n),
+      }))
+      .sort((a, b) => b.n - a.n);
+  } catch (err) {
+    logger.warn({ err }, "admin: finalized-crawls count skipped (non-fatal)");
+  }
 
   const results = await Promise.allSettled([
     db
@@ -240,6 +265,28 @@ async function renderAdminPage() {
           label="Active staff"
           value={staffCount}
         />
+      </section>
+
+      {/* Crawls finalized per staffer (migration 0133): who confirmed the
+          venue that completed each crawl's lineup. Counts accrue from
+          2026-06-10 onward (the tracking table's birth). */}
+      <section className="card-surface px-6 py-4">
+        <h2 className="font-semibold text-sm tracking-tight">Crawls finalized per person</h2>
+        {finalizedCounts.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-500">
+            No crawls finalized yet — the first staffer to confirm a crawl&apos;s last open slot
+            appears here.
+          </p>
+        ) : (
+          <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 md:grid-cols-4">
+            {finalizedCounts.map((f) => (
+              <li key={f.staffId} className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="truncate">{f.displayName}</span>
+                <span className="font-mono text-[11px] text-zinc-500 tabular-nums">{f.n}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Campaigns */}
