@@ -21,7 +21,7 @@ import "server-only";
  *     attach to it instead of creating a duplicate.
  */
 
-import { cities, venues } from "@/db/schema";
+import { cities, connectedAccounts, venues } from "@/db/schema";
 import { generateCompletion, isAiConfigured } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -133,6 +133,25 @@ export async function autoTagOrCreateVenue(opts: {
   if (!domain || FREE_EMAIL_DOMAINS.has(domain)) return none;
 
   try {
+    // Gate 3: NEVER our own outreach identities. Staff forwarding/replying
+    // between team inboxes ingests as "inbound" with one of OUR addresses as
+    // the sender -- auto-create then stamped a STAFF email as a venue's
+    // contact email (5 venues + 1 duplicate venue, found 2026-06-10). Match
+    // by DOMAIN, not exact address: aliases on our sending domains (e.g.
+    // yuri@events-perse.com) are equally ours.
+    const ownAccounts = await db
+      .select({ email: connectedAccounts.emailAddress })
+      .from(connectedAccounts);
+    const ownDomains = new Set(
+      ownAccounts.map((a) => a.email.split("@")[1]?.toLowerCase()).filter(Boolean),
+    );
+    if (ownDomains.has(domain)) {
+      logger.info(
+        { fromEmail: opts.fromEmail },
+        "venue auto-create skipped: sender is one of our own outreach domains",
+      );
+      return none;
+    }
     const cityRows = await db.select({ id: cities.id, name: cities.name }).from(cities);
     if (cityRows.length === 0) return none;
 
