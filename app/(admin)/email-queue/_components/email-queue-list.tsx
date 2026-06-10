@@ -29,6 +29,17 @@ interface Props {
 }
 
 export function EmailQueueList({ queued, sending, sent, viewerTimezone }: Props) {
+  const router = useRouter();
+  // The page is a static server render; without this it would show "sending
+  // now..." indefinitely even after the cron actually sends. Poll while items
+  // are in-flight so rows flip to "sent" on their own, then stop.
+  const pendingCount = queued.length + sending.length;
+  useEffect(() => {
+    if (pendingCount === 0) return;
+    const id = setInterval(() => router.refresh(), 12_000);
+    return () => clearInterval(id);
+  }, [pendingCount, router]);
+
   const total = queued.length + sending.length + sent.length;
   if (total === 0) {
     return (
