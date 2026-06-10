@@ -48,6 +48,7 @@ import { db, withAuditContext } from "@/lib/db";
 import { parseEmailHeader, parseEmailList } from "@/lib/email-address";
 import { refreshAccessToken } from "@/lib/gmail";
 import { syncGmailLabelsForAccount } from "@/lib/gmail-label-sync";
+import { decodeHtmlEntities } from "@/lib/html-entities";
 import { logger } from "@/lib/logger";
 import { routeMisroutedReply } from "@/lib/misrouted-reply";
 import { publishRealtime } from "@/lib/realtime-publish";
@@ -915,7 +916,10 @@ async function ingestMessage(opts: {
   const bccHeader = headers.bcc ?? "";
   const rfcMessageId = headers["message-id"] ?? null;
   const inReplyTo = headers["in-reply-to"] ?? null;
-  const snippet = (msg.snippet as string) ?? "";
+  // Gmail returns snippets HTML-entity-encoded ("That&#39;s great") -- decode
+  // once here so every plain-text render site (thread list, worklist
+  // previews) shows real apostrophes instead of raw entities.
+  const snippet = decodeHtmlEntities((msg.snippet as string) ?? "");
   const labels = (msg.labelIds as string[]) ?? [];
   const internalDateMs = Number.parseInt(msg.internalDate as string, 10);
   const receivedAt = Number.isFinite(internalDateMs)
