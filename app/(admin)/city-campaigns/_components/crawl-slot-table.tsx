@@ -1565,7 +1565,11 @@ function InlineCell({
           disabled={disabled || pending}
           placeholder={disabled ? "—" : placeholder}
           className={cn(
-            "h-7 border-transparent bg-transparent pr-5 text-xs transition-colors",
+            "border-transparent bg-transparent pr-5 transition-colors",
+            // Hours + bar-contact render compact mono (operator request:
+            // smaller time + contact name in the crawl tables) so the dense
+            // columns scan like the read-only Phone cell.
+            field === "drinkSpecials" ? "h-7 text-xs" : "h-6 font-mono text-[11px]",
             "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white",
             "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
             "placeholder:text-zinc-400/60",

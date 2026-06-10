@@ -27,6 +27,10 @@ interface VenueEventRow {
   slotEndTime: string | null;
   ourContactName: string | null;
   confirmedAt: Date | null;
+  /** Bar-side contacts synced from the crawl tables, most recent FIRST:
+   *  this crawl's night-of contact, then the venue's latest from other
+   *  crawls, then the venue master record. */
+  barContacts: { name: string; phone: string | null }[];
 }
 
 interface Props {
@@ -128,6 +132,22 @@ function VenueEventRowDisplay({ ve, onEdit }: { ve: VenueEventRow; onEdit: () =>
                   </>
                 )}
               </p>
+              {ve.barContacts.length > 0 && ve.barContacts[0] && (
+                <p className="font-mono text-[11px] text-zinc-500">
+                  ☎ {ve.barContacts[0].name}
+                  {ve.barContacts[0].phone ? ` · ${ve.barContacts[0].phone}` : ""}
+                  {ve.barContacts.length > 1 && (
+                    <span className="text-zinc-400">
+                      {" "}
+                      · also:{" "}
+                      {ve.barContacts
+                        .slice(1)
+                        .map((c) => c.name)
+                        .join(", ")}
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
           </div>
           <Badge tone={statusTone(ve.status)}>{ve.status}</Badge>

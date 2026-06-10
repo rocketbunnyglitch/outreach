@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import { getMinimumRoleOrNull } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -70,6 +70,39 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
 
   // Venues in the same city, not yet linked → addable
   const linkedVenueIds = veRows.map((r) => r.venue.id);
+
+  // Bar contacts, synced from the city-page crawl tables: a venue accumulates
+  // night-of contacts across crawls (one per venue_event), so collect every
+  // named contact for the linked venues ordered most-recently-updated FIRST.
+  // Display resolution per row: this crawl's own contact, then the venue's
+  // most recent contact from any other crawl, then the venue master record.
+  const contactRows =
+    linkedVenueIds.length > 0
+      ? await db
+          .select({
+            venueId: venueEvents.venueId,
+            name: venueEvents.nightOfContactName,
+            phone: venueEvents.nightOfContactPhoneE164,
+          })
+          .from(venueEvents)
+          .where(
+            and(
+              inArray(venueEvents.venueId, linkedVenueIds),
+              isNotNull(venueEvents.nightOfContactName),
+            ),
+          )
+          .orderBy(desc(venueEvents.updatedAt))
+      : [];
+  const contactsByVenue = new Map<string, { name: string; phone: string | null }[]>();
+  for (const c of contactRows) {
+    const name = c.name?.trim();
+    if (!name) continue;
+    const list = contactsByVenue.get(c.venueId) ?? [];
+    if (!list.some((x) => x.name.toLowerCase() === name.toLowerCase())) {
+      list.push({ name, phone: c.phone });
+    }
+    contactsByVenue.set(c.venueId, list);
+  }
   const addableQuery = db
     .select({
       id: venues.id,
@@ -170,17 +203,30 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
 
       <VenueEventsSection
         eventId={id}
-        venueEvents={veRows.map((r) => ({
-          id: r.ve.id,
-          venueId: r.venue.id,
-          venueName: r.venue.name,
-          role: r.ve.role,
-          status: r.ve.status,
-          slotStartTime: r.ve.slotStartTime,
-          slotEndTime: r.ve.slotEndTime,
-          ourContactName: r.ourContact?.displayName ?? null,
-          confirmedAt: r.ve.confirmedAt,
-        }))}
+        venueEvents={veRows.map((r) => {
+          const ownName = r.ve.nightOfContactName?.trim();
+          const own = ownName ? { name: ownName, phone: r.ve.nightOfContactPhoneE164 } : null;
+          const others = (contactsByVenue.get(r.venue.id) ?? []).filter(
+            (c) => c.name.toLowerCase() !== own?.name.toLowerCase(),
+          );
+          const masterName = r.venue.contactName?.trim();
+          const fallback =
+            !own && others.length === 0 && masterName
+              ? [{ name: masterName, phone: r.venue.phoneE164 }]
+              : [];
+          return {
+            id: r.ve.id,
+            venueId: r.venue.id,
+            venueName: r.venue.name,
+            role: r.ve.role,
+            status: r.ve.status,
+            slotStartTime: r.ve.slotStartTime,
+            slotEndTime: r.ve.slotEndTime,
+            ourContactName: r.ourContact?.displayName ?? null,
+            confirmedAt: r.ve.confirmedAt,
+            barContacts: [...(own ? [own] : []), ...others, ...fallback].slice(0, 3),
+          };
+        })}
         addableVenues={addableVenues.map((v) => ({ id: v.id, name: v.name }))}
         staff={allStaff}
         addAction={addVenueToEvent}
