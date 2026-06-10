@@ -32,6 +32,9 @@ export interface ScrapedEmailView {
 export interface VenueEnrichmentCardProps {
   venueId: string;
   hasContactEmail: boolean;
+  /** The venue's CURRENT contact email, so saving a different one can ask
+   *  before silently overwriting a possibly hand-verified address. */
+  currentEmail: string | null;
   hasWebsite: boolean;
   status: string | null;
   lastAttemptLabel: string | null;
@@ -131,6 +134,16 @@ export function VenueEnrichmentCard(props: VenueEnrichmentCardProps) {
   function saveEmail(email: string, source: string) {
     const e = email.trim();
     if (!e || saving) return;
+    // One mis-click on a low-confidence scraped "Use" must not silently
+    // replace a hand-verified address -- confirm when it would CHANGE the
+    // stored email (no undo surface beyond the audit log).
+    if (
+      props.currentEmail &&
+      props.currentEmail.trim().toLowerCase() !== e.toLowerCase() &&
+      !window.confirm(`Replace the current contact email ${props.currentEmail} with ${e}?`)
+    ) {
+      return;
+    }
     startSaving(async () => {
       const fd = new FormData();
       fd.set("venueId", props.venueId);

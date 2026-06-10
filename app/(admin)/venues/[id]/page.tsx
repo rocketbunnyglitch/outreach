@@ -415,6 +415,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
             <VenueEnrichmentCard
               venueId={venue.id}
               hasContactEmail={Boolean(venue.email) || (venue.alternateEmails?.length ?? 0) > 0}
+              currentEmail={venue.email ?? null}
               hasWebsite={Boolean(venue.websiteUrl?.trim())}
               status={venue.lastEnrichmentStatus}
               lastAttemptLabel={enrichmentLastAttemptLabel}

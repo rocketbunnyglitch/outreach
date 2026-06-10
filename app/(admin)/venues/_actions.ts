@@ -777,7 +777,7 @@ const findEmailSchema = z.object({
  *   1. venues.email gets the new address
  *   2. ZeroBounce validation fires in the background (reuses
  *      lib/zerobounce.ts pattern from updateVenue)
- *   3. outreach_log entry written with channel='email', outcome='sent'
+ *   3. outreach_log entry written with channel='email', outcome='email_collected'
  *      and notes="Email collected via manual search · <source>" so the
  *      provenance is preserved in the venue's history timeline.
  *
@@ -814,9 +814,15 @@ export async function setVenueEmailFromSearch(
   const { venueId, email, outreachBrandId, source } = parsed.data;
 
   // Resolve a brand for the log row if the caller didn't provide one.
+  // Deterministic (oldest brand) -- with no ORDER BY the attribution was
+  // whatever row Postgres returned first.
   let brandId = outreachBrandId;
   if (!brandId) {
-    const fallback = await db.select({ id: outreachBrands.id }).from(outreachBrands).limit(1);
+    const fallback = await db
+      .select({ id: outreachBrands.id })
+      .from(outreachBrands)
+      .orderBy(outreachBrands.createdAt, outreachBrands.id)
+      .limit(1);
     brandId = fallback[0]?.id;
   }
 
@@ -824,16 +830,16 @@ export async function setVenueEmailFromSearch(
     await withAuditContext(staff.id, async (tx) => {
       await tx.update(venues).set({ email, updatedBy: staff.id }).where(eq(venues.id, venueId));
 
-      // Append provenance to outreach_log. Channel + outcome are
-      // intentionally generic ('email' / 'sent' both fit our intent —
-      // we're recording the moment we acquired an address). The notes
-      // field carries the story.
+      // Append provenance to outreach_log. outcome='email_collected' (a real
+      // enum value) -- the old outcome='sent' made every manual collection
+      // count as a SENT EMAIL in goal metrics and read as a send on the
+      // venue timeline, though nothing was sent.
       if (brandId) {
         await tx.insert(outreachLog).values({
           venueId,
           outreachBrandId: brandId,
           channel: "email",
-          outcome: "sent",
+          outcome: "email_collected",
           notes: source
             ? `Email collected via manual search · ${source.slice(0, 240)}`
             : "Email collected via manual search",
