@@ -154,7 +154,10 @@ export function LifecycleBoard({ board }: { board: LifecycleBoardData }) {
                   <p className="px-1 py-3 text-center text-[11px] text-zinc-400">—</p>
                 ) : (
                   shown.map((c) => {
-                    const draggable = isDraggableLane(c.lane);
+                    // "cold:" cards come from cold_outreach_entries (no
+                    // venue_event yet) -- visible but not movable.
+                    const draggable =
+                      isDraggableLane(c.lane) && !c.venueEventId.startsWith("cold:");
                     const showGate = draggable && !c.canConfirm;
                     return (
                       <div

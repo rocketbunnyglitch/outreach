@@ -9,7 +9,15 @@ import "server-only";
  * venue. (Drag-to-move with stage-gate enforcement is a follow-on.)
  */
 
-import { events, campaigns, cities, cityCampaigns, venueEvents, venues } from "@/db/schema";
+import {
+  events,
+  campaigns,
+  cities,
+  cityCampaigns,
+  coldOutreachEntries,
+  venueEvents,
+  venues,
+} from "@/db/schema";
 import { db } from "@/lib/db";
 import { readinessFromRow } from "@/lib/event-readiness-core";
 import {
@@ -19,7 +27,7 @@ import {
   groupByLane,
   venueEventToLane,
 } from "@/lib/pipeline-board-core";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 export interface BoardCard {
   lane: LaneKey;
@@ -139,6 +147,70 @@ export async function loadVenueLifecycleBoard(campaignId: string | null): Promis
       confirmMissing: gate.missing,
     };
   });
+
+  // Cold-outreach bridge (operator question 2026-06-10: "pipeline isn't
+  // showing all venues emailed"): cold-emailed venues live in
+  // cold_outreach_entries and have NO venue_event row until a slot is
+  // offered, so the board never showed them. Surface them as read-only
+  // cards -- email_sent/called/follow_up_due land in the Emailed lane,
+  // interested in Warm Reply. Synthetic ids ("cold:<entryId>") are not
+  // draggable (there is no venue_event to move).
+  if (campaignId) {
+    try {
+      const coldRows = await db
+        .select({
+          entryId: coldOutreachEntries.id,
+          status: coldOutreachEntries.status,
+          venueId: venues.id,
+          venueName: venues.name,
+          cityName: cities.name,
+        })
+        .from(coldOutreachEntries)
+        .innerJoin(venues, eq(venues.id, coldOutreachEntries.venueId))
+        .innerJoin(cityCampaigns, eq(cityCampaigns.id, coldOutreachEntries.cityCampaignId))
+        .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+        .where(
+          and(
+            eq(cityCampaigns.campaignId, campaignId),
+            isNull(coldOutreachEntries.archivedAt),
+            inArray(coldOutreachEntries.status, [
+              "email_sent",
+              "called",
+              "follow_up_due",
+              "interested",
+            ]),
+            sql`NOT EXISTS (
+              SELECT 1 FROM venue_events ve
+              JOIN events e ON e.id = ve.event_id
+              JOIN city_campaigns cc2 ON cc2.id = e.city_campaign_id
+              WHERE ve.venue_id = ${coldOutreachEntries.venueId}
+                AND cc2.campaign_id = ${campaignId}
+            )`,
+          ),
+        )
+        .orderBy(desc(coldOutreachEntries.updatedAt))
+        .limit(600);
+      for (const r of coldRows) {
+        cards.push({
+          lane: r.status === "interested" ? "warm" : "contacted",
+          venueEventId: `cold:${r.entryId}`,
+          venueId: r.venueId,
+          venueName: r.venueName,
+          cityName: r.cityName,
+          role: "cold",
+          status: r.status,
+          eventDate: "",
+          dateLabel: "",
+          daysToEvent: null,
+          canConfirm: false,
+          confirmMissing: [],
+        });
+      }
+    } catch (err) {
+      // Board still renders the venue_event cards if the bridge fails.
+      console.error("pipeline cold-outreach bridge failed", err);
+    }
+  }
 
   return { lanes: groupByLane(cards), total: cards.length, truncated };
 }
