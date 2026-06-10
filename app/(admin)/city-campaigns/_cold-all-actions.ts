@@ -193,7 +193,16 @@ export async function coldAllSelectedVenues(input: {
         eq(connectedAccounts.status, "connected"),
       ),
     );
-  const usableAccounts = accountRows.filter((a) => !a.paused);
+  // Dedupe by connected account: a duplicate campaign_connected_accounts row
+  // (it has no unique constraint on campaign+account) would otherwise count
+  // one inbox twice -- doubling its planned share today. Prefer the row that
+  // carries a brand so the T1 stays brand-matched.
+  const accountById = new Map<string, (typeof accountRows)[number]>();
+  for (const a of accountRows) {
+    const prev = accountById.get(a.id);
+    if (!prev || (!prev.brandId && a.brandId)) accountById.set(a.id, a);
+  }
+  const usableAccounts = [...accountById.values()].filter((a) => !a.paused);
   if (usableAccounts.length === 0) {
     return {
       ok: false,
@@ -402,8 +411,13 @@ export async function coldAllSelectedVenues(input: {
       bodyTemplateText: emailTemplates.bodyTemplateText,
     })
     .from(emailTemplates)
-    .where(and(eq(emailTemplates.templateCode, "T1"), isNull(emailTemplates.archivedAt)));
-  const defaultT1 = t1Rows[0];
+    .where(and(eq(emailTemplates.templateCode, "T1"), isNull(emailTemplates.archivedAt)))
+    // Deterministic order: with no ORDER BY the no-brand fallback below picked
+    // whatever row Postgres returned first (an arbitrary brand's T1).
+    .orderBy(emailTemplates.createdAt, emailTemplates.id);
+  // Fallback for a brand-less inbox: prefer this campaign's T1 over a random
+  // brand's global row.
+  const defaultT1 = t1Rows.find((t) => t.campaignId === campaignId) ?? t1Rows[0];
   if (!defaultT1) return { ok: false, error: "No T1 template is configured." };
   const pickT1 = (brandId: string | null): (typeof t1Rows)[number] => {
     if (brandId) {
