@@ -13,6 +13,7 @@
 
 import "server-only";
 import { emailThreads, staffOutreachEmails, venues } from "@/db/schema";
+import { currentCampaignThreadScope } from "@/lib/campaign-thread-scope";
 import { db } from "@/lib/db";
 import { loadSendUsage } from "@/lib/send-cap";
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
@@ -59,6 +60,9 @@ export async function loadInboxWidget(opts: {
   // We do this as a single query so the widget loads in one round
   // trip. The JOIN on staff_outreach_emails carries the
   // "fromMyInbox" signal.
+  // Only the current campaign's mail (gmail label scope, 2026-06-10) --
+  // workspace invoices / old-campaign threads don't belong on the dashboard.
+  const campaignScope = await currentCampaignThreadScope();
   const threadsRaw = await db
     .select({
       id: emailThreads.id,
@@ -77,6 +81,7 @@ export async function loadInboxWidget(opts: {
       and(
         eq(staffOutreachEmails.teamId, opts.teamId),
         eq(emailThreads.state, "needs_reply"),
+        campaignScope,
         or(
           eq(emailThreads.assignedStaffId, opts.userId),
           eq(staffOutreachEmails.ownerUserId, opts.userId),
@@ -96,6 +101,7 @@ export async function loadInboxWidget(opts: {
       and(
         eq(staffOutreachEmails.teamId, opts.teamId),
         eq(emailThreads.state, "needs_reply"),
+        campaignScope,
         or(
           eq(emailThreads.assignedStaffId, opts.userId),
           eq(staffOutreachEmails.ownerUserId, opts.userId),

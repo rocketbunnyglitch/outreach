@@ -20,7 +20,7 @@ import {
   venueEvents,
   venues,
 } from "@/db/schema";
-import { getCurrentCampaign } from "@/lib/current-campaign";
+import { currentCampaignThreadScope } from "@/lib/campaign-thread-scope";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import {
@@ -42,37 +42,9 @@ import { computeEffectivePriority } from "./effective-priority";
 import { type EngagementBand, scoreEngagement } from "./engagement-score";
 import { type EventReadiness, readinessFromRow } from "./event-readiness";
 
-/**
- * Campaign scope for the thread-driven worklist queues (operator request
- * 2026-06-10): only threads tagged with the CURRENT campaign's gmail label
- * (campaigns.outreach_gmail_label, e.g. "halloween 2026") belong on today's
- * worklist -- older campaigns' mail must not surface. Falls back to a
- * campaign-era date cutoff when no label is configured, and to no filter at
- * all if campaign resolution fails (worklist must never go empty from a
- * scoping hiccup).
- */
-async function currentCampaignThreadScope() {
-  try {
-    const current = await getCurrentCampaign();
-    if (!current) return undefined;
-    const [row] = await db
-      .select({ label: campaigns.outreachGmailLabel })
-      .from(campaigns)
-      .where(eq(campaigns.id, current.campaign.id))
-      .limit(1);
-    const label = row?.label?.trim();
-    if (!label) return sql`${emailThreads.lastMessageAt} >= '2026-06-01'::timestamptz`;
-    return sql`EXISTS (
-      SELECT 1 FROM email_thread_labels tl
-      JOIN team_labels l ON l.id = tl.team_label_id
-      WHERE tl.thread_id = ${emailThreads.id}
-        AND lower(l.name) = lower(${label})
-    )`;
-  } catch (err) {
-    logger.warn({ err }, "worklist campaign scope skipped");
-    return undefined;
-  }
-}
+// Campaign gmail-label scope for the thread-driven queues -- shared with the
+// inbox + dashboard widget so every surface filters identically.
+// See lib/campaign-thread-scope.ts.
 
 /**
  * Effective priority per city campaign (Phase 2.15). Sums ticket sales and

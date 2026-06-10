@@ -30,6 +30,7 @@ import {
   venueEvents,
   venues,
 } from "@/db/schema";
+import { campaignLabelScopeFor, getCampaignLabel } from "@/lib/campaign-thread-scope";
 import { db } from "@/lib/db";
 import { sanitizeEmailHtml } from "@/lib/email-sanitize";
 import { parseSearchQuery } from "@/lib/inbox-search";
@@ -419,6 +420,15 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
     }
   })();
 
+  // Campaign scope = the campaign's GMAIL LABEL (operator request
+  // 2026-06-10): selecting a campaign shows every thread carrying its label
+  // regardless of inbox/attribution. Falls back to the old city-campaign
+  // attribution (incl. unattributed) when the campaign has no label set.
+  const campaignLabelScope =
+    filter.campaignId && !filter.cityCampaignId
+      ? await campaignLabelScopeFor(filter.campaignId)
+      : undefined;
+
   const rows = await db
     .select({
       id: emailThreads.id,
@@ -507,12 +517,13 @@ export async function fetchInboxThreads(filter: ThreadListFilter): Promise<Inbox
         // NOT hidden by campaign scope. Without OR-NULL, selecting a
         // campaign made every unmatched inbound vanish from the inbox.
         filter.campaignId && !filter.cityCampaignId
-          ? sql`(
+          ? (campaignLabelScope ??
+              sql`(
               ${emailThreads.cityCampaignId} IN (
                 SELECT id FROM city_campaigns WHERE campaign_id = ${filter.campaignId}
               )
               OR ${emailThreads.cityCampaignId} IS NULL
-            )`
+            )`)
           : undefined,
         filter.outreachBrandId
           ? eq(emailThreads.outreachBrandId, filter.outreachBrandId)
@@ -807,11 +818,18 @@ export async function fetchFolderCounts(opts: {
           sql`, `,
         )})`
       : sql``;
-  // Campaign filter — IN-subquery against city_campaigns. Skipped
-  // when no campaignId is set so the default counts span every
-  // campaign on the team.
+  // Campaign filter -- label-based when the campaign has a gmail label
+  // (matches the thread list's scope exactly, so left-rail counts agree with
+  // what the list shows); attribution fallback otherwise.
+  const countsLabel = opts.campaignId ? await getCampaignLabel(opts.campaignId) : null;
   const campaignFilter = opts.campaignId
-    ? sql`AND (et.city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId}) OR et.city_campaign_id IS NULL)`
+    ? countsLabel
+      ? sql`AND EXISTS (
+          SELECT 1 FROM email_thread_labels tl
+          JOIN team_labels l ON l.id = tl.team_label_id
+          WHERE tl.thread_id = et.id AND lower(l.name) = lower(${countsLabel})
+        )`
+      : sql`AND (et.city_campaign_id IN (SELECT id FROM city_campaigns WHERE campaign_id = ${opts.campaignId}) OR et.city_campaign_id IS NULL)`
     : sql``;
   const result = await db.execute<{
     inbox: number;
