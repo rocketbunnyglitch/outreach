@@ -8,6 +8,7 @@ import { loadInboxWidget } from "@/lib/inbox-widget-data";
 import { captureException } from "@/lib/logger";
 import { loadNextBestActions } from "@/lib/next-best-actions";
 import { loadTeamActivity } from "@/lib/team-activity";
+import { loadTeamCitySummary } from "@/lib/team-city-summary";
 import { loadTodayDigest } from "@/lib/today-data";
 import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
@@ -25,6 +26,7 @@ import { NotesWidget } from "./_components/dashboard/notes-widget";
 import { TargetDateKpi } from "./_components/dashboard/target-date-kpi";
 import { TasksWidget } from "./_components/dashboard/tasks-widget";
 import { TeamActivityWidget } from "./_components/dashboard/team-activity-widget";
+import { TeamCityCards } from "./_components/dashboard/team-city-cards";
 import { TodayWidget } from "./_components/dashboard/today-widget";
 import { TrackerDashboardTable } from "./_components/dashboard/tracker-dashboard-table";
 import { WhosOnline } from "./_components/dashboard/whos-online";
@@ -385,6 +387,10 @@ export default async function DashboardHome({
       </section>
 
       <TeamActivityWidget summary={teamActivity} />
+
+      {/* Per-person rollups (operator request 2026-06-10): confirmed venues,
+          open cities, and everyone's full city list with priority + sales. */}
+      {campaignId && <TeamCityCards team={await loadTeamCitySummary(campaignId)} />}
     </div>
   );
 }
