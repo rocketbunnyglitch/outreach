@@ -31,9 +31,14 @@ FAIL=0
 say() { echo "[smoke] $*"; }
 
 body_has_error_marker() {
-  # __next_error__ = Next's error-page <html id>; the client-exception text
-  # appears when the server streams the error shell.
-  grep -q '__next_error__\|Application error: a client-side exception' "$1"
+  # data-dgst= : Next streams <template data-dgst="..."> in place of any
+  #   server segment that threw -- present even when a custom error.tsx
+  #   boundary renders a graceful page with HTTP 200. (Verified live: the
+  #   intentionally-broken /venues evidence run returned 200 + this marker
+  #   and NOTHING else; healthy pages contain zero occurrences.)
+  # __next_error__ : Next's default error-page <html id>.
+  # "Application error:" : the client-exception shell text.
+  grep -q 'data-dgst=\|__next_error__\|Application error: a client-side exception' "$1"
 }
 
 # --- 1. health on both instances ---
