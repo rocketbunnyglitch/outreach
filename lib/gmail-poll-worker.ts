@@ -1210,13 +1210,36 @@ async function ingestMessage(opts: {
             createdBy: inbox.staff_member_id,
             updatedBy: inbox.staff_member_id,
           })
+          // Concurrent ingest of two messages on the same brand-new thread
+          // races this select-then-insert; without conflict handling the
+          // loser threw a unique violation and that message's ingest aborted
+          // until the next poll (and could be skipped entirely if the history
+          // cursor advanced past it).
+          .onConflictDoNothing({
+            target: [emailThreads.gmailThreadId, emailThreads.staffOutreachEmailId],
+          })
           .returning({ id: emailThreads.id }),
     );
-    if (!created[0]) {
-      throw new Error("thread insert returned no row");
+    if (created[0]) {
+      threadId = created[0].id;
+      threadCreated = true;
+    } else {
+      // Lost the race -- adopt the winner's thread row.
+      const winner = await db
+        .select({ id: emailThreads.id })
+        .from(emailThreads)
+        .where(
+          and(
+            eq(emailThreads.gmailThreadId, gmailThreadId),
+            eq(emailThreads.staffOutreachEmailId, inbox.id),
+          ),
+        )
+        .limit(1);
+      if (!winner[0]) {
+        throw new Error("thread insert conflicted but existing row not found");
+      }
+      threadId = winner[0].id;
     }
-    threadId = created[0].id;
-    threadCreated = true;
   }
 
   // Insert the message
