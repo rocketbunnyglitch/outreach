@@ -123,8 +123,10 @@ export async function computeGoalProgress(goal: GoalRow): Promise<GoalProgress> 
     goal.metric === "calls_made" ||
     goal.metric === "replies_received"
   ) {
+    // Channel values must match the outreach_channel ENUM ('call', not
+    // 'phone' -- the old literal made calls_made goals always count 0).
     const channel =
-      goal.metric === "emails_sent" ? "email" : goal.metric === "calls_made" ? "phone" : null; // replies_received doesn't filter by channel
+      goal.metric === "emails_sent" ? "email" : goal.metric === "calls_made" ? "call" : null; // replies_received doesn't filter by channel
 
     const scopeFilter =
       goal.scope === "outreach_brand"
@@ -139,7 +141,11 @@ export async function computeGoalProgress(goal: GoalRow): Promise<GoalProgress> 
       const outcomeFilter =
         goal.metric === "replies_received"
           ? sql`${outreachLog.outcome} IN ('interested','confirmed','callback_requested','declined')`
-          : null;
+          : goal.metric === "emails_sent"
+            ? // Provenance rows (address collected, nothing sent) must not
+              // count toward email-send goals.
+              sql`${outreachLog.outcome} <> 'email_collected'`
+            : null;
       const channelFilter = channel ? sql`${outreachLog.channel} = ${channel}` : null;
 
       const result = await db
