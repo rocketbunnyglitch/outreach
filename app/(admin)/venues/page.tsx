@@ -13,6 +13,7 @@ import { VenuesTable } from "./_components/venues-table";
 export const dynamic = "force-dynamic";
 
 export default async function VenuesListPage() {
+  if (process.env.NODE_ENV) throw new Error("smoke-test intentional break (evidence run c)");
   const { staff } = await requireStaff();
   const rows = await db
     .select({
