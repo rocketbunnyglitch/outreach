@@ -116,7 +116,7 @@ export async function countMalformedSuppression(): Promise<{ count: number; samp
       FROM email_suppression
       WHERE team_id = ${ctx.staff.teamId}
         AND (
-          email ~ '[<>"' || E'\n' || E'\r' || E'\t' || ' ]'
+          email ~ E'[<>"\\n\\r\\t ]'
           OR email !~ '^[^@\s]+@[^@\s]+$'
         )
       ORDER BY created_at DESC
@@ -153,7 +153,7 @@ export async function cleanMalformedSuppression(): Promise<ActionResult<{ delete
         DELETE FROM email_suppression
         WHERE team_id = ${ctx.staff.teamId}
           AND (
-            email ~ '[<>"' || E'\n' || E'\r' || E'\t' || ' ]'
+            email ~ E'[<>"\\n\\r\\t ]'
             OR email !~ '^[^@\s]+@[^@\s]+$'
           )
         RETURNING id
