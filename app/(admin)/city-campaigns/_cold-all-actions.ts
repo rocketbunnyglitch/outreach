@@ -30,6 +30,7 @@ import {
   emailDrafts,
   emailSuppression,
   emailTemplates,
+  emailValidations,
   venues,
 } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
@@ -39,6 +40,7 @@ import { logger } from "@/lib/logger";
 import { loadSendUsage } from "@/lib/send-cap";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { renderTemplate } from "@/lib/template-render";
+import { validateEmailsBatch } from "@/lib/zerobounce";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -60,6 +62,8 @@ export interface ColdAllSkips {
   suppressed: number;
   dnc: number;
   alreadyContacted: number;
+  /** ZeroBounce returned a non-green verdict (invalid/spamtrap/abuse/etc). */
+  failedValidation: number;
 }
 
 export interface ColdAllPlan {
@@ -76,6 +80,9 @@ export interface ColdAllPlan {
    *  -- no client-side date work, no hydration risk. */
   firstSendLabel: string | null;
   lastSendLabel: string | null;
+  /** Dry-run only: emails not yet ZeroBounce-checked. They're validated on
+   *  confirm and only the green ones are queued. */
+  pendingValidation: number;
 }
 
 export type ColdAllResult = ColdAllPlan | { ok: false; error: string };
@@ -265,6 +272,7 @@ export async function coldAllSelectedVenues(input: {
     suppressed: 0,
     dnc: 0,
     alreadyContacted: 0,
+    failedValidation: 0,
   };
   const survivors: Survivor[] = [];
   for (const r of entryRows) {
@@ -292,14 +300,48 @@ export async function coldAllSelectedVenues(input: {
     survivors.push({ entryId: r.entryId, venueId: r.venueId, venueName: r.venueName, email });
   }
 
-  // 7. Round-robin survivors across the operator's inboxes, then schedule each
-  //    inbox's share (fill today, spill to later days).
+  // 6b. ZeroBounce gate -- only queue emails ZeroBounce marks "valid" (green),
+  //     so we never send to a bounce-prone address (the #1 deliverability risk).
+  //     Dry-run uses cached verdicts only (free, fast); the real run validates
+  //     any un-checked emails first, then queues only the green ones.
+  let pendingValidation = 0;
+  const greenSurvivors: Survivor[] = [];
+  if (survivors.length > 0) {
+    const lowerEmails = [...new Set(survivors.map((s) => s.email.toLowerCase()))];
+    const valMap = new Map<string, string>();
+    const loadVerdicts = async (emails: string[]) => {
+      if (emails.length === 0) return;
+      const rows = await db
+        .select({ email: emailValidations.email, status: emailValidations.status })
+        .from(emailValidations)
+        .where(inArray(emailValidations.email, emails));
+      for (const r of rows) valMap.set(r.email.toLowerCase(), r.status);
+    };
+    await loadVerdicts(lowerEmails);
+    if (!input.dryRun) {
+      const uncached = lowerEmails.filter((e) => !valMap.has(e));
+      if (uncached.length > 0) {
+        await validateEmailsBatch(uncached, staff.id);
+        await loadVerdicts(uncached);
+      }
+    }
+    for (const s of survivors) {
+      const status = valMap.get(s.email.toLowerCase());
+      if (status === "valid") greenSurvivors.push(s);
+      else if (status === undefined)
+        pendingValidation += 1; // dry-run: not yet checked (validated on confirm)
+      else skipped.failedValidation += 1;
+    }
+  }
+
+  // 7. Round-robin the green survivors across the operator's inboxes, then
+  //    schedule each inbox's share (fill today, spill to later days).
   const now = Date.now();
   const perAccount: Array<{ acct: AccountPlan; items: Survivor[] }> = accounts.map((acct) => ({
     acct,
     items: [],
   }));
-  survivors.forEach((s, i) => {
+  greenSurvivors.forEach((s, i) => {
     const bucket = perAccount[i % perAccount.length];
     if (bucket) bucket.items.push(s);
   });
@@ -344,6 +386,7 @@ export async function coldAllSelectedVenues(input: {
     lastSendAt: lastMs != null ? new Date(lastMs).toISOString() : null,
     firstSendLabel: firstMs != null ? SEND_LABEL_FMT.format(new Date(firstMs)) : null,
     lastSendLabel: lastMs != null ? SEND_LABEL_FMT.format(new Date(lastMs)) : null,
+    pendingValidation,
   };
 
   if (input.dryRun || planned.length === 0) return plan;

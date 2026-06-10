@@ -18,6 +18,7 @@ const SKIP_LABEL: Record<string, string> = {
   suppressed: "on suppression list",
   dnc: "do-not-contact",
   alreadyContacted: "already contacted",
+  failedValidation: "failed ZeroBounce check",
 };
 
 export function ColdAllModal({
@@ -141,6 +142,13 @@ export function ColdAllModal({
                   randomized intervals respecting each inbox's daily cap + warmup.
                 </p>
               </>
+            )}
+            {plan.pendingValidation > 0 && (
+              <p className="text-xs text-sky-700 dark:text-sky-400">
+                <span className="tabular-nums">{plan.pendingValidation}</span> not yet
+                ZeroBounce-checked — they're verified on confirm and only green (valid) ones are
+                sent.
+              </p>
             )}
             {skips.length > 0 && (
               <p className="text-xs text-amber-700 dark:text-amber-400">
