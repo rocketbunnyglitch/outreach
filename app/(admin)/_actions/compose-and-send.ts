@@ -33,6 +33,7 @@ import {
   venues,
 } from "@/db/schema";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
+import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
 import { searchGmailContacts } from "@/lib/gmail";
 import { logger } from "@/lib/logger";
@@ -316,6 +317,19 @@ export async function listComposeContext(
     campaignId = cc?.campaignId ?? null;
     campaignGmailLabel = cc?.gmailLabel ?? null;
     attributedCityName = cc?.cityName ?? null;
+  }
+
+  // Fallback: a cold compose opened from the venue page (VenueEmailButton) or
+  // any surface that doesn't carry a city-campaign passes no cityCampaignId, so
+  // campaignId would stay null -- which silently disables the per-brand template
+  // variation AND the {{company_name}}/{{your_name}}/{{signature_block}}
+  // resolution (both are gated on a campaign). Fall back to the operator's
+  // current campaign so the From inbox's brand + alias still drive the template
+  // and signature. Without this, switching From between brand inboxes changes
+  // nothing because every inbox resolves to the same default (no campaign).
+  if (!campaignId) {
+    const current = await getCurrentCampaign();
+    campaignId = current?.campaign.id ?? null;
   }
 
   // Default the sending email to the composer's default From (first inbox) so

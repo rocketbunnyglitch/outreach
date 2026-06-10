@@ -367,6 +367,22 @@ export function ComposerWindow({ instance, isMobile }: Props) {
       .then((ctx) => {
         if (cancelled) return;
         setInboxes(ctx.inboxes);
+        // Brand-swap fix: when the From inbox changed, ctx.templates now holds
+        // the sending brand's variation per code -- with DIFFERENT row ids than
+        // the previous brand's. If the selected templateId still points at the
+        // old brand's row, the re-apply effect's applyTemplate() can't find it
+        // and bails, so the body never swaps. Re-point templateId at the same
+        // template CODE's new-brand row before swapping the list.
+        if (instance.templateId && templates) {
+          const prevCode =
+            templates.find((t) => t.id === instance.templateId)?.templateCode ?? null;
+          if (prevCode) {
+            const remapped = ctx.templates.find((t) => t.templateCode === prevCode);
+            if (remapped && remapped.id !== instance.templateId) {
+              setField(instance.id, { templateId: remapped.id });
+            }
+          }
+        }
         setTemplates(ctx.templates);
         setRenderContext(ctx.renderContext);
         setLabels(ctx.labels);
