@@ -76,6 +76,16 @@ export async function composeAndSendImpl(
     primaryEmail: string;
   },
   formData: FormData,
+  /** Server-only options -- NOT read from formData on purpose: formData can
+   *  come from the client, these flags must only be settable by trusted
+   *  server callers (the scheduled-send cron). */
+  serverOpts?: {
+    /** Skip the 5-8 min cold-send pacing cooldown. Set by the cron for
+     *  operator-QUEUED manual sends (not Cold All): the operator asked for
+     *  queued mail to drain within minutes, and the queue stagger already
+     *  paces them. Daily cap / warmup / pause stay fully enforced. */
+    skipPacingCooldown?: boolean;
+  },
 ): Promise<ComposeResult> {
   // Readonly role can view mail but never send. Hard gate before any
   // work; the composer/reply UI is also hidden client-side, but this
@@ -497,27 +507,37 @@ export async function composeAndSendImpl(
       }
       // Cold-send pacing cooldown (migration 0106) gets its own block reason so
       // the composer can show the countdown ring instead of a cap message.
+      // The cron passes skipPacingCooldown for operator-QUEUED manual sends so
+      // a staff batch drains within minutes instead of one email per tick;
+      // pause + daily cap above/below stay enforced.
       if (preflight.reason === "cooldown") {
+        if (!serverOpts?.skipPacingCooldown) {
+          return {
+            ok: false,
+            error: `Cold-send cooldown active on ${inbox.email}. Pacing between cold sends -- the next one unlocks shortly.${
+              hasMinimumRole(staff, "admin") ? " Click 'Send anyway' to override." : ""
+            }`,
+            cooldownBlocked: true,
+            cooldownUntil: preflight.usage.cooldownUntil,
+            usage: preflight.usage,
+          };
+        }
+        logger.info(
+          { fromAccountId, userId: staff.id },
+          "composeAndSend: operator-queued send proceeding through pacing cooldown (cron dispatch)",
+        );
+      } else {
         return {
           ok: false,
-          error: `Cold-send cooldown active on ${inbox.email}. Pacing between cold sends -- the next one unlocks shortly.${
-            hasMinimumRole(staff, "admin") ? " Click 'Send anyway' to override." : ""
+          error: `Daily cold-send cap reached on ${inbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
+            hasMinimumRole(staff, "admin")
+              ? "Click 'Bypass cap' to send anyway."
+              : "Try a different inbox, or ask an admin to bypass."
           }`,
-          cooldownBlocked: true,
-          cooldownUntil: preflight.usage.cooldownUntil,
+          capBlocked: true,
           usage: preflight.usage,
         };
       }
-      return {
-        ok: false,
-        error: `Daily cold-send cap reached on ${inbox.email} (${preflight.usage.used} / ${preflight.usage.cap}). ${
-          hasMinimumRole(staff, "admin")
-            ? "Click 'Bypass cap' to send anyway."
-            : "Try a different inbox, or ask an admin to bypass."
-        }`,
-        capBlocked: true,
-        usage: preflight.usage,
-      };
     }
     logger.warn(
       { fromAccountId, userId: staff.id, reason: preflight.reason },

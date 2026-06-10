@@ -380,7 +380,18 @@ export async function queueColdSend(
       .limit(1);
 
     const base = latest?.scheduledFor && latest.scheduledFor > now ? latest.scheduledFor : now;
-    const scheduledFor = new Date(base.getTime() + randomQueueGapMs());
+    let scheduledFor = new Date(base.getTime() + randomQueueGapMs());
+    // Operator rule (2026-06-10): a manually queued email sends within 8
+    // minutes, no matter how deep this inbox's queue already is. The random
+    // stagger applies until it would push past the cap; beyond that, drafts
+    // bunch up just under the cap (small backward jitter keeps timestamps
+    // distinct) and the cron drains them together -- it skips the pacing
+    // cooldown for operator-queued manual sends.
+    const MAX_QUEUE_DELAY_MS = 8 * 60_000;
+    const latestAllowed = now.getTime() + MAX_QUEUE_DELAY_MS;
+    if (scheduledFor.getTime() > latestAllowed) {
+      scheduledFor = new Date(latestAllowed - Math.floor(Math.random() * 60_000));
+    }
 
     await db
       .update(emailDrafts)

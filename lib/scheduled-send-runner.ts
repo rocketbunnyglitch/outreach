@@ -231,13 +231,27 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
     // Template attribution -- recorded on email_send_events for
     // per-template analytics. Null when composed freeform.
     if (draft.templateId) fd.set("templateId", draft.templateId);
+    // The operator's Queue / Cold All click IS the human acknowledgment for
+    // the interactive pre-send warnings (possible-duplicate, risky-address,
+    // recent-decline). The cron can't "click through" a confirm dialog, so
+    // without this a queued draft with ANY warning failed and retried every
+    // tick forever -- the 2026-06-10 "staff queued emails never send"
+    // incident (4 drafts looping on Send anyway? / duplicate warnings).
+    if (draft.sendMode === "operator_scheduled") {
+      fd.set("ackDuplicates", "1");
+    }
     // Scheduled sends never bypass the cap -- if the owner's daily
     // window is full, the draft retries on the next tick. (No
     // bypassCap / ackDuplicates fields: the cron can't acknowledge
     // interactive warnings, so a flagged draft simply retries.)
 
     try {
-      const result = await composeAndSendImpl(owner, fd);
+      const result = await composeAndSendImpl(owner, fd, {
+        // Manual staff queue (operator_scheduled, not Cold All's T1 bulk)
+        // must drain within minutes -- the queue stagger already paces it.
+        // Cold All keeps the full 5-8 min inter-send cooldown.
+        skipPacingCooldown: draft.sendMode === "operator_scheduled" && draft.touchType !== "T1",
+      });
       if (result.ok) {
         // Already claimed (sent_at set above); link the thread + clear any
         // failure record from earlier retries.
