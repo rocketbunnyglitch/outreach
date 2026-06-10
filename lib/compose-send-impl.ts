@@ -26,6 +26,7 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  coldOutreachEntries,
   connectedAccounts,
   emailMessages,
   emailTemplates,
@@ -1190,6 +1191,29 @@ export async function composeAndSendImpl(
     });
   } catch (err) {
     logger.error({ err, fromAccountId, threadId }, "composeAndSend: recordSendEvent failed");
+  }
+
+  // Cold-outreach tracking (operator request 2026-06-10): an email ACTUALLY
+  // accepted by Gmail for a venue flips that venue's cold-outreach entries
+  // from not_contacted -> email_sent. Send-driven, not click-driven -- a
+  // composed-but-failed send never flips. Best-effort; never fails the send.
+  if (venueId) {
+    try {
+      await db
+        .update(coldOutreachEntries)
+        .set({ status: "email_sent", lastTouchAt: new Date(), updatedBy: staff.id })
+        .where(
+          and(
+            eq(coldOutreachEntries.venueId, venueId),
+            eq(coldOutreachEntries.status, "not_contacted"),
+          ),
+        );
+    } catch (err) {
+      logger.warn(
+        { err, venueId },
+        "composeAndSend: cold-entry email_sent flip failed (non-fatal)",
+      );
+    }
   }
 
   // Start the randomized 5-8 min cold-send pacing cooldown on this inbox after
