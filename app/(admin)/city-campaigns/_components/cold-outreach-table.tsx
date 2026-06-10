@@ -1819,7 +1819,7 @@ function ColdRow({
           stacked vertically so the right side of the row reclaims
           its width for Remarks. Actions stay hidden until the row
           is hovered, keeping the resting state calm. */}
-      <td className="w-10 px-2 py-2 align-top">
+      <td className="w-10 px-2 py-2 align-middle">
         <div className="flex flex-col items-center gap-1">
           <input
             type="checkbox"
@@ -1885,7 +1885,7 @@ function ColdRow({
           navigating away. Venue name is allowed to wrap so the column
           can stay narrow — long names break across two lines instead
           of stretching the table. */}
-      <td className="w-40 px-2 py-2 align-top">
+      <td className="w-40 px-2 py-2 align-middle">
         <div className="flex items-start gap-1">
           <div className="min-w-0 flex-1">
             <InlineCell
@@ -1913,7 +1913,7 @@ function ColdRow({
       {/* Email — inline-editable address + AI draft button + mailto link.
           Padding tightened (px-1) so the venue/email pair takes less
           column real estate and Remarks gets more room. */}
-      <td className="relative w-40 px-1 py-2 align-top">
+      <td className="relative w-40 px-1 py-2 align-middle">
         <div className="flex items-start gap-0.5">
           <div className="min-w-0 flex-1">
             <InlineCell
