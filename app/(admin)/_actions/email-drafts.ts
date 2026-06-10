@@ -31,6 +31,8 @@ import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
 import { isT11Touch } from "@/lib/send-mode-gate";
+import { type SafetyWarning, describeBlock, runSendSafetyForRecipients } from "@/lib/send-safety";
+import { validateEmail } from "@/lib/zerobounce";
 import { and, desc, eq, gt, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { composeAndSend } from "./compose-and-send";
@@ -315,6 +317,26 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
  *   - ~15% of the time a longer 10-22 min "break" so there's no steady rhythm
  * Tunable here without touching the scheduler.
  */
+/** One-line confirm text for queue-time warnings, mirroring the send-time
+ *  priority order: invalid address > recent decline > teammate ownership >
+ *  duplicate threads. */
+function summarizeQueueWarnings(warnings: SafetyWarning[]): string {
+  const invalid = warnings.find((w) => w.kind === "invalid_recipient");
+  if (invalid && invalid.kind === "invalid_recipient") {
+    return `${invalid.email} looks like an invalid address (likely to bounce).`;
+  }
+  const decline = warnings.find((w) => w.kind === "recent_decline");
+  if (decline && decline.kind === "recent_decline") {
+    return `${decline.venueName} declined ${decline.daysAgo} day${decline.daysAgo === 1 ? "" : "s"} ago.`;
+  }
+  const cross = warnings.find((w) => w.kind === "cross_staff_owner");
+  if (cross && cross.kind === "cross_staff_owner") {
+    return `${cross.ownerStaffName ?? "Another teammate"} is already contacting ${cross.venueName}.`;
+  }
+  const dupes = warnings.filter((w) => w.kind === "duplicate").length;
+  return `Possible duplicate outreach (${dupes} open thread${dupes === 1 ? "" : "s"} already to this address).`;
+}
+
 function randomQueueGapMs(): number {
   let minutes = 4 + Math.random() * 5; // 4-9 min
   if (Math.random() < 0.15) minutes = 10 + Math.random() * 12; // occasional longer pause
@@ -336,7 +358,8 @@ function randomQueueGapMs(): number {
  */
 export async function queueColdSend(
   draftId: string,
-): Promise<ActionResult<{ scheduledFor: string }>> {
+  opts?: { ackWarnings?: boolean },
+): Promise<ActionResult<{ scheduledFor: string }> | { ok: false; error: string; needsAck: true }> {
   const { staff } = await requireStaff();
   if (!UUID_RE.test(draftId)) {
     return { ok: false, error: "Invalid draft id." };
@@ -346,6 +369,9 @@ export async function queueColdSend(
       .select({
         connectedAccountId: emailDrafts.connectedAccountId,
         toAddresses: emailDrafts.toAddresses,
+        ccAddresses: emailDrafts.ccAddresses,
+        bccAddresses: emailDrafts.bccAddresses,
+        venueId: emailDrafts.venueId,
         sentAt: emailDrafts.sentAt,
       })
       .from(emailDrafts)
@@ -358,6 +384,42 @@ export async function queueColdSend(
     }
     const hasRecipient = (draft.toAddresses ?? []).some((a) => a && a.trim().length > 0);
     if (!hasRecipient) return { ok: false, error: "Add a recipient before queueing." };
+
+    // Surface the pre-send safety checks AT QUEUE TIME. The cron forwards
+    // the Queue click as the acknowledgment for interactive warnings (it
+    // can't render a confirm dialog at dispatch time), so the staffer must
+    // actually SEE them here for that ack to mean anything. Hard blocks
+    // (suppression / DNC) refuse the queue outright -- previously they
+    // queued, then perma-failed at dispatch.
+    const safety = await runSendSafetyForRecipients({
+      teamId: staff.teamId,
+      staffId: staff.id,
+      to: draft.toAddresses ?? [],
+      cc: draft.ccAddresses ?? [],
+      bcc: draft.bccAddresses ?? [],
+      venueId: draft.venueId,
+    });
+    if (!safety.ok) {
+      return { ok: false, error: describeBlock(safety.block) };
+    }
+    if (!opts?.ackWarnings) {
+      // Deliverability: an 'invalid' primary address is a near-certain
+      // bounce. Cached ZeroBounce verdict; best-effort (mirrors send time).
+      try {
+        const primary = (draft.toAddresses ?? [])[0]?.trim();
+        if (primary) {
+          const v = await validateEmail(primary, staff.id);
+          if (v?.status === "invalid") {
+            safety.warnings.push({ kind: "invalid_recipient", email: primary, status: v.status });
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, draftId }, "queueColdSend: pre-queue validation skipped (non-fatal)");
+      }
+      if (safety.warnings.length > 0) {
+        return { ok: false, needsAck: true, error: summarizeQueueWarnings(safety.warnings) };
+      }
+    }
 
     // Latest pending (unsent, future) queued send on this inbox -> stagger
     // after it; otherwise stagger from now. Scope to the inbox so two

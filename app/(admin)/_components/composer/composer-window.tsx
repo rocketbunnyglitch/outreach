@@ -954,7 +954,19 @@ export function ComposerWindow({ instance, isMobile }: Props) {
         setSendError(saveRes.error);
         return;
       }
-      const qRes = await queueColdSend(instance.id);
+      let qRes = await queueColdSend(instance.id);
+      // Queue-time safety surfacing: the cron forwards this Queue click as
+      // the acknowledgment for send-time warnings, so the staffer must see
+      // them NOW. needsAck = warning (confirmable); a plain error (e.g.
+      // suppressed recipient) stays a hard stop.
+      if (!qRes.ok && "needsAck" in qRes && qRes.needsAck) {
+        const proceed = window.confirm(`${qRes.error}\n\nQueue it anyway?`);
+        if (!proceed) {
+          toast.show({ kind: "info", message: "Not queued. The draft is still here." });
+          return;
+        }
+        qRes = await queueColdSend(instance.id, { ackWarnings: true });
+      }
       if (!qRes.ok) {
         setSendError(qRes.error);
         toast.show({ kind: "error", message: qRes.error ?? "Couldn't queue the email." });

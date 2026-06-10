@@ -88,6 +88,15 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
   let sent = 0;
   let failed = 0;
 
+  // Human-cadence gap between MANUAL sends from the same inbox: queued
+  // drafts bunch at the 8-minute stagger cap and (since the pacing-cooldown
+  // skip) would otherwise leave the inbox seconds apart -- a machine-gun
+  // pattern. 20-45s of jitter reads as a person sending several emails.
+  // Bounded by a tick budget; anything left rolls to the next tick.
+  const tickStartedAt = Date.now();
+  const TICK_BUDGET_MS = 240_000; // send-worker-cron.sh curl -m is 300s
+  const lastManualSendAt = new Map<string, number>();
+
   for (const { draft, owner } of candidates) {
     // P0-1 defense-in-depth: re-check the send-mode boundary in code (the SQL
     // filter above already excludes these, but this guarantees it + is unit-
@@ -137,6 +146,21 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       );
       failed += 1;
       continue;
+    }
+
+    // Pace manual sends per inbox. The wait happens BEFORE the claim so a
+    // crash mid-wait strands nothing.
+    const isManualQueued = draft.sendMode === "operator_scheduled" && draft.touchType !== "T1";
+    if (isManualQueued && draft.connectedAccountId) {
+      const last = lastManualSendAt.get(draft.connectedAccountId);
+      if (last != null) {
+        const gapMs = 20_000 + Math.random() * 25_000;
+        const waitMs = last + gapMs - Date.now();
+        if (waitMs > 0) {
+          if (Date.now() + waitMs - tickStartedAt > TICK_BUDGET_MS) break;
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+      }
     }
 
     // Atomically CLAIM the draft before sending. UPDATE...WHERE sent_at IS NULL
@@ -265,6 +289,9 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
           })
           .where(eq(emailDrafts.id, draft.id));
         sent += 1;
+        if (isManualQueued && draft.connectedAccountId) {
+          lastManualSendAt.set(draft.connectedAccountId, Date.now());
+        }
       } else {
         // Release the claim so the draft retries -- UNLESS Gmail already
         // accepted the message (gmailSent), in which case releasing would
