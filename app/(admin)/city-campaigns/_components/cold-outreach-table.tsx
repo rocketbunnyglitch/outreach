@@ -674,6 +674,10 @@ export function ColdOutreachTable({
   // means "no active row" (initial state). J on -1 jumps to row 0;
   // K on -1 jumps to the last row. Both wrap at the ends.
   const [activeRowIndex, setActiveRowIndex] = useState(-1);
+  // Column tabs (operator request 2026-06-10): "Main" hides Engage + Cadence
+  // so Remarks gets the width; "Outreach" shows them. Venue stays sticky on
+  // both. Applies to the desktop table (cards always show everything).
+  const [columnTab, setColumnTab] = useState<"main" | "outreach">("main");
   const activeEntryId =
     activeRowIndex >= 0 && activeRowIndex < displayed.length
       ? displayed[activeRowIndex]?.entryId
@@ -992,128 +996,159 @@ export function ColdOutreachTable({
           takes over. Cold outreach has 9 columns and that's never
           going to fit on a phone; the card layout below shows the
           same data + same actions vertically. */}
-      <div className="hidden overflow-x-auto md:block">
-        {/* min-width: below this the columns crush inline-edit fields into
+      <div className="hidden md:block">
+        <div className="flex items-center gap-1 border-zinc-200/60 border-b px-3 py-1.5 dark:border-zinc-800/40">
+          {(["main", "outreach"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setColumnTab(t)}
+              className={`rounded-full px-3 py-1 font-medium text-xs transition-colors ${
+                columnTab === t
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+              }`}
+            >
+              {t === "main" ? "Main" : "Outreach"}
+            </button>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          {/* min-width: below this the columns crush inline-edit fields into
             slivers -- prefer a deliberate horizontal scroll. */}
-        <table className="w-full min-w-[1080px] text-sm">
-          <thead>
-            <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40 dark:text-zinc-400">
-              {/* Checkbox + per-row actions stack — row actions
+          <table className="w-full min-w-[1080px] text-sm">
+            <thead>
+              <tr className="border-zinc-200/60 border-b text-left font-mono text-[10px] text-zinc-500 uppercase tracking-[0.1em] dark:border-zinc-800/40 dark:text-zinc-400">
+                {/* Checkbox + per-row actions stack — row actions
                   (history, escalate, archive) live underneath the
                   checkbox on hover so the right side of the row can
                   give all its width to Remarks. */}
-              <th className="w-10 px-2 py-2.5">
-                <SelectAllCheckbox
-                  checked={allSelected}
-                  indeterminate={someSelected}
-                  onChange={toggleAll}
+                <th className="sticky left-0 z-10 w-10 bg-[color:var(--color-canvas)] px-2 py-2.5 dark:bg-[color:var(--color-canvas-dark)]">
+                  <SelectAllCheckbox
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={toggleAll}
+                  />
+                </th>
+                <SortableTh
+                  label="Venue"
+                  col="venue"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onClick={() => toggleSort("venue")}
+                  width="sticky left-10 z-10 w-40 bg-[color:var(--color-canvas)] px-2 dark:bg-[color:var(--color-canvas-dark)]"
                 />
-              </th>
-              <SortableTh
-                label="Venue"
-                col="venue"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("venue")}
-                width="w-40 px-2"
-              />
-              <SortableTh
-                label="Email"
-                col="email"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("email")}
-                width="w-36 px-1"
-              />
-              {/* Contact-enrichment status dot (E6). Sortable; click the
+                {columnTab === "main" && (
+                  <>
+                    <SortableTh
+                      label="Email"
+                      col="email"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort("email")}
+                      width="w-36 px-1"
+                    />
+                    {/* Contact-enrichment status dot (E6). Sortable; click the
                   dot in a row to scrape that one venue inline. */}
-              <th className="w-10 px-1 py-2.5" title="Contact enrichment status">
-                <button
-                  type="button"
-                  onClick={() => toggleSort("contact")}
-                  className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
-                  title="Contact enrichment status — click a dot to scrape that venue"
-                >
-                  ✉?
-                </button>
-              </th>
-              {/* ZB — abbreviated from "ZeroBounce" so the column can
+                    <th className="w-10 px-1 py-2.5" title="Contact enrichment status">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("contact")}
+                        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
+                        title="Contact enrichment status — click a dot to scrape that venue"
+                      >
+                        ✉?
+                      </button>
+                    </th>
+                    {/* ZB — abbreviated from "ZeroBounce" so the column can
                   shrink to icon-width. Cell renders a green check
                   (valid), red X (invalid family), or amber/grey
                   marker for catch_all / unknown; tooltips spell out
                   the underlying status. */}
-              <th className="w-10 px-1 py-2.5" title="ZeroBounce email validation">
-                <button
-                  type="button"
-                  onClick={() => toggleSort("zb")}
-                  className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
-                  title="ZeroBounce email validation"
-                >
-                  ZB
-                </button>
-              </th>
-              <SortableTh
-                label="Phone"
-                col="callWindow"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("callWindow")}
-                width="w-24 px-2"
-              />
-              <SortableTh
-                label="Status"
-                col="status"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("status")}
-                width="w-24 px-2"
-              />
-              {/* Engagement (Tier-2). Soft 0-100 signal; sortable so
+                    <th className="w-10 px-1 py-2.5" title="ZeroBounce email validation">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("zb")}
+                        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
+                        title="ZeroBounce email validation"
+                      >
+                        ZB
+                      </button>
+                    </th>
+                    <SortableTh
+                      label="Phone"
+                      col="callWindow"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort("callWindow")}
+                      width="w-24 px-2"
+                    />
+                    <SortableTh
+                      label="Status"
+                      col="status"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort("status")}
+                      width="w-24 px-2"
+                    />
+                  </>
+                )}
+                {columnTab === "outreach" && (
+                  <>
+                    {/* Engagement (Tier-2). Soft 0-100 signal; sortable so
                   genuinely-interested venues rise. */}
-              <SortableTh
-                label="Engage"
-                col="engagement"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("engagement")}
-                width="w-16 px-2"
-              />
-              {/* Cadence-aware row state (Phase 2.12). Read-only column. */}
-              {/* Tightened (w-44 -> w-36) so Remarks -- the flex column --
+                    <SortableTh
+                      label="Engage"
+                      col="engagement"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort("engagement")}
+                      width="w-16 px-2"
+                    />
+                    {/* Cadence-aware row state (Phase 2.12). Read-only column. */}
+                    {/* Tightened (w-44 -> w-36) so Remarks -- the flex column --
                   gets the freed width (operator request: wider notes). */}
-              <th className="w-36 px-2 py-2.5">Cadence</th>
-              <SortableTh
-                label="Assigned"
-                col="assignee"
-                sortKey={sortKey}
-                sortDir={sortDir}
-                onClick={() => toggleSort("assignee")}
-                width="w-28 px-2"
-              />
-              <th className="px-2 py-2.5">Remarks</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayed.map((e, i) => (
-              <ColdRow
-                key={e.entryId}
-                entry={e}
-                staff={staff}
-                cityCampaignId={cityCampaignId}
-                outreachBrandId={outreachBrandId}
-                selected={selected.has(e.entryId)}
-                onToggleSelect={() => toggleOne(e.entryId)}
-                zebra={i % 2 === 1}
-                rowIndex={i}
-                layout="table"
-                mode={mode}
-                escalationTargets={escalationTargets}
-                crawlsForPromote={crawlsForPromote}
-                isActive={i === activeRowIndex}
-              />
-            ))}
-          </tbody>
-        </table>
+                    <th className="w-36 px-2 py-2.5">Cadence</th>
+                  </>
+                )}
+                {columnTab === "main" && (
+                  <>
+                    <SortableTh
+                      label="Assigned"
+                      col="assignee"
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onClick={() => toggleSort("assignee")}
+                      width="w-28 px-2"
+                    />
+                    <th className="px-2 py-2.5">Remarks</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {displayed.map((e, i) => (
+                <ColdRow
+                  key={e.entryId}
+                  entry={e}
+                  staff={staff}
+                  cityCampaignId={cityCampaignId}
+                  outreachBrandId={outreachBrandId}
+                  selected={selected.has(e.entryId)}
+                  onToggleSelect={() => toggleOne(e.entryId)}
+                  zebra={i % 2 === 1}
+                  rowIndex={i}
+                  layout="table"
+                  mode={mode}
+                  columnTab={columnTab}
+                  escalationTargets={escalationTargets}
+                  crawlsForPromote={crawlsForPromote}
+                  isActive={i === activeRowIndex}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Mobile card stack. Vertical layout, one card per venue,
@@ -1267,6 +1302,7 @@ function ColdRow({
   escalationTargets,
   crawlsForPromote,
   isActive = false,
+  columnTab = "main",
 }: {
   entry: ColdEntry;
   staff: Array<{ id: string; displayName: string }>;
@@ -1286,6 +1322,9 @@ function ColdRow({
   layout: "table" | "card";
   /** Cold vs warm table -- drives the promote button's warm-first chooser. */
   mode: "cold" | "warm";
+  /** Desktop column tab: "main" hides Engage+Cadence, "outreach" shows only
+   *  them (venue stays sticky on both). Cards ignore this. */
+  columnTab?: "main" | "outreach";
   /** Escalation targets list — passed through to the popover. */
   escalationTargets: Array<{
     id: string;
@@ -1823,7 +1862,7 @@ function ColdRow({
           stacked vertically so the right side of the row reclaims
           its width for Remarks. Actions stay hidden until the row
           is hovered, keeping the resting state calm. */}
-      <td className="w-10 px-2 py-2 align-middle">
+      <td className="sticky left-0 z-[5] w-10 bg-[color:var(--color-canvas)] px-2 py-2 align-middle dark:bg-[color:var(--color-canvas-dark)]">
         <div className="flex flex-col items-center gap-1">
           <input
             type="checkbox"
@@ -1889,7 +1928,7 @@ function ColdRow({
           navigating away. Venue name is allowed to wrap so the column
           can stay narrow — long names break across two lines instead
           of stretching the table. */}
-      <td className="w-40 px-2 py-2 align-middle">
+      <td className="sticky left-10 z-[5] w-40 bg-[color:var(--color-canvas)] px-2 py-2 align-middle dark:bg-[color:var(--color-canvas-dark)]">
         <div className="flex items-start gap-1">
           <div className="min-w-0 flex-1">
             <InlineCell
@@ -1914,202 +1953,216 @@ function ColdRow({
         </div>
       </td>
 
-      {/* Email — inline-editable address + AI draft button + mailto link.
+      {columnTab === "main" && (
+        <>
+          {/* Email — inline-editable address + AI draft button + mailto link.
           Padding tightened (px-1) so the venue/email pair takes less
           column real estate and Remarks gets more room. */}
-      <td className="relative w-40 px-1 py-2 align-middle">
-        <div className="flex items-start gap-0.5">
-          <div className="min-w-0 flex-1">
-            <InlineCell
-              label="Venue email"
-              value={entry.venueEmail ?? ""}
-              placeholder="add email"
-              variant="mono"
-              inputType="email"
-              maxWidth={150}
-              gridRow={rowIndex}
-              gridCol={1}
-              onCommit={editVenueField("email")}
-            />
-          </div>
-          {/* Direct-email compose icon -- ALWAYS visible (was hover-only) so
+          <td className="relative w-36 px-1 py-2 align-middle">
+            <div className="flex items-start gap-0.5">
+              <div className="min-w-0 flex-1">
+                <InlineCell
+                  label="Venue email"
+                  value={entry.venueEmail ?? ""}
+                  placeholder="add email"
+                  variant="mono"
+                  inputType="email"
+                  maxWidth={150}
+                  gridRow={rowIndex}
+                  gridCol={1}
+                  onCommit={editVenueField("email")}
+                />
+              </div>
+              {/* Direct-email compose icon -- ALWAYS visible (was hover-only) so
               every row offers a one-click email. */}
-          <ComposeEmailButton
-            defaultTo={[entry.venueEmail, ...entry.venueAlternateEmails]
-              .filter((e): e is string => Boolean(e?.trim()))
-              .join(", ")}
-            venueId={entry.venueId}
-            cityCampaignId={cityCampaignId}
-            ariaLabel={entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"}
-            className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            <Mail className="h-3 w-3" />
-          </ComposeEmailButton>
-          {entry.venueEmail && (
-            <AiDraftButton
-              venueId={entry.venueId}
-              venueName={entry.venueName}
-              cityCampaignId={cityCampaignId}
-              onUseDraft={(draft) => {
-                window.dispatchEvent(
-                  new CustomEvent("compose-email", {
-                    detail: {
-                      to: entry.venueEmail ?? "",
-                      subject: draft.subject,
-                      body: draft.body,
-                      venueId: entry.venueId,
-                      cityCampaignId,
-                    },
-                  }),
-                );
-              }}
-            />
-          )}
-          {!entry.venueEmail && (
-            <FindEmailButton
-              venueId={entry.venueId}
-              venueName={entry.venueName}
-              venueWebsite={entry.venueWebsite ?? null}
-              venueInstagramHandle={entry.venueInstagramHandle ?? null}
-              venueCity={entry.cityName ?? null}
-              existingEmail={null}
-              outreachBrandId={outreachBrandId}
-              cityCampaignId={cityCampaignId}
-              variant="icon"
-            />
-          )}
-        </div>
-      </td>
+              <ComposeEmailButton
+                defaultTo={[entry.venueEmail, ...entry.venueAlternateEmails]
+                  .filter((e): e is string => Boolean(e?.trim()))
+                  .join(", ")}
+                venueId={entry.venueId}
+                cityCampaignId={cityCampaignId}
+                ariaLabel={
+                  entry.venueEmail ? `Compose email to ${entry.venueEmail}` : "Compose email"
+                }
+                className="rounded p-0.5 text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                <Mail className="h-3 w-3" />
+              </ComposeEmailButton>
+              {entry.venueEmail && (
+                <AiDraftButton
+                  venueId={entry.venueId}
+                  venueName={entry.venueName}
+                  cityCampaignId={cityCampaignId}
+                  onUseDraft={(draft) => {
+                    window.dispatchEvent(
+                      new CustomEvent("compose-email", {
+                        detail: {
+                          to: entry.venueEmail ?? "",
+                          subject: draft.subject,
+                          body: draft.body,
+                          venueId: entry.venueId,
+                          cityCampaignId,
+                        },
+                      }),
+                    );
+                  }}
+                />
+              )}
+              {!entry.venueEmail && (
+                <FindEmailButton
+                  venueId={entry.venueId}
+                  venueName={entry.venueName}
+                  venueWebsite={entry.venueWebsite ?? null}
+                  venueInstagramHandle={entry.venueInstagramHandle ?? null}
+                  venueCity={entry.cityName ?? null}
+                  existingEmail={null}
+                  outreachBrandId={outreachBrandId}
+                  cityCampaignId={cityCampaignId}
+                  variant="icon"
+                />
+              )}
+            </div>
+          </td>
 
-      {/* Contact enrichment dot (E6). Click to scrape this venue inline. */}
-      <td className="w-10 px-1 py-2 text-center align-middle">
-        <ContactDot
-          venueId={entry.venueId}
-          venueEmail={entry.venueEmail}
-          hasScrapedEmail={entry.hasScrapedEmail}
-          venueWebsite={entry.venueWebsite}
-          enrichmentAttempted={entry.enrichmentAttempted}
-        />
-      </td>
+          {/* Contact enrichment dot (E6). Click to scrape this venue inline. */}
+          <td className="w-10 px-1 py-2 text-center align-middle">
+            <ContactDot
+              venueId={entry.venueId}
+              venueEmail={entry.venueEmail}
+              hasScrapedEmail={entry.hasScrapedEmail}
+              venueWebsite={entry.venueWebsite}
+              enrichmentAttempted={entry.enrichmentAttempted}
+            />
+          </td>
 
-      {/* ZB — compact icon-only column. Green check = valid, red X =
+          {/* ZB — compact icon-only column. Green check = valid, red X =
           invalid family (invalid / spamtrap / abuse / do_not_mail),
           amber dot = catch_all / unknown, neutral dash = unchecked.
           Hover tooltip reveals the underlying ZeroBounce status name. */}
-      <td className="w-10 px-1 py-2 text-center align-middle">
-        <ZbIcon status={entry.zeroBounceStatus} />
-      </td>
+          <td className="w-10 px-1 py-2 text-center align-middle">
+            <ZbIcon status={entry.zeroBounceStatus} />
+          </td>
 
-      {/* Phone — when present, QuoDialControls handles click-to-call /
+          {/* Phone — when present, QuoDialControls handles click-to-call /
           SMS / Viber. When absent or being edited, an inline cell lets
           the operator add or change the number. The pencil affordance
           on hover lets them switch from dial-mode to edit-mode anytime. */}
-      <td className="relative px-2 py-2 align-middle">
-        <PhoneCell
-          entry={entry}
-          cityCampaignId={cityCampaignId}
-          outreachBrandId={outreachBrandId}
-          editVenueField={editVenueField}
-          rowIndex={rowIndex}
-        />
-      </td>
+          <td className="relative px-2 py-2 align-middle">
+            <PhoneCell
+              entry={entry}
+              cityCampaignId={cityCampaignId}
+              outreachBrandId={outreachBrandId}
+              editVenueField={editVenueField}
+              rowIndex={rowIndex}
+            />
+          </td>
 
-      {/* Status */}
-      <td className="px-2 py-2 align-middle">
-        <StatusSelect
-          current={displayStatus}
-          pending={pending}
-          onChange={(v) => commitField("status", v)}
-          entryId={entry.entryId}
-        />
-      </td>
+          {/* Status */}
+          <td className="px-2 py-2 align-middle">
+            <StatusSelect
+              current={displayStatus}
+              pending={pending}
+              onChange={(v) => commitField("status", v)}
+              entryId={entry.entryId}
+            />
+          </td>
+        </>
+      )}
 
-      {/* Engagement (Tier-2 soft signal). */}
-      <td className="px-2 py-2 align-middle">
-        <EngagementChip band={entry.engagementBand} score={entry.engagementScore} />
-      </td>
+      {columnTab === "outreach" && (
+        <>
+          {/* Engagement (Tier-2 soft signal). */}
+          <td className="px-2 py-2 align-middle">
+            <EngagementChip band={entry.engagementBand} score={entry.engagementScore} />
+          </td>
 
-      {/* Cadence (Phase 2.12) + cross-domain handoff on exhausted rows (2.14). */}
-      <td className="w-44 px-2 py-2 align-middle text-[11px] text-zinc-600 leading-snug dark:text-zinc-400">
-        <div>{entry.cadenceLabel}</div>
-        {entry.readyForHandoff && (
-          <HandoffButton
-            entryId={entry.entryId}
-            venueId={entry.venueId}
-            venueName={entry.venueName}
-            venueEmail={entry.venueEmail}
-            cityCampaignId={cityCampaignId}
-          />
-        )}
-      </td>
+          {/* Cadence (Phase 2.12) + cross-domain handoff on exhausted rows (2.14). */}
+          <td className="w-44 px-2 py-2 align-middle text-[11px] text-zinc-600 leading-snug dark:text-zinc-400">
+            <div>{entry.cadenceLabel}</div>
+            {entry.readyForHandoff && (
+              <HandoffButton
+                entryId={entry.entryId}
+                venueId={entry.venueId}
+                venueName={entry.venueName}
+                venueEmail={entry.venueEmail}
+                cityCampaignId={cityCampaignId}
+              />
+            )}
+          </td>
+        </>
+      )}
 
-      {/* Assigned */}
-      <td className="px-2 py-2 align-middle">
-        <AssignedSelect
-          current={displayAssigned}
-          staff={staff}
-          pending={pending}
-          onChange={(v) => commitField("assignedStaffId", v)}
-        />
-      </td>
+      {columnTab === "main" && (
+        <>
+          {/* Assigned */}
+          <td className="px-2 py-2 align-middle">
+            <AssignedSelect
+              current={displayAssigned}
+              staff={staff}
+              pending={pending}
+              onChange={(v) => commitField("assignedStaffId", v)}
+            />
+          </td>
 
-      {/* Remarks */}
-      <td className="px-2 py-2 align-middle">
-        <RemarksInput
-          initial={entry.remarks ?? ""}
-          pending={pending}
-          onCommit={(v) => commitField("remarks", v)}
-          draftKey={`remarks:${entry.entryId}`}
-          followUp={followUp}
-          onSchedule={scheduleFollowUp}
-          onDismissFollowUp={() => setFollowUp(null)}
-        />
-        {/* Escalation pill — renders only when this entry IS currently
+          {/* Remarks */}
+          <td className="px-2 py-2 align-middle">
+            <RemarksInput
+              initial={entry.remarks ?? ""}
+              pending={pending}
+              onCommit={(v) => commitField("remarks", v)}
+              draftKey={`remarks:${entry.entryId}`}
+              followUp={followUp}
+              onSchedule={scheduleFollowUp}
+              onDismissFollowUp={() => setFollowUp(null)}
+            />
+            {/* Escalation pill — renders only when this entry IS currently
             escalated. Surfaces "with X since DATE" so every staffer can
             see what's parked with whom. Click to view notes + un-escalate. */}
-        {entry.escalatedToName && (
-          <button
-            type="button"
-            onClick={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              setEscalationStatusAnchor(r);
-            }}
-            className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/[0.10] px-2 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] ring-1 ring-amber-500/30 ring-inset hover:bg-amber-500/[0.18] dark:text-amber-300"
-            title={entry.escalationNotes ?? undefined}
-          >
-            <AlertTriangle className="h-2.5 w-2.5" />
-            Escalated to {entry.escalatedToName}
-          </button>
-        )}
-        {escalationStatusAnchor && entry.escalatedToName && (
-          <EscalationStatusPopover
-            entryId={entry.entryId}
-            escalatedToName={entry.escalatedToName}
-            escalatedAt={entry.escalatedAt}
-            escalationNotes={entry.escalationNotes}
-            anchorRect={escalationStatusAnchor}
-            onClose={() => setEscalationStatusAnchor(null)}
-            onCleared={() => router.refresh()}
-          />
-        )}
-        {/* EscalationPopover renders via createPortal so it can stay
+            {entry.escalatedToName && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setEscalationStatusAnchor(r);
+                }}
+                className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-500/[0.10] px-2 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] ring-1 ring-amber-500/30 ring-inset hover:bg-amber-500/[0.18] dark:text-amber-300"
+                title={entry.escalationNotes ?? undefined}
+              >
+                <AlertTriangle className="h-2.5 w-2.5" />
+                Escalated to {entry.escalatedToName}
+              </button>
+            )}
+            {escalationStatusAnchor && entry.escalatedToName && (
+              <EscalationStatusPopover
+                entryId={entry.entryId}
+                escalatedToName={entry.escalatedToName}
+                escalatedAt={entry.escalatedAt}
+                escalationNotes={entry.escalationNotes}
+                anchorRect={escalationStatusAnchor}
+                onClose={() => setEscalationStatusAnchor(null)}
+                onCleared={() => router.refresh()}
+              />
+            )}
+            {/* EscalationPopover renders via createPortal so it can stay
             in the row's DOM tree (here, attached to the Remarks <td>)
             while visually landing at document.body — no tbody>tr>td
             hierarchy violation. The trailing actions column was
             removed and those affordances moved under the checkbox
             cell on the left so Remarks can take the full remaining
             width. */}
-        {escalationOpen && (
-          <EscalationPopover
-            entryId={entry.entryId}
-            venueName={entry.venueName}
-            initialNotes={entry.remarks ?? ""}
-            targets={escalationTargets}
-            onClose={() => setEscalationOpen(false)}
-            onEscalated={() => router.refresh()}
-          />
-        )}
-      </td>
+            {escalationOpen && (
+              <EscalationPopover
+                entryId={entry.entryId}
+                venueName={entry.venueName}
+                initialNotes={entry.remarks ?? ""}
+                targets={escalationTargets}
+                onClose={() => setEscalationOpen(false)}
+                onEscalated={() => router.refresh()}
+              />
+            )}
+          </td>
+        </>
+      )}
     </tr>
   );
 }
