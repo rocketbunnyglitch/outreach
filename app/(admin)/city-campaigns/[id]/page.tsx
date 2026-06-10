@@ -131,6 +131,10 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
   const computedStatusPill: CityStatusPill = (() => {
     if (cc.cc.status === "cancelled") return "cancelled";
     if (!sheetData) return "outreach";
+    // need-N-venues only makes sense for a single-crawl city (operator
+    // request 2026-06-10): with multiple crawls the open-slot total reads
+    // as noise, so multi-crawl cities just show active/cancelled.
+    if (sheetData.crawls.length > 1) return "outreach";
     let openSlots = 0;
     for (const crawl of sheetData.crawls) {
       const unfilled = crawl.slots.filter(

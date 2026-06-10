@@ -5,8 +5,7 @@ import {
   STATUS_PILL_LABEL,
   STATUS_PILL_TONE,
 } from "@/lib/tracker-status-types";
-import { MapPin, Printer } from "lucide-react";
-import Link from "next/link";
+import { MapPin } from "lucide-react";
 import { AssignStatCard, EditableDashboardNote } from "./city-sheet-editables";
 import { PriorityStatCard } from "./priority-stat-card";
 
@@ -38,14 +37,8 @@ export function CitySheetHeader({ data, totalTicketsSold, statusPill }: Props) {
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.18em] dark:text-zinc-400">
             {data.campaignName}
           </p>
-          <Link
-            href={`/city-campaigns/${data.cityCampaignId}/print`}
-            target="_blank"
-            className="inline-flex items-center gap-1 rounded-md border border-zinc-200 px-2.5 py-1 font-mono text-[10px] text-zinc-600 uppercase tracking-[0.12em] transition-colors hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-            aria-label="Open print sheet"
-          >
-            <Printer className="h-3 w-3" /> Print sheet
-          </Link>
+          {/* Print-sheet link removed from the header (operator request
+              2026-06-10). The /print route itself still works. */}
         </div>
         <h1 className="font-semibold text-4xl tracking-tight">{data.cityName}</h1>
         <p className="mt-1 flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
