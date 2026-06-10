@@ -42,7 +42,6 @@ import {
   updateSlotField,
 } from "../_slot-actions";
 import { Slot1HostControl } from "./crawl-slot1-host";
-import { MiddleGroupPicker } from "./middle-group-picker";
 import { VenueAutocomplete } from "./venue-autocomplete";
 
 interface Props {
@@ -772,13 +771,9 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staf
               tickets
             </span>
           )}
-          <MiddleGroupPicker
-            eventId={crawl.eventId}
-            cityCampaignId={cityCampaignId}
-            dayPart={crawl.dayPart}
-            currentGroupId={crawl.middleVenueGroupId}
-            currentGroupName={crawl.middleVenueGroupName}
-          />
+          {/* "Use shared middle group" removed from the header (operator
+              request 2026-06-10). The picker still exists at
+              ./middle-group-picker for reintroduction elsewhere. */}
         </div>
       </header>
 
@@ -819,9 +814,9 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staf
               <th className="w-24 px-2 py-2">Phone</th>
               <th className="w-24 px-2 py-2">Scheduled by</th>
               <th className="w-28 px-2 py-2">Bar contact</th>
-              <th className="w-36 px-2 py-2">Hours</th>
+              <th className="w-40 px-2 py-2">Hours</th>
               <th className="w-12 px-2 py-2 text-right">Cap</th>
-              <th className="w-40 px-2 py-2">Drink specials</th>
+              <th className="w-20 px-2 py-2">Specials</th>
               <th className="w-20 px-2 py-2">Status</th>
               <th className="w-8 px-1 py-2" />
             </tr>
@@ -1263,14 +1258,7 @@ function SlotTableRow({
               Specials
             </dt>
             <dd>
-              <InlineCell
-                field="drinkSpecials"
-                slot={slot}
-                cityCampaignId={cityCampaignId}
-                placeholder="—"
-                disabled={!slot.venueEventId}
-                multiline
-              />
+              <DrinkSpecialsControl slot={slot} cityCampaignId={cityCampaignId} />
             </dd>
           </dl>
         )}
@@ -1401,16 +1389,11 @@ function SlotTableRow({
           </span>
         </td>
 
-        {/* Drink specials */}
+        {/* Drink specials -- indicator + big popout editor (operator request:
+            the full text is unreadable inline; the cell just signals whether
+            specials exist and opens a large window to read/edit). */}
         <td className="px-2 py-2 align-middle">
-          <InlineCell
-            field="drinkSpecials"
-            slot={slot}
-            cityCampaignId={cityCampaignId}
-            placeholder="—"
-            disabled={!slot.venueEventId}
-            multiline
-          />
+          <DrinkSpecialsControl slot={slot} cityCampaignId={cityCampaignId} />
         </td>
 
         {/* Status */}
@@ -1490,7 +1473,9 @@ function SlotTableRow({
 function parseTimeRange(input: string): string {
   const raw = input.trim();
   if (!raw || /[ap]\.?m/i.test(raw)) return raw;
-  const m = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*[-–]\s*(\d{1,2})(?::(\d{2}))?$/);
+  // Accepts "9-11", "9:30-11", AND compact "830-1130" (operator types times
+  // without the colon; regex backtracking splits 830 into 8+30).
+  const m = raw.match(/^(\d{1,2})(?::?([0-5]\d))?\s*(?:[-–]|to)\s*(\d{1,2})(?::?([0-5]\d))?$/i);
   if (!m) return raw;
   const sh = Number(m[1]);
   const eh = Number(m[3]);
@@ -1591,6 +1576,7 @@ function InlineCell({
           }}
           disabled={disabled || pending}
           placeholder={disabled ? "—" : placeholder}
+          title={draft || undefined}
           className={cn(
             "border-transparent bg-transparent pr-5 transition-colors",
             // Hours + bar-contact render compact mono (operator request:
@@ -1832,6 +1818,104 @@ function DemoteMenu({
         </span>
       </button>
     </div>
+  );
+}
+
+/**
+ * Drink specials -- compact has/none indicator in the table + a large modal
+ * editor (operator request 2026-06-10: the full text never fit inline).
+ */
+function DrinkSpecialsControl({
+  slot,
+  cityCampaignId,
+}: {
+  slot: SlotRow;
+  cityCampaignId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [pending, startTx] = useTransition();
+  const current = String(slot.drinkSpecials ?? "");
+  const has = current.trim().length > 0;
+
+  function save() {
+    if (!slot.venueEventId) return;
+    const fd = new FormData();
+    fd.set("venueEventId", slot.venueEventId);
+    fd.set("field", "drinkSpecials");
+    fd.set("value", draft);
+    fd.set("cityCampaignId", cityCampaignId);
+    startTx(async () => {
+      const result = await updateSlotField(null, fd);
+      if (result.ok) setOpen(false);
+    });
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={!slot.venueEventId}
+        onClick={() => {
+          setDraft(current);
+          setOpen(true);
+        }}
+        title={has ? current : "Add drink specials"}
+        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors enabled:hover:bg-zinc-100 disabled:opacity-50 dark:enabled:hover:bg-zinc-800"
+      >
+        {has ? (
+          <span className="text-emerald-600 dark:text-emerald-400">&#127864; yes</span>
+        ) : (
+          <span className="text-zinc-400">add</span>
+        )}
+      </button>
+      {open && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+          onClick={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
+          role="presentation"
+        >
+          <div
+            className="card-surface w-full max-w-xl p-5"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Drink specials"
+          >
+            <h3 className="font-semibold text-sm tracking-tight">
+              Drink specials{slot.venueName ? ` — ${slot.venueName}` : ""}
+            </h3>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={10}
+              placeholder="e.g. $5 wells 9-11, $6 seasonal cocktail, half-price pitchers for crawlers with wristbands..."
+              className="mt-3 w-full resize-y rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900"
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={save}
+                disabled={pending}
+                className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-sm text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
+              >
+                {pending && <Loader2 className="h-3 w-3 animate-spin" />} Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
