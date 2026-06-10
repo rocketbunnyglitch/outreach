@@ -60,6 +60,26 @@ export async function moveVenueEventStage(
     .limit(1);
   if (!row) return { ok: false, error: "Venue event not found." };
 
+  // Server-side lock mirror of DRAGGABLE_LANES: confirmed+ and cancelled cards
+  // are locked on the board (un-confirming / cancelling has its own flow, and
+  // re-confirming would re-fire the whole confirmation cascade). The client
+  // only disables dragging -- enforce it here so a direct action call can't
+  // demote a confirmed or cancelled venue_event.
+  const LOCKED_STATUSES = new Set([
+    "confirmed",
+    "scheduled",
+    "contract_signed",
+    "declined",
+    "cancelled",
+  ]);
+  if (LOCKED_STATUSES.has(row.status)) {
+    return {
+      ok: false,
+      error:
+        "Confirmed and cancelled cards are locked — use the venue event form or the cancellation flow.",
+    };
+  }
+
   // Already there -- nothing to do.
   if (row.status === targetStatus) return { ok: true };
 
