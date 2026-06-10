@@ -11,20 +11,29 @@
  * never has to format anything by hand.
  */
 
-/** Normalize a phone string to E.164 ("+" + digits). Returns "" when empty. */
+/** Trailing extension suffixes ("x202", "ext. 12", "#4"); their digits must
+ *  not leak into the number ("416-555-1234 x202" is NOT a 13-digit intl). */
+const EXT_RE = /[\s,;]*(?:x|ext\.?|extension|#)\s*\d{1,6}\s*$/i;
+
+/** Normalize a phone string to E.164 ("+" + digits). Returns "" when empty OR
+ *  when the input can't form a valid E.164 number -- callers treat "" as
+ *  "no phone", so legacy garbage (9-digit rows, double-pasted numbers) never
+ *  hard-blocks a save with a format error. */
 export function toE164(raw: string | null | undefined, defaultCountryCode = "1"): string {
   if (!raw) return "";
-  const trimmed = raw.trim();
+  const trimmed = raw.trim().replace(EXT_RE, "");
   if (!trimmed) return "";
   const hasPlus = trimmed.startsWith("+");
   const digits = trimmed.replace(/\D/g, "");
   if (!digits) return "";
-  if (hasPlus) return `+${digits}`;
+  let candidate: string;
+  if (hasPlus) candidate = `+${digits}`;
   // No leading "+": infer. NANP 10-digit -> +1; 11-digit starting with 1 -> +1.
-  if (digits.length === 10) return `+${defaultCountryCode}${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  else if (digits.length === 10) candidate = `+${defaultCountryCode}${digits}`;
+  else if (digits.length === 11 && digits.startsWith("1")) candidate = `+${digits}`;
   // Otherwise assume the digits already carry a country code.
-  return `+${digits}`;
+  else candidate = `+${digits}`;
+  return isE164(candidate) ? candidate : "";
 }
 
 /** True when s is a valid E.164 number (+ then 10-15 digits, first 1-9). */
