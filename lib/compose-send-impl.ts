@@ -1201,7 +1201,14 @@ export async function composeAndSendImpl(
     try {
       await db
         .update(coldOutreachEntries)
-        .set({ status: "email_sent", lastTouchAt: new Date(), updatedBy: staff.id })
+        .set({
+          status: "email_sent",
+          // The sender becomes the entry's Assigned person (operator request
+          // 2026-06-10): whoever makes first contact owns the conversation.
+          assignedStaffId: staff.id,
+          lastTouchAt: new Date(),
+          updatedBy: staff.id,
+        })
         .where(
           and(
             eq(coldOutreachEntries.venueId, venueId),

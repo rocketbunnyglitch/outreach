@@ -528,7 +528,13 @@ export async function coldAllSelectedVenues(input: {
       await tx.insert(emailDrafts).values(draftValues);
       await tx
         .update(coldOutreachEntries)
-        .set({ status: "email_sent", lastTouchAt: new Date(), updatedBy: staff.id })
+        .set({
+          status: "email_sent",
+          // Sender = Assigned (operator request 2026-06-10).
+          assignedStaffId: staff.id,
+          lastTouchAt: new Date(),
+          updatedBy: staff.id,
+        })
         .where(inArray(coldOutreachEntries.id, queuedEntryIds));
     });
   } catch (err) {

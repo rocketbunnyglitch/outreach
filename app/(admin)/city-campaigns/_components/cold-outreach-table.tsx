@@ -1023,7 +1023,7 @@ export function ColdOutreachTable({
                   (history, escalate, archive) live underneath the
                   checkbox on hover so the right side of the row can
                   give all its width to Remarks. */}
-                <th className="sticky left-0 z-10 w-10 bg-[color:var(--color-canvas)] px-2 py-2.5 dark:bg-[color:var(--color-canvas-dark)]">
+                <th className="w-10 px-2 py-2.5">
                   <SelectAllCheckbox
                     checked={allSelected}
                     indeterminate={someSelected}
@@ -1036,7 +1036,7 @@ export function ColdOutreachTable({
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onClick={() => toggleSort("venue")}
-                  width="sticky left-10 z-10 w-40 bg-[color:var(--color-canvas)] px-2 dark:bg-[color:var(--color-canvas-dark)]"
+                  width="w-40 px-2"
                 />
                 {columnTab === "main" && (
                   <>
@@ -1862,7 +1862,7 @@ function ColdRow({
           stacked vertically so the right side of the row reclaims
           its width for Remarks. Actions stay hidden until the row
           is hovered, keeping the resting state calm. */}
-      <td className="sticky left-0 z-[5] w-10 bg-[color:var(--color-canvas)] px-2 py-2 align-middle dark:bg-[color:var(--color-canvas-dark)]">
+      <td className="w-10 px-2 py-2 align-middle">
         <div className="flex flex-col items-center gap-1">
           <input
             type="checkbox"
@@ -1928,7 +1928,7 @@ function ColdRow({
           navigating away. Venue name is allowed to wrap so the column
           can stay narrow — long names break across two lines instead
           of stretching the table. */}
-      <td className="sticky left-10 z-[5] w-40 bg-[color:var(--color-canvas)] px-2 py-2 align-middle dark:bg-[color:var(--color-canvas-dark)]">
+      <td className="w-40 px-2 py-2 align-middle">
         <div className="flex items-start gap-1">
           <div className="min-w-0 flex-1">
             <InlineCell
