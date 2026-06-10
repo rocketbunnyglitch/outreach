@@ -133,18 +133,10 @@ export default async function DashboardHome({
     }),
     loadCampaignHealth(campaignId).catch(async (err) => {
       await captureException(err, { widget: "command_center", campaignId });
-      return {
-        campaign: {
-          score: 100,
-          color: "green" as const,
-          statusLabel: "On track",
-          reasons: [],
-          blockers: [],
-          nextAction: null,
-        },
-        cities: [],
-        atRiskCrawls: [],
-      };
+      // NULL -> the page renders an explicit "health unavailable" note. A
+      // hardcoded all-green fallback here made a BROKEN health engine
+      // indistinguishable from "everything is fine" (QA 2026-06-10).
+      return null;
     }),
   ]);
   const { rows: trackerRows, staff: trackerStaff } = trackerLoaded;
@@ -314,8 +306,18 @@ export default async function DashboardHome({
       {/* Command center — surfaces at-risk crawls (problems, not everything)
           high on the page, right under the KPI band. Renders nothing when no
           crawls are in scope; collapses to a one-line "all on track" when
-          everything is green. */}
-      <CommandCenterCard summary={healthSummary} staffWorkload={staffWorkload} />
+          everything is green. NULL summary = the health engine itself failed;
+          say so instead of faking green. */}
+      {healthSummary ? (
+        <CommandCenterCard summary={healthSummary} staffWorkload={staffWorkload} />
+      ) : (
+        <section className="card-surface px-5 py-3">
+          <p className="text-sm text-zinc-500">
+            Crawl health is unavailable right now (engine error — logged). The rest of the dashboard
+            is unaffected.
+          </p>
+        </section>
+      )}
 
       {/* Escalations widget — only renders when this staffer actually
           has pending escalations parked with them. Empty array = hide
