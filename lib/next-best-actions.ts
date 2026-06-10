@@ -60,11 +60,19 @@ export interface NextBestAction {
   ctaHref: string | null;
   /** Short CTA label e.g. "Open city" / "Add times" / "Assign lead". */
   ctaLabel: string;
+  /** The city this action belongs to (null = campaign-wide). Drives the
+   *  per-viewer personalization below. */
+  cityCampaignId: string | null;
 }
 
 const MAX_ITEMS = 8;
 
-export async function loadNextBestActions(campaignId: string | null): Promise<NextBestAction[]> {
+export async function loadNextBestActions(
+  campaignId: string | null,
+  /** Personalize to this staffer's assigned cities (operator request
+   *  2026-06-10 -- the list was identical for everyone). */
+  viewerStaffId?: string,
+): Promise<NextBestAction[]> {
   if (!campaignId) return [];
 
   const [needs, stale, noTimes, confirmedMissing, unassigned] = await Promise.all([
@@ -75,10 +83,48 @@ export async function loadNextBestActions(campaignId: string | null): Promise<Ne
     loadUnassignedLeads(campaignId),
   ]);
 
-  const all = [...needs, ...stale, ...noTimes, ...confirmedMissing, ...unassigned];
+  let all = [...needs, ...stale, ...noTimes, ...confirmedMissing, ...unassigned];
   // Sort by priority desc; tie-break stable (insertion order) so within
   // a category the most relevant row stays on top.
   all.sort((a, b) => b.priority - a.priority);
+
+  // Personalization: actions on a city ASSIGNED TO SOMEONE ELSE are that
+  // person's work -- drop them for this viewer. Keep the viewer's own
+  // cities (surfaced first), unassigned cities (fair game -- includes every
+  // "assign a lead" item) and campaign-wide actions. A staffer with no
+  // assigned cities keeps the full team view (nothing personal to scope to).
+  if (viewerStaffId) {
+    try {
+      const result = await db.execute<{ id: string; lead_staff_id: string | null }>(sql`
+        SELECT id::text, lead_staff_id::text
+        FROM city_campaigns
+        WHERE campaign_id = ${campaignId}
+      `);
+      type Row = { id: string; lead_staff_id: string | null };
+      const rows: Row[] = Array.isArray(result)
+        ? (result as unknown as Row[])
+        : ((result as unknown as { rows: Row[] }).rows ?? []);
+      const ownerOf = new Map(rows.map((r) => [r.id, r.lead_staff_id]));
+      const mine = new Set(rows.filter((r) => r.lead_staff_id === viewerStaffId).map((r) => r.id));
+      if (mine.size > 0) {
+        all = all.filter((a) => {
+          if (!a.cityCampaignId) return true;
+          const owner = ownerOf.get(a.cityCampaignId) ?? null;
+          return owner === null || mine.has(a.cityCampaignId);
+        });
+        // Stable: your own cities first, priority order preserved within
+        // each group (Array.prototype.sort is stable).
+        all.sort(
+          (a, b) =>
+            Number(b.cityCampaignId ? mine.has(b.cityCampaignId) : false) -
+            Number(a.cityCampaignId ? mine.has(a.cityCampaignId) : false),
+        );
+      }
+    } catch {
+      // Personalization is best-effort; the shared list still renders.
+    }
+  }
+
   return all.slice(0, MAX_ITEMS);
 }
 
@@ -154,6 +200,7 @@ async function loadNeedsVenues(campaignId: string): Promise<NextBestAction[]> {
     fragments.push(sales === 0 ? "0 sales" : `$${Math.round(sales / 100)} sales`);
     return {
       id: `needs_venues:${r.city_campaign_id}`,
+      cityCampaignId: r.city_campaign_id,
       label: `${fragments.join(" — ")} — start outreach`,
       category: "needs_venues" as const,
       // Imminent crawls + bigger gaps surface first
@@ -200,6 +247,7 @@ async function loadStaleOutreach(campaignId: string): Promise<NextBestAction[]> 
 
   return list.map((r) => ({
     id: `stale_outreach:${r.city_campaign_id}`,
+    cityCampaignId: r.city_campaign_id,
     label: `${r.city_name} outreach may be outdated (${r.stale_count} cold entries untouched 14+ days) — refresh venue list`,
     category: "stale_outreach" as const,
     priority: 60 + Math.min(15, r.stale_count),
@@ -230,6 +278,7 @@ async function loadMissingTimes(campaignId: string): Promise<NextBestAction[]> {
   return [
     {
       id: "missing_times:all",
+      cityCampaignId: null,
       label: `${count} crawl${count === 1 ? "" : "s"} missing start/end time — fix before support totals`,
       category: "missing_times",
       priority: 70 + Math.min(15, count),
@@ -287,6 +336,7 @@ async function loadConfirmedMissingInfo(campaignId: string): Promise<NextBestAct
 
   return list.map((r) => ({
     id: `confirmed_missing_info:${r.venue_event_id}`,
+    cityCampaignId: r.city_campaign_id,
     label: `${r.venue_name} confirmed — add ${r.missing || "contact details"}`,
     category: "confirmed_missing_info" as const,
     priority: 55,
@@ -326,6 +376,7 @@ async function loadUnassignedLeads(campaignId: string): Promise<NextBestAction[]
 
   return list.map((r) => ({
     id: `unassigned_lead:${r.city_campaign_id}`,
+    cityCampaignId: r.city_campaign_id,
     label: `${r.city_name} has no lead staffer — assign someone before outreach starts`,
     category: "unassigned_lead" as const,
     priority: 65,

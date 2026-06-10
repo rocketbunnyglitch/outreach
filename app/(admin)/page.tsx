@@ -116,7 +116,7 @@ export default async function DashboardHome({
       await captureException(err, { widget: "today_digest", campaignId });
       return { urgentCrawls: [], staleFollowUps: [], recentWins: [] };
     }),
-    loadNextBestActions(campaignId).catch(async (err) => {
+    loadNextBestActions(campaignId, staff.id).catch(async (err) => {
       await captureException(err, { widget: "next_best_actions", campaignId });
       return [];
     }),
