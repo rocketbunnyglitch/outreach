@@ -16,7 +16,7 @@ import "server-only";
 
 import { emailDrafts, venues } from "@/db/schema";
 import { db } from "@/lib/db";
-import { and, desc, eq, gte, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 export interface EmailQueueItem {
   id: string;
@@ -57,6 +57,18 @@ export async function loadEmailQueue(ownerUserId: string): Promise<EmailQueueDat
   const now = new Date();
   const since = new Date(now.getTime() - 24 * 60 * 60_000);
 
+  // Mirror of the cron's dispatch filter (lib/scheduled-send-runner.ts).
+  // Engine-generated review_required drafts (lifecycle T11-T15, host H0b,
+  // cadence) carry a SUGGESTED scheduled_for but the cron never sends them --
+  // without this filter every due review-draft would sit in "Sending" forever.
+  const cronDispatchable = or(
+    and(eq(emailDrafts.sendMode, "operator_scheduled"), isNotNull(emailDrafts.approvedAt)),
+    and(
+      eq(emailDrafts.sendMode, "auto_allowed"),
+      inArray(emailDrafts.recipientType, ["host", "internal", "system"]),
+    ),
+  );
+
   const cols = {
     id: emailDrafts.id,
     subject: emailDrafts.subject,
@@ -77,6 +89,7 @@ export async function loadEmailQueue(ownerUserId: string): Promise<EmailQueueDat
           isNull(emailDrafts.sentAt),
           isNotNull(emailDrafts.scheduledFor),
           gte(emailDrafts.scheduledFor, now),
+          cronDispatchable,
         ),
       )
       .orderBy(emailDrafts.scheduledFor)
@@ -91,6 +104,7 @@ export async function loadEmailQueue(ownerUserId: string): Promise<EmailQueueDat
           isNull(emailDrafts.sentAt),
           isNotNull(emailDrafts.scheduledFor),
           lte(emailDrafts.scheduledFor, now),
+          cronDispatchable,
         ),
       )
       .orderBy(emailDrafts.scheduledFor)
@@ -104,6 +118,10 @@ export async function loadEmailQueue(ownerUserId: string): Promise<EmailQueueDat
           eq(emailDrafts.ownerUserId, ownerUserId),
           isNotNull(emailDrafts.sentAt),
           gte(emailDrafts.sentAt, since),
+          // A sent_at with NO thread id is the blocked-not-delivered marker
+          // (T17 relationship block / gmail-accepted-but-unsaved) -- don't
+          // present it as a successful send.
+          isNotNull(emailDrafts.sentThreadId),
         ),
       )
       .orderBy(desc(emailDrafts.sentAt))
