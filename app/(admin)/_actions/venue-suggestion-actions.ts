@@ -23,7 +23,7 @@ import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
 import { captureException, logger } from "@/lib/logger";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -342,6 +342,10 @@ export async function addSuggestedVenueToColdOutreach(
           })
           .onConflictDoNothing({
             target: [coldOutreachEntries.cityCampaignId, coldOutreachEntries.venueId],
+            // The unique index is PARTIAL (WHERE archived_at IS NULL); Postgres
+            // can only infer it when the conflict target carries the same
+            // predicate — without this every insert fails with 42P10.
+            where: isNull(coldOutreachEntries.archivedAt),
           })
           .returning({ id: coldOutreachEntries.id });
       } catch (err) {
