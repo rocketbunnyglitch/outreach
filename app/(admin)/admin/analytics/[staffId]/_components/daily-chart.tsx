@@ -66,8 +66,7 @@ function DayBar({ day, max }: { day: StaffDailyDetail; max: number }) {
   const callsHeight = day.total > 0 ? (day.calls / day.total) * totalPct : 0;
   const emailsHeight = day.total > 0 ? (day.emailsSent / day.total) * totalPct : 0;
   const smsHeight = day.total > 0 ? (day.smsSent / day.total) * totalPct : 0;
-  const viberHeight = day.total > 0 ? (day.viberTouches / day.total) * totalPct : 0;
-  const tooltip = `${day.date}: ${day.total} total (${day.calls} call, ${day.emailsSent} email, ${day.smsSent} sms, ${day.viberTouches} viber)`;
+  const tooltip = `${day.date}: ${day.total} total (${day.calls} call, ${day.emailsSent} email, ${day.smsSent} sms)`;
 
   if (day.total === 0) {
     return (
@@ -97,9 +96,6 @@ function DayBar({ day, max }: { day: StaffDailyDetail; max: number }) {
       {day.smsSent > 0 && (
         <div className="bg-orange-500 dark:bg-orange-400" style={{ height: `${smsHeight}%` }} />
       )}
-      {day.viberTouches > 0 && (
-        <div className="bg-purple-500 dark:bg-purple-400" style={{ height: `${viberHeight}%` }} />
-      )}
     </div>
   );
 }
@@ -110,7 +106,6 @@ function Legend() {
       <LegendDot tone="bg-blue-500 dark:bg-blue-400" label="Calls" />
       <LegendDot tone="bg-emerald-500 dark:bg-emerald-400" label="Emails" />
       <LegendDot tone="bg-orange-500 dark:bg-orange-400" label="SMS" />
-      <LegendDot tone="bg-purple-500 dark:bg-purple-400" label="Viber" />
     </div>
   );
 }

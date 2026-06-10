@@ -2,10 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import { buildViberCallLink, buildViberChatLink } from "@/lib/viber";
-import { Loader2, MessageCircle, MessageSquare, PhoneCall, Send, X } from "lucide-react";
+import { Loader2, MessageSquare, PhoneCall, Send, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { logCallAttempt, logViberAttempt, sendQuoSmsToVenue } from "../../_actions/quo-actions";
+import { logCallAttempt, sendQuoSmsToVenue } from "../../_actions/quo-actions";
 import { CallOutcomePopover } from "./call-outcome-popover";
 
 interface Props {
@@ -143,23 +142,6 @@ export function QuoDialControls({
           >
             <MessageSquare className="h-3 w-3" />
           </button>
-
-          <ViberButton
-            subtype="call"
-            venueId={venueId}
-            venuePhone={venuePhone}
-            outreachBrandId={outreachBrandId}
-            cityCampaignId={cityCampaignId}
-            coldEntryId={coldEntryId}
-          />
-          <ViberButton
-            subtype="chat"
-            venueId={venueId}
-            venuePhone={venuePhone}
-            outreachBrandId={outreachBrandId}
-            cityCampaignId={cityCampaignId}
-            coldEntryId={coldEntryId}
-          />
         </div>
 
         {smsOpen && (
@@ -223,27 +205,6 @@ export function QuoDialControls({
       >
         <MessageSquare className="h-2.5 w-2.5" />
       </button>
-
-      {/* Viber call + chat — for venues in countries Quo can't service.
-          Deep-links open the Viber app on the operator's device; the 2-3
-          outreach staff share one Viber account. Logged with channel=
-          'viber' in parallel so analytics capture every touch. */}
-      <ViberButton
-        subtype="call"
-        venueId={venueId}
-        venuePhone={venuePhone}
-        outreachBrandId={outreachBrandId}
-        cityCampaignId={cityCampaignId}
-        coldEntryId={coldEntryId}
-      />
-      <ViberButton
-        subtype="chat"
-        venueId={venueId}
-        venuePhone={venuePhone}
-        outreachBrandId={outreachBrandId}
-        cityCampaignId={cityCampaignId}
-        coldEntryId={coldEntryId}
-      />
 
       {smsOpen && (
         <SmsComposerPopover
@@ -417,79 +378,6 @@ function SmsComposerPopover({
   );
 }
 
-/**
- * One-tap Viber action button.
- *
- * Two subtypes:
- *   • call — opens viber://contact?number=... (Viber initiates call)
- *   • chat — opens viber://chat?number=...    (Viber opens chat thread)
- *
- * On click we open the deep link AND fire logViberAttempt in parallel
- * so analytics capture the touch even though Viber itself doesn't have
- * a webhook back to us (unlike Quo).
- *
- * Hidden when there's no venuePhone (nothing to dial) or no
- * outreachBrandId (we'd have no brand to attribute the attempt to —
- * extremely rare since the city campaign sets the brand).
- *
- * The icon is Viber's signature purple to distinguish it from Quo's
- * blue (call) and emerald (SMS) — quick visual scan tells the
- * operator which channel each row is using.
- */
-function ViberButton({
-  subtype,
-  venueId,
-  venuePhone,
-  outreachBrandId,
-  cityCampaignId,
-  coldEntryId,
-}: {
-  subtype: "call" | "chat";
-  venueId: string;
-  venuePhone: string | null;
-  outreachBrandId: string | null;
-  cityCampaignId: string;
-  coldEntryId: string;
-}) {
-  const [pending, startTx] = useTransition();
-  if (!venuePhone || !outreachBrandId) return null;
-
-  const link =
-    subtype === "call"
-      ? buildViberCallLink({ phoneE164: venuePhone })
-      : buildViberChatLink({ phoneE164: venuePhone });
-  if (!link) return null;
-
-  function handleClick() {
-    const fd = new FormData();
-    fd.set("venueId", venueId);
-    fd.set("outreachBrandId", outreachBrandId ?? "");
-    fd.set("subtype", subtype);
-    fd.set("cityCampaignId", cityCampaignId);
-    fd.set("coldEntryId", coldEntryId);
-    startTx(async () => {
-      await logViberAttempt(null, fd);
-    });
-    if (link) window.open(link, "_self");
-  }
-
-  const Icon = subtype === "call" ? PhoneCall : MessageCircle;
-  const title = subtype === "call" ? "Viber call" : "Viber chat";
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={pending}
-      className="rounded-md p-1 text-zinc-400 transition-colors hover:bg-purple-500/[0.08] hover:text-purple-600 dark:hover:text-purple-400"
-      aria-label={title}
-      title={title}
-    >
-      {pending ? (
-        <Loader2 className="h-2.5 w-2.5 animate-spin" />
-      ) : (
-        <Icon className="h-2.5 w-2.5" />
-      )}
-    </button>
-  );
-}
+// Viber buttons removed 2026-06-10 (operator request: remove all Viber
+// icons). lib/viber.ts + logViberAttempt remain server-side for the
+// historical channel data; reintroduce a button here if Viber returns.

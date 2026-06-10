@@ -127,11 +127,6 @@ function ProfileHeader({
           tone="text-orange-600 dark:text-orange-400"
         />
         <StatCell
-          label="Viber"
-          value={profile.totals.viberTouches}
-          tone="text-purple-600 dark:text-purple-400"
-        />
-        <StatCell
           label="Total touches"
           value={profile.totals.totalTouches}
           tone="text-zinc-900 dark:text-zinc-100"
