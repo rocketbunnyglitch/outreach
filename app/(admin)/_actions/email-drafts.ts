@@ -22,8 +22,10 @@
 import {
   type EmailDraftAttachment,
   cityCampaigns,
+  crawlDeliverables,
   emailDrafts,
   staffInfoSheets,
+  venueEvents,
 } from "@/db/schema";
 import {
   createSignedUpload,
@@ -111,9 +113,36 @@ async function t11BlockReason(
     .from(staffInfoSheets)
     .where(eq(staffInfoSheets.venueEventId, venueEventId))
     .limit(1);
-  return sheet
-    ? null
-    : "Staff info sheet isn't ready for this venue yet. Generate the info sheet before sending T11.";
+  if (!sheet) {
+    return "Staff info sheet isn't ready for this venue yet. Generate the info sheet before sending T11.";
+  }
+
+  // Refdoc 7.4.2 (CRM plan A2, 2026-06-11): WRISTBAND venues also need
+  // the participant-facing sheet before T11 — they host check-in, so
+  // incomplete participant info there is an event-night failure, not a
+  // nice-to-have. Tracked as the participant_poster deliverable.
+  const [ve] = await db
+    .select({ role: venueEvents.role })
+    .from(venueEvents)
+    .where(eq(venueEvents.id, venueEventId))
+    .limit(1);
+  if (ve?.role === "wristband") {
+    const [poster] = await db
+      .select({ id: crawlDeliverables.id })
+      .from(crawlDeliverables)
+      .where(
+        and(
+          eq(crawlDeliverables.venueEventId, venueEventId),
+          eq(crawlDeliverables.deliverableType, "participant_poster"),
+          eq(crawlDeliverables.status, "done"),
+        ),
+      )
+      .limit(1);
+    if (!poster) {
+      return "Wristband venues need the participant sheet/poster ready before T11 (it carries the check-in info). Mark the participant_poster deliverable done first.";
+    }
+  }
+  return null;
 }
 
 export async function upsertDraft(

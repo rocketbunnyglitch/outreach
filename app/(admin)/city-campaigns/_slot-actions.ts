@@ -286,6 +286,16 @@ export async function updateSlotField(
   if (!parsed.success) return { ok: false, error: "Invalid update." };
   const { venueEventId, field, value, cityCampaignId } = parsed.data;
 
+  // Stage gate (CRM plan A1, 2026-06-11): confirming from the city-sheet
+  // status select runs the SAME gate as the pipeline board — a confirmed
+  // venue with no contact method or hours is fake progress that breaks
+  // the whole post-confirm lifecycle.
+  if (field === "status" && value === "confirmed") {
+    const { confirmGateError } = await import("@/lib/stage-gate-check");
+    const gateError = await confirmGateError(venueEventId);
+    if (gateError) return { ok: false, error: gateError };
+  }
+
   try {
     await withAuditContext(staff.id, async (tx) => {
       const patch: Record<string, unknown> = { updatedBy: staff.id };

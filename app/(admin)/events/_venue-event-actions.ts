@@ -148,6 +148,21 @@ export async function updateVenueEvent(
     // outside the tx; null when unassigned (cascade falls back to the lead).
     const isConfirming =
       input.status !== undefined && isConfirmationTransition(previousStatus, input.status);
+
+    // Stage gate (CRM plan A1, 2026-06-11): the events-page form runs
+    // the SAME confirmed gate as the pipeline board. Incoming form
+    // values overlay stored ones, so confirming while filling the
+    // contact/hours in this same save passes.
+    if (isConfirming) {
+      const { confirmGateError } = await import("@/lib/stage-gate-check");
+      const gateError = await confirmGateError(id, {
+        slotStartTime: input.slotStartTime,
+        agreedHoursText: input.agreedHoursText,
+        nightOfContactName: input.nightOfContactName,
+        nightOfContactPhoneE164: input.nightOfContactPhoneE164,
+      });
+      if (gateError) return { ok: false, error: gateError };
+    }
     const graphicsDesignerId = isConfirming
       ? await resolveEngineRole(staff.teamId, "graphics_designer")
       : null;
