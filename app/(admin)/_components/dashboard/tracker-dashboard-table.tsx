@@ -1574,14 +1574,24 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
   }
 
   return (
-    <div className="relative">
+    // inline-block so the chevron/check overlay hugs the compact pill
+    // instead of floating at the far edge of the table cell.
+    <div className="relative inline-block">
       <select
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         disabled={pending}
         aria-label="Assign lead staffer"
         className={cn(
-          "w-full appearance-none border border-transparent py-1 pr-6 pl-2 font-medium text-xs transition-colors duration-150",
+          // Compact fixed width + centered name (operator request
+          // 2026-06-11: pills were full-cell-width and left-aligned).
+          // Symmetric padding keeps the name optically centered; the
+          // chevron overlay lives inside the right padding.
+          "w-28 appearance-none border border-transparent py-1 pr-4 pl-4 text-center font-medium text-xs transition-colors duration-150",
+          // Native dropdown options inherit the pastel pill color and
+          // turn unreadable against the OS dropdown background — force
+          // plain colors on the option list.
+          "[&>option]:bg-white [&>option]:font-normal [&>option]:text-zinc-900 dark:[&>option]:bg-zinc-900 dark:[&>option]:text-zinc-100",
           value
             ? cn("rounded-full ring-1 ring-inset", assignPillClass(value))
             : "rounded-md bg-transparent text-zinc-700 hover:bg-white focus:bg-white dark:text-zinc-300 dark:focus:bg-zinc-900 dark:hover:bg-zinc-900",
@@ -1590,7 +1600,7 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
           pending && "opacity-50",
         )}
       >
-        <option value="">— unassigned —</option>
+        <option value="">Unassigned</option>
         {staff.map((s) => (
           <option key={s.id} value={s.id}>
             {firstName(s.displayName)}
