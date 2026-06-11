@@ -232,6 +232,13 @@ check confirmed_wb_no_tracker_row \
      AND e.archived_at IS NULL AND e.event_date >= now()::date
      AND NOT EXISTS (SELECT 1 FROM wristbands w WHERE w.venue_event_id = ve.id)"
 
+check pending_deliverables_on_archived_events \
+  "pending deliverables on ARCHIVED events (campaign-close cascade should have N/A-ed them)" \
+  "SELECT count(*) FROM crawl_deliverables d
+   JOIN venue_events ve ON ve.id = d.venue_event_id
+   JOIN events e ON e.id = ve.event_id
+   WHERE d.status = 'pending' AND e.archived_at IS NOT NULL"
+
 check push_open_but_filled \
   "open replacement pushes whose (event, role) already has a confirmed venue" \
   "SELECT count(*) FROM replacement_pushes rp

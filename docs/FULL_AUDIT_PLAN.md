@@ -143,8 +143,20 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     wristbandsPending. Backfilled; the confirmation cascade now creates the
     tracker row for wristband-role confirms (idempotent). Invariant
     confirmed_wb_no_tracker_row in BOTH lists.
-- [ ] P045-P047 crawl_hosts/internal_hosts/external_hosts ↔ events (hosts on archived events; external_host_shipments cc mismatch with host assignment)
-- [ ] P048-P050 crawl_deliverables ↔ venue_events (deliverables on cancelled VE still pending; T11-gate rows present for all confirmed wristbands — re-verify backfill)
+- [x] P045-P047 hosts ↔ events
+  » ALL CLEAN: hosts on archived events 0, empty assignments 0, external
+    shipments without a matching host assignment 0. No invariant added by
+    design — hosts legitimately ride their events into archive, so an
+    archived-hosts check would false-positive on every future campaign
+    close.
+- [x] P048-P050 deliverables ↔ venue_events
+  » VE orphans 0; T11 rows + pending-on-cancelled already invariant-watched.
+  » 395 pending deliverables on ARCHIVED events — dead queue work created
+    by the A2 poster backfill hitting imported historical confirms before
+    the archival. Closed as N/A; the campaign-archive cascade now N/As
+    pending deliverables too, so the invariant
+    pending_deliverables_on_archived_events (BOTH lists) stays safe on
+    future closes.
 - [ ] P051-P053 replacement_pushes ↔ events/drafts (open pushes whose role since confirmed → should be filled; drafts with push_id whose push closed)
 - [ ] P054-P056 lineup_change_events ↔ events (writer coverage: every confirm/cancel since deploy has a row; payload allowlist re-audit)
 - [~] P057-P059 tasks (polymorphic targets) — major chunk done early

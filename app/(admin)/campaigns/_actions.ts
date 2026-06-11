@@ -304,6 +304,17 @@ async function archiveCampaignWrites(
       AND cc.campaign_id = ${id}::uuid
       AND e.archived_at IS NULL
   `);
+  // And their pending deliverables close as N/A (P048: 395 dead pending
+  // rows sat in the queues after the import-history archival) — a closed
+  // campaign has no outstanding deliverable work by definition.
+  await tx.execute(sql`
+    UPDATE crawl_deliverables d
+    SET status = 'n_a', updated_at = NOW()
+    FROM venue_events ve, events e, city_campaigns cc
+    WHERE ve.id = d.venue_event_id AND e.id = ve.event_id
+      AND cc.id = e.city_campaign_id AND cc.campaign_id = ${id}::uuid
+      AND d.status = 'pending'
+  `);
 }
 
 export async function archiveCampaign(id: string): Promise<void> {

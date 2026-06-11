@@ -173,6 +173,14 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND NOT EXISTS (SELECT 1 FROM wristbands w WHERE w.venue_event_id = ve.id)`,
   },
   {
+    name: "pending_deliverables_on_archived_events",
+    desc: "Pending deliverables on archived events (campaign-close cascade should have closed them)",
+    query: sql`SELECT count(*)::int AS n FROM crawl_deliverables d
+      JOIN venue_events ve ON ve.id = d.venue_event_id
+      JOIN events e ON e.id = ve.event_id
+      WHERE d.status = 'pending' AND e.archived_at IS NOT NULL`,
+  },
+  {
     name: "push_open_but_filled",
     desc: "Open replacement pushes whose slot already confirmed (close hook missed)",
     query: sql`SELECT count(*)::int AS n FROM replacement_pushes rp
