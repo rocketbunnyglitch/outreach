@@ -243,7 +243,7 @@ Order = operator-critical first. Each tab gets 4 phase slots (F+D, M, B, X) unle
 - [ ] P271-P275 Cross-tab desktop polish sweep: spacing/typography/empty/loading/error states consistency pass
 
 ## Wave 3 — Feature-by-feature audits (A=audit vs best-in-class, X=fix+re-audit)
-- [ ] P276-P277 Send pipeline end-to-end (compose→safety→caps→persona→relationship→send→record) incl. failure paths
+- [ ] P276-P277 Send pipeline end-to-end (compose→safety→caps→persona→relationship→send→record) incl. failure paths. NOTE (seen 2026-06-11 in pm2): cap-blocked scheduled drafts retry EVERY runner tick (11 drafts on micaela@frightcrawlco re-failing at 8/8 daily cap each minute) — works correctly but log-spams; candidate: when failure is the daily cap, defer the draft to the next cap window instead of next tick.
 - [ ] P278-P279 Scheduled sends + email queue + send worker cadence
 - [ ] P280-P281 Cadence engine + follow-up floors + overrides
 - [ ] P282-P283 Reply ingestion (gmail poll: history API, backfill, bounce, misroute, venue match rates)
