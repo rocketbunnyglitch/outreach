@@ -227,6 +227,22 @@ check push_open_but_filled \
          AND ve.status = 'confirmed')"
 
 # ---- polymorphic targets ----------------------------------------------------
+check tasks_thread_target_orphan \
+  "open tasks targeting email threads that no longer exist" \
+  "SELECT count(*) FROM tasks k
+   WHERE k.target_type = 'email_thread' AND k.status IN ('pending','in_progress')
+     AND NOT EXISTS (SELECT 1 FROM email_threads t WHERE t.id = k.target_id)"
+
+check tasks_smartnote_out_of_scope \
+  "open smart-note tasks on threads NOT attributed to an active campaign (historical-mail pollution class)" \
+  "SELECT count(*) FROM tasks k
+   JOIN email_threads t ON t.id = k.target_id
+   WHERE k.target_type = 'email_thread' AND k.source = 'smart_note'
+     AND k.status IN ('pending','in_progress')
+     AND (t.city_campaign_id IS NULL OR NOT EXISTS (
+       SELECT 1 FROM city_campaigns cc JOIN campaigns c ON c.id = cc.campaign_id
+       WHERE cc.id = t.city_campaign_id AND c.archived_at IS NULL))"
+
 check tasks_target_orphan_ve \
   "tasks targeting venue_events that no longer exist" \
   "SELECT count(*) FROM tasks k

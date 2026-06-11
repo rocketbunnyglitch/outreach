@@ -40,7 +40,7 @@ import { cities, emailMessages, emailThreads, tasks, venues } from "@/db/schema"
 import { generateCompletion, isAiConfigured } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 const EXTRACTOR_MODEL = "claude-haiku-4-5-20251001";
 const EXTRACTOR_MAX_TOKENS = 400;
@@ -392,6 +392,31 @@ async function createTasksForPromises(opts: CreateTasksOpts): Promise<void> {
   });
 
   if (rows.length === 0) return;
+
+  // Scope gate (FULL_AUDIT, operator report 2026-06-11): the extractor ran
+  // over deep-resynced HISTORICAL mail and flooded /tasks with 1,632 items
+  // about other periods and operations (July 4th, FIFA crawls...). A
+  // promise only becomes a task when its thread is attributed to an ACTIVE
+  // campaign — unattributed or archived-campaign threads are history, not
+  // work.
+  const scoped = await db.execute<{ ok: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM email_threads t
+      JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+      JOIN campaigns c ON c.id = cc.campaign_id
+      WHERE t.id = ${opts.threadId} AND c.archived_at IS NULL
+    ) AS ok
+  `);
+  const scopedRows = Array.isArray(scoped)
+    ? (scoped as unknown as { ok: boolean }[])
+    : ((scoped as unknown as { rows: { ok: boolean }[] }).rows ?? []);
+  if (!scopedRows[0]?.ok) {
+    logger.info(
+      { threadId: opts.threadId, skipped: rows.length },
+      "promise extractor: thread not in an active campaign — tasks skipped",
+    );
+    return;
+  }
 
   await db.insert(tasks).values(rows);
 

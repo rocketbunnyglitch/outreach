@@ -133,7 +133,18 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
 - [ ] P048-P050 crawl_deliverables ↔ venue_events (deliverables on cancelled VE still pending; T11-gate rows present for all confirmed wristbands — re-verify backfill)
 - [ ] P051-P053 replacement_pushes ↔ events/drafts (open pushes whose role since confirmed → should be filled; drafts with push_id whose push closed)
 - [ ] P054-P056 lineup_change_events ↔ events (writer coverage: every confirm/cancel since deploy has a row; payload allowlist re-audit)
-- [ ] P057-P059 tasks (polymorphic targetType/targetId): orphan targets per type; auto tasks on cancelled VE still pending
+- [~] P057-P059 tasks (polymorphic targets) — major chunk done early
+  (operator report 2026-06-11: "task list polluted with emails not scoped
+  to Halloween"):
+  » 1,632 open smart-note tasks on email threads; 97% pollution — 501 with
+    ORPHANED thread targets + 1,078 on threads outside any active campaign
+    (promise extractor ran over deep-resynced historical mail: July 4th,
+    FIFA crawls, other operations). All 1,579 cancelled; 53 real Halloween
+    tasks remain. Writer gated: createTasksForPromises now requires the
+    thread to be attributed to an ACTIVE campaign. Invariants
+    tasks_thread_target_orphan + tasks_smartnote_out_of_scope in BOTH
+    lists. Remaining for family close: venue/VE orphan probes (already
+    green in harness) — close at next pass.
 - [ ] P060-P062 notes + smart_notes (polymorphic): orphan targets; suggestions pointing at deleted notes
 - [ ] P063-P065 notifications (link_path validity sample; staff_id orphans; unread counts sane)
 - [ ] P066-P068 outreach_log ↔ venues/staff/brands (orphans; channel/outcome enum drift; provenance rows counted in metrics — re-verify after linkage fix)

@@ -166,6 +166,24 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
             AND ve.status = 'confirmed')`,
   },
   {
+    name: "tasks_thread_target_orphan",
+    desc: "Open tasks targeting email threads that no longer exist",
+    query: sql`SELECT count(*)::int AS n FROM tasks k
+      WHERE k.target_type = 'email_thread' AND k.status IN ('pending','in_progress')
+        AND NOT EXISTS (SELECT 1 FROM email_threads t WHERE t.id = k.target_id)`,
+  },
+  {
+    name: "tasks_smartnote_out_of_scope",
+    desc: "Open smart-note tasks on threads outside any active campaign (historical-mail pollution)",
+    query: sql`SELECT count(*)::int AS n FROM tasks k
+      JOIN email_threads t ON t.id = k.target_id
+      WHERE k.target_type = 'email_thread' AND k.source = 'smart_note'
+        AND k.status IN ('pending','in_progress')
+        AND (t.city_campaign_id IS NULL OR NOT EXISTS (
+          SELECT 1 FROM city_campaigns cc JOIN campaigns c ON c.id = cc.campaign_id
+          WHERE cc.id = t.city_campaign_id AND c.archived_at IS NULL))`,
+  },
+  {
     name: "tasks_auto_pending_on_cancelled",
     desc: "Pending auto-tasks on cancelled venue-events",
     query: sql`SELECT count(*)::int AS n FROM tasks k
