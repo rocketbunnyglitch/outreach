@@ -340,7 +340,10 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND cca.outreach_brand_id IS NOT NULL
         AND m.sent_at < now() - interval '1 hour'
         AND NOT EXISTS (SELECT 1 FROM venue_campaign_touch_log tl
-          WHERE tl.email_message_id = m.id)
+          WHERE tl.email_message_id = m.id
+             OR (tl.venue_id = t.venue_id AND tl.campaign_id = cc.campaign_id
+                 AND tl.sent_at BETWEEN m.sent_at - interval '5 minutes'
+                                    AND m.sent_at + interval '5 minutes'))
         AND NOT EXISTS (SELECT 1 FROM venue_events ve
           JOIN events e ON e.id = ve.event_id
           WHERE ve.venue_id = t.venue_id

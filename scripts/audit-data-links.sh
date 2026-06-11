@@ -389,7 +389,7 @@ check placeholder_venue_active \
      AND lower(name) IN ('venue name','venue','name','test','tbd','example')"
 
 check cold_outbound_no_touchrow \
-  "cold-context outbound venue mail with NO cadence touch-log row (floor undercounts; lifecycle mail correctly excluded; 1h grace)" \
+  "cold-context outbound venue mail with NO cadence touch-log row (floor undercounts; lifecycle mail correctly excluded; 1h grace). App sends link touches by venue+campaign+time (recordTouch has no message id); poller sends link by email_message_id — accept either." \
   "SELECT count(*) FROM email_messages m
    JOIN email_threads t ON t.id = m.thread_id
    JOIN city_campaigns cc ON cc.id = t.city_campaign_id
@@ -400,7 +400,10 @@ check cold_outbound_no_touchrow \
      AND cca.outreach_brand_id IS NOT NULL
      AND m.sent_at < now() - interval '1 hour'
      AND NOT EXISTS (SELECT 1 FROM venue_campaign_touch_log tl
-       WHERE tl.email_message_id = m.id)
+       WHERE tl.email_message_id = m.id
+          OR (tl.venue_id = t.venue_id AND tl.campaign_id = cc.campaign_id
+              AND tl.sent_at BETWEEN m.sent_at - interval '5 minutes'
+                                 AND m.sent_at + interval '5 minutes'))
      AND NOT EXISTS (SELECT 1 FROM venue_events ve
        JOIN events e ON e.id = ve.event_id
        WHERE ve.venue_id = t.venue_id
