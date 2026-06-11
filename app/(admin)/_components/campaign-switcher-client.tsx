@@ -173,7 +173,7 @@ export function CampaignSwitcherClient({
       {open && (
         <div
           role="menu"
-          className="absolute top-full left-0 z-50 mt-1 w-80 rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+          className="absolute top-full left-0 z-50 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
         >
           {currentBrandPair && (
             <div className="border-zinc-100 border-b px-3 py-2 text-[11px] text-zinc-500 dark:border-zinc-800">

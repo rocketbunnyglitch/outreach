@@ -161,7 +161,7 @@ export function AccountSwitcher({ accounts }: Props) {
       {open && (
         <div
           ref={popRef}
-          className="absolute top-full left-0 z-30 mt-2 w-96 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute top-full left-0 z-30 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
         >
           <header className="border-zinc-200 border-b bg-zinc-50/60 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/40">
             <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">

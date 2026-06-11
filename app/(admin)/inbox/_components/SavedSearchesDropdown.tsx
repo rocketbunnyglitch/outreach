@@ -142,7 +142,7 @@ export function SavedSearchesDropdown({ saved, currentQuery, onApply }: Props) {
       {open && (
         <div
           className={cn(
-            "absolute top-full right-0 z-50 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg",
+            "absolute top-full right-0 z-50 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-1 shadow-lg",
             "dark:border-zinc-800 dark:bg-zinc-900",
           )}
         >

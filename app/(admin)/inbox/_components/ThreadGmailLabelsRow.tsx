@@ -171,7 +171,7 @@ export function ThreadGmailLabelsRow({
           Gmail label
         </button>
         {pickerOpen && (
-          <div className="absolute top-full left-0 z-20 mt-1 w-64 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="absolute top-full left-0 z-20 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
             {loading && (
               <p className="px-3 py-2 text-xs text-zinc-500">
                 <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />

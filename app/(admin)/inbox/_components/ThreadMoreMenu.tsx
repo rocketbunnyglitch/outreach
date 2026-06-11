@@ -194,7 +194,7 @@ export function ThreadMoreMenu({ threadId, gmailThreadId }: Props) {
           // biome-ignore lint/a11y/useSemanticElements: anchored menu pattern
           role="menu"
           tabIndex={-1}
-          className="absolute top-full right-0 z-30 mt-1 w-48 rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute top-full right-0 z-30 mt-1 w-48 max-w-[calc(100vw-2rem)] rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-800 dark:bg-zinc-950"
         >
           <MenuItem
             icon={<Mail className="h-3 w-3" />}

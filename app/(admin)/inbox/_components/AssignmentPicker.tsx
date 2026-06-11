@@ -106,7 +106,7 @@ export function AssignmentPicker({ threadId, currentAssignedStaffId, currentAssi
         <ChevronDown className="h-3 w-3 text-zinc-500" />
       </button>
       {open && (
-        <div className="absolute left-0 z-10 mt-1 w-56 rounded-md border border-zinc-200 bg-white shadow-md dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="absolute left-0 z-10 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-md border border-zinc-200 bg-white shadow-md dark:border-zinc-700 dark:bg-zinc-900">
           {members === null ? (
             <div className="flex items-center justify-center px-3 py-4 text-xs text-zinc-500">
               <Loader2 className="h-3 w-3 animate-spin" />

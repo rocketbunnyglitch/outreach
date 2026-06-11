@@ -2183,7 +2183,7 @@ function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose
   return (
     <div
       ref={ref}
-      className="absolute bottom-full left-0 z-30 mb-1 w-56 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+      className="absolute bottom-full left-0 z-30 mb-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
     >
       <div className="mb-1 px-1 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
         Common emoji

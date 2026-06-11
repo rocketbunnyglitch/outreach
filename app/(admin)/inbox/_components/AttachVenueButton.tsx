@@ -154,7 +154,7 @@ export function AttachVenueButton({
         {assigned ? "Fix venue" : "+ Attach venue"}
       </button>
       {open && (
-        <div className="absolute top-full left-0 z-30 mt-1 w-80 overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="absolute top-full left-0 z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex items-center gap-2 border-zinc-200/80 border-b px-2 py-1.5 dark:border-zinc-800/60">
             <Search className="h-3 w-3 text-zinc-400" aria-hidden="true" />
             <input

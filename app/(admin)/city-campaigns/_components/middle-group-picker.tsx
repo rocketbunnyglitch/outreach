@@ -176,7 +176,7 @@ export function MiddleGroupPicker({
         <Share2 className="h-3 w-3" />
         Pick a group…
       </button>
-      <div className="absolute top-full right-0 z-50 mt-1 w-80 rounded-lg border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="absolute top-full right-0 z-50 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
         {loading && (
           <div className="flex items-center gap-2 px-2 py-3 text-xs text-zinc-500">
             <Loader2 className="h-3 w-3 animate-spin" />

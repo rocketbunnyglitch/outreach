@@ -263,7 +263,7 @@ export function WhosOnline({
                 </span>
               </button>
               {open ? (
-                <div className="absolute top-full left-0 z-10 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-2 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
+                <div className="absolute top-full left-0 z-10 mt-1 w-48 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-2 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-950">
                   <p className="font-medium text-zinc-900 dark:text-zinc-100">{u.displayName}</p>
                   <p className="mt-0.5 text-zinc-500">{idle ? "Idle 10m+ on:" : "Active on:"}</p>
                   <Link

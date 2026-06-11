@@ -196,7 +196,7 @@ export function SavedViewsPicker({
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-64 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="absolute right-0 z-50 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
           <header className="border-zinc-200/60 border-b bg-zinc-50/40 px-3 py-2 dark:border-zinc-800/40 dark:bg-zinc-900/40">
             <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
               Saved views

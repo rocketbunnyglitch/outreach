@@ -81,7 +81,7 @@ export function DateRangePicker({ activeFrom, activeTo, staffId }: Props) {
       {open && (
         <div
           ref={popRef}
-          className="absolute top-full right-0 z-30 mt-1 w-72 rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute top-full right-0 z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
         >
           <div className="mb-2 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">
             Custom date range

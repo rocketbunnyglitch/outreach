@@ -77,7 +77,7 @@ export function SnoozePopover({ threadId, currentSnoozeUntil, onClose, onSnoozed
       ref={ref}
       role="dialog"
       aria-label="Snooze thread"
-      className="absolute top-full right-0 z-30 mt-1 w-56 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+      className="absolute top-full right-0 z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
     >
       <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
         <span className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">

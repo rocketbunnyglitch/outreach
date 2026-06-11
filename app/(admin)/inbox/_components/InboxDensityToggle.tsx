@@ -107,7 +107,7 @@ export function InboxDensityToggle() {
       {open && (
         <div
           ref={popRef}
-          className="absolute top-full right-0 z-30 mt-1 w-56 rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+          className="absolute top-full right-0 z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
           role="menu"
         >
           <div className="mb-1 px-1 font-mono text-[9px] text-zinc-500 uppercase tracking-widest">

@@ -317,7 +317,7 @@ function ReadReceipt({
       </button>
 
       {hover && (
-        <span className="absolute top-full right-0 z-30 mt-1 w-56 rounded-lg border border-zinc-200 bg-white p-2 text-left shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+        <span className="absolute top-full right-0 z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-2 text-left shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
           <span className="mb-1 block font-medium text-[11px] text-zinc-900 dark:text-zinc-100">
             {summary}
           </span>

@@ -294,7 +294,7 @@ export function ClassificationPicker({ threadId, current, aiSuggestion }: Props)
       {open && (
         <div
           className={cn(
-            "absolute top-full right-0 z-50 mt-1 w-56 rounded-lg border border-zinc-200 bg-white p-1 shadow-lg",
+            "absolute top-full right-0 z-50 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-zinc-200 bg-white p-1 shadow-lg",
             "dark:border-zinc-800 dark:bg-zinc-900",
           )}
         >

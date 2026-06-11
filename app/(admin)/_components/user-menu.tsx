@@ -187,7 +187,10 @@ export function UserMenu({ staff, provider }: UserMenuProps) {
       </button>
 
       {open && (
-        <div role="menu" className="card-surface absolute top-full right-0 z-30 mt-2 w-64 p-2">
+        <div
+          role="menu"
+          className="card-surface absolute top-full right-0 z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] p-2"
+        >
           {/* Header — name + email + role, mirrors the visible-row info
               but centralized so future menu items (theme, profile, etc.)
               have an anchor. */}

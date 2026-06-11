@@ -107,7 +107,7 @@ export function SendMenu({
         <ChevronDown className="h-3 w-3 shrink-0" />
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 mb-1 w-56 rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="absolute bottom-full left-0 mb-1 w-56 max-w-[calc(100vw-2rem)] rounded-md border border-zinc-200 bg-white py-1 shadow-md dark:border-zinc-700 dark:bg-zinc-900">
           <MenuItem
             icon={<Send className="h-3 w-3" />}
             label="Send now"
