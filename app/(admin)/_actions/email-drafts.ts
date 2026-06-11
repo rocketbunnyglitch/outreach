@@ -249,7 +249,16 @@ export async function listMyDrafts(): Promise<
   const rows = await db
     .select()
     .from(emailDrafts)
-    .where(and(eq(emailDrafts.ownerUserId, staff.id), isNull(emailDrafts.sentAt)))
+    .where(
+      and(
+        eq(emailDrafts.ownerUserId, staff.id),
+        isNull(emailDrafts.sentAt),
+        // QUEUED drafts (scheduled_for set) live on /email-queue -- they must
+        // NOT restore as open composer tabs (operator fix request 2026-06-11:
+        // "queued emails showing as draft tabs").
+        isNull(emailDrafts.scheduledFor),
+      ),
+    )
     .orderBy(desc(emailDrafts.updatedAt));
   return rows.map((r) => ({
     id: r.id,
