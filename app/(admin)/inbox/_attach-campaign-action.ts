@@ -9,7 +9,7 @@
  * the thread is on the current user's team (via connected_accounts).
  */
 
-import { cityCampaigns, emailThreads, staffOutreachEmails } from "@/db/schema";
+import { cities, cityCampaigns, emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { ActionResult } from "@/lib/form-utils";
@@ -32,7 +32,7 @@ export async function attachCityCampaignToThread(
 
   // Defense in depth: confirm the thread is on the user's team.
   const threadRow = await db
-    .select({ teamId: staffOutreachEmails.teamId })
+    .select({ teamId: staffOutreachEmails.teamId, venueId: emailThreads.venueId })
     .from(emailThreads)
     .innerJoin(staffOutreachEmails, eq(staffOutreachEmails.id, emailThreads.staffOutreachEmailId))
     .where(eq(emailThreads.id, threadId))
@@ -50,6 +50,35 @@ export async function attachCityCampaignToThread(
     .where(eq(cityCampaigns.id, cityCampaignId))
     .limit(1);
   if (!ccRow[0]) return { ok: false, error: "Campaign not found." };
+
+  // Linkage guard (2026-06-11): a thread attached to a venue in City A
+  // must not be filed under City B's campaign — the city inbox, reports
+  // and worklists would each claim a different city for the same
+  // conversation. If the venue match itself is wrong, fix that first.
+  if (threadRow[0].venueId) {
+    const [v] = await db
+      .select({ cityId: venues.cityId, name: venues.name })
+      .from(venues)
+      .where(eq(venues.id, threadRow[0].venueId))
+      .limit(1);
+    const [cc] = await db
+      .select({ cityId: cityCampaigns.cityId, cityName: cities.name })
+      .from(cityCampaigns)
+      .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+      .where(eq(cityCampaigns.id, cityCampaignId))
+      .limit(1);
+    if (v?.cityId && cc?.cityId && v.cityId !== cc.cityId) {
+      const [venueCity] = await db
+        .select({ name: cities.name })
+        .from(cities)
+        .where(eq(cities.id, v.cityId))
+        .limit(1);
+      return {
+        ok: false,
+        error: `${v.name} is in ${venueCity?.name ?? "another city"}, but that campaign is for ${cc.cityName}. Re-attach the venue first if the venue match is wrong.`,
+      };
+    }
+  }
 
   try {
     await db

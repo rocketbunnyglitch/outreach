@@ -1,6 +1,6 @@
 import { VenueEmailsButton } from "@/app/(admin)/city-campaigns/_components/venue-emails-popover";
 import type { VenueContactsData } from "@/lib/venue-contacts-data";
-import { Mail, MessageSquareReply, Moon, Phone, User, Users } from "lucide-react";
+import { Mail, MessageSquareReply, Moon, Phone, StickyNote, User, Users } from "lucide-react";
 
 /**
  * Unified contact roster on the venue detail page (operator request
@@ -120,6 +120,28 @@ export function VenueContactsSection({
             </span>
           )}
         </p>
+      )}
+
+      {/* Cold-table remarks (linkage-gap fix: "call back Tuesday" used
+          to be visible ONLY on the outreach table). */}
+      {contacts.remarks.length > 0 && (
+        <div className="border-zinc-200/60 border-t pt-2 dark:border-zinc-800/40">
+          <ul className="flex flex-col gap-1">
+            {contacts.remarks.map((r) => (
+              <li
+                key={`${r.cityName ?? ""}|${r.updatedLabel}|${r.text.slice(0, 24)}`}
+                className="flex items-start gap-1.5 text-xs text-zinc-600 dark:text-zinc-400"
+              >
+                <StickyNote className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
+                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{r.text}</span>
+                <span className="shrink-0 font-mono text-[9px] text-zinc-400 uppercase">
+                  {r.cityName ? `${r.cityName} · ` : ""}
+                  {r.updatedLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* Night-of contacts from crawl slots. */}

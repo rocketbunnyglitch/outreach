@@ -24,7 +24,16 @@ import "server-only";
  * hydration-safe server component.
  */
 
-import { events, emailMessages, emailThreads, venueEvents, venues } from "@/db/schema";
+import {
+  events,
+  cities,
+  cityCampaigns,
+  coldOutreachEntries,
+  emailMessages,
+  emailThreads,
+  venueEvents,
+  venues,
+} from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
@@ -52,12 +61,23 @@ export interface SlotContact {
   eventLabel: string | null;
 }
 
+export interface OutreachRemark {
+  text: string;
+  cityName: string | null;
+  /** "Jun 10" — when the remark was last edited. */
+  updatedLabel: string;
+}
+
 export interface VenueContactsData {
   replying: ReplyingContact[];
   slotContacts: SlotContact[];
+  /** Cold-table remarks for this venue (linkage-gap fix 2026-06-11:
+   *  "call back Tuesday" used to live ONLY on the outreach table —
+   *  invisible to anyone reading the venue page). Newest first. */
+  remarks: OutreachRemark[];
 }
 
-const EMPTY: VenueContactsData = { replying: [], slotContacts: [] };
+const EMPTY: VenueContactsData = { replying: [], slotContacts: [], remarks: [] };
 
 export async function loadVenueContacts(venueId: string): Promise<VenueContactsData> {
   try {
@@ -153,7 +173,34 @@ export async function loadVenueContacts(venueId: string): Promise<VenueContactsD
       if (slotContacts.length >= 6) break;
     }
 
-    return { replying: [...replyingByEmail.values()], slotContacts };
+    // Cold-table remarks across campaigns, newest first.
+    const remarkRows = await db
+      .select({
+        remarks: coldOutreachEntries.remarks,
+        updatedAt: coldOutreachEntries.updatedAt,
+        cityName: cities.name,
+      })
+      .from(coldOutreachEntries)
+      .innerJoin(cityCampaigns, eq(cityCampaigns.id, coldOutreachEntries.cityCampaignId))
+      .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
+      .where(
+        and(
+          eq(coldOutreachEntries.venueId, venueId),
+          sql`COALESCE(TRIM(${coldOutreachEntries.remarks}), '') <> ''`,
+        ),
+      )
+      .orderBy(desc(coldOutreachEntries.updatedAt))
+      .limit(5);
+
+    return {
+      replying: [...replyingByEmail.values()],
+      slotContacts,
+      remarks: remarkRows.map((r) => ({
+        text: (r.remarks ?? "").trim(),
+        cityName: r.cityName ?? null,
+        updatedLabel: TIME_FMT.format(r.updatedAt),
+      })),
+    };
   } catch (err) {
     logger.error({ err, venueId }, "loadVenueContacts failed");
     return EMPTY;

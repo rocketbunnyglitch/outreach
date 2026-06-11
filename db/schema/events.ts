@@ -60,6 +60,14 @@ export const events = pgTable(
     // Phase 8b — Halloween-aware fields
     dayPart: dayPart("day_part"),
     crawlNumber: smallint("crawl_number"),
+    /**
+     * Tickets SOLD for this crawl (a COUNT, not money). Canonical source:
+     * the Eventbrite sales sync (all-crawls Sync / Sync all sales). Do NOT
+     * confuse with city_campaigns.current_sales_cents, which is gross
+     * REVENUE in cents for the whole city x campaign — different unit,
+     * different granularity, both intentionally kept. Effective-priority
+     * (refdoc 1.6) and cancellation review (refdoc 7.9) read THIS column.
+     */
     ticketSalesCount: integer("ticket_sales_count").notNull().default(0),
     startsAt: timestamp("starts_at", { withTimezone: true }),
     endsAt: timestamp("ends_at", { withTimezone: true }),

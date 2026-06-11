@@ -38,6 +38,10 @@ export const cityCampaigns = pgTable(
     targetMiddleCount: smallint("target_middle_count").notNull().default(2),
 
     // Live sales figure (synced from Eventbrite payouts, Phase 8).
+    // Gross REVENUE in cents for the whole city x campaign — read-only
+    // synced, never operator-edited. Do NOT confuse with
+    // events.ticket_sales_count, which is a per-crawl ticket COUNT
+    // (that one drives effective priority + cancellation review).
     currentSalesCents: bigint("current_sales_cents", { mode: "bigint" }).notNull().default(sql`0`),
 
     // Per-city revenue target if set by admin (Section 7.4 goals).
