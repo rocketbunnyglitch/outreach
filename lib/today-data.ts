@@ -56,6 +56,8 @@ export interface RecentWin {
   role: string;
   confirmedAt: string;
   daysAgo: number;
+  /** Confirmed crawl nights in this win group — a 4-night venue is ONE win row ("x4 nights"). */
+  nights: number;
   /** Who owns the win (the venue's "Scheduled by" staffer), or null. */
   winnerName: string | null;
 }
@@ -221,16 +223,21 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
     role: string;
     confirmed_at: string;
     days_ago: number;
+    nights: number;
   }>(sql`
+    -- One row PER VENUE (per role/winner), not per crawl night: a venue
+    -- confirmed across 4 nights is one win ("x4 nights"), so a single
+    -- multi-night confirm can't eat 4 of the 5 visible win slots.
     SELECT
-      ve.id AS venue_event_id,
+      min(ve.id::text) AS venue_event_id,
       cc.id AS city_campaign_id,
       v.name AS venue_name,
       c.name AS city_name,
       ve.role::text AS role,
-      ve.confirmed_at::text AS confirmed_at,
-      (EXTRACT(EPOCH FROM (NOW() - ve.confirmed_at)) / 86400)::int AS days_ago,
-      (SELECT u.display_name FROM users u WHERE u.id = ve.our_contact_staff_id) AS winner_name
+      max(ve.confirmed_at)::text AS confirmed_at,
+      (EXTRACT(EPOCH FROM (NOW() - max(ve.confirmed_at))) / 86400)::int AS days_ago,
+      count(*)::int AS nights,
+      (SELECT u.display_name FROM users u WHERE u.id = min(ve.our_contact_staff_id::text)::uuid) AS winner_name
     FROM venue_events ve
     JOIN events e ON e.id = ve.event_id
     JOIN city_campaigns cc ON cc.id = e.city_campaign_id
@@ -240,7 +247,8 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
       AND ve.status IN ('confirmed', 'contract_signed')
       AND ve.confirmed_at IS NOT NULL
       AND ve.confirmed_at > NOW() - INTERVAL '7 days'
-    ORDER BY ve.confirmed_at DESC
+    GROUP BY cc.id, v.id, v.name, c.name, ve.role
+    ORDER BY max(ve.confirmed_at) DESC
     LIMIT 5
   `);
 
@@ -252,6 +260,7 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
     role: string;
     confirmed_at: string;
     days_ago: number;
+    nights: number;
     winner_name: string | null;
   };
   const rows: Row[] = Array.isArray(result)
@@ -265,6 +274,7 @@ async function loadRecentWins(campaignId: string): Promise<RecentWin[]> {
     role: r.role,
     confirmedAt: r.confirmed_at,
     daysAgo: r.days_ago,
+    nights: Number(r.nights ?? 1),
     winnerName: r.winner_name,
   }));
 }

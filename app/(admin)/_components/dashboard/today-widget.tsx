@@ -227,7 +227,8 @@ function RecentWinsColumn({ rows }: { rows: TodayDigest["recentWins"] }) {
                     {r.venueName}
                   </p>
                   <p className="mt-0.5 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em]">
-                    {ROLE_LABEL[r.role] ?? r.role} · {r.cityName} ·{" "}
+                    {ROLE_LABEL[r.role] ?? r.role}
+                    {r.nights > 1 ? ` ×${r.nights} nights` : ""} · {r.cityName} ·{" "}
                     <span className="text-emerald-600 dark:text-emerald-400">
                       {r.daysAgo === 0 ? "today" : `${r.daysAgo}d ago`}
                     </span>
