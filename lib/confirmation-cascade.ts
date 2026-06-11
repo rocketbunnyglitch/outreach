@@ -216,6 +216,18 @@ export async function generateConfirmationCascade(
       .onConflictDoNothing({
         target: [crawlDeliverables.venueEventId, crawlDeliverables.deliverableType],
       });
+
+    // Wristband shipping tracker row (FULL_AUDIT P042): without it the
+    // shipment is invisible to the wristbands page, the rot chips and
+    // health's wristbandsPending input — 4 confirmed wristband venues had
+    // no row at audit baseline. Idempotent on re-confirm.
+    await tx.execute(sql`
+      INSERT INTO wristbands (venue_event_id)
+      SELECT ${venueEventId}::uuid
+      WHERE NOT EXISTS (
+        SELECT 1 FROM wristbands w WHERE w.venue_event_id = ${venueEventId}::uuid
+      )
+    `);
   }
 
   // Replacement playbook close (CRM plan B2): if an emergency push is open

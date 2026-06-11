@@ -136,7 +136,13 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     manual sales writer exists, and archived historical events carry no
     unlinked sales — so the invariant is exact). "Sync never ran" facet
     covered by cron-health (eventbrite-sync every 15min, monitored).
-- [ ] P042-P044 wristbands ↔ venue_events (wristband rows on non-wristband-role VE; confirmed wristband VE with no wristband row; status vs shipped_at/delivered_at consistency)
+- [x] P042-P044 wristbands ↔ venue_events
+  » Wrong-role rows: 0. Shipped/delivered timestamp consistency: 0 drift.
+  » 4 confirmed FUTURE wristband venues had NO shipping-tracker row —
+    invisible to the wristbands page, rot chips and health's
+    wristbandsPending. Backfilled; the confirmation cascade now creates the
+    tracker row for wristband-role confirms (idempotent). Invariant
+    confirmed_wb_no_tracker_row in BOTH lists.
 - [ ] P045-P047 crawl_hosts/internal_hosts/external_hosts ↔ events (hosts on archived events; external_host_shipments cc mismatch with host assignment)
 - [ ] P048-P050 crawl_deliverables ↔ venue_events (deliverables on cancelled VE still pending; T11-gate rows present for all confirmed wristbands — re-verify backfill)
 - [ ] P051-P053 replacement_pushes ↔ events/drafts (open pushes whose role since confirmed → should be filled; drafts with push_id whose push closed)

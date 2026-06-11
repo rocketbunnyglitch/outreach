@@ -224,6 +224,14 @@ check deliverables_pending_on_cancelled \
    JOIN venue_events ve ON ve.id = d.venue_event_id
    WHERE d.status = 'pending' AND ve.status = 'cancelled'"
 
+check confirmed_wb_no_tracker_row \
+  "confirmed future wristband venues with NO wristband shipping-tracker row (invisible to logistics/rot/health)" \
+  "SELECT count(*) FROM venue_events ve
+   JOIN events e ON e.id = ve.event_id
+   WHERE ve.role = 'wristband' AND ve.status = 'confirmed'
+     AND e.archived_at IS NULL AND e.event_date >= now()::date
+     AND NOT EXISTS (SELECT 1 FROM wristbands w WHERE w.venue_event_id = ve.id)"
+
 check push_open_but_filled \
   "open replacement pushes whose (event, role) already has a confirmed venue" \
   "SELECT count(*) FROM replacement_pushes rp

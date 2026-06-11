@@ -164,6 +164,15 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
       WHERE d.status = 'pending' AND ve.status = 'cancelled'`,
   },
   {
+    name: "confirmed_wb_no_tracker_row",
+    desc: "Confirmed future wristband venues with no shipping-tracker row (invisible to logistics/rot/health)",
+    query: sql`SELECT count(*)::int AS n FROM venue_events ve
+      JOIN events e ON e.id = ve.event_id
+      WHERE ve.role = 'wristband' AND ve.status = 'confirmed'
+        AND e.archived_at IS NULL AND e.event_date >= now()::date
+        AND NOT EXISTS (SELECT 1 FROM wristbands w WHERE w.venue_event_id = ve.id)`,
+  },
+  {
     name: "push_open_but_filled",
     desc: "Open replacement pushes whose slot already confirmed (close hook missed)",
     query: sql`SELECT count(*)::int AS n FROM replacement_pushes rp
