@@ -26,12 +26,13 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { HOST_WINDOW_DAYS, ROT_THRESHOLDS, WRISTBAND_WINDOW_DAYS } from "@/lib/rot";
 import { sql } from "drizzle-orm";
 
-const STALE_COLD_DAYS = 10;
-const NEEDS_REPLY_HOURS = 48;
-const WRISTBAND_WINDOW_DAYS = 14;
-const HOST_WINDOW_DAYS = 7;
+// Thresholds live in lib/rot.ts (CRM plan C2) so the watchdog's rules and
+// the in-place RotChips on list rows can never disagree.
+const STALE_COLD_DAYS = ROT_THRESHOLDS.cold_outreach.lateHours / 24;
+const NEEDS_REPLY_HOURS = ROT_THRESHOLDS.warm_reply.criticalHours;
 const DEDUPE_MINUTES = 24 * 60;
 
 interface AgingRow {

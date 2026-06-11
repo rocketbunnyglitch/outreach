@@ -114,7 +114,7 @@
 - Acceptance: a red crawl always explains itself in one line; NBA
   ordering shifts when health shifts; pure core unit-tested.
 
-### C2. Rotting detection everywhere  [ ]
+### C2. Rotting detection everywhere  [~ foundation + deliverables shipped; remaining: V2 calls, cold table, slot table, replacement pushes]
 - lib/rot.ts: shared staleness math (object type -> rot thresholds).
   Surfaced as chips on: warm threads (hours), open required slots
   (days), pending deliverables, V2 calls, shipping, replacement tasks.

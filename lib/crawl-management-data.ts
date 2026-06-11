@@ -26,7 +26,7 @@ import {
 } from "@/db/schema";
 import { GRAPHICS_TASK_TITLE_PREFIX } from "@/lib/confirmation-cascade";
 import { db } from "@/lib/db";
-import { and, asc, eq, inArray, isNull, like } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, like, sql } from "drizzle-orm";
 
 export interface DeliverableState {
   /** Existing crawl_deliverables row id when present. null = row hasn't
@@ -35,6 +35,9 @@ export interface DeliverableState {
   status: "pending" | "done" | "n_a";
   notes: string | null;
   assignedStaffName: string | null;
+  /** Hours this row has been sitting pending (CRM plan C2 rot chips).
+   *  null when the row doesn't exist yet or isn't pending. */
+  pendingAgeHours: number | null;
 }
 
 export interface CrawlMgmtVenueRow {
@@ -113,6 +116,7 @@ const DEFAULT_STATE: DeliverableState = {
   status: "pending",
   notes: null,
   assignedStaffName: null,
+  pendingAgeHours: null,
 };
 
 export async function loadCrawlManagement(opts: {
@@ -218,6 +222,7 @@ export async function loadCrawlManagement(opts: {
         status: crawlDeliverables.status,
         notes: crawlDeliverables.notes,
         assignedStaffId: crawlDeliverables.assignedStaffId,
+        ageHours: sql<number>`(extract(epoch from (now() - ${crawlDeliverables.createdAt})) / 3600)::int`,
       })
       .from(crawlDeliverables)
       .where(inArray(crawlDeliverables.venueEventId, veIds)),
@@ -255,6 +260,7 @@ export async function loadCrawlManagement(opts: {
             status: d.status,
             notes: d.notes,
             assignedStaffName: null,
+            pendingAgeHours: d.status === "pending" ? Number(d.ageHours) : null,
           };
         };
         const wristbandStatus = wristbandByVe.get(v.id) ?? null;

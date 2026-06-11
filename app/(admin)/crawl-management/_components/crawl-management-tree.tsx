@@ -20,6 +20,7 @@
  */
 
 import { Card } from "@/components/ui/card";
+import { RotChip } from "@/components/ui/rot-chip";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import type {
@@ -344,6 +345,9 @@ function DeliverableCell({
         )}
         {state.status === "done" ? "Done" : state.status === "n_a" ? "N/A" : "Pending"}
       </button>
+      {state.status === "pending" && state.pendingAgeHours != null && (
+        <RotChip kind="pending_deliverable" ageHours={state.pendingAgeHours} className="mt-1" />
+      )}
     </div>
   );
 }
