@@ -1104,6 +1104,17 @@ async function ingestMessage(opts: {
     }
   }
 
+  // A bounce notification ("Address not found" / Mail Delivery Subsystem)
+  // is a machine message — it must never enter the needs-reply queue
+  // (operator report 2026-06-11). The suppression pass above already
+  // records the failed recipient; here we keep the thread state
+  // workflow-neutral: a NEW mailer-daemon thread lands as 'archived',
+  // and a bounce arriving on an existing thread does not flip it to
+  // needs_reply.
+  const isBounceNotification =
+    direction === "inbound" &&
+    (BOUNCE_FROM_RE.test(fromHeader ?? "") || BOUNCE_SUBJECT_RE.test(subject ?? ""));
+
   // Find or create the thread.
   let threadId: string;
   let threadCreated = false;
@@ -1190,7 +1201,12 @@ async function ingestMessage(opts: {
             gmailThreadId,
             venueId,
             subject,
-            state: direction === "inbound" ? "needs_reply" : "waiting_on_them",
+            state:
+              direction === "inbound"
+                ? isBounceNotification
+                  ? "archived"
+                  : "needs_reply"
+                : "waiting_on_them",
             direction,
             // Newly created threads start with the triage classifier's
             // best guess. The operator can override via the UI; future
@@ -1345,7 +1361,7 @@ async function ingestMessage(opts: {
         ELSE 'mixed'::thread_direction
       END,
       state = CASE
-        WHEN ${direction} = 'inbound' THEN 'needs_reply'::thread_state
+        WHEN ${direction} = 'inbound' AND NOT ${isBounceNotification} THEN 'needs_reply'::thread_state
         ELSE state
       END,
       updated_at = NOW(),
