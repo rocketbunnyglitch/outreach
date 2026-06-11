@@ -453,7 +453,10 @@ export async function deepResyncInbox(
     .limit(1);
   const inbox = rows[0];
   if (!inbox) return { ok: false, error: "Inbox not found." };
-  if (inbox.ownerUserId !== staff.id) {
+  // Owner OR admin: admins run team-wide history backfills (e.g. the
+  // reply-corpus build, 2026-06-11) without forcing each staffer to
+  // click their own button. Read-only Gmail ingestion either way.
+  if (inbox.ownerUserId !== staff.id && !hasMinimumRole(staff, "admin")) {
     return { ok: false, error: "You can only deep-resync inboxes you own." };
   }
   if (!inbox.refreshToken || inbox.status !== "connected") {
