@@ -127,7 +127,15 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     Verified outside the Recent-wins 7d window (current window = 12 real
     Halloween confirms). Do not read archived-event VE timestamps as
     operational telemetry.
-- [ ] P039-P041 eventbrite links ↔ events (eb id set but sync never ran; sales>0 with no eb link; dangling eb ids)
+- [x] P039-P041 eventbrite links ↔ events
+  » Operator-found (unlink left sales frozen): BOTH unlink paths (single +
+    bulk) cleared only the link columns; sales come ONLY from EB sync and
+    the cron touches LINKED events only — so the last count froze forever.
+    Fixed: both unlink paths zero ticket_sales_count; the 1 stale row
+    zeroed. Invariant sales_without_eb_link in BOTH lists (verified no
+    manual sales writer exists, and archived historical events carry no
+    unlinked sales — so the invariant is exact). "Sync never ran" facet
+    covered by cron-health (eventbrite-sync every 15min, monitored).
 - [ ] P042-P044 wristbands ↔ venue_events (wristband rows on non-wristband-role VE; confirmed wristband VE with no wristband row; status vs shipped_at/delivered_at consistency)
 - [ ] P045-P047 crawl_hosts/internal_hosts/external_hosts ↔ events (hosts on archived events; external_host_shipments cc mismatch with host assignment)
 - [ ] P048-P050 crawl_deliverables ↔ venue_events (deliverables on cancelled VE still pending; T11-gate rows present for all confirmed wristbands — re-verify backfill)

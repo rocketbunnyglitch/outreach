@@ -94,6 +94,11 @@ export async function linkEventbriteEvent(
           .set({
             eventbriteEventId: null,
             eventbriteUrl: null,
+            // Sales come ONLY from EB sync — unlinking must zero them
+            // immediately, or the last synced count freezes forever (the
+            // sync cron only touches LINKED events). Operator report
+            // 2026-06-11.
+            ticketSalesCount: 0,
             updatedBy: staff.id,
           })
           .where(eq(events.id, parsed.data.eventId));
@@ -709,6 +714,7 @@ export async function bulkUnlinkEventbrite(
         UPDATE events
         SET eventbrite_event_id = NULL,
             eventbrite_url = NULL,
+            ticket_sales_count = 0,
             updated_by = ${staff.id},
             updated_at = NOW()
         FROM city_campaigns cc

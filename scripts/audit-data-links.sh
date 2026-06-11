@@ -204,6 +204,12 @@ check ve_cross_city_confirmed \
    WHERE ve.status = 'confirmed' AND v.city_id <> cc.city_id
      AND e.event_date >= now()::date"
 
+check sales_without_eb_link \
+  "active events showing ticket sales with NO Eventbrite link (sales only ever come from EB sync — frozen ghost numbers)" \
+  "SELECT count(*) FROM events
+   WHERE archived_at IS NULL AND eventbrite_event_id IS NULL
+     AND ticket_sales_count > 0"
+
 # ---- deliverables / wristbands / pushes ------------------------------------
 check t11_gate_rows_missing \
   "confirmed wristband venue_events with NO participant_poster deliverable row" \

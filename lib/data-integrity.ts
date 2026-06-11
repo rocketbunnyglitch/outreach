@@ -150,6 +150,13 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
           WHERE d.venue_event_id = ve.id AND d.deliverable_type = 'participant_poster')`,
   },
   {
+    name: "sales_without_eb_link",
+    desc: "Active events showing ticket sales with no Eventbrite link (frozen ghost numbers — sales only come from EB sync)",
+    query: sql`SELECT count(*)::int AS n FROM events
+      WHERE archived_at IS NULL AND eventbrite_event_id IS NULL
+        AND ticket_sales_count > 0`,
+  },
+  {
     name: "deliverables_pending_on_cancelled",
     desc: "Pending deliverables on cancelled venue-events (dead work in queues)",
     query: sql`SELECT count(*)::int AS n FROM crawl_deliverables d
