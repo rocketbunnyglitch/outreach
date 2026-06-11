@@ -47,7 +47,13 @@ export type ActionCategory =
   | "stale_outreach"
   | "missing_times"
   | "confirmed_missing_info"
-  | "unassigned_lead";
+  | "unassigned_lead"
+  // v2 (2026-06-11 best-in-class audit): the operating-brain categories.
+  | "replacement_urgent"
+  | "high_sales_missing_final"
+  | "v2_call_due"
+  | "warm_reply_waiting"
+  | "lifecycle_blocker";
 
 export interface NextBestAction {
   id: string;
@@ -75,15 +81,42 @@ export async function loadNextBestActions(
 ): Promise<NextBestAction[]> {
   if (!campaignId) return [];
 
-  const [needs, stale, noTimes, confirmedMissing, unassigned] = await Promise.all([
+  const [
+    needs,
+    stale,
+    noTimes,
+    confirmedMissing,
+    unassigned,
+    replacements,
+    highSales,
+    v2Calls,
+    warmReplies,
+    blockers,
+  ] = await Promise.all([
     loadNeedsVenues(campaignId),
     loadStaleOutreach(campaignId),
     loadMissingTimes(campaignId),
     loadConfirmedMissingInfo(campaignId),
     loadUnassignedLeads(campaignId),
+    loadReplacementUrgent(campaignId),
+    loadHighSalesMissingFinal(campaignId),
+    loadV2CallsDue(campaignId),
+    loadWarmRepliesWaiting(campaignId),
+    loadLifecycleBlockers(campaignId),
   ]);
 
-  let all = [...needs, ...stale, ...noTimes, ...confirmedMissing, ...unassigned];
+  let all = [
+    ...replacements,
+    ...highSales,
+    ...v2Calls,
+    ...warmReplies,
+    ...blockers,
+    ...needs,
+    ...stale,
+    ...noTimes,
+    ...confirmedMissing,
+    ...unassigned,
+  ];
   // Sort by priority desc; tie-break stable (insertion order) so within
   // a category the most relevant row stays on top.
   all.sort((a, b) => b.priority - a.priority);
@@ -144,7 +177,12 @@ async function loadNeedsVenues(campaignId: string): Promise<NextBestAction[]> {
       SELECT
         cc.id AS city_campaign_id,
         cc.lead_staff_id,
-        cc.current_sales_cents AS sales_cents,
+        -- Ticket COUNT, not payout cents (2026-06-11 audit: labeling
+        -- current_sales_cents as "sales" confused revenue vs tickets;
+        -- the tracker made the same switch).
+        (SELECT COALESCE(SUM(e2.ticket_sales_count), 0)
+           FROM events e2
+          WHERE e2.city_campaign_id = cc.id AND e2.archived_at IS NULL) AS sales_cents,
         c.name AS city_name,
         MIN(e.event_date - CURRENT_DATE) AS days_until_min,
         SUM(
@@ -193,11 +231,11 @@ async function loadNeedsVenues(campaignId: string): Promise<NextBestAction[]> {
     : ((rows as unknown as { rows: Row[] }).rows ?? []);
 
   return list.map((r) => {
-    const sales = Number.parseInt(r.sales_cents, 10) || 0;
+    const tickets = Number.parseInt(r.sales_cents, 10) || 0;
     const fragments: string[] = [];
     fragments.push(`${r.city_name} needs ${r.open_slots}+ venues`);
     if (r.lead_staff_name) fragments.push(`assigned to ${r.lead_staff_name}`);
-    fragments.push(sales === 0 ? "0 sales" : `$${Math.round(sales / 100)} sales`);
+    fragments.push(tickets === 0 ? "0 tickets sold" : `${tickets} tickets sold`);
     return {
       id: `needs_venues:${r.city_campaign_id}`,
       cityCampaignId: r.city_campaign_id,
@@ -382,5 +420,230 @@ async function loadUnassignedLeads(campaignId: string): Promise<NextBestAction[]
     priority: 65,
     ctaHref: `/city-campaigns/${r.city_campaign_id}`,
     ctaLabel: "Assign lead",
+  }));
+}
+
+// =========================================================================
+// v2 loaders (2026-06-11 best-in-class audit): the operating-brain
+// categories — time-critical, with the WHY in every label. Column names
+// verified against db/schema/* per CLAUDE.md 12.1.
+// =========================================================================
+
+function rowsOf<T>(res: unknown): T[] {
+  return Array.isArray(res) ? (res as T[]) : ((res as { rows?: T[] }).rows ?? []);
+}
+
+/** replacement_urgent — a venue cancelled within the last 7 days on an
+ *  upcoming crawl that is now short. The single most time-critical
+ *  state in the system (refdoc 7.16). */
+async function loadReplacementUrgent(campaignId: string): Promise<NextBestAction[]> {
+  const rows = rowsOf<{
+    city_campaign_id: string;
+    city_name: string;
+    role: string;
+    days_until: number;
+  }>(
+    await db.execute(sql`
+      SELECT DISTINCT ON (ve.id)
+        cc.id::text AS city_campaign_id,
+        c.name AS city_name,
+        ve.role::text AS role,
+        (e.event_date - CURRENT_DATE)::int AS days_until
+      FROM venue_events ve
+      JOIN events e ON e.id = ve.event_id
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+      WHERE cc.campaign_id = ${campaignId}
+        AND ve.cancelled_at > NOW() - INTERVAL '7 days'
+        AND e.event_date >= CURRENT_DATE
+        AND e.archived_at IS NULL
+        AND (
+          SELECT COUNT(*) FROM venue_events v2
+          WHERE v2.event_id = e.id AND v2.status IN ('confirmed', 'contract_signed')
+        ) < e.required_venue_count_total
+      ORDER BY ve.id, ve.cancelled_at DESC
+      LIMIT 3
+    `),
+  );
+  return rows.map((r) => ({
+    id: `replacement:${r.city_campaign_id}:${r.role}`,
+    cityCampaignId: r.city_campaign_id,
+    label: `${r.city_name}: ${r.role.replace(/_/g, " ")} venue cancelled with ${r.days_until} ${r.days_until === 1 ? "day" : "days"} to go — find a replacement NOW`,
+    category: "replacement_urgent" as const,
+    priority: 98 - Math.min(20, r.days_until),
+    ctaHref: `/city-campaigns/${r.city_campaign_id}`,
+    ctaLabel: "Replace venue",
+  }));
+}
+
+/** high_sales_missing_final — tickets are selling but the crawl has no
+ *  confirmed final venue. The audit's flagship example of an action
+ *  the brain must surface with its numbers. */
+async function loadHighSalesMissingFinal(campaignId: string): Promise<NextBestAction[]> {
+  const rows = rowsOf<{
+    city_campaign_id: string;
+    city_name: string;
+    tickets: number;
+    days_until: number;
+  }>(
+    await db.execute(sql`
+      SELECT
+        cc.id::text AS city_campaign_id,
+        c.name AS city_name,
+        e.ticket_sales_count AS tickets,
+        (e.event_date - CURRENT_DATE)::int AS days_until
+      FROM events e
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+      WHERE cc.campaign_id = ${campaignId}
+        AND e.archived_at IS NULL
+        AND e.event_date >= CURRENT_DATE
+        AND e.ticket_sales_count >= 10
+        AND e.required_final_count > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM venue_events ve
+          WHERE ve.event_id = e.id
+            AND ve.role IN ('final', 'alt_final')
+            AND ve.status IN ('confirmed', 'contract_signed')
+        )
+      ORDER BY e.ticket_sales_count DESC
+      LIMIT 3
+    `),
+  );
+  return rows.map((r) => ({
+    id: `highsales:${r.city_campaign_id}:${r.days_until}`,
+    cityCampaignId: r.city_campaign_id,
+    label: `${r.city_name} has ${r.tickets} tickets sold, event in ${r.days_until} days, and NO final venue — lock the final`,
+    category: "high_sales_missing_final" as const,
+    priority: 90 + Math.min(8, Math.floor(r.tickets / 10)),
+    ctaHref: `/city-campaigns/${r.city_campaign_id}`,
+    ctaLabel: "Fill final",
+  }));
+}
+
+/** v2_call_due — confirmed venues inside the 4-day window whose
+ *  floor-staff confirmation call has not happened (refdoc 7.14.3a). */
+async function loadV2CallsDue(campaignId: string): Promise<NextBestAction[]> {
+  const rows = rowsOf<{
+    city_campaign_id: string;
+    city_name: string;
+    n: number;
+    days_until: number;
+  }>(
+    await db.execute(sql`
+      SELECT
+        cc.id::text AS city_campaign_id,
+        c.name AS city_name,
+        COUNT(*)::int AS n,
+        MIN(e.event_date - CURRENT_DATE)::int AS days_until
+      FROM venue_events ve
+      JOIN events e ON e.id = ve.event_id
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+      WHERE cc.campaign_id = ${campaignId}
+        AND ve.status IN ('confirmed', 'contract_signed')
+        AND ve.cancelled_at IS NULL
+        AND ve.floor_staff_call_completed_at IS NULL
+        AND e.archived_at IS NULL
+        AND e.event_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '4 days'
+      GROUP BY cc.id, c.name
+      ORDER BY MIN(e.event_date) ASC
+      LIMIT 3
+    `),
+  );
+  return rows.map((r) => ({
+    id: `v2calls:${r.city_campaign_id}`,
+    cityCampaignId: r.city_campaign_id,
+    label: `${r.n} floor-staff confirmation ${r.n === 1 ? "call is" : "calls are"} due in ${r.city_name} — event in ${r.days_until} ${r.days_until === 1 ? "day" : "days"}`,
+    category: "v2_call_due" as const,
+    priority: 92 - Math.min(4, r.days_until),
+    ctaHref: "/worklist",
+    ctaLabel: "Make the calls",
+  }));
+}
+
+/** warm_reply_waiting — a venue wrote back and has been waiting 4+
+ *  hours. Warm replies left to cool are the cheapest losses in the
+ *  funnel (rotting detection applied to replies). */
+async function loadWarmRepliesWaiting(campaignId: string): Promise<NextBestAction[]> {
+  const rows = rowsOf<{
+    thread_id: string;
+    city_campaign_id: string | null;
+    venue_name: string | null;
+    classification: string;
+    hours_waiting: number;
+  }>(
+    await db.execute(sql`
+      SELECT
+        t.id::text AS thread_id,
+        t.city_campaign_id::text AS city_campaign_id,
+        v.name AS venue_name,
+        t.classification::text AS classification,
+        (EXTRACT(EPOCH FROM (NOW() - t.last_inbound_at)) / 3600)::int AS hours_waiting
+      FROM email_threads t
+      LEFT JOIN venues v ON v.id = t.venue_id
+      JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+      WHERE cc.campaign_id = ${campaignId}
+        AND t.state = 'needs_reply'
+        AND t.deleted_at IS NULL
+        AND t.classification::text IN ('interested', 'warm', 'question', 'callback_requested')
+        AND t.last_inbound_at < NOW() - INTERVAL '4 hours'
+      ORDER BY t.last_inbound_at ASC
+      LIMIT 4
+    `),
+  );
+  return rows.map((r) => ({
+    id: `warmreply:${r.thread_id}`,
+    cityCampaignId: r.city_campaign_id,
+    label: `${r.venue_name ?? "A venue"} replied ${r.hours_waiting}h ago (${r.classification.replace(/_/g, " ")}) — answer before it goes cold`,
+    category: "warm_reply_waiting" as const,
+    priority: 75 + Math.min(17, Math.floor(r.hours_waiting / 4)),
+    ctaHref: `/inbox/${r.thread_id}`,
+    ctaLabel: "Open thread",
+  }));
+}
+
+/** lifecycle_blocker — pending deliverables (graphics, sheets, posters)
+ *  on confirmed venues inside the 14-day window. These block T10/T11
+ *  sends, so they rot silently unless surfaced (refdoc 7.3/7.4). */
+async function loadLifecycleBlockers(campaignId: string): Promise<NextBestAction[]> {
+  const rows = rowsOf<{
+    city_campaign_id: string;
+    city_name: string;
+    deliverable_type: string;
+    n: number;
+    days_until: number;
+  }>(
+    await db.execute(sql`
+      SELECT
+        cc.id::text AS city_campaign_id,
+        c.name AS city_name,
+        d.deliverable_type::text AS deliverable_type,
+        COUNT(*)::int AS n,
+        MIN(e.event_date - CURRENT_DATE)::int AS days_until
+      FROM crawl_deliverables d
+      JOIN venue_events ve ON ve.id = d.venue_event_id
+      JOIN events e ON e.id = ve.event_id
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+      WHERE cc.campaign_id = ${campaignId}
+        AND d.status = 'pending'
+        AND ve.status IN ('confirmed', 'contract_signed')
+        AND ve.cancelled_at IS NULL
+        AND e.archived_at IS NULL
+        AND e.event_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '14 days'
+      GROUP BY cc.id, c.name, d.deliverable_type
+      ORDER BY MIN(e.event_date) ASC
+      LIMIT 3
+    `),
+  );
+  return rows.map((r) => ({
+    id: `blocker:${r.city_campaign_id}:${r.deliverable_type}`,
+    cityCampaignId: r.city_campaign_id,
+    label: `${r.n} ${r.deliverable_type.replace(/_/g, " ")} ${r.n === 1 ? "deliverable is" : "deliverables are"} pending in ${r.city_name} — event in ${r.days_until} ${r.days_until === 1 ? "day" : "days"}, lifecycle emails are blocked`,
+    category: "lifecycle_blocker" as const,
+    priority: 84 - Math.min(10, r.days_until),
+    ctaHref: `/city-campaigns/${r.city_campaign_id}`,
+    ctaLabel: "Clear blockers",
   }));
 }

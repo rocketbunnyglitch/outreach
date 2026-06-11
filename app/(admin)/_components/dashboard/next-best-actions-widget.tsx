@@ -9,6 +9,12 @@ const CATEGORY_DOT: Record<NextBestAction["category"], string> = {
   missing_times: "bg-blue-500",
   confirmed_missing_info: "bg-emerald-500",
   unassigned_lead: "bg-purple-500",
+  // v2 operating-brain categories (2026-06-11): fire-drills lead red.
+  replacement_urgent: "bg-rose-600",
+  high_sales_missing_final: "bg-rose-500",
+  v2_call_due: "bg-amber-500",
+  warm_reply_waiting: "bg-sky-500",
+  lifecycle_blocker: "bg-violet-500",
 };
 
 /**
