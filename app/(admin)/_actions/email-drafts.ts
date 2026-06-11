@@ -286,6 +286,55 @@ export async function listMyDrafts(): Promise<
 }
 
 /**
+ * Fetch ONE of my drafts by id, including QUEUED drafts (scheduled_for
+ * set). listMyDrafts deliberately excludes queued drafts so they don't
+ * restore as composer tabs on mount — but "Resume" from the inbox
+ * Scheduled folder must still be able to open them, so the by-id
+ * lookup has no scheduled_for filter.
+ */
+export async function getMyDraft(
+  draftId: string,
+): Promise<Awaited<ReturnType<typeof listMyDrafts>>[number] | null> {
+  const { staff } = await requireStaff();
+  if (!UUID_RE.test(draftId)) return null;
+  const [r] = await db
+    .select()
+    .from(emailDrafts)
+    .where(
+      and(
+        eq(emailDrafts.id, draftId),
+        eq(emailDrafts.ownerUserId, staff.id),
+        isNull(emailDrafts.sentAt),
+      ),
+    )
+    .limit(1);
+  if (!r) return null;
+  return {
+    id: r.id,
+    connectedAccountId: r.connectedAccountId,
+    toAddresses: r.toAddresses ?? [],
+    ccAddresses: r.ccAddresses ?? [],
+    bccAddresses: r.bccAddresses ?? [],
+    subject: r.subject,
+    bodyText: r.bodyText,
+    bodyHtml: r.bodyHtml,
+    venueId: r.venueId,
+    cityCampaignId: r.cityCampaignId,
+    templateId: r.templateId,
+    subjectVariantIndex: r.subjectVariantIndex ?? null,
+    enginePickedTemplateId: r.enginePickedTemplateId,
+    attachments: (r.attachments as EmailDraftAttachment[]) ?? [],
+    scheduledFor: r.scheduledFor ? r.scheduledFor.toISOString() : null,
+    updatedAt: r.updatedAt.toISOString(),
+    mode: r.mode ?? null,
+    replyToThreadId: r.replyToThreadId ?? null,
+    replyToMessageId: r.replyToMessageId ?? null,
+    pendingLabelIds: r.pendingLabelIds ?? [],
+    quotedHtml: r.quotedHtml ?? null,
+  };
+}
+
+/**
  * Discard a draft. Removes the row immediately.
  */
 export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: string }>> {

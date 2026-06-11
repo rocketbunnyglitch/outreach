@@ -378,8 +378,10 @@ export function ComposerProvider({ children }: { children: React.ReactNode }) {
         enginePickAttempted: boolean,
       ) {
         const mod = await import("../../_actions/email-drafts");
-        const rows = await mod.listMyDrafts();
-        const row = rows.find((r) => r.id === id);
+        // By-id lookup, NOT listMyDrafts: that list excludes QUEUED
+        // drafts (scheduled_for set), but Resume from the inbox
+        // Scheduled folder must still hydrate them.
+        const row = await mod.getMyDraft(id);
         if (!row) return;
         hydrate([
           {
