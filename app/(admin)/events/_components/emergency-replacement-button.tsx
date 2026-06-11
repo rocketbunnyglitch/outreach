@@ -56,14 +56,18 @@ export function EmergencyReplacementButton({ eventId }: { eventId: string }) {
   );
 }
 
-function EmergencyReplacementModal({
+export function EmergencyReplacementModal({
   open,
   onClose,
   eventId,
+  initialRole,
 }: {
   open: boolean;
   onClose: () => void;
   eventId: string;
+  /** Preselect the open role (e.g. when launched from the cancellation
+   *  playbook, the cancelled slot's role). */
+  initialRole?: ReplacementRole;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -71,7 +75,7 @@ function EmergencyReplacementModal({
   const [callContext, setCallContext] = useState<ReplacementCallContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [role, setRole] = useState<ReplacementRole>("wristband");
+  const [role, setRole] = useState<ReplacementRole>(initialRole ?? "wristband");
   const [slotPosition, setSlotPosition] = useState("");
   const [reason, setReason] = useState("");
   const [pending, startTx] = useTransition();

@@ -90,7 +90,7 @@
 - Acceptance: from cancellation to ranked candidates in two clicks;
   no sends without review; sibling drafts auto-cancelled on fill.
 
-### B3. Cancellation playbook UI  [ ]
+### B3. Cancellation playbook UI  [x]
 - lib/cancellation-flow.ts already does the engine side (stop
   downstream, T16 draft, fan-out). Wrap it in a guided modal: pick
   exact venue-event/night, cancelled-by-us vs by-them, show what will

@@ -16,6 +16,7 @@ import {
 import { Plus, Trash2, X } from "lucide-react";
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { CancellationPlaybookButton } from "./cancellation-playbook-button";
 
 interface VenueEventRow {
   id: string;
@@ -99,6 +100,7 @@ export function VenueEventsSection({
               <EditVenueEventCard
                 key={ve.id}
                 ve={ve}
+                eventId={eventId}
                 staff={staff}
                 action={updateAction}
                 removeAction={removeAction}
@@ -163,12 +165,14 @@ function VenueEventRowDisplay({ ve, onEdit }: { ve: VenueEventRow; onEdit: () =>
 
 function EditVenueEventCard({
   ve,
+  eventId,
   staff,
   action,
   removeAction,
   onClose,
 }: {
   ve: VenueEventRow;
+  eventId: string;
   staff: { id: string; displayName: string }[];
   action: Props["updateAction"];
   removeAction: Props["removeAction"];
@@ -273,15 +277,24 @@ function EditVenueEventCard({
             </div>
           </div>
           <div className="flex items-center justify-between border-zinc-100 border-t pt-4 dark:border-zinc-900">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleRemove}
-              className="text-rose-700 dark:text-rose-400"
-            >
-              <Trash2 className="h-3 w-3" /> Remove from event
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleRemove}
+                className="text-rose-700 dark:text-rose-400"
+              >
+                <Trash2 className="h-3 w-3" /> Remove from event
+              </Button>
+              {ve.status === "confirmed" && (
+                <CancellationPlaybookButton
+                  venueEventId={ve.id}
+                  eventId={eventId}
+                  venueName={ve.venueName}
+                />
+              )}
+            </div>
             <SubmitButton />
           </div>
         </form>
