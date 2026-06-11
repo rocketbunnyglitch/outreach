@@ -120,6 +120,7 @@ export function SendMenu({
             <MenuItem
               icon={<Clock className="h-3 w-3" />}
               label="Queue (auto-staggered)"
+              title="Best for batch outreach: spaces your queued emails minutes apart (capped at 8 min) so same-inbox sends don't look like a blast"
               onClick={() => {
                 setOpen(false);
                 onQueue();
@@ -222,17 +223,21 @@ function MenuItem({
   label,
   onClick,
   disabled,
+  title,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** Optional hover tooltip explaining when to use this option. */
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={cn(
         "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
         disabled ? "cursor-not-allowed text-zinc-400" : "hover:bg-zinc-100 dark:hover:bg-zinc-800",

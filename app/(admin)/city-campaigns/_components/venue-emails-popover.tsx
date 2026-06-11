@@ -136,7 +136,7 @@ function EmailsPopover({
   return (
     <div
       ref={containerRef}
-      className="absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+      className="absolute right-0 z-50 mt-1 w-72 max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
     >
       <header className="flex items-center justify-between border-zinc-200/60 border-b px-3 py-2 dark:border-zinc-800/40">
         <div>

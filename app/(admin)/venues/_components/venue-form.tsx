@@ -55,6 +55,12 @@ interface VenueFormProps {
 export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
   const [state, formAction] = useActionState(action, null);
 
+  // Surface server-side validation per field (the action returns
+  // fieldErrors keyed by schema field). Without this the operator only
+  // saw a generic "Validation failed." with no hint which input to fix.
+  const fe = (key: string): string | undefined =>
+    state && !state.ok ? state.fieldErrors?.[key]?.[0] : undefined;
+
   return (
     <form action={formAction} className="flex flex-col gap-10">
       {state && !state.ok && state.error && <Alert tone="error">{state.error}</Alert>}
@@ -76,7 +82,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               </SelectContent>
             </Select>
           </FieldShell>
-          <FieldShell label="Name" name="name" required>
+          <FieldShell label="Name" name="name" required error={fe("name")}>
             <Input
               id="name"
               name="name"
@@ -105,7 +111,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               placeholder="ChIJ..."
             />
           </FieldShell>
-          <FieldShell label="Capacity" name="capacity">
+          <FieldShell label="Capacity" name="capacity" error={fe("capacity")}>
             <Input
               id="capacity"
               name="capacity"
@@ -128,7 +134,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
           </FieldShell>
         </FieldRow>
         <FieldRow>
-          <FieldShell label="Longitude" name="longitude">
+          <FieldShell label="Longitude" name="longitude" error={fe("longitude")}>
             <Input
               id="longitude"
               name="longitude"
@@ -139,7 +145,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               defaultValue={initial?.location?.lng ?? ""}
             />
           </FieldShell>
-          <FieldShell label="Latitude" name="latitude">
+          <FieldShell label="Latitude" name="latitude" error={fe("latitude")}>
             <Input
               id="latitude"
               name="latitude"
@@ -166,7 +172,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
               placeholder="e.g. Sadie, Suraj, Jamal"
             />
           </FieldShell>
-          <FieldShell label="Phone" name="phoneE164">
+          <FieldShell label="Phone" name="phoneE164" error={fe("phoneE164")}>
             <Input
               id="phoneE164"
               name="phoneE164"
@@ -182,13 +188,13 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
           </FieldShell>
         </FieldRow>
         <FieldRow>
-          <FieldShell label="Email" name="email">
+          <FieldShell label="Email" name="email" error={fe("email") ?? fe("alternateEmails")}>
             <MultiEmailField
               initialPrimary={initial?.email ?? ""}
               initialAlternates={initial?.alternateEmails ?? []}
             />
           </FieldShell>
-          <FieldShell label="Website" name="websiteUrl">
+          <FieldShell label="Website" name="websiteUrl" error={fe("websiteUrl")}>
             <Input
               id="websiteUrl"
               name="websiteUrl"
@@ -199,7 +205,7 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
           </FieldShell>
         </FieldRow>
         <FieldRow>
-          <FieldShell label="Instagram handle" name="instagramHandle">
+          <FieldShell label="Instagram handle" name="instagramHandle" error={fe("instagramHandle")}>
             <Input
               id="instagramHandle"
               name="instagramHandle"

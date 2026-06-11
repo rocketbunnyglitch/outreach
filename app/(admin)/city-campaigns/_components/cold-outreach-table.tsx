@@ -1057,6 +1057,7 @@ export function ColdOutreachTable({
                         onClick={() => toggleSort("contact")}
                         className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
                         title="Contact enrichment status — click a dot to scrape that venue"
+                        aria-label="Sort by contact enrichment status"
                       >
                         ✉?
                       </button>
@@ -1072,6 +1073,7 @@ export function ColdOutreachTable({
                         onClick={() => toggleSort("zb")}
                         className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em]"
                         title="ZeroBounce email validation"
+                        aria-label="Sort by ZeroBounce email validation"
                       >
                         ZB
                       </button>
@@ -2060,10 +2062,10 @@ function ColdRow({
             <ZbIcon status={entry.zeroBounceStatus} />
           </td>
 
-          {/* Phone — when present, QuoDialControls handles click-to-call /
-          SMS / Viber. When absent or being edited, an inline cell lets
-          the operator add or change the number. The pencil affordance
-          on hover lets them switch from dial-mode to edit-mode anytime. */}
+          {/* Phone — when present, QuoDialControls handles click-to-call
+          (SMS and Viber were removed 2026-06-10/11; neither works with
+          Quo). When absent or being edited, an inline cell lets the
+          operator add or change the number. */}
           <td className="relative px-2 py-2 align-middle">
             <PhoneCell
               entry={entry}
@@ -2234,8 +2236,8 @@ function PhoneCell({
   //
   // Per operator request the pencil-edit affordance was removed from
   // this cluster — to change a phone number, use the venue's detail
-  // page (or clear the field via the InlineCell when it's empty). The
-  // dial / SMS / Viber icons remain.
+  // page (or clear the field via the InlineCell when it's empty). Only
+  // the dial icon remains (SMS + Viber removed 2026-06-10/11).
   const phoneText = entry.venuePhone ?? "";
   const phoneFontClass =
     phoneText.length >= 16
