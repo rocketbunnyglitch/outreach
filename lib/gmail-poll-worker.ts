@@ -2041,6 +2041,14 @@ const ORIGINAL_RECIPIENT_RE = /Original-Recipient:\s*(?:rfc822;\s*)?([^\s<>]+@[^
 const INLINE_FAILED_RE =
   /(?:could not be delivered|delivery to the following recipient(?:s)? failed|<([^<>\s]+@[^<>\s]+)>:?\s*(?:5\d{2}|user unknown|address rejected|recipient address rejected))/i;
 
+/** Gmail's human-readable DSN phrasing — "Your message wasn't delivered
+ *  to user@host because the address couldn't be found". The structured
+ *  RFC 3464 part lives in a MIME part our body extraction doesn't keep,
+ *  so this prose line is the only recipient source for Gmail bounces
+ *  (3 real DSNs missed on 2026-06-11 before this pattern existed). */
+const GMAIL_NOT_DELIVERED_RE =
+  /(?:wasn't|was not|couldn't be|could not be)\s+delivered\s+to\s+<?([^\s<>,]+@[^\s<>,]+?)>?(?:[\s,]|because|\.(?:\s|$)|$)/i;
+
 /** RFC 3464 Status: line, e.g. "Status: 5.1.1" — first digit = class.
  *  4.x.x = persistent transient (soft); 5.x.x = permanent failure (hard). */
 const DSN_STATUS_RE = /^\s*Status:\s*([2-5])\.\d+\.\d+/im;
@@ -2133,6 +2141,10 @@ async function maybeAutoSuppressBounce(opts: {
   if (!recipient) {
     const origMatch = body.match(ORIGINAL_RECIPIENT_RE);
     if (origMatch?.[1]) recipient = origMatch[1];
+  }
+  if (!recipient) {
+    const gmailMatch = body.match(GMAIL_NOT_DELIVERED_RE);
+    if (gmailMatch?.[1]) recipient = gmailMatch[1];
   }
   if (!recipient) {
     // Last resort: scan for inline failure mentions like
