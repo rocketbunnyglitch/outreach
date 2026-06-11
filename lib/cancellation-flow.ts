@@ -327,6 +327,22 @@ export async function triggerVenueCancellation(
     logger.error({ err, venueEventId: args.venueEventId }, "cancellation notify failed");
   }
 
+  // Durable lineup log (CRM plan B1): the cancellation flow is the main
+  // "venue drops off the public lineup" path — external pollers (map,
+  // Eventbrite pusher) react to this row. Never throws.
+  try {
+    const { logLineupChange } = await import("@/lib/lineup-change-log");
+    await logLineupChange({
+      eventId: ve.eventId,
+      venueEventId: args.venueEventId,
+      venueId: ve.venueId,
+      changeType: "cancelled",
+      payload: { venueName: ve.venueName, role: ve.role, newStatus: "cancelled" },
+    });
+  } catch (err) {
+    logger.error({ err, venueEventId: args.venueEventId }, "cancellation lineup log failed");
+  }
+
   logger.info(
     { venueEventId: args.venueEventId, draftsCancelled, tasksCancelled, t16DraftId, notified },
     "venue cancellation processed",

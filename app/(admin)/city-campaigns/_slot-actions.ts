@@ -297,6 +297,18 @@ export async function updateSlotField(
   }
 
   try {
+    // Previous state read up front so the durable lineup log below can
+    // detect transitions + scope time edits to already-confirmed rows.
+    const [before] = await db
+      .select({
+        eventId: venueEvents.eventId,
+        venueId: venueEvents.venueId,
+        status: venueEvents.status,
+      })
+      .from(venueEvents)
+      .where(eq(venueEvents.id, venueEventId))
+      .limit(1);
+
     await withAuditContext(staff.id, async (tx) => {
       const patch: Record<string, unknown> = { updatedBy: staff.id };
       if (field === "ourContactStaffId") {
@@ -314,6 +326,38 @@ export async function updateSlotField(
       }
       await tx.update(venueEvents).set(patch).where(eq(venueEvents.id, venueEventId));
     });
+
+    // Durable lineup log (CRM plan B1): confirm/cancel transitions and
+    // hour edits on confirmed rows are public-lineup changes external
+    // pollers must see. Never throws.
+    if (before) {
+      const { logLineupChange } = await import("@/lib/lineup-change-log");
+      if (field === "status" && value === "confirmed" && before.status !== "confirmed") {
+        await logLineupChange({
+          eventId: before.eventId,
+          venueEventId,
+          venueId: before.venueId,
+          changeType: "confirmed",
+          payload: { previousStatus: before.status, newStatus: "confirmed" },
+        });
+      } else if (field === "status" && value === "cancelled" && before.status !== "cancelled") {
+        await logLineupChange({
+          eventId: before.eventId,
+          venueEventId,
+          venueId: before.venueId,
+          changeType: "cancelled",
+          payload: { previousStatus: before.status, newStatus: "cancelled" },
+        });
+      } else if (field === "agreedHoursText" && before.status === "confirmed") {
+        await logLineupChange({
+          eventId: before.eventId,
+          venueEventId,
+          venueId: before.venueId,
+          changeType: "times_changed",
+          payload: { detail: `hours -> ${value || "(cleared)"}` },
+        });
+      }
+    }
 
     if (cityCampaignId) revalidatePath(`/city-campaigns/${cityCampaignId}`);
     return { ok: true, data: { id: venueEventId } };
@@ -340,9 +384,30 @@ export async function clearSlot(
   if (!parsed.success) return { ok: false, error: "Invalid clear." };
 
   try {
+    const [before] = await db
+      .select({
+        eventId: venueEvents.eventId,
+        venueId: venueEvents.venueId,
+        status: venueEvents.status,
+      })
+      .from(venueEvents)
+      .where(eq(venueEvents.id, parsed.data.venueEventId))
+      .limit(1);
+
     await withAuditContext(staff.id, async (tx) => {
       await tx.delete(venueEvents).where(eq(venueEvents.id, parsed.data.venueEventId));
     });
+    // Durable lineup log (CRM plan B1): clearing a CONFIRMED slot drops
+    // a venue off the public lineup; clearing a lead does not.
+    if (before?.status === "confirmed") {
+      const { logLineupChange } = await import("@/lib/lineup-change-log");
+      await logLineupChange({
+        eventId: before.eventId,
+        venueId: before.venueId,
+        changeType: "venue_removed",
+        payload: { previousStatus: "confirmed", detail: "slot cleared" },
+      });
+    }
     if (parsed.data.cityCampaignId) {
       revalidatePath(`/city-campaigns/${parsed.data.cityCampaignId}`);
     }

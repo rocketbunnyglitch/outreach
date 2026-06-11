@@ -65,7 +65,7 @@
 
 ## Phase B — Event-night infrastructure (days 2–4)
 
-### B1. Durable lineup change events + cursor API  [ ]
+### B1. Durable lineup change events + cursor API  [x]
 - Migration: lineup_change_events (id, cursor bigserial, event_id,
   venue_event_id, venue_id, change_type enum [confirmed, swapped,
   cancelled, slot_changed, times_changed], public_payload jsonb,

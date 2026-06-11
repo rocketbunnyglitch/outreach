@@ -38,6 +38,7 @@ export * from "./city-campaigns";
 export * from "./autonomy-rails";
 export * from "./crawl-finalizations";
 export * from "./learning-loop";
+export * from "./lineup-change-events";
 export * from "./middle-venue-groups";
 export * from "./internal-hosts";
 export * from "./external-host-shipments";

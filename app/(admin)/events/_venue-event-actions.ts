@@ -67,6 +67,36 @@ export async function addVenueToEvent(
   }
   const input: VenueEventCreateInput = parsed.data;
 
+  // Stage gate (CRM plan A1): adding a venue DIRECTLY as confirmed must
+  // clear the same bar as a transition into confirmed — otherwise this
+  // form is a gate bypass. The venue_event row doesn't exist yet, so we
+  // check the venue's stored contact fields + the incoming form values.
+  if (input.status === "confirmed") {
+    const { checkStageGate } = await import("@/lib/pipeline-board-core");
+    const { venues } = await import("@/db/schema");
+    const { eq: eqVenue } = await import("drizzle-orm");
+    const [venue] = await db
+      .select({ email: venues.email, phoneE164: venues.phoneE164, contactName: venues.contactName })
+      .from(venues)
+      .where(eqVenue(venues.id, input.venueId))
+      .limit(1);
+    const hasContact = Boolean(
+      venue?.email ||
+        venue?.phoneE164 ||
+        venue?.contactName ||
+        input.nightOfContactName ||
+        input.nightOfContactPhoneE164,
+    );
+    const hasHours = Boolean(input.slotStartTime || input.agreedHoursText?.trim());
+    const gate = checkStageGate("confirmed", { hasContact, hasHours });
+    if (!gate.ok) {
+      return {
+        ok: false,
+        error: `Can't add as confirmed — missing ${gate.missing.join(" and ")}. Add it here or start the venue at an earlier status.`,
+      };
+    }
+  }
+
   try {
     const [row] = await withAuditContext(staff.id, async (tx) =>
       tx
@@ -89,6 +119,23 @@ export async function addVenueToEvent(
         .returning({ id: venueEvents.id }),
     );
     if (!row) throw new Error("insert returned no row");
+    // Durable lineup log (CRM plan B1): a venue landing straight in
+    // confirmed is a public-lineup change external pollers must see.
+    if (input.status === "confirmed") {
+      const { logLineupChange } = await import("@/lib/lineup-change-log");
+      await logLineupChange({
+        eventId: input.eventId,
+        venueEventId: row.id,
+        venueId: input.venueId,
+        changeType: "confirmed",
+        payload: {
+          role: input.role,
+          slotStartTime: input.slotStartTime,
+          slotEndTime: input.slotEndTime,
+          newStatus: "confirmed",
+        },
+      });
+    }
     revalidatePath(`/events/${input.eventId}`);
     return { ok: true, data: { id: row.id } };
   } catch (err) {
@@ -281,6 +328,46 @@ export async function updateVenueEvent(
     }
 
     const finalRow = txOutput?.result?.[0];
+
+    // Durable lineup log (CRM plan B1): record public-lineup mutations
+    // for external pollers. Confirm and cancel always count; slot/time
+    // edits only matter once the venue is already on the public lineup
+    // (i.e. was confirmed before this save). Never throws.
+    if (finalRow?.eventId) {
+      const { logLineupChange } = await import("@/lib/lineup-change-log");
+      const timesTouched =
+        input.slotStartTime !== undefined ||
+        input.slotEndTime !== undefined ||
+        input.agreedHoursText !== undefined;
+      if (isConfirming) {
+        await logLineupChange({
+          eventId: finalRow.eventId,
+          venueEventId: id,
+          changeType: "confirmed",
+          payload: {
+            previousStatus,
+            newStatus: "confirmed",
+            slotStartTime: input.slotStartTime,
+            slotEndTime: input.slotEndTime,
+          },
+        });
+      } else if (input.status === "cancelled" && previousStatus !== "cancelled") {
+        await logLineupChange({
+          eventId: finalRow.eventId,
+          venueEventId: id,
+          changeType: "cancelled",
+          payload: { previousStatus, newStatus: "cancelled" },
+        });
+      } else if (timesTouched && previousStatus === "confirmed") {
+        await logLineupChange({
+          eventId: finalRow.eventId,
+          venueEventId: id,
+          changeType: "times_changed",
+          payload: { slotStartTime: input.slotStartTime, slotEndTime: input.slotEndTime },
+        });
+      }
+    }
+
     if (finalRow?.eventId) revalidatePath(`/events/${finalRow.eventId}`);
     revalidatePath("/tasks");
     revalidatePath("/crawl-management");
@@ -295,7 +382,11 @@ export async function updateVenueEvent(
 export async function removeVenueFromEvent(id: string): Promise<void> {
   const { staff } = await requireStaff();
   const [row] = await db
-    .select({ eventId: venueEvents.eventId })
+    .select({
+      eventId: venueEvents.eventId,
+      venueId: venueEvents.venueId,
+      status: venueEvents.status,
+    })
     .from(venueEvents)
     .where(eq(venueEvents.id, id))
     .limit(1);
@@ -303,5 +394,16 @@ export async function removeVenueFromEvent(id: string): Promise<void> {
   await withAuditContext(staff.id, async (tx) =>
     tx.delete(venueEvents).where(eq(venueEvents.id, id)),
   );
+  // Durable lineup log (CRM plan B1): removing a CONFIRMED venue is a
+  // public-lineup change; removing a lead/contacted row is not.
+  if (row?.status === "confirmed") {
+    const { logLineupChange } = await import("@/lib/lineup-change-log");
+    await logLineupChange({
+      eventId: row.eventId,
+      venueId: row.venueId,
+      changeType: "venue_removed",
+      payload: { previousStatus: "confirmed" },
+    });
+  }
   if (row?.eventId) revalidatePath(`/events/${row.eventId}`);
 }
