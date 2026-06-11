@@ -205,12 +205,15 @@ export async function getMinimumRoleOrNull(minRole: StaffRole): Promise<AuthCont
 /**
  * Superuser tier — strictly above `admin`. Reserved for irreversible
  * destructive operations (permanent hard-delete of cities, venues, etc.)
- * that even a normal admin shouldn't be able to do. Driven by env so we
- * don't need a schema change: SUPERUSER_EMAILS is a comma-separated list
- * of staff primary_email addresses; falls back to nauth.nathan@gmail.com.
+ * that even a normal admin shouldn't be able to do. Driven by env:
+ * SUPERUSER_EMAILS is a comma-separated list of staff primary_email
+ * addresses. NO fallback (2026-06-11 security audit): when the env var
+ * is missing, nobody is superuser — secure default. The hardcoded
+ * owner-email fallback is gone; the address now lives in the prod .env.
  */
 function isSuperUserEmail(email: string): boolean {
-  const raw = process.env.SUPERUSER_EMAILS ?? "nauth.nathan@gmail.com";
+  const raw = process.env.SUPERUSER_EMAILS ?? "";
+  if (!raw.trim()) return false;
   const set = new Set(
     raw
       .split(",")
