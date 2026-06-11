@@ -71,9 +71,11 @@ const ERROR_MESSAGE_MAX_BYTES = 2 * 1024;
 const HOST = os.hostname();
 
 export type CronName =
+  | "aging-watchdog"
   | "cadence-advance"
   | "cancellation-review"
   | "daily-digest"
+  | "deliverability-watchdog"
   | "eventbrite-sync"
   | "follow-up-cadence"
   | "gmail-poll"
@@ -82,6 +84,7 @@ export type CronName =
   | "inbox-daily-stats"
   | "notification-escalation"
   | "relationship-decay"
+  | "reply-corpus"
   | "scheduled-sends"
   | "stale-tagger";
 

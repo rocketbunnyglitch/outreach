@@ -1003,10 +1003,11 @@ export interface InboxThreadDetail {
       generatedAt: string;
       classification: string;
     } | null;
-    /** Cached AI smart-reply chips (Haiku ROI #1). Array of 3 short
-     *  reply suggestions surfaced above the inline reply composer.
-     *  null when the thread isn't eligible or hasn't been generated. */
-    aiQuickReplies: string[] | null;
+    /** Cached AI smart-reply chips (Haiku ROI #1). Legacy v1 = bare
+     *  string[]; v2 (learning loop) = { v:2, chips, exampleIds }.
+     *  Readers normalize via normalizeQuickReplies. null when the
+     *  thread isn't eligible or hasn't been generated. */
+    aiQuickReplies: string[] | { v: 2; chips: string[]; exampleIds: string[] } | null;
     aiQuickRepliesAt: Date | null;
     aiQuickRepliesMessageCount: number | null;
     /** AI-only classification field, used by the smart-reply eligibility

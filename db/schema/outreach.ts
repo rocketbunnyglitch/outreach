@@ -227,12 +227,19 @@ export const emailThreads = pgTable(
      * classification needs-reply, AI configured). Regenerated when
      * message_count exceeds ai_quick_replies_message_count.
      *
-     * Shape: ["short reply 1", "medium reply 2", "polite-no reply 3"]
-     * Each string ≤ 280 chars (mobile-tappable).
+     * Shape (legacy v1): ["short reply 1", "medium reply 2", "polite-no reply 3"]
+     * Shape (v2, learning loop 2026-06-11):
+     *   { v: 2, chips: string[], exampleIds: string[] }
+     * exampleIds = the reply_examples rows that grounded the chips, so
+     * the composer can record sent-as-is/edited/rewritten feedback.
+     * Readers normalize both shapes (see QuickReplyChips
+     * normalizeQuickReplies). Each chip ≤ 280 chars (mobile-tappable).
      *
-     * Migration 0076.
+     * Migration 0076 (column); v2 shape needs no migration (jsonb).
      */
-    aiQuickReplies: jsonb("ai_quick_replies").$type<string[] | null>(),
+    aiQuickReplies: jsonb("ai_quick_replies").$type<
+      string[] | { v: 2; chips: string[]; exampleIds: string[] } | null
+    >(),
     aiQuickRepliesAt: timestamp("ai_quick_replies_at", { withTimezone: true }),
     aiQuickRepliesMessageCount: integer("ai_quick_replies_message_count"),
 

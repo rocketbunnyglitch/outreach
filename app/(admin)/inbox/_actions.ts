@@ -1550,6 +1550,10 @@ export async function openReplyDraft(input: {
    * downstream by the editor's value parser.
    */
   prefillBody?: string;
+  /** Learning loop (2026-06-11): reply_examples ids that grounded the
+   *  clicked quick-reply chip. Stored on the draft's suggestion_meta so
+   *  the send path can record sent-as-is / edited / rewritten feedback. */
+  suggestionExampleIds?: string[];
 }): Promise<ActionResult<{ draftId: string }>> {
   const { staff } = await requireStaff();
   if (!UUID_RE.test(input.threadId)) return { ok: false, error: "Invalid thread id." };
@@ -1768,6 +1772,16 @@ export async function openReplyDraft(input: {
       replyToThreadId: input.threadId,
       replyToMessageId: message.id,
       quotedHtml,
+      // Feedback-loop linkage: only when the draft was seeded from a
+      // suggestion (prefillBody present). UUIDs validated defensively.
+      suggestionMeta:
+        input.prefillBody?.trim() && (input.suggestionExampleIds?.length ?? 0) > 0
+          ? {
+              exampleIds: (input.suggestionExampleIds ?? []).filter((id) => UUID_RE.test(id)),
+              seededBody: input.prefillBody.trim(),
+              source: "quick_reply_chip" as const,
+            }
+          : null,
     });
     revalidatePath(`/inbox/${input.threadId}`);
     return { ok: true, data: { draftId } };

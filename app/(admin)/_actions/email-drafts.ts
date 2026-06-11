@@ -955,6 +955,27 @@ async function sendDraftAsUser(input: {
     // until they discard it).
     logger.warn({ err, draftId: input.draftId }, "couldn't mark draft as sent (mail already sent)");
   }
+
+  // Learning loop (2026-06-11): if this draft was seeded from a
+  // quick-reply chip, record whether the operator sent it as-is,
+  // lightly edited, or rewrote it — re-ranks the corpus examples
+  // behind future suggestions. Fire-and-forget, never blocks a send.
+  try {
+    const meta = draft.suggestionMeta as {
+      exampleIds?: string[];
+      seededBody?: string;
+    } | null;
+    if (meta?.exampleIds?.length && meta.seededBody) {
+      const { feedbackBucket, recordSuggestionFeedback } = await import("@/lib/reply-corpus");
+      void recordSuggestionFeedback(
+        meta.exampleIds,
+        feedbackBucket(meta.seededBody, draft.bodyText ?? ""),
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, draftId: input.draftId }, "suggestion feedback skipped (non-fatal)");
+  }
+
   revalidatePath("/inbox");
   return { ok: true, data: { threadId: result.threadId } };
 }

@@ -52,6 +52,11 @@ export const emailDrafts = pgTable(
      *  migration 0093. */
     enginePickedTemplateId: uuid("engine_picked_template_id"),
     attachments: jsonb("attachments").notNull().default([]),
+    /** Set when the draft was seeded from an AI suggestion (quick-reply
+     *  chip): which reply_examples grounded it + the seeded text, so the
+     *  send path can record sent-as-is / edited / rewritten feedback.
+     *  See SuggestionMeta in db/schema/learning-loop.ts (migration 0134). */
+    suggestionMeta: jsonb("suggestion_meta"),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     sentThreadId: uuid("sent_thread_id"),

@@ -35,6 +35,7 @@ import { syncColdStatusFromClassificationAsync } from "@/lib/ai-auto-status";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { formatAsSystemPrompt, retrieveRelevantSections } from "@/lib/reference-retrieval";
+import { retrieveClassificationExamples } from "@/lib/reply-corpus";
 import { autoFlagRelationshipFromClassification } from "@/lib/venue-relationships";
 import { and, desc, eq } from "drizzle-orm";
 
@@ -266,7 +267,26 @@ export async function classifyInboundMessage(
       })
     : [];
   const retrievedCodes = retrieved.map((s) => s.sectionCode);
-  const groundedSystem = [ragEnabled ? formatAsSystemPrompt(retrieved) : "", SYSTEM_PROMPT]
+
+  // Learning loop (2026-06-11): few-shot from the team's OWN labeled
+  // history. FTS retrieval (no embedding call, unlike the doc RAG above)
+  // so it's cheap enough to run on every classification. Human overrides
+  // rank first — they encode exactly where the model was wrong before.
+  // Empty corpus / retrieval failure degrade to the plain prompt.
+  const fewShot = await retrieveClassificationExamples(msg.bodyText ?? "", 6);
+  const fewShotBlock =
+    fewShot.length > 0
+      ? [
+          "Similar past venue messages and the label a HUMAN settled on (use these as precedent):",
+          ...fewShot.map((e) => `- [${e.finalLabel}] ${e.text.replace(/\s+/g, " ").slice(0, 400)}`),
+        ].join("\n")
+      : "";
+
+  const groundedSystem = [
+    ragEnabled ? formatAsSystemPrompt(retrieved) : "",
+    SYSTEM_PROMPT,
+    fewShotBlock,
+  ]
     .filter(Boolean)
     .join("\n\n");
 

@@ -15,7 +15,7 @@ import { ClassificationPicker } from "./ClassificationPicker";
 import { InlineReplyHost } from "./InlineReplyHost";
 import { MessageCard } from "./MessageCard";
 import { QuickActionChips } from "./QuickActionChips";
-import { QuickReplyChips } from "./QuickReplyChips";
+import { QuickReplyChips, normalizeQuickReplies } from "./QuickReplyChips";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";
@@ -276,12 +276,20 @@ export function ThreadPane({
       {(() => {
         // Cached AND not stale (cache covers the current
         // message_count or was generated AFTER all the messages
-        // we have on this thread).
-        const cached = thread.aiQuickReplies;
+        // we have on this thread). normalizeQuickReplies handles
+        // both the legacy string[] and the v2 {chips, exampleIds}
+        // cache shapes (learning loop 2026-06-11).
+        const cached = normalizeQuickReplies(thread.aiQuickReplies);
         const cachedAtCount = thread.aiQuickRepliesMessageCount;
-        if (!cached || cached.length === 0) return null;
+        if (cached.chips.length === 0) return null;
         if (cachedAtCount !== null && cachedAtCount < thread.messageCount) return null;
-        return <QuickReplyChips threadId={thread.id} chips={cached} />;
+        return (
+          <QuickReplyChips
+            threadId={thread.id}
+            chips={cached.chips}
+            exampleIds={cached.exampleIds}
+          />
+        );
       })()}
 
       {/* Quick-action chips (Phase 2.11) - one-click triage transitions

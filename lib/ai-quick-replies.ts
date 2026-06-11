@@ -39,6 +39,7 @@ import { isAiFeatureEnabled, truncateForAi } from "@/lib/ai-guardrails";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { formatAsSystemPrompt, retrieveRelevantSections } from "@/lib/reference-retrieval";
+import { retrieveReplyExamples } from "@/lib/reply-corpus";
 import { desc, eq } from "drizzle-orm";
 
 const QUICK_REPLY_MODEL = "claude-haiku-4-5-20251001";
@@ -265,6 +266,25 @@ Return the JSON object with exactly 3 reply chips.`;
     }
   }
 
+  // Learning loop (2026-06-11): ground the chips in how the team's
+  // senior operators ACTUALLY answered similar venue messages. Cheap
+  // FTS retrieval (no embedding call) so it runs for every class; the
+  // example ids ride the cache so the composer can record whether the
+  // operator kept, edited or rewrote the suggestion (feedback loop).
+  const corpusExamples = await retrieveReplyExamples(latest.bodyText ?? thread.subject ?? "", 3);
+  const corpusExampleIds = corpusExamples.map((e) => e.id);
+  if (corpusExamples.length > 0) {
+    const corpusBlock = [
+      "Real replies your senior teammates sent to SIMILAR venue messages.",
+      "Match their substance, specifics and tone — adapt names/dates to THIS thread, never copy stale details:",
+      ...corpusExamples.map(
+        (e, i) =>
+          `[${i + 1}]${e.outcome === "confirmed" ? " (venue went on to CONFIRM)" : ""} VENUE WROTE: ${e.inboundText.replace(/\s+/g, " ").slice(0, 300)}\n    TEAMMATE REPLIED: ${e.replyText.replace(/\s+/g, " ").slice(0, 500)}`,
+      ),
+    ].join("\n");
+    systemPrompt = `${systemPrompt}\n\n${corpusBlock}`;
+  }
+
   const start = Date.now();
   const aiResult = await generateCompletion({
     system: systemPrompt,
@@ -306,7 +326,9 @@ Return the JSON object with exactly 3 reply chips.`;
   await db
     .update(emailThreads)
     .set({
-      aiQuickReplies: safeReplies,
+      // v2 shape: chips + the corpus example ids that grounded them
+      // (feedback loop). Readers normalize v1 string[] caches too.
+      aiQuickReplies: { v: 2 as const, chips: safeReplies, exampleIds: corpusExampleIds },
       aiQuickRepliesAt: new Date(),
       aiQuickRepliesMessageCount: thread.messageCount,
     })

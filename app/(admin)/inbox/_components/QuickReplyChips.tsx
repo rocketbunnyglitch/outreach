@@ -30,14 +30,39 @@ import { useTransition } from "react";
 import { useComposer } from "../../_components/composer/composer-store";
 import { openReplyDraft } from "../_actions";
 
+/** Normalize the ai_quick_replies cache across shapes: legacy v1 was a
+ *  bare string[]; v2 (learning loop 2026-06-11) is
+ *  { v: 2, chips, exampleIds } where exampleIds are the reply_examples
+ *  rows that grounded the chips. */
+export function normalizeQuickReplies(raw: unknown): { chips: string[]; exampleIds: string[] } {
+  if (Array.isArray(raw)) {
+    return { chips: raw.filter((c): c is string => typeof c === "string"), exampleIds: [] };
+  }
+  if (raw && typeof raw === "object" && "chips" in raw) {
+    const obj = raw as { chips?: unknown; exampleIds?: unknown };
+    return {
+      chips: Array.isArray(obj.chips)
+        ? obj.chips.filter((c): c is string => typeof c === "string")
+        : [],
+      exampleIds: Array.isArray(obj.exampleIds)
+        ? obj.exampleIds.filter((c): c is string => typeof c === "string")
+        : [],
+    };
+  }
+  return { chips: [], exampleIds: [] };
+}
+
 interface Props {
   threadId: string;
   /** The cached chip array from email_threads.ai_quick_replies.
    *  Render nothing if null or empty. */
   chips: string[] | null;
+  /** reply_examples ids that grounded the chips (v2 cache) — carried
+   *  onto the draft so the send path can record feedback. */
+  exampleIds?: string[];
 }
 
-export function QuickReplyChips({ threadId, chips }: Props) {
+export function QuickReplyChips({ threadId, chips, exampleIds = [] }: Props) {
   const [pending, startTx] = useTransition();
   const { composers, setMode } = useComposer();
 
@@ -55,7 +80,12 @@ export function QuickReplyChips({ threadId, chips }: Props) {
       return;
     }
     startTx(async () => {
-      const res = await openReplyDraft({ threadId, mode: "reply", prefillBody: body });
+      const res = await openReplyDraft({
+        threadId,
+        mode: "reply",
+        prefillBody: body,
+        suggestionExampleIds: exampleIds,
+      });
       if (!res.ok) {
         // Soft failure — log + bail. We don't toast because the
         // chip strip is a low-stakes affordance; the operator can
