@@ -386,7 +386,10 @@ export function EventbriteCell({
           {toast}
         </p>
       )}
-      {ticketsSold > 0 && currentEbId && !editing && (
+      {/* Suppressed in compact mounts (hideSync — crawl cards): the
+          card header shows the ticket count once already, and this
+          absolute footnote overlapped the row below there. */}
+      {ticketsSold > 0 && currentEbId && !editing && !hideSync && (
         <p className="-bottom-4 absolute left-0 font-mono text-[10px] text-zinc-500 tabular-nums">
           {ticketsSold} sold
         </p>

@@ -747,15 +747,32 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staf
           "shadow-[0_0_24px_-4px_rgba(16,185,129,0.35)] ring-2 ring-emerald-500/60 dark:shadow-[0_0_28px_-2px_rgba(16,185,129,0.4)] dark:ring-emerald-400/50",
       )}
     >
-      {/* LEFT-clustered header (operator report 2026-06-11: "the link
-          isn't working on the crawl table"): the city sheet can overflow
-          horizontally, and justify-between parked the EB controls at the
-          far-right OVERFLOW edge — the Link button (and its input/error)
-          rendered off-screen. Everything now sits next to the title in
-          the always-visible region. */}
-      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
+      {/* Corner cluster back at the TOP RIGHT (operator request
+          2026-06-11 — the left-cluster experiment read as messy). The
+          earlier "link invisible" problem is solved independently: the
+          EB error fires a toast and the mismatch popover right-anchors,
+          so nothing actionable can hide off-screen anymore. */}
+      <header className="flex items-start justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <CrawlHeader crawl={crawl} cityCampaignId={cityCampaignId} />
-        <div className="flex items-start gap-3">
+        {/* One right-aligned row, fixed order: status pill, ticket
+            count, then the EB/map controls flush right. The EB cell's
+            own "N sold" footnote is suppressed here (hideSync) so the
+            count appears exactly once. */}
+        <div className="flex shrink-0 items-center gap-3">
+          {allVenuesConfirmed && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] ring-1 ring-emerald-500/30 ring-inset dark:text-emerald-300">
+              <CheckCircle2 className="h-2.5 w-2.5" />
+              All confirmed
+            </span>
+          )}
+          {crawl.ticketsSold > 0 && (
+            <span className="whitespace-nowrap font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                {crawl.ticketsSold}
+              </span>{" "}
+              {crawl.ticketsSold === 1 ? "ticket" : "tickets"}
+            </span>
+          )}
           <CrawlCornerControls
             eventId={crawl.eventId}
             campaignId={campaignId}
@@ -764,20 +781,6 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staf
             ticketsSold={crawl.ticketsSold}
             hideSync
           />
-          {allVenuesConfirmed && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] ring-1 ring-emerald-500/30 ring-inset dark:text-emerald-300">
-              <CheckCircle2 className="h-2.5 w-2.5" />
-              All confirmed
-            </span>
-          )}
-          {crawl.ticketsSold > 0 && (
-            <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-400">
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                {crawl.ticketsSold}
-              </span>{" "}
-              tickets
-            </span>
-          )}
           {/* "Use shared middle group" removed from the header (operator
               request 2026-06-10). The picker still exists at
               ./middle-group-picker for reintroduction elsewhere. */}
@@ -1952,8 +1955,10 @@ function CrawlCornerControls({
   hideSync?: boolean;
 }) {
   const toast = useToast();
+  // Single horizontal row (operator request 2026-06-11: the stacked
+  // two-row corner read as disorganized) — EB cluster, then map icons.
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex items-center gap-1.5">
       <EventbriteCell
         eventId={eventId}
         campaignId={campaignId}
