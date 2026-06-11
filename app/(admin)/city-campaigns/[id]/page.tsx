@@ -4,9 +4,9 @@ import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } f
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { loadCitySheet } from "@/lib/city-sheet-data";
 import { loadCityThreadFeed } from "@/lib/city-thread-feed";
-import { computeEffectivePriority } from "@/lib/effective-priority";
 import { loadCityVenues } from "@/lib/city-venues-data";
 import { db } from "@/lib/db";
+import { computeEffectivePriority } from "@/lib/effective-priority";
 import { listNotes } from "@/lib/notes";
 import { acceptSuggestion, dismissSuggestion } from "@/lib/smart-notes-actions";
 import { loadPendingSuggestionsForNotes } from "@/lib/smart-notes-queries";
