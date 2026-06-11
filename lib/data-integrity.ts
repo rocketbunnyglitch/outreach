@@ -235,6 +235,15 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND k.status IN ('pending','in_progress') AND ve.status = 'cancelled'`,
   },
   {
+    name: "self_venue_active",
+    desc: "Active venues whose email is on one of OUR domains (own transactional/staff mail auto-created as a venue)",
+    query: sql`SELECT count(*)::int AS n FROM venues v
+      WHERE v.archived_at IS NULL AND v.email IS NOT NULL
+        AND (lower(split_part(v.email,'@',2)) IN
+               (SELECT lower(split_part(email_address,'@',2)) FROM connected_accounts)
+             OR lower(split_part(v.email,'@',2)) IN ('barcrawlconnect.com','outreach.barcrawlconnect.com'))`,
+  },
+  {
     name: "corpus_own_domain_pollution",
     desc: "Learning-corpus rows whose inbound sender is one of OUR domains (staff inter-inbox mail poisoning few-shot)",
     query: sql`SELECT (

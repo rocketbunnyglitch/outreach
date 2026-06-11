@@ -307,6 +307,14 @@ check notes_target_orphan_venue \
      AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.id = n.target_id)"
 
 # ---- suppression ↔ venues ---------------------------------------------------
+check self_venue_active \
+  "active venues whose email is on one of OUR domains (own transactional/staff mail auto-created as a venue)" \
+  "SELECT count(*) FROM venues v
+   WHERE v.archived_at IS NULL AND v.email IS NOT NULL
+     AND (lower(split_part(v.email,'@',2)) IN
+            (SELECT lower(split_part(email_address,'@',2)) FROM connected_accounts)
+          OR lower(split_part(v.email,'@',2)) IN ('barcrawlconnect.com','outreach.barcrawlconnect.com'))"
+
 check corpus_own_domain_pollution \
   "learning-corpus rows (reply or classification examples) whose inbound sender is one of OUR domains (staff inter-inbox mail poisoning few-shot)" \
   "SELECT (SELECT count(*) FROM reply_examples re JOIN email_messages m ON m.id=re.inbound_message_id

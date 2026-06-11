@@ -145,6 +145,11 @@ export async function autoTagOrCreateVenue(opts: {
     const ownDomains = new Set(
       ownAccounts.map((a) => a.email.split("@")[1]?.toLowerCase()).filter(Boolean),
     );
+    // The APP's own domains are not connected Gmail accounts, so the
+    // query above misses them — the app's transactional mail (sign-in
+    // links) auto-created a "Bar Crawl Connect" venue on 2026-06-02.
+    ownDomains.add("barcrawlconnect.com");
+    ownDomains.add("outreach.barcrawlconnect.com");
     if (ownDomains.has(domain)) {
       logger.info(
         { fromEmail: opts.fromEmail },
