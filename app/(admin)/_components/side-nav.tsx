@@ -28,6 +28,7 @@
 import { cn } from "@/lib/cn";
 import {
   Activity,
+  AlertTriangle,
   Archive,
   BarChart3,
   Bell,
@@ -187,6 +188,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
       href: "/admin/cron-health",
       label: "Cron health",
       icon: <Clock className="h-3.5 w-3.5" />,
+    },
+    {
+      href: "/admin/command",
+      label: "Command",
+      icon: <AlertTriangle className="h-3.5 w-3.5" />,
     },
     {
       href: "/admin/workload",

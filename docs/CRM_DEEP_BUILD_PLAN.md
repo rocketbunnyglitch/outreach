@@ -130,7 +130,7 @@
   incentive per audit).
 - Acceptance: manager can spot overload + reassign in one screen.
 
-### C4. Manager command center (problems-only morning screen)  [ ]
+### C4. Manager command center (problems-only morning screen)  [x]
 - /admin/command: aggregates NBA fire-drills, watchdog rule hits,
   deliverability alerts, cancellation-review queue, system-health
   failures, backup status — only items needing a decision. Each row
