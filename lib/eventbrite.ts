@@ -74,7 +74,20 @@ function ebHeaders(): HeadersInit {
  * doesn't exist, the token is missing, or the API call fails.
  */
 export async function fetchEventbriteEvent(eventId: string): Promise<EventbriteEvent | null> {
-  if (!isEventbriteConfigured()) return null;
+  const { event } = await fetchEventbriteEventWithStatus(eventId);
+  return event;
+}
+
+/**
+ * Same as fetchEventbriteEvent but also reports the HTTP status of a
+ * failed lookup so callers can tell the operator WHY a link failed
+ * (404 = wrong ID vs 401/403 = token can't see the event). status is
+ * null when the call never reached Eventbrite (no token / network).
+ */
+export async function fetchEventbriteEventWithStatus(
+  eventId: string,
+): Promise<{ event: EventbriteEvent | null; status: number | null }> {
+  if (!isEventbriteConfigured()) return { event: null, status: null };
 
   try {
     const response = await fetch(`${EB_BASE}/events/${encodeURIComponent(eventId)}/`, {
@@ -85,7 +98,7 @@ export async function fetchEventbriteEvent(eventId: string): Promise<EventbriteE
     });
     if (!response.ok) {
       logger.warn({ status: response.status, eventId }, "eventbrite event fetch non-200");
-      return null;
+      return { event: null, status: response.status };
     }
     const json = (await response.json()) as Record<string, unknown>;
 
@@ -112,22 +125,25 @@ export async function fetchEventbriteEvent(eventId: string): Promise<EventbriteE
     }
 
     return {
-      id: String(json.id ?? eventId),
-      name: ((json.name as { text?: string } | undefined)?.text ?? "") as string,
-      startUtc: ((json.start as { utc?: string } | undefined)?.utc ?? null) as string | null,
-      endUtc: ((json.end as { utc?: string } | undefined)?.utc ?? null) as string | null,
-      status: String(json.status ?? "unknown"),
-      capacity: (json.capacity as number | null) ?? null,
-      url: (json.url as string | null) ?? null,
-      description: ((json.description as { text?: string } | undefined)?.text ?? null) as
-        | string
-        | null,
-      venueId,
-      cityName,
+      event: {
+        id: String(json.id ?? eventId),
+        name: ((json.name as { text?: string } | undefined)?.text ?? "") as string,
+        startUtc: ((json.start as { utc?: string } | undefined)?.utc ?? null) as string | null,
+        endUtc: ((json.end as { utc?: string } | undefined)?.utc ?? null) as string | null,
+        status: String(json.status ?? "unknown"),
+        capacity: (json.capacity as number | null) ?? null,
+        url: (json.url as string | null) ?? null,
+        description: ((json.description as { text?: string } | undefined)?.text ?? null) as
+          | string
+          | null,
+        venueId,
+        cityName,
+      },
+      status: response.status,
     };
   } catch (err) {
     logger.warn({ err, eventId }, "eventbrite event fetch failed");
-    return null;
+    return { event: null, status: null };
   }
 }
 

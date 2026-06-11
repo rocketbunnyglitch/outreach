@@ -107,17 +107,28 @@ export async function linkEventbriteEvent(
   }
 
   // Link path — fetch EB, compare city, save
-  const { isEventbriteConfigured, fetchEventbriteEvent } = await import("@/lib/eventbrite");
+  const { isEventbriteConfigured, fetchEventbriteEventWithStatus } = await import(
+    "@/lib/eventbrite"
+  );
   if (!isEventbriteConfigured()) {
     return { ok: true, data: { notConfigured: true } };
   }
 
-  const ebEvent = await fetchEventbriteEvent(parsed.data.eventbriteEventId);
+  const { event: ebEvent, status: ebStatus } = await fetchEventbriteEventWithStatus(
+    parsed.data.eventbriteEventId,
+  );
   if (!ebEvent) {
-    return {
-      ok: false,
-      error: "Couldn't load that Eventbrite event. Check the ID is correct + the token has access.",
-    };
+    // Tell the operator WHY: a 404 means a typo'd ID, a 401/403 means
+    // the server token can't see that event (different EB account).
+    const error =
+      ebStatus === 404
+        ? `Eventbrite says event ${parsed.data.eventbriteEventId} doesn't exist (404). Double-check the ID — it's the long number at the end of the event URL.`
+        : ebStatus === 401 || ebStatus === 403
+          ? `Eventbrite refused access to event ${parsed.data.eventbriteEventId} (${ebStatus}). The server's Eventbrite token can only see events under its own EB account — is this event under a different account?`
+          : ebStatus
+            ? `Eventbrite returned an error (HTTP ${ebStatus}) loading event ${parsed.data.eventbriteEventId}. Try again in a minute.`
+            : "Couldn't reach Eventbrite (network/timeout). Try again in a minute.";
+    return { ok: false, error };
   }
 
   // Resolve crawl's city for the smart check

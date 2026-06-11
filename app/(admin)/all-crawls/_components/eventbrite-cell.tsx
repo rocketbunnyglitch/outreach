@@ -329,13 +329,20 @@ export function EventbriteCell({
         </div>
       )}
 
+      {/* In-flow (NOT absolute): absolute positioning clipped these
+          under the next table row, so EB errors were unreadable
+          (operator report 2026-06-11). In-flow grows the row instead. */}
       {error && (
-        <p className="absolute top-full left-0 mt-1 max-w-xs whitespace-normal text-[10px] text-rose-600 dark:text-rose-400">
+        <p
+          role="alert"
+          title={error}
+          className="mt-1 max-w-[18rem] whitespace-normal break-words rounded-md bg-rose-50 px-2 py-1 text-[10px] text-rose-700 leading-snug dark:bg-rose-950/30 dark:text-rose-300"
+        >
           {error}
         </p>
       )}
       {toast && !error && (
-        <p className="absolute top-full left-0 mt-1 max-w-xs whitespace-normal text-[10px] text-emerald-700 dark:text-emerald-400">
+        <p className="mt-1 max-w-[18rem] whitespace-normal break-words text-[10px] text-emerald-700 leading-snug dark:text-emerald-400">
           {toast}
         </p>
       )}
