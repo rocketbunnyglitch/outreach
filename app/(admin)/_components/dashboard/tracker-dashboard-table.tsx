@@ -1518,6 +1518,30 @@ function slotOrder(s: SlotKind): number {
   return s === "wristband" ? 0 : s === "final" ? 2 : 1;
 }
 
+/** Deterministic pastel pill per staffer so assignments scan at a
+ *  glance (operator request 2026-06-11: "coloured pills for assigned
+ *  user on tracker sheet"). Hash of the staff id picks a stable
+ *  palette slot — same staffer gets the same colour on every row
+ *  with zero configuration. */
+const ASSIGN_PILL_PALETTE = [
+  "bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-300",
+  "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300",
+  "bg-amber-500/15 text-amber-700 ring-amber-500/30 dark:text-amber-300",
+  "bg-violet-500/15 text-violet-700 ring-violet-500/30 dark:text-violet-300",
+  "bg-rose-500/15 text-rose-700 ring-rose-500/30 dark:text-rose-300",
+  "bg-teal-500/15 text-teal-700 ring-teal-500/30 dark:text-teal-300",
+  "bg-indigo-500/15 text-indigo-700 ring-indigo-500/30 dark:text-indigo-300",
+  "bg-orange-500/15 text-orange-700 ring-orange-500/30 dark:text-orange-300",
+  "bg-fuchsia-500/15 text-fuchsia-700 ring-fuchsia-500/30 dark:text-fuchsia-300",
+  "bg-cyan-500/15 text-cyan-700 ring-cyan-500/30 dark:text-cyan-300",
+] as const;
+
+function assignPillClass(staffId: string): string {
+  let h = 0;
+  for (let i = 0; i < staffId.length; i++) h = (h * 31 + staffId.charCodeAt(i)) >>> 0;
+  return ASSIGN_PILL_PALETTE[h % ASSIGN_PILL_PALETTE.length] ?? ASSIGN_PILL_PALETTE[0];
+}
+
 function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] }) {
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState(row.leadStaffId ?? "");
@@ -1557,9 +1581,12 @@ function AssignSelect({ row, staff }: { row: TrackerRow; staff: StaffOption[] })
         disabled={pending}
         aria-label="Assign lead staffer"
         className={cn(
-          "w-full appearance-none rounded-md border border-transparent bg-transparent py-1 pr-6 pl-2 font-medium text-xs text-zinc-700 transition-colors duration-150 dark:text-zinc-300",
-          "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none",
-          "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
+          "w-full appearance-none border border-transparent py-1 pr-6 pl-2 font-medium text-xs transition-colors duration-150",
+          value
+            ? cn("rounded-full ring-1 ring-inset", assignPillClass(value))
+            : "rounded-md bg-transparent text-zinc-700 hover:bg-white focus:bg-white dark:text-zinc-300 dark:focus:bg-zinc-900 dark:hover:bg-zinc-900",
+          "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
+          "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
           pending && "opacity-50",
         )}
       >
