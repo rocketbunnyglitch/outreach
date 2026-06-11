@@ -8,8 +8,9 @@
  */
 
 import { requireAdmin } from "@/lib/auth";
+import { runIntegrityChecks } from "@/lib/data-integrity";
 import { loadDataQuality } from "@/lib/data-quality";
-import { ArrowRight, CheckCircle2, Database } from "lucide-react";
+import { ArrowRight, CheckCircle2, Database, Link2 } from "lucide-react";
 import Link from "next/link";
 
 export const metadata = { title: "Data quality · Admin" };
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DataQualityPage() {
   await requireAdmin();
-  const checks = await loadDataQuality();
+  const [checks, integrity] = await Promise.all([loadDataQuality(), runIntegrityChecks()]);
   const dirty = checks.filter((c) => c.count > 0);
   const clean = checks.filter((c) => c.count === 0);
 
@@ -35,6 +36,30 @@ export default async function DataQualityPage() {
           </p>
         </div>
       </header>
+
+      {/* Linkage integrity (FULL_AUDIT P006): invariants between stores that
+          record the same fact. Renders only when something is broken. */}
+      {integrity.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-xl border border-rose-200 p-4 dark:border-rose-900/40">
+          <h2 className="flex items-center gap-2 font-semibold text-sm">
+            <Link2 className="h-4 w-4 text-rose-500" /> Linkage integrity findings
+          </h2>
+          <ul className="flex flex-col gap-1 text-sm">
+            {integrity.map((f) => (
+              <li key={f.name} className="flex items-baseline justify-between gap-3">
+                <span>{f.desc}</span>
+                <span className="shrink-0 font-mono text-rose-600 dark:text-rose-400">
+                  {f.count === -1 ? "check broken" : f.count}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-zinc-500">
+            Same-fact stores disagreeing — the email-analytics-class bug. Run
+            scripts/audit-data-links.sh for the full 21-check detail.
+          </p>
+        </section>
+      )}
 
       {dirty.map((c) => (
         <section

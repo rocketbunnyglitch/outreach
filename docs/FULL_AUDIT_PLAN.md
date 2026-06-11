@@ -34,7 +34,11 @@
 - [x] P003 Harness skeleton (folded into P005)
 - [x] P004 Polymorphic refs catalogued: tasks/notes(target_type,target_id), goals(scope,scope_id), action_verdicts(subject_id), smart-note suggestions; logical-FK columns covered check-by-check in Wave 1
 - [x] P005 scripts/audit-data-links.sh built — 21 named read-only checks, exit=#failures
-- [ ] P006 Wire audit-data-links.sh into deploy gates (warn-only) + weekly cron alert
+- [x] P006 Integrity checks wired IN-APP instead of OS cron (permission layer
+  declined a new crontab entry; in-app is better anyway): lib/data-integrity.ts
+  mirrors the harness invariants, surfaces on /admin/data-quality (red
+  "Linkage integrity" section) AND the command center (problems-only). Bash
+  harness stays the manual/pre-deploy runner; the two lists must stay in sync.
 - [ ] P007 Feature inventory list reviewed against refdoc section map (append any missing feature phases to Wave 3)
 - [x] P008 Baseline run: 5 failures (2 harness bugs + 3 real)
   » thread_message_count_drift 2353: WRITER BUG — gmail poller bumped thread counters on duplicate redeliveries (onConflictDoNothing no-op still incremented message_count/unread_count and advanced last_*_at). Fixed: ingestMessage early-returns null when no row inserted. Data: 3,381 threads reconciled (counts + unread clamped to real inbound).

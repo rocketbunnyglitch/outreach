@@ -169,7 +169,28 @@ export async function loadCommandCenter(campaignId: string | null): Promise<Comm
     });
   }
 
-  // 6. Backup status (configured + last run).
+  // 6. Data-linkage integrity (FULL_AUDIT P006): a failing invariant is a
+  //    decision item — the same class as the email-analytics linkage break.
+  try {
+    const { runIntegrityChecks } = await import("@/lib/data-integrity");
+    for (const f of await runIntegrityChecks()) {
+      items.push({
+        id: `integrity:${f.name}`,
+        severity: "yellow",
+        source: "system",
+        label:
+          f.count === -1
+            ? `Integrity check ${f.name} broke (schema drift?)`
+            : `${f.count} row${f.count > 1 ? "s" : ""}: ${f.desc}`,
+        href: "/admin/data-quality",
+        cta: "Open data quality",
+      });
+    }
+  } catch {
+    // Integrity layer down -> the page still renders its other sources.
+  }
+
+  // 7. Backup status (configured + last run).
   try {
     const { getSheetsBackupStatus } = await import("@/app/(admin)/admin/_actions-sheets-backup");
     const backup = await getSheetsBackupStatus();
