@@ -959,17 +959,37 @@ async function sendDraftAsUser(input: {
   // Learning loop (2026-06-11): if this draft was seeded from a
   // quick-reply chip, record whether the operator sent it as-is,
   // lightly edited, or rewrote it — re-ranks the corpus examples
-  // behind future suggestions. Fire-and-forget, never blocks a send.
+  // behind future suggestions AND feeds the autonomy trust ladder.
+  // Fire-and-forget, never blocks a send.
   try {
     const meta = draft.suggestionMeta as {
       exampleIds?: string[];
       seededBody?: string;
     } | null;
-    if (meta?.exampleIds?.length && meta.seededBody) {
+    if (meta?.seededBody) {
       const { feedbackBucket, recordSuggestionFeedback } = await import("@/lib/reply-corpus");
-      void recordSuggestionFeedback(
-        meta.exampleIds,
-        feedbackBucket(meta.seededBody, draft.bodyText ?? ""),
+      const bucket = feedbackBucket(meta.seededBody, draft.bodyText ?? "");
+      if (meta.exampleIds?.length) {
+        void recordSuggestionFeedback(meta.exampleIds, bucket);
+      }
+      const { recordActionVerdict } = await import("@/lib/autonomy");
+      // rewritten = the machine's draft wasn't good enough to send.
+      void recordActionVerdict(
+        "quick_reply_chip",
+        bucket === "rewritten" ? "rejected" : bucket,
+        input.draftId,
+      );
+    }
+
+    // Template-pick verdict: did the operator send the template the
+    // engine picked, or swap it?
+    if (draft.enginePickedTemplateId) {
+      const { recordActionVerdict } = await import("@/lib/autonomy");
+      void recordActionVerdict(
+        "template_pick",
+        draft.templateId === draft.enginePickedTemplateId ? "accepted" : "rejected",
+        input.draftId,
+        { picked: draft.enginePickedTemplateId, sent: draft.templateId ?? null },
       );
     }
   } catch (err) {

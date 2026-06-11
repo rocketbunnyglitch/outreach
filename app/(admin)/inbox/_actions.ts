@@ -1849,7 +1849,9 @@ export async function setThreadClassification(
     // pending AI suggestion in the same statement -- the
     // suggestion pill is supposed to disappear the moment the
     // operator either confirms or overrides. Phase A.1.
-    await db.execute(sql`
+    // RETURNING the pre-clear suggestion feeds the autonomy trust
+    // ladder below (was the AI right before the human settled it?).
+    const updated = await db.execute<{ prior_suggested: string | null }>(sql`
       UPDATE email_threads
       SET classification = ${classification}::reply_classification,
           suggested_classification = NULL,
@@ -1858,7 +1860,29 @@ export async function setThreadClassification(
           updated_at = NOW(),
           updated_by = ${staff.id}
       WHERE id = ${threadId}
+      RETURNING (SELECT t2.suggested_classification::text FROM email_threads t2 WHERE t2.id = ${threadId}) AS prior_suggested
     `);
+
+    // Autonomy evidence (trust ladder, 2026-06-11): when the AI had a
+    // pending suggestion, record whether the human agreed. Fire-and-
+    // forget; never blocks triage.
+    try {
+      const rows = Array.isArray(updated)
+        ? (updated as Array<{ prior_suggested: string | null }>)
+        : ((updated as { rows?: Array<{ prior_suggested: string | null }> }).rows ?? []);
+      const prior = rows[0]?.prior_suggested;
+      if (prior && classification !== "unclassified") {
+        const { recordActionVerdict } = await import("@/lib/autonomy");
+        void recordActionVerdict(
+          "classify_reply",
+          prior === classification ? "accepted" : "rejected",
+          threadId,
+          { suggested: prior, final: classification },
+        );
+      }
+    } catch {
+      // non-fatal
+    }
     publishRealtime({
       table: "email_threads",
       id: threadId,
