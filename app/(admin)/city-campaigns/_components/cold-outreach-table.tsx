@@ -2279,7 +2279,7 @@ function StatusSelect({
         disabled={pending}
         data-status-trigger={entryId}
         className={cn(
-          "w-full appearance-none rounded-md border border-transparent bg-transparent py-1 pr-5 pl-2 font-medium font-mono text-[10px] uppercase tracking-[0.08em] transition-colors",
+          "w-full appearance-none rounded-md border border-transparent bg-transparent py-1 pr-5 pl-2 font-medium font-mono text-[9px] uppercase tracking-[0.05em] transition-colors",
           "hover:border-zinc-300 focus:border-zinc-400 focus:outline-none",
           "dark:focus:border-zinc-600 dark:hover:border-zinc-700",
           opt?.tone,
@@ -2422,7 +2422,7 @@ function RemarksInput({
         rows={1}
         placeholder={recovered ? "Restored draft — Enter to save" : "Add remarks…"}
         className={cn(
-          "block w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1 pr-6 text-xs leading-snug transition-colors",
+          "block w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1 pr-6 text-[11px] leading-snug transition-colors",
           "whitespace-pre-wrap break-words",
           "hover:border-zinc-300 hover:bg-white focus:border-zinc-400 focus:bg-white focus:outline-none",
           "dark:focus:border-zinc-600 dark:focus:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-900",
