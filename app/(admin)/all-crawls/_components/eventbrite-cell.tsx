@@ -118,10 +118,22 @@ export function EventbriteCell({
           crawlCity: data.mismatch.crawlCity,
           ebName: data.ebName,
         });
+        // Also raise an unclippable toast: the confirm popover lives in
+        // a table cell that can sit at a scrolled-out edge — without
+        // this, the question can go unseen and the link "does nothing"
+        // (operator report 2026-06-11).
+        appToast.show({
+          kind: "info",
+          message: `"${data.ebName}" is in ${data.mismatch.eventCity}, but this crawl is for ${data.mismatch.crawlCity} — confirm or cancel next to the EB field.`,
+        });
         return;
       }
       if ("linked" in data) {
         setToast(`Linked → ${data.eventName ?? "Eventbrite event"}`);
+        appToast.show({
+          kind: "success",
+          message: `Linked → ${data.eventName ?? "Eventbrite event"}`,
+        });
         setEditing(false);
       } else if ("unlinked" in data) {
         setToast("Unlinked");
@@ -311,9 +323,13 @@ export function EventbriteCell({
         </div>
       )}
 
-      {/* Mismatch confirmation popover */}
+      {/* Mismatch confirmation popover. right-0 (NOT left-0): this cell
+          can sit at the right edge of a horizontally-scrolled table,
+          where a left-anchored popover extends into the clipped overflow
+          and is invisible. Anchoring right grows it INTO the visible
+          region. */}
       {confirmMismatch && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-80 rounded-lg border border-rose-200 bg-rose-50/95 p-3 shadow-lg dark:border-rose-900/40 dark:bg-rose-950/80">
+        <div className="absolute top-full right-0 z-50 mt-1 w-80 max-w-[calc(100vw-2.5rem)] rounded-lg border border-rose-200 bg-rose-50/95 p-3 shadow-lg dark:border-rose-900/40 dark:bg-rose-950/80">
           <div className="mb-2 flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
             <div className="flex-1">
