@@ -88,6 +88,22 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
       WHERE archived_at IS NULL GROUP BY 1, 2 HAVING count(*) > 1) d`,
   },
   {
+    name: "cold_on_archived_campaign",
+    desc: "Active cold entries under an archived campaign (archive cascade missed)",
+    query: sql`SELECT count(*)::int AS n FROM cold_outreach_entries e
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN campaigns c ON c.id = cc.campaign_id
+      WHERE e.archived_at IS NULL AND c.archived_at IS NOT NULL`,
+  },
+  {
+    name: "cold_on_archived_venue",
+    desc: "Active cold entries on archived (non-merged) venues",
+    query: sql`SELECT count(*)::int AS n FROM cold_outreach_entries e
+      JOIN venues v ON v.id = e.venue_id
+      WHERE e.archived_at IS NULL AND v.archived_at IS NOT NULL
+        AND v.merged_into_venue_id IS NULL`,
+  },
+  {
     name: "drafts_venue_merged",
     desc: "Unsent drafts addressed to merged-away venues",
     query: sql`SELECT count(*)::int AS n FROM email_drafts d

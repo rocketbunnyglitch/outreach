@@ -273,14 +273,32 @@ export async function updateCampaign(
   }
 }
 
+/** Shared archive writes (FULL_AUDIT P024): archiving a campaign must also
+ *  CLOSE its working set — 8,780 cold entries from three past campaigns sat
+ *  "active" forever because this cascade didn't exist, leaking into every
+ *  unscoped aggregate. Entries archive with the campaign, atomically. */
+async function archiveCampaignWrites(
+  tx: Parameters<Parameters<typeof withAuditContext>[1]>[0],
+  id: string,
+  staffId: string,
+): Promise<void> {
+  await tx
+    .update(campaigns)
+    .set({ status: "archived", archivedAt: new Date(), updatedBy: staffId })
+    .where(eq(campaigns.id, id));
+  await tx.execute(sql`
+    UPDATE cold_outreach_entries e
+    SET archived_at = NOW(), updated_at = NOW()
+    FROM city_campaigns cc
+    WHERE cc.id = e.city_campaign_id
+      AND cc.campaign_id = ${id}::uuid
+      AND e.archived_at IS NULL
+  `);
+}
+
 export async function archiveCampaign(id: string): Promise<void> {
   const { staff } = await requireStaff();
-  await withAuditContext(staff.id, async (tx) =>
-    tx
-      .update(campaigns)
-      .set({ status: "archived", archivedAt: new Date(), updatedBy: staff.id })
-      .where(eq(campaigns.id, id)),
-  );
+  await withAuditContext(staff.id, async (tx) => archiveCampaignWrites(tx, id, staff.id));
   revalidatePath("/campaigns");
   revalidatePath("/admin/archived-campaigns");
   revalidatePath(`/campaigns/${id}`);
@@ -297,12 +315,7 @@ export async function archiveCampaignNoRedirect(
 ): Promise<{ ok: boolean; error?: string }> {
   const { staff } = await requireStaff();
   try {
-    await withAuditContext(staff.id, async (tx) =>
-      tx
-        .update(campaigns)
-        .set({ status: "archived", archivedAt: new Date(), updatedBy: staff.id })
-        .where(eq(campaigns.id, id)),
-    );
+    await withAuditContext(staff.id, async (tx) => archiveCampaignWrites(tx, id, staff.id));
     revalidatePath("/campaigns");
     revalidatePath("/admin/archived-campaigns");
     revalidatePath(`/campaigns/${id}`);

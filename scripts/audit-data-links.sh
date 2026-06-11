@@ -135,6 +135,20 @@ check cold_duplicate_active \
      WHERE archived_at IS NULL
      GROUP BY 1, 2 HAVING count(*) > 1) d"
 
+check cold_on_archived_campaign \
+  "active cold entries under an ARCHIVED campaign (archive cascade missed)" \
+  "SELECT count(*) FROM cold_outreach_entries e
+   JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+   JOIN campaigns c ON c.id = cc.campaign_id
+   WHERE e.archived_at IS NULL AND c.archived_at IS NOT NULL"
+
+check cold_on_archived_venue \
+  "active cold entries on archived (non-merged) venues" \
+  "SELECT count(*) FROM cold_outreach_entries e
+   JOIN venues v ON v.id = e.venue_id
+   WHERE e.archived_at IS NULL AND v.archived_at IS NOT NULL
+     AND v.merged_into_venue_id IS NULL"
+
 check cold_touch_behind_mail \
   "cold entry last_touch_at older than newest outbound message for same venue+cc (>1h)" \
   "SELECT count(*) FROM cold_outreach_entries coe

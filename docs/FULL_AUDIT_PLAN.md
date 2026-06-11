@@ -87,7 +87,15 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
   » ALL CLEAN over 30d window (114 sends): thread attribution 0 missing, VE
     references 0 dangling, draft-vs-send template agreement 0 mismatches.
     The attribution chain under analytics/learning/Loop C is sound.
-- [ ] P024-P026 cold_outreach_entries ↔ venues/city_campaigns (entries for archived/merged venues; venues active in a cc with NO cold entry; duplicate active entries)
+- [x] P024-P026 cold_outreach_entries ↔ venues/city_campaigns
+  » BIG: 8,780 active cold entries under three ARCHIVED past campaigns
+    (Halloween 2025 / NYE 2026 / St Paddy's 2026) — campaign archive never
+    cascaded to its working set. Data: all archived with the campaign's own
+    archive date. Writer: archiveCampaignWrites shared core now cascades in
+    both archive actions, atomically. +2 active-on-archived-venue entries
+    closed. venue-on-crawl-with-no-cold-entry: 0 (promote wiring sound).
+    Invariants cold_on_archived_campaign + cold_on_archived_venue in BOTH
+    lists.
 - [ ] P027-P029 cold_outreach_entries.last_touch_at vs email_messages/calls (reconciliation — the class found 2026-06-11; verify backfill complete incl. CALL touches)
 - [ ] P030-P032 venue_events ↔ events/venues (orphans; confirmed VE on archived event; VE whose venue city ≠ crawl city — sync w/ data-quality check)
 - [ ] P033-P035 venue_events cadence stamps vs email_drafts/messages (two_week/one_week sent_at set but no matching sent draft; lifecycle drafts sent but stamp null)
