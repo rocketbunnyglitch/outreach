@@ -47,9 +47,9 @@ export default async function WorklistPage() {
   // double-querying; the sections render the data passed in.
   const [
     drafts,
-    replies,
+    repliesResult,
     followUps,
-    calls,
+    callsResult,
     relationshipFlags,
     comebacks,
     floorStaffCalls,
@@ -68,6 +68,8 @@ export default async function WorklistPage() {
     loadWorklistNoReplyNudges({ staffId: staff.id }),
     loadCityFocus({ staffId: staff.id }),
   ]);
+  const replies = repliesResult.rows;
+  const calls = callsResult.rows;
   const allEmpty =
     drafts.length === 0 &&
     replies.length === 0 &&
@@ -103,10 +105,10 @@ export default async function WorklistPage() {
           <ComebacksSection comebacks={comebacks} />
           <RelationshipFlagsSection flags={relationshipFlags} />
           <DraftsSection drafts={drafts} />
-          <RepliesSection replies={replies} />
+          <RepliesSection replies={replies} totalCount={repliesResult.totalCount} />
           <FollowUpsSection followUps={followUps} />
           <NoReplySection rows={noReplyNudges} />
-          <CallsSection calls={calls} />
+          <CallsSection calls={calls} overflowCount={callsResult.overflowCount} />
         </div>
       )}
     </div>

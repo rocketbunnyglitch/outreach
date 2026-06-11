@@ -4,6 +4,7 @@ import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } f
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { loadCitySheet } from "@/lib/city-sheet-data";
 import { loadCityThreadFeed } from "@/lib/city-thread-feed";
+import { computeEffectivePriority } from "@/lib/effective-priority";
 import { loadCityVenues } from "@/lib/city-venues-data";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
@@ -152,6 +153,22 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
     return "need_3_venues";
   })();
 
+  // Effective priority (refdoc 1.6): inside the 21-day window, sales velocity
+  // re-ranks the city. The badge under the header tells the operator WHY this
+  // city is being pushed up or down so they can override with context.
+  const upcomingMs = _eventRows
+    .map((r) => new Date(`${String(r.event.eventDate)}T00:00:00Z`).getTime())
+    .filter((t) => Number.isFinite(t) && t >= Date.now() - 86_400_000);
+  const daysToEvent =
+    upcomingMs.length > 0
+      ? Math.max(0, Math.ceil((Math.min(...upcomingMs) - Date.now()) / 86_400_000))
+      : 9999;
+  const effPriority = computeEffectivePriority({
+    staticPriority: cc.cc.priority,
+    ticketsSold: totalTicketsSold,
+    daysToEvent,
+  });
+
   async function boundUpdate(prev: unknown, fd: FormData) {
     "use server";
     return updateCityCampaign(id, prev, fd);
@@ -233,6 +250,26 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           totalTicketsSold={totalTicketsSold}
           statusPill={computedStatusPill}
         />
+      )}
+
+      {/* Sales-pivot badge (refdoc 1.6): only renders inside the 21-day
+          window when the pivot is live, so it never adds noise early on. */}
+      {effPriority.pivotActive && (
+        <p className="-mt-2 flex flex-wrap items-center gap-2 font-mono text-[11px] text-zinc-500">
+          <span
+            className={
+              effPriority.effective < cc.cc.priority
+                ? "rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-700 ring-1 ring-emerald-500/25 ring-inset dark:text-emerald-300"
+                : effPriority.effective > cc.cc.priority
+                  ? "rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700 ring-1 ring-amber-500/25 ring-inset dark:text-amber-300"
+                  : "rounded-full bg-zinc-500/10 px-2 py-0.5 text-zinc-600 ring-1 ring-zinc-500/20 ring-inset dark:text-zinc-300"
+            }
+          >
+            Prio {cc.cc.priority}
+            {effPriority.effective !== cc.cc.priority ? ` → ${effPriority.effective}` : ""}
+          </span>
+          <span>{effPriority.reason}</span>
+        </p>
       )}
 
       {/* Crawls grouped by day */}

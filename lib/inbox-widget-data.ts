@@ -16,7 +16,7 @@ import { emailThreads, staffOutreachEmails, venues } from "@/db/schema";
 import { currentCampaignThreadScope } from "@/lib/campaign-thread-scope";
 import { db } from "@/lib/db";
 import { loadSendUsage } from "@/lib/send-cap";
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, eq, or, sql } from "drizzle-orm";
 
 export interface InboxWidgetThread {
   id: string;
@@ -88,7 +88,10 @@ export async function loadInboxWidget(opts: {
         ),
       ),
     )
-    .orderBy(desc(emailThreads.lastMessageAt))
+    // Inbound-only ordering (refdoc 8.2): who replied stays on top --
+    // the operator's own outbound sends must not reshuffle the list.
+    // Same COALESCE the main inbox uses (lib/inbox-data.ts).
+    .orderBy(sql`COALESCE(${emailThreads.lastInboundAt}, ${emailThreads.createdAt}) DESC`)
     .limit(TOP_N);
 
   // Count of needs_reply for this user — for the badge.

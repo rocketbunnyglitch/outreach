@@ -119,13 +119,20 @@ function ReplyRow({ reply }: { reply: WorklistReplyRow }) {
   );
 }
 
-export function RepliesSection({ replies }: { replies: WorklistReplyRow[] }) {
+export function RepliesSection({
+  replies,
+  totalCount,
+}: {
+  replies: WorklistReplyRow[];
+  totalCount?: number;
+}) {
+  const total = totalCount ?? replies.length;
   return (
     <WorklistSection
       title="Replies needing attention"
       subtitle="Inbound replies the engine flagged for you to triage"
       icon={<MessageSquareReply className="h-4 w-4" />}
-      count={replies.length}
+      count={total}
     >
       {replies.length === 0 ? (
         <WorklistEmpty message="No replies need attention right now." />
@@ -134,6 +141,15 @@ export function RepliesSection({ replies }: { replies: WorklistReplyRow[] }) {
           {replies.map((r) => (
             <ReplyRow key={r.id} reply={r} />
           ))}
+          {/* Overflow signal — refdoc 8.2: nothing falls through silently. */}
+          {total > replies.length && (
+            <Link
+              href="/inbox"
+              className="rounded-xl border border-zinc-200 border-dashed px-3 py-2 text-center font-mono text-[11px] text-zinc-500 uppercase tracking-[0.08em] transition-colors hover:border-zinc-400 hover:text-zinc-800 dark:border-zinc-800 dark:hover:text-zinc-200"
+            >
+              + {total - replies.length} more — open the inbox to work the rest
+            </Link>
+          )}
         </div>
       )}
     </WorklistSection>

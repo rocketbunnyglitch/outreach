@@ -150,6 +150,11 @@ interface ColdEntry {
   cadenceLabel: string;
   /** Phase 2.14: cold sequence exhausted -> offer cross-domain handoff. */
   readyForHandoff: boolean;
+  /** Closer sent, no reply — handoff unlocks on exhaustion (refdoc 6.2). */
+  approachingHandoff: boolean;
+  /** Cadence touches used vs the campaign hard cap (refdoc 6.3). */
+  touchCount: number;
+  touchCap: number;
   /** Per-venue engagement (Tier-2 soft signal, 0-100) + band. Sortable so
    *  genuinely-interested venues rise. Display/sort only -- never a send. */
   engagementScore: number;
@@ -2097,7 +2102,43 @@ function ColdRow({
 
           {/* Cadence (Phase 2.12) + cross-domain handoff on exhausted rows (2.14). */}
           <td className="w-44 px-2 py-2 align-middle text-[11px] text-zinc-600 leading-snug dark:text-zinc-400">
-            <div>{entry.cadenceLabel}</div>
+            <div
+              className={cn(
+                // Urgency emphasis (refdoc 6.1): a due/overdue touch must pop
+                // out of the column instead of reading like every other row.
+                entry.cadenceLabel.includes("overdue") &&
+                  "font-medium text-rose-600 dark:text-rose-400",
+                entry.cadenceLabel.includes("due today") &&
+                  "font-medium text-amber-600 dark:text-amber-400",
+              )}
+            >
+              {entry.cadenceLabel}
+            </div>
+            {/* Touch budget vs the campaign hard cap (refdoc 6.3) — visible
+                BEFORE a surprise exhaustion. Amber from 4, rose at the cap. */}
+            {entry.touchCount > 0 && (
+              <span
+                className={cn(
+                  "mt-0.5 inline-flex rounded-full px-1.5 py-px font-mono text-[9px] tabular-nums ring-1 ring-inset",
+                  entry.touchCount >= entry.touchCap
+                    ? "bg-rose-500/15 text-rose-700 ring-rose-500/25 dark:text-rose-300"
+                    : entry.touchCount >= entry.touchCap - 2
+                      ? "bg-amber-500/15 text-amber-700 ring-amber-500/25 dark:text-amber-300"
+                      : "bg-zinc-500/10 text-zinc-500 ring-zinc-500/20 dark:text-zinc-400",
+                )}
+                title={`${entry.touchCount} of ${entry.touchCap} campaign touches used (anti-spam hard cap)`}
+              >
+                {entry.touchCount}/{entry.touchCap} touches
+              </span>
+            )}
+            {entry.approachingHandoff && !entry.readyForHandoff && (
+              <p
+                className="mt-0.5 font-mono text-[9px] text-zinc-400 uppercase tracking-[0.06em]"
+                title="Closer sent. If the venue stays silent, this row unlocks a cross-domain handoff to a fresh brand."
+              >
+                final touch sent · handoff next
+              </p>
+            )}
             {entry.readyForHandoff && (
               <HandoffButton
                 entryId={entry.entryId}

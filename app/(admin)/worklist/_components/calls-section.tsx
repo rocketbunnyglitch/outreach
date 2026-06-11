@@ -59,13 +59,19 @@ function CallRow({ call }: { call: WorklistCallRow }) {
   );
 }
 
-export function CallsSection({ calls }: { calls: WorklistCallRow[] }) {
+export function CallsSection({
+  calls,
+  overflowCount = 0,
+}: {
+  calls: WorklistCallRow[];
+  overflowCount?: number;
+}) {
   return (
     <WorklistSection
       title="Calls to make"
       subtitle="High-priority venues to phone today"
       icon={<PhoneCall className="h-4 w-4" />}
-      count={calls.length}
+      count={calls.length + overflowCount}
     >
       {calls.length === 0 ? (
         <WorklistEmpty message="No calls queued for today." />
@@ -74,6 +80,14 @@ export function CallsSection({ calls }: { calls: WorklistCallRow[] }) {
           {calls.map((c) => (
             <CallRow key={c.coldEntryId} call={c} />
           ))}
+          {/* Overflow signal — refdoc 8.2: the queue is deeper than the
+              top 8; say so instead of silently dropping the rest. */}
+          {overflowCount > 0 && (
+            <p className="rounded-xl border border-zinc-200 border-dashed px-3 py-2 text-center font-mono text-[11px] text-zinc-500 uppercase tracking-[0.08em] dark:border-zinc-800">
+              + {overflowCount} more due — top 8 shown by effective priority; the rest surface as
+              you clear these
+            </p>
+          )}
         </div>
       )}
     </WorklistSection>

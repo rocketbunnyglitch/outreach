@@ -212,9 +212,37 @@ function replyUrgencyRank(classification: string): number {
  * back to the AI suggestion so a freshly-classified thread still sorts + colours
  * sensibly before anyone confirms it.
  */
-export async function loadWorklistReplies(opts: { staffId: string }): Promise<WorklistReplyRow[]> {
+export interface WorklistRepliesResult {
+  rows: WorklistReplyRow[];
+  /** Total matching replies BEFORE the row cap — the section shows
+   *  "showing X of Y" when Y > X so nothing is silently dropped
+   *  (refdoc 8.2: "impossible to lose track of anything"). */
+  totalCount: number;
+}
+
+export async function loadWorklistReplies(opts: {
+  staffId: string;
+}): Promise<WorklistRepliesResult> {
   const now = new Date();
   const campaignScope = await currentCampaignThreadScope();
+  const scopeWhere = and(
+    // Assigned to the operator OR in a city campaign they lead. Threads
+    // mostly aren't individually assigned (work is owned at the city
+    // level), so a city lead sees their cities' replies via the thread's
+    // campaign or the venue's city. [worklist by city leadership]
+    or(
+      eq(emailThreads.assignedStaffId, opts.staffId),
+      sql`EXISTS (
+        SELECT 1 FROM city_campaigns cc
+        WHERE cc.lead_staff_id = ${opts.staffId}
+          AND (cc.id = ${emailThreads.cityCampaignId} OR cc.city_id = ${venues.cityId})
+      )`,
+    ),
+    inArray(emailThreads.state, ["needs_reply", "follow_up_due"]),
+    isNull(emailThreads.deletedAt),
+    // Only this campaign's mail (gmail label "halloween 2026" etc).
+    campaignScope,
+  );
   const rows = await db
     .select({
       id: emailThreads.id,
@@ -239,28 +267,17 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
-    .where(
-      and(
-        // Assigned to the operator OR in a city campaign they lead. Threads
-        // mostly aren't individually assigned (work is owned at the city
-        // level), so a city lead sees their cities' replies via the thread's
-        // campaign or the venue's city. [worklist by city leadership]
-        or(
-          eq(emailThreads.assignedStaffId, opts.staffId),
-          sql`EXISTS (
-            SELECT 1 FROM city_campaigns cc
-            WHERE cc.lead_staff_id = ${opts.staffId}
-              AND (cc.id = ${emailThreads.cityCampaignId} OR cc.city_id = ${venues.cityId})
-          )`,
-        ),
-        inArray(emailThreads.state, ["needs_reply", "follow_up_due"]),
-        isNull(emailThreads.deletedAt),
-        // Only this campaign's mail (gmail label "halloween 2026" etc).
-        campaignScope,
-      ),
-    )
+    .where(scopeWhere)
     .orderBy(desc(emailThreads.lastMessageAt))
-    .limit(60);
+    .limit(100);
+
+  // Total under the same scope, so the section can say "showing X of Y"
+  // instead of silently truncating at the cap.
+  const [countRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(emailThreads)
+    .leftJoin(venues, eq(venues.id, emailThreads.venueId))
+    .where(scopeWhere);
 
   const mapped: WorklistReplyRow[] = rows.map((r) => {
     const confirmed =
@@ -300,7 +317,7 @@ export async function loadWorklistReplies(opts: { staffId: string }): Promise<Wo
       new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime(),
   );
 
-  return mapped;
+  return { rows: mapped, totalCount: countRow?.n ?? mapped.length };
 }
 
 // =========================================================================
@@ -621,7 +638,15 @@ function callSummary(status: string, isWarm: boolean, lastTouchAt: Date | null, 
  * "Last call attempt" reads outreach_log channel='call' (where click-to-call
  * logs every attempt). Phone dialling reuses QuoDialControls.
  */
-export async function loadWorklistCalls(opts: { staffId: string }): Promise<WorklistCallRow[]> {
+export interface WorklistCallsResult {
+  rows: WorklistCallRow[];
+  /** Calls that were due but fell past the cap — surfaced as "+N more
+   *  due" so the operator knows the queue is deeper than 8
+   *  (refdoc 8.2: nothing falls through silently). */
+  overflowCount: number;
+}
+
+export async function loadWorklistCalls(opts: { staffId: string }): Promise<WorklistCallsResult> {
   const now = new Date();
   const fiveDaysAgo = new Date(now.getTime() - 5 * DAY_MS);
   const twoDaysAgo = new Date(now.getTime() - 2 * DAY_MS);
@@ -688,7 +713,7 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
     )
     .limit(PRE_RANK_LIMIT);
 
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) return { rows: [], overflowCount: 0 };
 
   // If the pool hit the pre-rank cap, selling cities could have been truncated
   // before the effective-priority re-rank. Surface it rather than silently
@@ -736,10 +761,17 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
   });
 
   const rows: WorklistCallRow[] = [];
+  let overflowCount = 0;
   for (const c of ranked) {
     const lastCallAt = lastCallByVenue.get(c.venueId) ?? null;
     // Skip venues called within the last 2 days.
     if (lastCallAt && lastCallAt.getTime() > twoDaysAgo.getTime()) continue;
+    // Past the cap: keep counting so the operator SEES the overflow
+    // instead of losing track of due calls (refdoc 8.2).
+    if (rows.length >= CALL_CAP) {
+      overflowCount += 1;
+      continue;
+    }
     const eff = effByCc.get(c.cityCampaignId);
     rows.push({
       coldEntryId: c.coldEntryId,
@@ -756,9 +788,8 @@ export async function loadWorklistCalls(opts: { staffId: string }): Promise<Work
       venueTimezone: c.cityTimezone ?? null,
       summary: callSummary(c.status, c.isWarm, c.lastTouchAt, now),
     });
-    if (rows.length >= CALL_CAP) break;
   }
-  return rows;
+  return { rows, overflowCount };
 }
 
 // =========================================================================

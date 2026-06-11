@@ -1,4 +1,5 @@
 import { requireStaff } from "@/lib/auth";
+import { runCancellationReview } from "@/lib/cancellation-review";
 import { loadCrawlGantt } from "@/lib/crawl-gantt";
 import {
   loadCrawlIssues,
@@ -6,6 +7,7 @@ import {
   loadRecentCalls,
   loadSupportStaff,
 } from "@/lib/crawl-support";
+import { CancellationReviewCard } from "./_components/cancellation-review-card";
 import { CrawlGantt } from "./_components/crawl-gantt";
 import { CrawlSupportBoard } from "./_components/crawl-support-board";
 
@@ -13,12 +15,21 @@ export const dynamic = "force-dynamic";
 
 export default async function CrawlSupportPage() {
   await requireStaff();
-  const [data, issues, staff, calls, gantt] = await Promise.all([
+  const [data, issues, staff, calls, gantt, cancelReview] = await Promise.all([
     loadCrawlSupport({ now: new Date() }),
     loadCrawlIssues(),
     loadSupportStaff(),
     loadRecentCalls(),
     loadCrawlGantt(),
+    // Read-only scan (notify:false): same risk signals the cron flags,
+    // rendered as a queue so the 7.9 review wave is visible, not just a
+    // one-shot notification someone might miss.
+    runCancellationReview({ notify: false }).catch(() => ({
+      scanned: 0,
+      flagged: 0,
+      notified: 0,
+      rows: [],
+    })),
   ]);
 
   return (
@@ -31,6 +42,10 @@ export default async function CrawlSupportPage() {
           Calls and urgent-issue logging arrive once their tables are migrated.
         </p>
       </header>
+
+      {/* Crawls flagged for the event-week cancellation review (refdoc 7.9).
+          Renders only when something is flagged. */}
+      <CancellationReviewCard rows={cancelReview.rows} />
 
       {/* Crawl-night grid: one column per crawl night, one row per city,
           clickable chip per crawl. Overlap row + dark-night summary show

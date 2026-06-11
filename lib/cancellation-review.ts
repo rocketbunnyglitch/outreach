@@ -37,7 +37,7 @@ import "server-only";
  * re-notified during the same event-week scan series (Tue/Wed/Thu).
  */
 
-import { events, campaigns, cityCampaigns, emailThreads, venueEvents } from "@/db/schema";
+import { events, campaigns, cities, cityCampaigns, emailThreads, venueEvents } from "@/db/schema";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
@@ -54,6 +54,7 @@ const DEDUPE_MINUTES = 7 * 24 * 60;
 export interface CancellationReviewRow {
   eventId: string;
   cityCampaignId: string;
+  cityName: string | null;
   eventDate: string;
   leadStaffId: string | null;
   /** Human-readable risk reasons that put this crawl in the queue. */
@@ -71,8 +72,14 @@ export interface CancellationReviewResult {
  * Scan upcoming events for cancellation-review risk signals and notify the
  * city lead. Returns the worklist rows so a worklist section can render the
  * same data without re-scanning.
+ *
+ * Pass { notify: false } for a READ-ONLY scan (page renders) — same rows,
+ * no notifications emitted, so loading a page never re-pings city leads.
  */
-export async function runCancellationReview(): Promise<CancellationReviewResult> {
+export async function runCancellationReview(opts?: {
+  notify?: boolean;
+}): Promise<CancellationReviewResult> {
+  const notifyEnabled = opts?.notify ?? true;
   const now = new Date();
   const today = isoDate(now);
   const horizon = isoDate(new Date(now.getTime() + LOOKAHEAD_DAYS * 86_400_000));
@@ -88,9 +95,11 @@ export async function runCancellationReview(): Promise<CancellationReviewResult>
       requiredWristbandCount: events.requiredWristbandCount,
       campaignId: cityCampaigns.campaignId,
       leadStaffId: cityCampaigns.leadStaffId,
+      cityName: cities.name,
     })
     .from(events)
     .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(cities, eq(cities.id, cityCampaigns.cityId))
     .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
     .where(
       and(
@@ -186,14 +195,16 @@ export async function runCancellationReview(): Promise<CancellationReviewResult>
     rows.push({
       eventId: ev.eventId,
       cityCampaignId: ev.cityCampaignId,
+      cityName: ev.cityName ?? null,
       eventDate: ev.eventDate,
       leadStaffId: ev.leadStaffId,
       reasons,
     });
 
     // Notify the city lead (human-in-the-loop). Skip when there is no lead to
-    // notify -- the row still surfaces in the returned worklist set.
-    if (ev.leadStaffId) {
+    // notify -- the row still surfaces in the returned worklist set. Page
+    // renders pass notify=false so a refresh never re-pings anyone.
+    if (notifyEnabled && ev.leadStaffId) {
       try {
         const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
         const res = await emitNotification({

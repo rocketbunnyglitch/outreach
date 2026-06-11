@@ -26,6 +26,7 @@ import { backfillLeadScores } from "@/lib/ai-lead-score";
 import { requireStaff } from "@/lib/auth";
 import { db, withAuditContext } from "@/lib/db";
 import { detectRemarkFollowUp } from "@/lib/detect-remark-followup";
+import { DEFAULT_HARD_CAP } from "@/lib/cadence-engine-core";
 import { type EngagementBand, scoreEngagement } from "@/lib/engagement-score";
 import { type ActionResult, formToObject } from "@/lib/form-utils";
 import { logger } from "@/lib/logger";
@@ -1184,6 +1185,13 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
     /** Phase 2.14: the venue's cold sequence is exhausted (3 touches, no
      *  reply) and ready for a cross-domain handoff to another brand. */
     readyForHandoff: boolean;
+    /** Closer (touch 3) sent, no reply — handoff unlocks when the cadence
+     *  flips to exhausted. Forward signal for planning (refdoc 6.2). */
+    approachingHandoff: boolean;
+    /** Cadence touches recorded for this venue x campaign (refdoc 6.3). */
+    touchCount: number;
+    /** The campaign's hard touch cap (denominator for the n/cap badge). */
+    touchCap: number;
     /** Per-venue engagement (Tier-2 soft signal, 0-100). Computed on read from
      *  the thread classification + warm flag. Sortable so genuinely-interested
      *  venues rise; never drives a send. */
@@ -1318,6 +1326,24 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
       });
     }
   }
+  // Cadence touches used per venue x campaign (refdoc 6.3: the 6-touch hard
+  // cap). Surfaced as an "n/6" badge so the operator sees the budget BEFORE
+  // a surprise exhaustion, mirroring the call-attempts badge.
+  const touchCountMap = new Map<string, number>();
+  if (venueIds.length > 0) {
+    const touchRows = await db.execute<{ venue_id: string; n: number }>(sql`
+      SELECT venue_id::text AS venue_id, COUNT(*)::int AS n
+      FROM venue_campaign_touch_log
+      WHERE campaign_id = (SELECT campaign_id FROM city_campaigns WHERE id = ${cityCampaignId})
+        AND venue_id IN ${venueIds}
+      GROUP BY venue_id
+    `);
+    const touchList: Array<{ venue_id: string; n: number }> = Array.isArray(touchRows)
+      ? (touchRows as unknown as Array<{ venue_id: string; n: number }>)
+      : ((touchRows as unknown as { rows: Array<{ venue_id: string; n: number }> }).rows ?? []);
+    for (const row of touchList) touchCountMap.set(row.venue_id, row.n);
+  }
+
   const now = new Date();
 
   return rows.map((r) => {
@@ -1378,6 +1404,12 @@ export async function loadColdOutreach(cityCampaignId: string): Promise<
         now,
       }),
       readyForHandoff: cadence?.cadenceState === "cold_exhausted_ready_for_handoff",
+      // Closer sent, no reply yet: the cross-domain handoff unlocks once the
+      // cadence engine flips to exhausted. Quiet forward signal (refdoc 6.2)
+      // so the operator can plan the re-pitch instead of being surprised.
+      approachingHandoff: cadence?.cadenceState === "cold_sent_touch_3",
+      touchCount: touchCountMap.get(r.venueId) ?? 0,
+      touchCap: DEFAULT_HARD_CAP,
       engagementScore: engagement.score,
       engagementBand: engagement.band,
     };
