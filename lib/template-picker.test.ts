@@ -1,5 +1,10 @@
 import type { TriggerContext } from "@/db/schema/templates";
-import { type ScorableTemplate, pickBest } from "@/lib/template-picker-score";
+import {
+  type ReplyRateTable,
+  type ScorableTemplate,
+  pickBest,
+  rerankByReplyRate,
+} from "@/lib/template-picker-score";
 import { describe, expect, it } from "vitest";
 
 // Fixtures mirror the seeded trigger_contexts (Phase 1.2). The DB-backed
@@ -117,5 +122,84 @@ describe("pickBest", () => {
         cityPriority: 1,
       }),
     ).toBeNull();
+  });
+});
+
+describe("rerankByReplyRate — Loop C (CRM plan E2)", () => {
+  const A = t("VAR-A", { channel: "cold", stage: "first_touch" });
+  const B = t("VAR-B", { channel: "cold", stage: "first_touch" });
+  const tied = [
+    { t: A, score: 20 },
+    { t: B, score: 20 },
+  ];
+  const never = () => 0.99; // rand above exploreRate -> never explore
+  const always = () => 0.01; // rand below exploreRate -> always explore
+
+  function table(
+    a: { sends: number; replied: number },
+    b: { sends: number; replied: number },
+    band: "high" | "mid" | "low" = "high",
+  ): ReplyRateTable {
+    return new Map([
+      ["VAR-A", { byBand: { [band]: a }, all: { ...a } }],
+      ["VAR-B", { byBand: { [band]: b }, all: { ...b } }],
+    ]);
+  }
+
+  it("prefers the variant with the higher measured reply rate", () => {
+    const r = rerankByReplyRate(
+      tied,
+      table({ sends: 50, replied: 5 }, { sends: 50, replied: 15 }),
+      "high",
+      never,
+    );
+    expect(r?.pick.templateCode).toBe("VAR-B");
+    expect(r?.loopReason).toMatch(/30%/);
+  });
+
+  it("does nothing without enough signal (min n)", () => {
+    const r = rerankByReplyRate(
+      tied,
+      table({ sends: 5, replied: 4 }, { sends: 50, replied: 5 }),
+      "high",
+      never,
+    );
+    expect(r?.pick.templateCode).toBe("VAR-A"); // rule order preserved
+    expect(r?.loopReason).toBeNull();
+  });
+
+  it("falls back to all-band totals when the band is thin", () => {
+    const rates: ReplyRateTable = new Map([
+      ["VAR-A", { byBand: { high: { sends: 2, replied: 0 } }, all: { sends: 60, replied: 3 } }],
+      ["VAR-B", { byBand: { high: { sends: 3, replied: 1 } }, all: { sends: 60, replied: 12 } }],
+    ]);
+    const r = rerankByReplyRate(tied, rates, "high", never);
+    expect(r?.pick.templateCode).toBe("VAR-B");
+    expect(r?.loopReason).toMatch(/all cities/);
+  });
+
+  it("explores the runner-up ~10% of the time", () => {
+    const r = rerankByReplyRate(
+      tied,
+      table({ sends: 50, replied: 5 }, { sends: 50, replied: 15 }),
+      "high",
+      always,
+    );
+    expect(r?.pick.templateCode).toBe("VAR-A"); // the measured loser, on purpose
+    expect(r?.loopReason).toMatch(/exploration/);
+  });
+
+  it("never touches a sole winner (no within-stage tie)", () => {
+    const r = rerankByReplyRate(
+      [
+        { t: A, score: 30 },
+        { t: B, score: 20 },
+      ],
+      table({ sends: 50, replied: 0 }, { sends: 50, replied: 25 }),
+      "high",
+      never,
+    );
+    expect(r?.pick.templateCode).toBe("VAR-A");
+    expect(r?.loopReason).toBeNull();
   });
 });

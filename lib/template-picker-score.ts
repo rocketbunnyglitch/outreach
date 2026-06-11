@@ -153,11 +153,13 @@ function buildReason(t: ScorableTemplate, ctx: PickContext, score: number): stri
  * auto_pick_priority, then code) plus up to 3 alternatives. Null if nothing
  * scores above zero.
  */
-export function pickBest<T extends ScorableTemplate>(
+/** Rule-score + sort, exported so Loop C (rerankByReplyRate) can see the
+ *  full tie structure, not just the winner. */
+export function scoreAndSort<T extends ScorableTemplate>(
   templates: T[],
   ctx: PickContext,
-): ScoredPick<T> | null {
-  const scored = templates
+): Array<{ t: T; score: number }> {
+  return templates
     .map((t) => ({ t, ...scoreTemplate(t.triggerContext, ctx) }))
     .filter((s) => !s.excluded && s.score > 0)
     .sort(
@@ -166,6 +168,13 @@ export function pickBest<T extends ScorableTemplate>(
         b.t.autoPickPriority - a.t.autoPickPriority ||
         a.t.templateCode.localeCompare(b.t.templateCode),
     );
+}
+
+export function pickBest<T extends ScorableTemplate>(
+  templates: T[],
+  ctx: PickContext,
+): ScoredPick<T> | null {
+  const scored = scoreAndSort(templates, ctx);
 
   const top = scored[0];
   if (!top) return null;
@@ -178,5 +187,100 @@ export function pickBest<T extends ScorableTemplate>(
       templateCode: s.t.templateCode,
       reason: buildReason(s.t, ctx, s.score),
     })),
+  };
+}
+
+// ============================================================================
+// Loop C (CRM plan E2): within-stage variant choice by MEASURED reply rate.
+//
+// The rule table above stays authoritative for STAGE — this only reorders
+// templates that scored IDENTICALLY (true within-stage variants). With
+// enough signal (minN sends per variant in the city's priority band, falling
+// back to all-band totals) the better-performing variant wins; with
+// probability exploreRate the runner-up is sent instead so the loser keeps
+// accumulating evidence and a lucky early streak can't lock in forever.
+// ============================================================================
+
+/** P1-2 = high (must-win cities), P3-4 = mid, P5-6 = low. */
+export type PriorityBand = "high" | "mid" | "low";
+
+export function priorityBand(cityPriority: number | undefined | null): PriorityBand | null {
+  if (cityPriority == null) return null;
+  if (cityPriority <= 2) return "high";
+  if (cityPriority <= 4) return "mid";
+  return "low";
+}
+
+export interface TemplateReplyRate {
+  sends: number;
+  replied: number;
+}
+
+/** Per template code: per-band stats + the all-band fallback. */
+export type ReplyRateTable = Map<
+  string,
+  { byBand: Partial<Record<PriorityBand, TemplateReplyRate>>; all: TemplateReplyRate }
+>;
+
+export const REPLY_RATE_MIN_N = 20;
+export const REPLY_RATE_EXPLORE = 0.1;
+
+export interface ReplyRateRerankResult<T extends ScorableTemplate> {
+  pick: T;
+  /** Why the measured loop changed (or didn't change) the pick. Null when
+   *  the rates had no effect (no ties, or not enough signal). */
+  loopReason: string | null;
+}
+
+/**
+ * Given the rule-scored candidates (already sorted best-first) re-pick among
+ * the TOP-SCORE TIES using measured reply rates. `rand` is injected so tests
+ * are deterministic; production passes Math.random.
+ */
+export function rerankByReplyRate<T extends ScorableTemplate>(
+  sortedCandidates: Array<{ t: T; score: number }>,
+  rates: ReplyRateTable,
+  band: PriorityBand | null,
+  rand: () => number,
+  opts?: { minN?: number; exploreRate?: number },
+): ReplyRateRerankResult<T> | null {
+  const top = sortedCandidates[0];
+  if (!top) return null;
+  const minN = opts?.minN ?? REPLY_RATE_MIN_N;
+  const exploreRate = opts?.exploreRate ?? REPLY_RATE_EXPLORE;
+
+  const ties = sortedCandidates.filter((s) => s.score === top.score);
+  if (ties.length < 2) return { pick: top.t, loopReason: null };
+
+  // Resolve each variant's stats: band first, all-band fallback. A variant
+  // missing minN sends in BOTH disqualifies the whole rerank — choosing on
+  // thin evidence is worse than the stable rule order.
+  const withRates = ties.map((s) => {
+    const r = rates.get(s.t.templateCode);
+    const bandStats = band ? r?.byBand[band] : undefined;
+    const stats =
+      bandStats && bandStats.sends >= minN ? bandStats : r && r.all.sends >= minN ? r.all : null;
+    return { s, stats, usedBand: !!(bandStats && bandStats.sends >= minN) };
+  });
+  if (withRates.some((w) => !w.stats)) return { pick: top.t, loopReason: null };
+
+  const ranked = [...withRates].sort((a, b) => {
+    const ra = (a.stats as TemplateReplyRate).replied / (a.stats as TemplateReplyRate).sends;
+    const rb = (b.stats as TemplateReplyRate).replied / (b.stats as TemplateReplyRate).sends;
+    return rb - ra || a.s.t.templateCode.localeCompare(b.s.t.templateCode);
+  });
+
+  const bestRanked = ranked[0] as (typeof ranked)[number];
+  const explore = ranked.length > 1 && rand() < exploreRate;
+  const chosen = explore ? (ranked[1] as (typeof ranked)[number]) : bestRanked;
+  const st = chosen.stats as TemplateReplyRate;
+  const ratePct = Math.round((st.replied / st.sends) * 100);
+  const scope = chosen.usedBand && band ? `${band}-priority cities` : "all cities";
+
+  return {
+    pick: chosen.s.t,
+    loopReason: explore
+      ? "exploration pick (10%) — keeps gathering evidence on the runner-up variant"
+      : `best measured reply rate among equal-stage variants: ${ratePct}% over ${st.sends} sends in ${scope}`,
   };
 }

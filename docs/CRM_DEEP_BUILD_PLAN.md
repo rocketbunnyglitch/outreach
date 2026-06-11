@@ -178,7 +178,7 @@
   venues-to-reuse + venues-to-avoid lists feeding next campaign's
   seeding. Turns Halloween into training data for NYE/St Pats.
 
-### E2. Template pick by measured reply rate (Loop C)  [ ]
+### E2. Template pick by measured reply rate (Loop C)  [x]
 - Within-stage variant choice by reply rate per priority band
   (min n=20, 10% exploration). Rule table (refdoc 8.7) stays
   authoritative for STAGE.
