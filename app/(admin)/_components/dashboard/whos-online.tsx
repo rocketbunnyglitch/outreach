@@ -162,7 +162,11 @@ export function WhosOnline({
           </span>
         </button>
         {popoverOpen && (
-          <div className="card-surface absolute top-full right-0 z-30 mt-2 w-64 p-3">
+          // Anchor: left-0 (opens RIGHTWARD) on mobile where the pill sits at
+          // the left edge of its row — right-0 there pushed the 256px panel
+          // off the left side of the screen (operator report 2026-06-11).
+          // sm+ keeps right-0 since the pill lives near the page's right.
+          <div className="card-surface absolute top-full left-0 z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] p-3 sm:right-0 sm:left-auto">
             <div className="mb-2 flex items-center gap-1.5">
               <Users className="h-3 w-3 text-zinc-400" />
               <h3 className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
