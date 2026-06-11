@@ -202,14 +202,19 @@ export default async function DashboardHome({
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="font-mono text-xs text-zinc-500 tabular-nums">
-            live · {new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+            live ·{" "}
+            {new Date().toLocaleString("en-US", {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: "America/Toronto",
+            })}
           </p>
           <p className="mt-1.5 font-mono text-xs text-zinc-500 uppercase tracking-widest">
             Operations
           </p>
           <h1 className="mt-1 font-semibold text-4xl tracking-tight">Dashboard</h1>
         </div>
-        <div className="flex items-center gap-3 sm:justify-end">
+        <div className="flex min-w-0 flex-wrap items-center gap-3 sm:justify-end">
           {/* WhosOnline + MeetingMode are browser-state-dependent
               (presence polling, localStorage-backed flags, live
               cursor layer). They were the suspected source of an
