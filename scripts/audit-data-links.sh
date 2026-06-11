@@ -190,9 +190,10 @@ check ve_event_orphan \
      WHERE NOT EXISTS (SELECT 1 FROM events e WHERE e.id = ve.event_id)"
 
 check ve_confirmed_on_archived_event \
-  "confirmed venue_events on archived events" \
+  "confirmed venue_events on archived FUTURE events (a live booking on a crawl someone archived)" \
   "SELECT count(*) FROM venue_events ve JOIN events e ON e.id = ve.event_id
-   WHERE ve.status = 'confirmed' AND e.archived_at IS NOT NULL"
+   WHERE ve.status = 'confirmed' AND e.archived_at IS NOT NULL
+     AND e.event_date >= now()::date"
 
 check ve_cross_city_confirmed \
   "future confirmed venue_events whose venue city <> crawl city" \
