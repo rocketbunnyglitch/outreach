@@ -762,6 +762,7 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staf
             eventbriteEventId={crawl.eventbriteEventId}
             eventbriteUrl={crawl.eventbriteUrl}
             ticketsSold={crawl.ticketsSold}
+            hideSync
           />
           {allVenuesConfirmed && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-700 uppercase tracking-[0.1em] ring-1 ring-emerald-500/30 ring-inset dark:text-emerald-300">
@@ -1939,12 +1940,16 @@ function CrawlCornerControls({
   eventbriteEventId,
   eventbriteUrl,
   ticketsSold,
+  hideSync = false,
 }: {
   eventId: string;
   campaignId: string;
   eventbriteEventId: string | null;
   eventbriteUrl: string | null;
   ticketsSold: number;
+  /** No per-card sales refresh (operator request 2026-06-11): link-time
+   *  pull + the 15-min cron + the tracker's global button cover it. */
+  hideSync?: boolean;
 }) {
   const toast = useToast();
   return (
@@ -1955,6 +1960,7 @@ function CrawlCornerControls({
         currentEbId={eventbriteEventId}
         currentEbUrl={eventbriteUrl}
         ticketsSold={ticketsSold}
+        hideSync={hideSync}
       />
       <div className="flex items-center gap-1">
         <button

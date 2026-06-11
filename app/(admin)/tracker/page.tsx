@@ -4,6 +4,7 @@ import { loadTrackerData } from "@/lib/tracker-data";
 import Link from "next/link";
 import { TrackerDashboardTable } from "../_components/dashboard/tracker-dashboard-table";
 import { BulkRenameCrawls } from "./_components/bulk-rename-crawls";
+import { RefreshSalesButton } from "./_components/refresh-sales-button";
 
 export const metadata = { title: "Tracker" };
 export const dynamic = "force-dynamic";
@@ -43,6 +44,10 @@ export default async function TrackerPage({
             for its per-crawl breakdown.
           </p>
         </div>
+        {/* Global sales refresh (operator request 2026-06-11): one button
+            here instead of per-card refreshes; sales also auto-sync at
+            link time and every 15 min via the eventbrite-sync cron. */}
+        {campaignId && <RefreshSalesButton campaignId={campaignId} />}
       </header>
 
       {/* Tabs: every city vs just the viewer's assigned cities. */}

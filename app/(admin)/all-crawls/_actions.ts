@@ -174,6 +174,24 @@ export async function linkEventbriteEvent(
         })
         .where(eq(events.id, parsed.data.eventId));
     });
+
+    // Pull sales IMMEDIATELY at link time (operator request 2026-06-11)
+    // so the tracker reflects the event without waiting for the next
+    // 15-minute eventbrite-sync cron tick. Best-effort: a sales-fetch
+    // hiccup never fails the link itself.
+    try {
+      const { fetchEventbriteSales } = await import("@/lib/eventbrite");
+      const sales = await fetchEventbriteSales(parsed.data.eventbriteEventId);
+      if (sales) {
+        await db
+          .update(events)
+          .set({ ticketSalesCount: sales.sold, updatedBy: staff.id })
+          .where(eq(events.id, parsed.data.eventId));
+      }
+    } catch (err) {
+      logger.warn({ err, eventId: parsed.data.eventId }, "link-time sales pull failed (non-fatal)");
+    }
+
     if (parsed.data.campaignId) revalidatePath("/all-crawls");
     return {
       ok: true,

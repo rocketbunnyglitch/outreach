@@ -23,6 +23,11 @@ interface Props {
   currentEbId: string | null;
   currentEbUrl: string | null;
   ticketsSold: number;
+  /** Hide the per-row sales-sync button (crawl cards, operator request
+   *  2026-06-11): sales pull automatically at link time + every 15 min
+   *  via the eventbrite-sync cron, and the tracker has a global
+   *  Refresh-sales button — a per-card refresh is just noise there. */
+  hideSync?: boolean;
 }
 
 /**
@@ -50,6 +55,7 @@ export function EventbriteCell({
   currentEbId,
   currentEbUrl,
   ticketsSold,
+  hideSync = false,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(currentEbId ?? "");
@@ -229,20 +235,22 @@ export function EventbriteCell({
             {currentEbId}
             <ExternalLink className="h-2.5 w-2.5" />
           </a>
-          <button
-            type="button"
-            onClick={sync}
-            disabled={busy}
-            className="rounded p-1 text-zinc-400 transition-colors hover:bg-blue-500/[0.08] hover:text-blue-600"
-            aria-label="Sync sales from Eventbrite"
-            title="Pull sales from EB"
-          >
-            {syncing ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-          </button>
+          {!hideSync && (
+            <button
+              type="button"
+              onClick={sync}
+              disabled={busy}
+              className="rounded p-1 text-zinc-400 transition-colors hover:bg-blue-500/[0.08] hover:text-blue-600"
+              aria-label="Sync sales from Eventbrite"
+              title="Pull sales from EB"
+            >
+              {syncing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => push(false)}
