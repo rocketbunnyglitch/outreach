@@ -96,8 +96,20 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     closed. venue-on-crawl-with-no-cold-entry: 0 (promote wiring sound).
     Invariants cold_on_archived_campaign + cold_on_archived_venue in BOTH
     lists.
-- [ ] P027-P029 cold_outreach_entries.last_touch_at vs email_messages/calls (reconciliation — the class found 2026-06-11; verify backfill complete incl. CALL touches)
-- [ ] P030-P032 venue_events ↔ events/venues (orphans; confirmed VE on archived event; VE whose venue city ≠ crawl city — sync w/ data-quality check)
+- [x] P027-P029 touch reconciliation, call side
+  » cold_touch_behind_calls: 0 — call paths already bump touches correctly.
+    Invariant added to BOTH lists so it stays watched. Email side previously
+    healed + chained in the nightly tagger.
+- [x] P030-P032 venue_events ↔ events/venues
+  » Orphans/archived/cross-city/duplicates: all 0 (harness + new probes).
+  » FINDING: 2,507 confirmed VEs had NULL confirmed_at (stamp only existed
+    on the update path, added recently) — goals confirmations, E1 learning
+    by-period and "confirmed N days ago" were blind to ALL historical
+    confirms. Backfilled every one with REAL timestamps mined from
+    audit_log (earliest status->confirmed transition; zero needed the
+    created_at fallback). Writer hole closed: addVenueToEvent now stamps
+    direct-as-confirmed inserts. Invariant ve_confirmed_no_confirmed_at in
+    BOTH lists.
 - [ ] P033-P035 venue_events cadence stamps vs email_drafts/messages (two_week/one_week sent_at set but no matching sent draft; lifecycle drafts sent but stamp null)
 - [ ] P036-P038 events ↔ city_campaigns ↔ campaigns ↔ brands (chain integrity; events on archived cc; required_*_count vs crawl_format consistency)
 - [ ] P039-P041 eventbrite links ↔ events (eb id set but sync never ran; sales>0 with no eb link; dangling eb ids)

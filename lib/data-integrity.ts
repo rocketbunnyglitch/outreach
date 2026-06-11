@@ -118,6 +118,22 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND d.send_attempts = 0`,
   },
   {
+    name: "cold_touch_behind_calls",
+    desc: "Cold-entry last touch older than the venue's newest matched call",
+    query: sql`SELECT count(*)::int AS n FROM cold_outreach_entries coe
+      JOIN (SELECT matched_venue_id AS venue_id, max(occurred_at) AS max_call
+            FROM call_logs WHERE matched_venue_id IS NOT NULL GROUP BY 1) cl
+        ON cl.venue_id = coe.venue_id
+      WHERE coe.archived_at IS NULL
+        AND (coe.last_touch_at IS NULL OR coe.last_touch_at < cl.max_call - interval '1 hour')`,
+  },
+  {
+    name: "ve_confirmed_no_confirmed_at",
+    desc: "Confirmed venue-events missing their confirmed_at stamp (breaks goals/learning by-period math)",
+    query: sql`SELECT count(*)::int AS n FROM venue_events
+      WHERE status = 'confirmed' AND confirmed_at IS NULL`,
+  },
+  {
     name: "t11_gate_rows_missing",
     desc: "Confirmed wristband venues missing their participant_poster deliverable row",
     query: sql`SELECT count(*)::int AS n FROM venue_events ve

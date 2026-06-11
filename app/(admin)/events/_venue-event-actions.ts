@@ -106,6 +106,11 @@ export async function addVenueToEvent(
           eventId: input.eventId,
           role: input.role,
           status: input.status,
+          // A venue added DIRECTLY as confirmed gets its stamp here — the
+          // update-path stamp can't see inserts (FULL_AUDIT P030: 2,507
+          // historical confirms had no confirmed_at; backfilled from
+          // audit_log, this closes the remaining writer hole).
+          confirmedAt: input.status === "confirmed" ? new Date() : null,
           slotStartTime: input.slotStartTime,
           slotEndTime: input.slotEndTime,
           agreedHoursText: input.agreedHoursText,

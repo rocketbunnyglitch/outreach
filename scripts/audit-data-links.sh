@@ -162,7 +162,21 @@ check cold_touch_behind_mail \
    WHERE coe.archived_at IS NULL
      AND (coe.last_touch_at IS NULL OR coe.last_touch_at < mm.max_sent - interval '1 hour')"
 
+check cold_touch_behind_calls \
+  "cold entry last_touch_at older than newest matched call for the venue (>1h)" \
+  "SELECT count(*) FROM cold_outreach_entries coe
+   JOIN (SELECT matched_venue_id AS venue_id, max(occurred_at) AS max_call
+         FROM call_logs WHERE matched_venue_id IS NOT NULL GROUP BY 1) cl
+     ON cl.venue_id = coe.venue_id
+   WHERE coe.archived_at IS NULL
+     AND (coe.last_touch_at IS NULL OR coe.last_touch_at < cl.max_call - interval '1 hour')"
+
 # ---- venue_events ----------------------------------------------------------
+check ve_confirmed_no_confirmed_at \
+  "confirmed venue_events missing their confirmed_at stamp (writer hole)" \
+  "SELECT count(*) FROM venue_events
+   WHERE status = 'confirmed' AND confirmed_at IS NULL"
+
 check ve_event_orphan \
   "venue_events pointing at missing events" \
   "SELECT count(*) FROM venue_events ve
