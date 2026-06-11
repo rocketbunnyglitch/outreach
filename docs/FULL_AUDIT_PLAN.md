@@ -64,7 +64,14 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     fuzzy to automate). Permanent check threads_unlinked_exact_email (>48h)
     added to BOTH lists. Remaining ~620 unmatched = genuinely non-venue or
     unknown senders; revisit rate in P282 (poll/match-rate feature audit).
-- [ ] P012-P014 email_threads ↔ city_campaigns (null cc on venue-attributed threads where venue has exactly one active cc; cc pointing at archived campaign)
+- [x] P012-P014 email_threads ↔ city_campaigns
+  » 81 venue-linked threads had NULL cc despite an unambiguous single active
+    city-campaign — invisible to city inbox / campaign scope / NBA warm
+    loaders / learning stats. Backfilled all 81. cc-vs-cold mismatches: 0.
+    Archived-campaign cc: 0 (harness). Writer: same temporal class — nightly
+    stale-tagger now also backfills unambiguous cc. Invariant
+    threads_venue_no_cc_unambig (>48h) in BOTH lists. Ambiguous multi-cc
+    venues deliberately left null for human attribution.
 - [ ] P015-P017 email_messages ↔ threads (counts vs thread.message_count; last_message_at drift; direction vs thread.direction)
 - [ ] P018-P020 email_drafts ↔ threads/venues/venue_events (drafts pointing at deleted threads; venue_event_id null on lifecycle drafts; replacement_push_id orphans)
 - [ ] P021-P023 email_send_events ↔ threads/templates/accounts (null thread_id sends that should attribute; template_id null on templated sends)

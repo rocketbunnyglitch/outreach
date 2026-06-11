@@ -52,6 +52,22 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
     JOIN venues v ON lower(v.email) = u.addr AND v.archived_at IS NULL`,
   },
   {
+    name: "threads_venue_no_cc_unambig",
+    desc: "Venue-linked threads with no campaign attribution despite a single unambiguous city-campaign (drop out of campaign views)",
+    query: sql`WITH single_cc AS (
+        SELECT coe.venue_id
+        FROM cold_outreach_entries coe
+        JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
+        JOIN campaigns c ON c.id = cc.campaign_id
+        WHERE coe.archived_at IS NULL AND c.archived_at IS NULL
+        GROUP BY coe.venue_id
+        HAVING count(DISTINCT coe.city_campaign_id) = 1)
+      SELECT count(*)::int AS n FROM email_threads t
+      JOIN single_cc s ON s.venue_id = t.venue_id
+      WHERE t.archived_at IS NULL AND t.city_campaign_id IS NULL
+        AND t.created_at < now() - interval '48 hours'`,
+  },
+  {
     name: "cold_touch_behind_mail",
     desc: "Cold-entry last touch older than newest outbound email (Gmail-send linkage class)",
     query: sql`SELECT count(*)::int AS n FROM cold_outreach_entries coe

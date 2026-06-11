@@ -71,6 +71,21 @@ check threads_unlinked_exact_email \
        AND t.created_at < now() - interval '48 hours') u
    JOIN venues v ON lower(v.email) = u.addr AND v.archived_at IS NULL"
 
+check threads_venue_no_cc_unambig \
+  "venue-linked threads >48h old with NO campaign attribution despite an unambiguous single active city-campaign (nightly backfill should heal)" \
+  "WITH single_cc AS (
+     SELECT coe.venue_id
+     FROM cold_outreach_entries coe
+     JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
+     JOIN campaigns c ON c.id = cc.campaign_id
+     WHERE coe.archived_at IS NULL AND c.archived_at IS NULL
+     GROUP BY coe.venue_id
+     HAVING count(DISTINCT coe.city_campaign_id) = 1)
+   SELECT count(*) FROM email_threads t
+   JOIN single_cc s ON s.venue_id = t.venue_id
+   WHERE t.archived_at IS NULL AND t.city_campaign_id IS NULL
+     AND t.created_at < now() - interval '48 hours'"
+
 # ---- messages ↔ threads ----------------------------------------------------
 check thread_message_count_drift \
   "email_threads.message_count disagrees with actual email_messages rows" \

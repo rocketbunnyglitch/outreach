@@ -358,6 +358,50 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
     `);
     const n = Number((relinked as unknown as { rowCount?: number }).rowCount ?? 0);
     if (n > 0) logger.info({ relinked: n }, "stale-tagger: retro-linked threads to venues");
+
+    // P012: venue-linked threads with NO campaign attribution drop out of
+    // every campaign-scoped view (city inbox, NBA warm loaders, learning
+    // stats). When the venue sits in exactly ONE active city-campaign the
+    // attribution is unambiguous — backfill it. Ambiguous venues stay
+    // null for a human to attribute.
+    const ccFilled = await db.execute(sql`
+      WITH single_cc AS (
+        SELECT coe.venue_id, min(coe.city_campaign_id::text)::uuid AS cc_id
+        FROM cold_outreach_entries coe
+        JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
+        JOIN campaigns c ON c.id = cc.campaign_id
+        WHERE coe.archived_at IS NULL AND c.archived_at IS NULL
+        GROUP BY coe.venue_id
+        HAVING count(DISTINCT coe.city_campaign_id) = 1
+      )
+      UPDATE email_threads t
+      SET city_campaign_id = s.cc_id, updated_at = NOW()
+      FROM single_cc s
+      WHERE s.venue_id = t.venue_id
+        AND t.archived_at IS NULL AND t.city_campaign_id IS NULL
+    `);
+    const nc = Number((ccFilled as unknown as { rowCount?: number }).rowCount ?? 0);
+    if (nc > 0)
+      logger.info({ ccFilled: nc }, "stale-tagger: backfilled thread campaign attribution");
+
+    // Final link in the heal chain (venue -> campaign -> touch): the two
+    // backfills above can create NEW (venue, cc) attribution for old
+    // outbound mail, which the cold-entry touch never saw. Re-sync so a
+    // freshly-attributed venue doesn't read as untouched.
+    const touched = await db.execute(sql`
+      UPDATE cold_outreach_entries coe
+      SET last_touch_at = m.max_sent, updated_at = NOW()
+      FROM (SELECT t.venue_id, t.city_campaign_id, max(m2.sent_at) AS max_sent
+            FROM email_messages m2 JOIN email_threads t ON t.id = m2.thread_id
+            WHERE m2.direction = 'outbound' AND t.venue_id IS NOT NULL
+              AND t.city_campaign_id IS NOT NULL
+            GROUP BY 1, 2) m
+      WHERE coe.venue_id = m.venue_id AND coe.city_campaign_id = m.city_campaign_id
+        AND coe.archived_at IS NULL
+        AND (coe.last_touch_at IS NULL OR coe.last_touch_at < m.max_sent)
+    `);
+    const nt = Number((touched as unknown as { rowCount?: number }).rowCount ?? 0);
+    if (nt > 0) logger.info({ touched: nt }, "stale-tagger: re-synced cold-entry touches");
   } catch (err) {
     logger.warn({ err }, "stale-tagger: retro-link step failed (non-fatal)");
   }
