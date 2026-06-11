@@ -117,6 +117,23 @@ export async function loadNextBestActions(
     ...confirmedMissing,
     ...unassigned,
   ];
+  // Health-driven ordering (CRM plan C1): actions in an at-risk city jump
+  // the queue. When a city's health flips red, everything you can do for it
+  // surfaces first — ordering visibly shifts with health. Never blocks the
+  // list on a health-load hiccup.
+  try {
+    const { loadCampaignHealth } = await import("@/lib/health-score");
+    const summary = await loadCampaignHealth(campaignId);
+    const colorByCC = new Map(summary.cities.map((c) => [c.cityCampaignId, c.health.color]));
+    for (const a of all) {
+      const color = a.cityCampaignId ? colorByCC.get(a.cityCampaignId) : undefined;
+      if (color === "red") a.priority = Math.min(100, a.priority + 12);
+      else if (color === "yellow") a.priority = Math.min(100, a.priority + 5);
+    }
+  } catch {
+    // Health unavailable -> base priorities still produce a sane list.
+  }
+
   // Sort by priority desc; tie-break stable (insertion order) so within
   // a category the most relevant row stays on top.
   all.sort((a, b) => b.priority - a.priority);

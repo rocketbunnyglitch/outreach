@@ -178,6 +178,19 @@ export interface CrawlHealthInput {
    *  rolled up across this crawl's venues. */
   readinessBlocker?: boolean;
   readinessBlockerReason?: string | null;
+
+  // ---- Event-night logistics inputs (CRM plan C1) -------------------------
+  /** Hosts assigned to this crawl (crawl_hosts rows). null/undefined = not
+   *  loaded — the host signal is skipped so older callers grade unchanged. */
+  hostsAssigned?: number | null;
+  /** Hosts this crawl wants (the two-host rule). Default 2. */
+  hostsRequired?: number;
+  /** Wristbands for this crawl still pending/ready_to_ship/issue (i.e. not
+   *  shipped or delivered yet). */
+  wristbandsPending?: boolean;
+  /** Confirmed venue_events with no our-contact owner — nobody is on the
+   *  hook for that venue relationship. */
+  unassignedConfirmed?: number;
 }
 
 function missingFinalApplies(input: CrawlHealthInput): boolean {
@@ -294,6 +307,37 @@ export function crawlHealthFromInputs(input: CrawlHealthInput): CrawlHealth {
     blockers.push(input.readinessBlockerReason ?? `Floor-staff briefing pending${when}`);
   }
 
+  // ---- Event-night logistics (CRM plan C1) ---------------------------------
+  // Hosts: every crawl needs its hosts locked before event week. Outside the
+  // booking window this stays quiet (like slot gaps).
+  let hostGap = false;
+  if (input.hostsAssigned != null && lineupRelevant) {
+    const need = input.hostsRequired ?? 2;
+    if (input.hostsAssigned < need) {
+      hostGap = true;
+      const msg =
+        input.hostsAssigned === 0
+          ? `No host assigned${when}`
+          : `Only ${input.hostsAssigned}/${need} hosts assigned${when}`;
+      if (eventWeek) blockers.push(msg);
+      else reasons.push(msg);
+    }
+  }
+  // Wristbands: the check-in supplies physically have to be there.
+  if (input.wristbandsPending) {
+    const msg = `Wristbands not shipped${when}`;
+    if (eventWeek) blockers.push(msg);
+    else reasons.push(msg);
+  }
+  // Ownership: a confirmed venue with no our-contact owner is a relationship
+  // nobody is tending. Only flagged inside the event week — historically the
+  // owner field is sparsely populated, so an any-distance signal would just
+  // be noise; in event week it's a real coordination gap.
+  const unowned = input.unassignedConfirmed ?? 0;
+  if (unowned > 0 && eventWeek) {
+    reasons.push(`${unowned} confirmed slot${unowned > 1 ? "s" : ""} with no owner${when}`);
+  }
+
   // ---- Sales / viability narrative ----------------------------------------
   switch (viability) {
     case "cancellation_review":
@@ -324,6 +368,8 @@ export function crawlHealthFromInputs(input: CrawlHealthInput): CrawlHealth {
     missingMiddleCount: lineupRelevant ? missingMiddleCount : 0,
     viability,
     readinessBlocker: !!input.readinessBlocker,
+    hostGap,
+    wristbandsPending: !!input.wristbandsPending,
   });
 
   return { ...gradeFromSignals(reasons, blockers, nextAction), viability };
@@ -335,6 +381,8 @@ function deriveCrawlNextAction(args: {
   missingMiddleCount: number;
   viability: ViabilityVerdict;
   readinessBlocker: boolean;
+  hostGap: boolean;
+  wristbandsPending: boolean;
 }): string | null {
   if (args.viability === "cancellation_review" || args.viability === "likely_cancellation") {
     return "Run cancellation review";
@@ -342,6 +390,8 @@ function deriveCrawlNextAction(args: {
   if (args.missingWristband) return "Confirm a wristband venue";
   if (args.missingFinal) return "Prioritize final venue calls today";
   if (args.readinessBlocker) return "Complete the floor-staff briefing call";
+  if (args.hostGap) return "Assign the crawl host(s)";
+  if (args.wristbandsPending) return "Ship the wristbands";
   if (args.missingMiddleCount > 0) return "Fill the remaining middle slot(s)";
   if (args.viability === "lineup_strong_sales_weak") return "Push ticket sales for this crawl";
   return null;
@@ -485,6 +535,10 @@ export function venueHealthFromInputs(input: VenueHealthInput): HealthScore {
 
 export interface CampaignHealthInput {
   cities: HealthScore[];
+  /** Sending inboxes on this campaign that are NOT healthy (needs_reauth /
+   *  disconnected). Deliverability is campaign-level infrastructure — a dead
+   *  inbox quietly stalls every city's outreach (CRM plan C1). */
+  sendingIssues?: number;
 }
 
 export function campaignHealthFromInputs(input: CampaignHealthInput): HealthScore {
@@ -498,9 +552,19 @@ export function campaignHealthFromInputs(input: CampaignHealthInput): HealthScor
   }
   if (red.length > 0) reasons.push(`${red.length} city/cities at risk`);
   if (yellow.length > 0) reasons.push(`${yellow.length} city/cities need attention`);
-  if (red.length === 0 && yellow.length === 0) reasons.push("All cities on track");
+  const sendingIssues = input.sendingIssues ?? 0;
+  if (sendingIssues > 0) {
+    reasons.push(
+      `${sendingIssues} sending inbox${sendingIssues > 1 ? "es" : ""} need${
+        sendingIssues > 1 ? "" : "s"
+      } reconnecting`,
+    );
+  }
+  if (red.length === 0 && yellow.length === 0 && sendingIssues === 0) {
+    reasons.push("All cities on track");
+  }
 
-  const score = clamp(100 - 15 * red.length - 6 * yellow.length, 0, 100);
+  const score = clamp(100 - 15 * red.length - 6 * yellow.length - 5 * sendingIssues, 0, 100);
   const color = scoreToColor(score);
   const worst = input.cities
     .filter((c) => c.nextAction)

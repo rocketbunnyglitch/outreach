@@ -11,7 +11,18 @@ import "server-only";
  * same aggregation the dashboard already trusts.
  */
 
-import { events, campaigns, cities, cityCampaigns, venueEvents } from "@/db/schema";
+import {
+  events,
+  campaignConnectedAccounts,
+  campaigns,
+  cities,
+  cityCampaigns,
+  connectedAccounts,
+  crawlHosts,
+  emailThreads,
+  venueEvents,
+  wristbands,
+} from "@/db/schema";
 import { db } from "@/lib/db";
 import {
   type CrawlHealth,
@@ -158,27 +169,91 @@ export async function loadCampaignHealth(
   const eventIds = eventRows.map((r) => r.eventId);
 
   // 3. Confirmed venue_events per (event, role) = filled slots. Plus, per
-  //    event, how many confirmed venues still lack a floor-staff briefing.
-  const [fillRows, briefRows] = await Promise.all([
-    db
-      .select({
-        eventId: venueEvents.eventId,
-        role: venueEvents.role,
-        confirmed: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed')::int`,
-      })
-      .from(venueEvents)
-      .where(inArray(venueEvents.eventId, eventIds))
-      .groupBy(venueEvents.eventId, venueEvents.role),
-    db
-      .select({
-        eventId: venueEvents.eventId,
-        confirmed: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed')::int`,
-        unbriefed: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed' and ${venueEvents.floorStaffCallCompletedAt} is null)::int`,
-      })
-      .from(venueEvents)
-      .where(inArray(venueEvents.eventId, eventIds))
-      .groupBy(venueEvents.eventId),
-  ]);
+  //    event: confirmed venues lacking a floor-staff briefing, confirmed
+  //    venues with no our-contact owner, host assignments, unshipped
+  //    wristbands (CRM plan C1), and stale warm replies + sending-inbox
+  //    issues for the rollups.
+  const [fillRows, briefRows, hostRows, wristbandRows, warmRows, sendingIssueRows] =
+    await Promise.all([
+      db
+        .select({
+          eventId: venueEvents.eventId,
+          role: venueEvents.role,
+          confirmed: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed')::int`,
+        })
+        .from(venueEvents)
+        .where(inArray(venueEvents.eventId, eventIds))
+        .groupBy(venueEvents.eventId, venueEvents.role),
+      db
+        .select({
+          eventId: venueEvents.eventId,
+          confirmed: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed')::int`,
+          unbriefed: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed' and ${venueEvents.floorStaffCallCompletedAt} is null)::int`,
+          unowned: sql<number>`count(*) filter (where ${venueEvents.status} = 'confirmed' and ${venueEvents.ourContactStaffId} is null)::int`,
+        })
+        .from(venueEvents)
+        .where(inArray(venueEvents.eventId, eventIds))
+        .groupBy(venueEvents.eventId),
+      db
+        .select({
+          eventId: crawlHosts.eventId,
+          hosts: sql<number>`count(*)::int`,
+        })
+        .from(crawlHosts)
+        .where(inArray(crawlHosts.eventId, eventIds))
+        .groupBy(crawlHosts.eventId),
+      db
+        .select({
+          eventId: venueEvents.eventId,
+          pending: sql<number>`count(*)::int`,
+        })
+        .from(wristbands)
+        .innerJoin(venueEvents, eq(venueEvents.id, wristbands.venueEventId))
+        .where(
+          and(
+            inArray(venueEvents.eventId, eventIds),
+            inArray(wristbands.status, ["pending", "ready_to_ship", "issue"]),
+          ),
+        )
+        .groupBy(venueEvents.eventId),
+      // Warm replies waiting >48h per city-campaign (the city-level rot
+      // signal — same definition the NBA warm-reply loader uses, longer
+      // window so only true rot drags health).
+      db
+        .select({
+          cityCampaignId: emailThreads.cityCampaignId,
+          stale: sql<number>`count(*)::int`,
+        })
+        .from(emailThreads)
+        .where(
+          and(
+            inArray(emailThreads.cityCampaignId, ccIds),
+            eq(emailThreads.state, "needs_reply"),
+            isNull(emailThreads.deletedAt),
+            sql`${emailThreads.classification}::text IN ('interested', 'warm', 'question', 'callback_requested')`,
+            sql`${emailThreads.lastInboundAt} < now() - interval '48 hours'`,
+          ),
+        )
+        .groupBy(emailThreads.cityCampaignId),
+      // Sending inboxes on the scoped campaign(s) that are not connected.
+      db
+        .select({
+          campaignId: campaignConnectedAccounts.campaignId,
+          broken: sql<number>`count(*)::int`,
+        })
+        .from(campaignConnectedAccounts)
+        .innerJoin(
+          connectedAccounts,
+          eq(connectedAccounts.id, campaignConnectedAccounts.connectedAccountId),
+        )
+        .where(
+          and(
+            sql`${connectedAccounts.status}::text <> 'connected'`,
+            campaignId ? eq(campaignConnectedAccounts.campaignId, campaignId) : undefined,
+          ),
+        )
+        .groupBy(campaignConnectedAccounts.campaignId),
+    ]);
 
   const fillByEvent = new Map<string, { wristband: number; middle: number; final: number }>();
   for (const r of fillRows) {
@@ -189,7 +264,19 @@ export async function loadCampaignHealth(
     fillByEvent.set(r.eventId, b);
   }
   const briefByEvent = new Map<string, number>();
-  for (const r of briefRows) briefByEvent.set(r.eventId, Number(r.unbriefed));
+  const unownedByEvent = new Map<string, number>();
+  for (const r of briefRows) {
+    briefByEvent.set(r.eventId, Number(r.unbriefed));
+    unownedByEvent.set(r.eventId, Number(r.unowned));
+  }
+  const hostsByEvent = new Map(hostRows.map((r) => [r.eventId, Number(r.hosts)]));
+  const wristbandPendingByEvent = new Map(wristbandRows.map((r) => [r.eventId, Number(r.pending)]));
+  const staleWarmByCC = new Map(
+    warmRows
+      .filter((r) => r.cityCampaignId != null)
+      .map((r) => [r.cityCampaignId as string, Number(r.stale)]),
+  );
+  const sendingIssues = sendingIssueRows.reduce((s, r) => s + Number(r.broken), 0);
 
   // 4. Grade each crawl, group into cities.
   const crawlsByCC = new Map<string, CrawlHealthRow[]>();
@@ -221,6 +308,9 @@ export async function loadCampaignHealth(
       readinessBlockerReason: readinessBlocker
         ? `${unbriefed} confirmed venue${unbriefed > 1 ? "s" : ""} not briefed -- event in ${days}d`
         : null,
+      hostsAssigned: hostsByEvent.get(e.eventId) ?? 0,
+      wristbandsPending: (wristbandPendingByEvent.get(e.eventId) ?? 0) > 0,
+      unassignedConfirmed: unownedByEvent.get(e.eventId) ?? 0,
     });
 
     const cc = ccNameById.get(e.cityCampaignId);
@@ -248,6 +338,7 @@ export async function loadCampaignHealth(
     const health = cityHealthFromInputs({
       crawls: crawls.map((c) => c.health),
       totalTicketsSold,
+      staleWarmLeads: staleWarmByCC.get(cc.cityCampaignId) ?? 0,
     });
     cityRows.push({
       cityCampaignId: cc.cityCampaignId,
@@ -258,7 +349,10 @@ export async function loadCampaignHealth(
     });
   }
 
-  const campaign = campaignHealthFromInputs({ cities: cityRows.map((c) => c.health) });
+  const campaign = campaignHealthFromInputs({
+    cities: cityRows.map((c) => c.health),
+    sendingIssues,
+  });
 
   const atRiskCrawls = cityRows
     .flatMap((c) => c.crawls)

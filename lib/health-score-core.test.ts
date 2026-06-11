@@ -222,6 +222,75 @@ describe("campaignHealthFromInputs", () => {
   });
 });
 
+describe("crawlHealthFromInputs -- C1 event-night logistics", () => {
+  it("no host inside event week is a red blocker with an assign action", () => {
+    const h = crawlHealthFromInputs(
+      baseCrawl({ ticketsSold: 25, daysToEvent: 5, hostsAssigned: 0, hostsRequired: 2 }),
+    );
+    expect(h.color).toBe("red");
+    expect(h.blockers.some((b) => /no host assigned/i.test(b))).toBe(true);
+    expect(h.nextAction).toBe("Assign the crawl host(s)");
+  });
+
+  it("one of two hosts outside event week is only a soft reason", () => {
+    const h = crawlHealthFromInputs(
+      baseCrawl({ ticketsSold: 25, daysToEvent: 20, hostsAssigned: 1, hostsRequired: 2 }),
+    );
+    expect(h.blockers.some((b) => /hosts assigned/i.test(b))).toBe(false);
+    expect(h.reasons.some((r) => /1\/2 hosts assigned/i.test(r))).toBe(true);
+  });
+
+  it("host signal is silent when not loaded (hostsAssigned undefined)", () => {
+    const h = crawlHealthFromInputs(baseCrawl({ ticketsSold: 25, daysToEvent: 5 }));
+    expect(h.reasons.concat(h.blockers).some((r) => /host/i.test(r))).toBe(false);
+  });
+
+  it("host gap is silent beyond the booking window", () => {
+    const h = crawlHealthFromInputs(baseCrawl({ daysToEvent: 90, hostsAssigned: 0 }));
+    expect(h.reasons.concat(h.blockers).some((r) => /host/i.test(r))).toBe(false);
+  });
+
+  it("unshipped wristbands block in event week, soft-flag outside it", () => {
+    const inWeek = crawlHealthFromInputs(
+      baseCrawl({ ticketsSold: 25, daysToEvent: 3, wristbandsPending: true }),
+    );
+    expect(inWeek.blockers.some((b) => /wristbands not shipped/i.test(b))).toBe(true);
+    const outside = crawlHealthFromInputs(
+      baseCrawl({ ticketsSold: 25, daysToEvent: 15, wristbandsPending: true }),
+    );
+    expect(outside.blockers.some((b) => /wristbands/i.test(b))).toBe(false);
+    expect(outside.reasons.some((r) => /wristbands not shipped/i.test(r))).toBe(true);
+  });
+
+  it("unowned confirmed slots flag only inside event week", () => {
+    const inWeek = crawlHealthFromInputs(
+      baseCrawl({ ticketsSold: 25, daysToEvent: 4, unassignedConfirmed: 2 }),
+    );
+    expect(inWeek.reasons.some((r) => /2 confirmed slots with no owner/i.test(r))).toBe(true);
+    const farOut = crawlHealthFromInputs(baseCrawl({ daysToEvent: 25, unassignedConfirmed: 2 }));
+    expect(farOut.reasons.concat(farOut.blockers).some((r) => /no owner/i.test(r))).toBe(false);
+  });
+
+  it("a red crawl always explains itself (blockers non-empty when red)", () => {
+    const h = crawlHealthFromInputs(
+      baseCrawl({ ticketsSold: 0, daysToEvent: 4, hostsAssigned: 0, wristbandsPending: true }),
+    );
+    expect(h.color).toBe("red");
+    expect(h.blockers.length).toBeGreaterThan(0);
+  });
+});
+
+describe("campaignHealthFromInputs -- C1 sending health", () => {
+  it("broken sending inboxes drag the campaign and explain themselves", () => {
+    const greenCity = cityHealthFromInputs({
+      crawls: [crawlHealthFromInputs(baseCrawl({ eventStatus: "completed", daysToEvent: -1 }))],
+      totalTicketsSold: 100,
+    });
+    const camp = campaignHealthFromInputs({ cities: [greenCity], sendingIssues: 2 });
+    expect(camp.reasons.some((r) => /2 sending inboxes need reconnecting/i.test(r))).toBe(true);
+  });
+});
+
 describe("staffWorkloadHealthFromInputs", () => {
   it("overdue tasks are a red blocker with a clear CTA", () => {
     const h = staffWorkloadHealthFromInputs({ openTasks: 8, overdueTasks: 3 });

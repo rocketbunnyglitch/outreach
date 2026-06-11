@@ -103,7 +103,7 @@
 
 ## Phase C — The brain deepens (week 2)
 
-### C1. Health score v2  [ ]
+### C1. Health score v2  [x]
 - Add inputs to the health core: host assignment (P1-3 two-host rule),
   wristband shipping state, V2 call state, stale warm replies count,
   staff assignment coverage, lifecycle blocker count, inbox/domain
