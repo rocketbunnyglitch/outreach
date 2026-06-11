@@ -119,6 +119,14 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     archiveCampaignWrites cascade now closes events too. day_party-with-
     final-required: 0. Future events with zero required counts: 0.
     Invariant events_on_archived_campaign in BOTH lists.
+  » OPERATOR CONTEXT (2026-06-11): the three archived campaigns are IMPORTED
+    HISTORICAL DATA (old venue events seeded for relationship history) — the
+    operator has never run a campaign besides Halloween 2026. Archival is
+    therefore doubly correct. Nuance: their backfilled confirmed_at = import
+    moment (May 31 / Jun 1), not original real-world dates (never captured).
+    Verified outside the Recent-wins 7d window (current window = 12 real
+    Halloween confirms). Do not read archived-event VE timestamps as
+    operational telemetry.
 - [ ] P039-P041 eventbrite links ↔ events (eb id set but sync never ran; sales>0 with no eb link; dangling eb ids)
 - [ ] P042-P044 wristbands ↔ venue_events (wristband rows on non-wristband-role VE; confirmed wristband VE with no wristband row; status vs shipped_at/delivered_at consistency)
 - [ ] P045-P047 crawl_hosts/internal_hosts/external_hosts ↔ events (hosts on archived events; external_host_shipments cc mismatch with host assignment)
