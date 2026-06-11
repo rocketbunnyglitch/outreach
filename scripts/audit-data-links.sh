@@ -306,6 +306,25 @@ check notes_target_orphan_venue \
      AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.id = n.target_id)"
 
 # ---- suppression ↔ venues ---------------------------------------------------
+check cold_outbound_no_touchrow \
+  "cold-context outbound venue mail with NO cadence touch-log row (floor undercounts; lifecycle mail correctly excluded; 1h grace)" \
+  "SELECT count(*) FROM email_messages m
+   JOIN email_threads t ON t.id = m.thread_id
+   JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+   JOIN campaign_connected_accounts cca
+     ON cca.connected_account_id = t.staff_outreach_email_id
+    AND cca.campaign_id = cc.campaign_id
+   WHERE m.direction = 'outbound' AND t.venue_id IS NOT NULL
+     AND cca.outreach_brand_id IS NOT NULL
+     AND m.sent_at < now() - interval '1 hour'
+     AND NOT EXISTS (SELECT 1 FROM venue_campaign_touch_log tl
+       WHERE tl.email_message_id = m.id)
+     AND NOT EXISTS (SELECT 1 FROM venue_events ve
+       JOIN events e ON e.id = ve.event_id
+       WHERE ve.venue_id = t.venue_id
+         AND e.city_campaign_id = t.city_campaign_id
+         AND ve.status IN ('confirmed','cancelled'))"
+
 check suppressed_email_on_active_venue \
   "suppressed addresses still set as an active venue's primary email" \
   "SELECT count(*) FROM venues v

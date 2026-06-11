@@ -234,6 +234,26 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND k.status IN ('pending','in_progress') AND ve.status = 'cancelled'`,
   },
   {
+    name: "cold_outbound_no_touchrow",
+    desc: "Cold-context outbound venue mail missing a cadence touch-log row (anti-spam floor undercounts; lifecycle mail to confirmed/cancelled venues is excluded by design)",
+    query: sql`SELECT count(*)::int AS n FROM email_messages m
+      JOIN email_threads t ON t.id = m.thread_id
+      JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+      JOIN campaign_connected_accounts cca
+        ON cca.connected_account_id = t.staff_outreach_email_id
+       AND cca.campaign_id = cc.campaign_id
+      WHERE m.direction = 'outbound' AND t.venue_id IS NOT NULL
+        AND cca.outreach_brand_id IS NOT NULL
+        AND m.sent_at < now() - interval '1 hour'
+        AND NOT EXISTS (SELECT 1 FROM venue_campaign_touch_log tl
+          WHERE tl.email_message_id = m.id)
+        AND NOT EXISTS (SELECT 1 FROM venue_events ve
+          JOIN events e ON e.id = ve.event_id
+          WHERE ve.venue_id = t.venue_id
+            AND e.city_campaign_id = t.city_campaign_id
+            AND ve.status IN ('confirmed','cancelled'))`,
+  },
+  {
     name: "suppressed_email_on_active_venue",
     desc: "Suppressed (bounced/unsubscribed) addresses still set as venue primary email",
     query: sql`SELECT count(*)::int AS n FROM venues v

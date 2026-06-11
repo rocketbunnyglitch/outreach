@@ -179,10 +179,10 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     tasks_thread_target_orphan + tasks_smartnote_out_of_scope in BOTH
     lists. Remaining for family close: venue/VE orphan probes (already
     green in harness) — close at next pass.
-- [ ] P060-P062 notes + smart_notes (polymorphic): orphan targets; suggestions pointing at deleted notes
-- [ ] P063-P065 notifications (link_path validity sample; staff_id orphans; unread counts sane)
-- [ ] P066-P068 outreach_log ↔ venues/staff/brands (orphans; channel/outcome enum drift; provenance rows counted in metrics — re-verify after linkage fix)
-- [ ] P069-P071 venue_campaign_touch_log ↔ messages/venues (touch rows without message; messages without touch row where expected)
+- [x] P060-P062 notes + smart_notes (polymorphic): CLEAN — 5 probes (orphan targets across all four target_types; suggestions→deleted notes) all zero
+- [x] P063-P065 notifications: CLEAN — staff_id orphans 0; link_path sample valid; 16 unread all ≤1 day old (no rot)
+- [x] P066-P068 outreach_log ↔ venues/staff/brands: CLEAN — 4 probes zero (orphans, enum drift, provenance double-count re-verified after the team-analytics linkage fix)
+- [x] P069-P071 venue_campaign_touch_log: FINDING — 152 outbound venue msgs had no touch row. Split: 139 cold-context (REAL cadence-floor undercount — anti-spam floors could allow sends early) vs 13 lifecycle-context (correctly excluded BY DESIGN: mail to venues confirmed/cancelled in that campaign must never count as a cold touch — do NOT "fix" these). FIX: 139 backfilled kind='gmail_native' (sentStateForTouchKind → no cadence-state change for unknown kinds; the floor reads MAX(sent_at) kind-agnostic, so the floor counts them without corrupting cadence state); gmail-poll-worker outbound ingest now inserts the touch row inline with the same lifecycle exclusion; invariant cold_outbound_no_touchrow (1h grace) in BOTH lists. Touch rows w/o message: 0.
 - [ ] P072-P074 email_suppression ↔ messages/venues (suppressed addresses still on active venues' email field; bounce reason vs thread bounce flags)
 - [ ] P075-P077 venue_contacts/alternate_emails ↔ threads (replying senders not in contacts; contacts never linked to any thread)
 - [ ] P078-P080 connected_accounts ↔ campaign_connected_accounts ↔ brands (accounts with no campaign assignment sending venue mail; alias coverage — re-verify; owner_user_id vs users.status)

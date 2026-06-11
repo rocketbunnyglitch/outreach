@@ -1400,6 +1400,38 @@ async function ingestMessage(opts: {
           AND coe.archived_at IS NULL
       `)
       .catch((err) => logger.warn({ err, threadId }, "cold-entry touch sync failed"));
+
+    // Cadence-floor touch row (FULL_AUDIT P069): a Gmail-native cold send
+    // must count against the anti-spam floor exactly like an app send —
+    // 139 outbound messages were missing rows and the floor undercounted.
+    // Lifecycle mail (venue confirmed/cancelled in this campaign) stays
+    // EXCLUDED by design: it must never count as a cold touch.
+    await db
+      .execute(sql`
+        INSERT INTO venue_campaign_touch_log
+          (venue_id, campaign_id, staff_outreach_email_id, outreach_brand_id,
+           touch_kind, sent_at, email_message_id)
+        SELECT t.venue_id, cc.campaign_id, t.staff_outreach_email_id,
+               cca.outreach_brand_id, 'gmail_native', ${receivedAt}::timestamptz,
+               ${insertedMessageId}::uuid
+        FROM email_threads t
+        JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+        JOIN campaign_connected_accounts cca
+          ON cca.connected_account_id = t.staff_outreach_email_id
+         AND cca.campaign_id = cc.campaign_id
+        WHERE t.id = ${threadId}
+          AND t.venue_id IS NOT NULL
+          AND cca.outreach_brand_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM venue_events ve
+            JOIN events e ON e.id = ve.event_id
+            WHERE ve.venue_id = t.venue_id
+              AND e.city_campaign_id = t.city_campaign_id
+              AND ve.status IN ('confirmed', 'cancelled')
+          )
+        ON CONFLICT DO NOTHING
+      `)
+      .catch((err) => logger.warn({ err, threadId }, "touch-log row insert failed"));
   }
 
   // Phase 4.9: an inbound reply that landed on a different alias than the one
