@@ -235,6 +235,21 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND k.status IN ('pending','in_progress') AND ve.status = 'cancelled'`,
   },
   {
+    name: "audit_churn_connected_accounts",
+    desc: "connected_accounts audit rows from system writes in the last 24h (churn suppression regressed — was 26k/day before migration 0139)",
+    query: sql`SELECT CASE WHEN count(*) > 500 THEN count(*)::int ELSE 0 END AS n FROM audit_log
+      WHERE table_name = 'connected_accounts' AND changed_by IS NULL
+        AND changed_at > now() - interval '24 hours'`,
+  },
+  {
+    name: "audit_secrets_in_snapshots",
+    desc: "audit_log snapshots still containing gmail_oauth_refresh_token (migration 0139 redaction regressed)",
+    query: sql`SELECT count(*)::int AS n FROM audit_log
+      WHERE table_name = 'connected_accounts'
+        AND (COALESCE(old_values ? 'gmail_oauth_refresh_token', false)
+             OR COALESCE(new_values ? 'gmail_oauth_refresh_token', false))`,
+  },
+  {
     name: "self_venue_active",
     desc: "Active venues whose email is on one of OUR domains (own transactional/staff mail auto-created as a venue)",
     query: sql`SELECT count(*)::int AS n FROM venues v

@@ -307,6 +307,19 @@ check notes_target_orphan_venue \
      AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.id = n.target_id)"
 
 # ---- suppression ↔ venues ---------------------------------------------------
+check audit_churn_connected_accounts \
+  "connected_accounts audit rows from system writes in the last 24h (churn suppression regressed — was 26k/day before migration 0139)" \
+  "SELECT CASE WHEN count(*) > 500 THEN count(*) ELSE 0 END FROM audit_log
+   WHERE table_name = 'connected_accounts' AND changed_by IS NULL
+     AND changed_at > now() - interval '24 hours'"
+
+check audit_secrets_in_snapshots \
+  "audit_log snapshots still containing gmail_oauth_refresh_token (migration 0139 redaction regressed)" \
+  "SELECT count(*) FROM audit_log
+   WHERE table_name = 'connected_accounts'
+     AND (COALESCE(old_values ? 'gmail_oauth_refresh_token', false)
+          OR COALESCE(new_values ? 'gmail_oauth_refresh_token', false))"
+
 check self_venue_active \
   "active venues whose email is on one of OUR domains (own transactional/staff mail auto-created as a venue)" \
   "SELECT count(*) FROM venues v
