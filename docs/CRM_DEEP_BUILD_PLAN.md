@@ -21,7 +21,7 @@
 
 ## Phase A — Enforcement: staff cannot fake progress (days 1–2)
 
-### A1. Strict stage gates on venue-event transitions  [~]
+### A1. Strict stage gates on venue-event transitions  [x d7e583a]
 - lib/stage-gates.ts: pure core (unit-tested) computing transition
   requirements. Confirmed requires: venue + event linkage (structural),
   a CONTACT METHOD (venue email OR phone OR night-of contact) — hard
@@ -39,7 +39,7 @@
 - Acceptance: confirming a venue with NO contact method fails with an
   actionable error; admin override logged; tests on the pure core.
 
-### A2. T11 participant-sheet gate for wristband venues  [ ]
+### A2. T11 participant-sheet gate for wristband venues  [x d7e583a + cascade]
 - The artifact IS modeled: crawl_deliverables.deliverable_type =
   'participant_poster'. Gate: t11BlockReason additionally requires, for
   wristband-role venue events, a participant_poster deliverable with
@@ -51,7 +51,7 @@
 - Acceptance: wristband T11 blocked until both sheets done; middle/
   final T11 unchanged; blockers visible in NBA.
 
-### A3. Alias/persona enforcement for venue sends  [ ]
+### A3. Alias/persona enforcement for venue sends  [x]
 - FIRST verify coverage: campaign_connected_accounts persona per
   connected inbox (query prod). If coverage is complete -> hard-block
   cold/outreach sends from inboxes without a configured persona

@@ -702,6 +702,20 @@ export async function composeAndSendImpl(
       .where(eq(campaignConnectedAccounts.connectedAccountId, fromAccountId));
     fromAliasName = aliasRows.map((r) => r.aliasName?.trim()).find((a) => a) || null;
   }
+  // Persona enforcement (CRM plan A3): venue-facing mail must go out under a
+  // configured persona. The title-cased local-part fallback below stays legal
+  // ONLY for internal/system mail — a guessed display name on a venue email
+  // is a brand-consistency leak the recipient can spot.
+  if (venueId && !fromAliasName) {
+    logger.warn(
+      { fromAccountId, venueId, inbox: inbox.email },
+      "composeAndSend: blocked venue send — no campaign alias for inbox",
+    );
+    return {
+      ok: false,
+      error: `No persona alias is configured for ${inbox.email} on this campaign. Add the alias under Campaign Info → connected inboxes, then resend.`,
+    };
+  }
   // RFC 5322 From with a display name: quote + escape the persona.
   //
   // When there's no per-campaign persona alias (e.g. a send with no campaign

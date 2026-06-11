@@ -61,12 +61,14 @@ export async function generateConfirmationCascade(
     venue_name: string;
     event_date: string;
     lead_staff_id: string | null;
+    role: string;
   }>(sql`
     SELECT
       ve.id AS venue_event_id,
       v.name AS venue_name,
       e.event_date::text AS event_date,
-      cc.lead_staff_id
+      cc.lead_staff_id,
+      ve.role
     FROM venue_events ve
     JOIN venues v ON v.id = ve.venue_id
     JOIN events e ON e.id = ve.event_id
@@ -83,6 +85,7 @@ export async function generateConfirmationCascade(
             venue_name: string;
             event_date: string;
             lead_staff_id: string | null;
+            role: string;
           }>;
         }
       ).rows ?? []);
@@ -192,6 +195,25 @@ export async function generateConfirmationCascade(
     .onConflictDoNothing({
       target: [crawlDeliverables.venueEventId, crawlDeliverables.deliverableType],
     });
+
+  // Wristband venues host check-in, so they additionally owe the participant
+  // sheet/poster (refdoc 7.4.2) — and the T11 send gate now requires this
+  // deliverable to be "done" before the staff-info email can go out (CRM plan
+  // A2). Auto-create it pending on confirm so the gate points at a real row
+  // the team can see and flip, instead of failing against nothing.
+  if (row.role === "wristband") {
+    await tx
+      .insert(crawlDeliverables)
+      .values({
+        venueEventId,
+        deliverableType: "participant_poster" as const,
+        status: "pending" as const,
+        assignedStaffId: ctx.leadStaffId,
+      })
+      .onConflictDoNothing({
+        target: [crawlDeliverables.venueEventId, crawlDeliverables.deliverableType],
+      });
+  }
 
   return {
     tasksCreated: cascade.length + 1,
