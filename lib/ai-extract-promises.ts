@@ -36,7 +36,7 @@ import "server-only";
  * tokens + a small JSON list out. ~$0.0001/msg.
  */
 
-import { cities, emailMessages, emailThreads, tasks, venues } from "@/db/schema";
+import { cities, connectedAccounts, emailMessages, emailThreads, tasks, venues } from "@/db/schema";
 import { generateCompletion, isAiConfigured } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -198,10 +198,17 @@ export async function extractPromisesAndCreateTasks(
       venueName: venues.name,
       cityName: cities.name,
       assignedStaffId: emailThreads.assignedStaffId,
+      // Fallback owner: whoever owns the inbox this conversation runs
+      // through. Threads are rarely individually assigned (work is
+      // owned at the inbox/city level), so without this the promise
+      // tasks landed unassigned (operator report 2026-06-11: "the Eve
+      // Lounge email was sent by Yesu, the task should be his").
+      inboxOwnerId: connectedAccounts.ownerUserId,
     })
     .from(emailThreads)
     .leftJoin(venues, eq(venues.id, emailThreads.venueId))
     .leftJoin(cities, eq(cities.id, venues.cityId))
+    .leftJoin(connectedAccounts, eq(connectedAccounts.id, emailThreads.staffOutreachEmailId))
     .where(eq(emailThreads.id, input.threadId))
     .limit(1);
 
@@ -267,7 +274,7 @@ export async function extractPromisesAndCreateTasks(
     threadId: input.threadId,
     messageId: input.messageId,
     venueId: ctx?.venueId ?? null,
-    assignedStaffId: ctx?.assignedStaffId ?? null,
+    assignedStaffId: ctx?.assignedStaffId ?? ctx?.inboxOwnerId ?? null,
     venueName: ctx?.venueName ?? null,
   });
 
