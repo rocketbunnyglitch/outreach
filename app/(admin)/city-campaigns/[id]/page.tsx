@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { events, campaigns, cities, cityCampaigns, staffMembers, venueEvents } from "@/db/schema";
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import { loadCitySheet } from "@/lib/city-sheet-data";
+import { loadCityThreadFeed } from "@/lib/city-thread-feed";
 import { loadCityVenues } from "@/lib/city-venues-data";
 import { db } from "@/lib/db";
 import { listNotes } from "@/lib/notes";
@@ -21,6 +22,7 @@ import { loadColdOutreach } from "../_cold-outreach-actions";
 import { CityTime } from "../_components/CityTime";
 import { AddCrawlRow } from "../_components/add-crawl-row";
 import { CityCampaignForm } from "../_components/city-campaign-form";
+import { CityEmailFeed } from "../_components/city-email-feed";
 import { CityPresence } from "../_components/city-presence";
 import { CitySheetHeader } from "../_components/city-sheet-header";
 import { CityVenuesTable } from "../_components/city-venues-table";
@@ -358,6 +360,12 @@ export default async function CityCampaignPage({ params }: { params: Promise<{ i
           heightClassName="h-[32rem]"
         />
       )}
+
+      {/* City inbox — every email sent from / received for this city's
+          venues under this campaign, so anyone working the city has
+          instant visibility (operator request 2026-06-11). Read-only;
+          rows deep-link into /inbox for replies. */}
+      <CityEmailFeed feed={await loadCityThreadFeed(id)} cityName={cc.city.name} />
 
       <NotesSection
         targetType="city_campaign"
