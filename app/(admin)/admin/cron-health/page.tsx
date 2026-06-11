@@ -31,7 +31,9 @@ import { SheetsBackupCard } from "../_components/sheets-backup-card";
 export const metadata = { title: "Cron health · Admin" };
 export const dynamic = "force-dynamic";
 
-/** Canonical list of crons we track. If a cron route is added, add it here. */
+/** Canonical list of crons we track. If a cron route is added, add it here.
+ *  A cron listed here with "no run in 24h" is ITSELF a finding — it means
+ *  the route exists but the crontab entry is missing or broken. */
 const CRON_NAMES = [
   "gmail-poll",
   "stale-tagger",
@@ -41,6 +43,12 @@ const CRON_NAMES = [
   "inbox-daily-stats",
   "daily-digest",
   "eventbrite-sync",
+  "cadence-advance",
+  "cancellation-review",
+  "relationship-decay",
+  "reply-corpus",
+  "aging-watchdog",
+  "deliverability-watchdog",
 ] as const;
 
 interface CronCardData {
@@ -66,6 +74,43 @@ export default async function CronHealthPage() {
   const cards = await Promise.all(CRON_NAMES.map(loadCronCard));
   const sheetsBackup = await getSheetsBackupStatus();
 
+  // Email-ops vitals (2026-06-11 audit: integration health in one
+  // place so nothing fails silently). Cheap aggregates, one query each.
+  const opsRes = await db.execute<{
+    connected: number;
+    needs_reauth: number;
+    reauth_list: string | null;
+    queued: number;
+    failing: number;
+    oldest_queued_hours: number | null;
+  }>(sql`
+    SELECT
+      (SELECT count(*)::int FROM connected_accounts WHERE status = 'connected') AS connected,
+      (SELECT count(*)::int FROM connected_accounts WHERE status = 'needs_reauth') AS needs_reauth,
+      (SELECT string_agg(email_address, ', ') FROM connected_accounts WHERE status = 'needs_reauth') AS reauth_list,
+      (SELECT count(*)::int FROM email_drafts WHERE sent_at IS NULL AND scheduled_for IS NOT NULL) AS queued,
+      (SELECT count(*)::int FROM email_drafts WHERE sent_at IS NULL AND scheduled_for < now() - interval '1 hour' AND COALESCE(send_attempts, 0) > 0) AS failing,
+      (SELECT EXTRACT(EPOCH FROM (now() - min(scheduled_for)))::int / 3600 FROM email_drafts WHERE sent_at IS NULL AND scheduled_for IS NOT NULL) AS oldest_queued_hours
+  `);
+  type OpsRow = {
+    connected: number;
+    needs_reauth: number;
+    reauth_list: string | null;
+    queued: number;
+    failing: number;
+    oldest_queued_hours: number | null;
+  };
+  const ops: OpsRow = (Array.isArray(opsRes)
+    ? (opsRes as unknown as OpsRow[])
+    : ((opsRes as unknown as { rows?: OpsRow[] }).rows ?? []))[0] ?? {
+    connected: 0,
+    needs_reauth: 0,
+    reauth_list: null,
+    queued: 0,
+    failing: 0,
+    oldest_queued_hours: null,
+  };
+
   // Treat a 'running' row with started_at > 30 min ago as a stuck
   // run. The dashboard surfaces this as a warning even though the
   // row hasn't been marked error.
@@ -88,10 +133,11 @@ export default async function CronHealthPage() {
         >
           &larr; Admin
         </Link>
-        <h1 className="mt-2 font-semibold text-4xl tracking-tight">Cron health</h1>
+        <h1 className="mt-2 font-semibold text-4xl tracking-tight">System health</h1>
         <p className="text-sm text-zinc-500">
-          Observability for the eight cron routes in app/api/cron/*. Each invocation is recorded by
-          lib/cron-runs.ts and surfaced here. Refreshes on page load.
+          Observability for every cron route in app/api/cron/* plus email-ops vitals (inbox
+          connections, the scheduled-send queue, backups). A tracked cron with no run in 24h means
+          its crontab entry is missing — that is itself a finding. Refreshes on page load.
         </p>
       </header>
 
@@ -121,6 +167,45 @@ export default async function CronHealthPage() {
           tone={noRecentRunCount > 0 ? "warning" : "neutral"}
           icon={<Clock className="h-4 w-4" />}
         />
+      </section>
+
+      {/* Email-ops vitals (2026-06-11): the non-cron half of system
+          health — inbox connections + the scheduled-send queue. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-semibold text-lg tracking-tight">Email ops</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard
+            label="Inboxes connected"
+            value={String(ops.connected)}
+            tone="neutral"
+            icon={<CheckCircle2 className="h-4 w-4" />}
+          />
+          <StatCard
+            label="Needs reauth"
+            value={String(ops.needs_reauth)}
+            tone={ops.needs_reauth > 0 ? "warning" : "neutral"}
+            icon={<AlertTriangle className="h-4 w-4" />}
+          />
+          <StatCard
+            label="Queued sends"
+            value={String(ops.queued)}
+            tone="neutral"
+            icon={<Clock className="h-4 w-4" />}
+          />
+          <StatCard
+            label="Failing in queue"
+            value={String(ops.failing)}
+            tone={ops.failing > 0 ? "error" : "neutral"}
+            icon={<XCircle className="h-4 w-4" />}
+          />
+        </div>
+        {ops.needs_reauth > 0 && ops.reauth_list && (
+          <p className="text-xs text-zinc-500">
+            Reconnect needed:{" "}
+            <span className="font-mono text-amber-700 dark:text-amber-400">{ops.reauth_list}</span>{" "}
+            — Settings → Inboxes → Reconnect. Mail from these inboxes is NOT syncing.
+          </p>
+        )}
       </section>
 
       {/* Per-cron cards */}
