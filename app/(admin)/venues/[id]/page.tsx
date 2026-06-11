@@ -47,6 +47,7 @@ import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueActivityTimeline } from "../_components/venue-activity-timeline";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
 import { VenueConfirmationSection } from "../_components/venue-confirmation-section";
+import { VenueContactsSection } from "../_components/venue-contacts-section";
 import { VenueDealRoom } from "../_components/venue-deal-room";
 import { VenueEmailButton } from "../_components/venue-email-button";
 import { VenueEnrichButton } from "../_components/venue-enrich-button";
@@ -350,6 +351,11 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
   // Guarded so a single bad source degrades to an empty timeline instead of
   // 500-ing the page (CLAUDE.md 12.3/12.4); the loader itself also guards each
   // source internally.
+  // Unified contact roster (emails + replying people + slot night-of
+  // contacts). Defensive catch: the card hides its lists when empty.
+  const { loadVenueContacts } = await import("@/lib/venue-contacts-data");
+  const venueContacts = await loadVenueContacts(id);
+
   const venueActivity = await loadVenueActivity(id, staff.teamId).catch((err) => {
     logger.error({ err, venueId: id }, "loadVenueActivity failed");
     return { entries: [], campaigns: [] as Array<{ id: string; name: string }> };
@@ -404,6 +410,17 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
               doNotContact={venue.doNotContact}
               doNotContactReason={venue.doNotContactReason}
               archivedAt={venue.archivedAt}
+            />
+            {/* Unified contact roster (operator request 2026-06-11):
+                emails + replying people + crawl night-of contacts in
+                one card, replying people newest-first. */}
+            <VenueContactsSection
+              venueId={venue.id}
+              email={venue.email}
+              alternateEmails={venue.alternateEmails ?? []}
+              contactName={venue.contactName}
+              phoneE164={venue.phoneE164}
+              contacts={venueContacts}
             />
             <VenueRelationshipsSection
               venueId={id}

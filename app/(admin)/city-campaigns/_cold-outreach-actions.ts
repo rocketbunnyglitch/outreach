@@ -1602,9 +1602,12 @@ const commitVenueEmailsSchema = z.object({
   venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
   /** JSON-encoded string[] — first entry is the primary. */
   emails: z.union([z.string().max(2000), z.undefined()]).transform((v) => v ?? "[]"),
+  /** Optional: present when editing from a city sheet (drives that page's
+   *  revalidate). The venue detail page omits it. */
   cityCampaignId: z
     .string()
-    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    .optional(),
 });
 
 export async function commitVenueEmails(
@@ -1649,7 +1652,8 @@ export async function commitVenueEmails(
       validateEmailInBackground(primary, staff.id);
     }
 
-    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    if (cityCampaignId) revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    revalidatePath(`/venues/${venueId}`);
     return { ok: true, data: { venueId, email: primary, alternateEmails: alternates } };
   } catch (err) {
     logger.error({ err, venueId }, "commitVenueEmails failed");

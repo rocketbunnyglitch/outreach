@@ -26,7 +26,9 @@ export function VenueEmailsButton({
   alternateEmails,
 }: {
   venueId: string;
-  cityCampaignId: string;
+  /** Present on city-sheet mounts (drives that page's revalidate);
+   *  the venue detail page omits it. */
+  cityCampaignId?: string | null;
   email: string | null;
   alternateEmails: string[];
 }) {
@@ -72,7 +74,7 @@ function EmailsPopover({
   onClose,
 }: {
   venueId: string;
-  cityCampaignId: string;
+  cityCampaignId?: string | null;
   initialEmails: string[];
   onClose: () => void;
 }) {
@@ -119,7 +121,7 @@ function EmailsPopover({
     setError(null);
     const fd = new FormData();
     fd.set("venueId", venueId);
-    fd.set("cityCampaignId", cityCampaignId);
+    if (cityCampaignId) fd.set("cityCampaignId", cityCampaignId);
     fd.set("emails", JSON.stringify(fields.map((f) => f.value.trim()).filter(Boolean)));
     startSave(async () => {
       const result = await commitVenueEmails(null, fd);
