@@ -26,6 +26,10 @@ interface VenueEventRow {
   slotStartTime: string | null;
   slotEndTime: string | null;
   ourContactName: string | null;
+  /** Per-event override of our contact's phone (staff sheet shows it
+   *  next to the name). Wired 2026-06-11 — the column existed with no
+   *  edit surface. */
+  ourContactOverridePhoneE164: string | null;
   confirmedAt: Date | null;
   /** Bar-side contacts synced from the crawl tables, most recent FIRST:
    *  this crawl's night-of contact, then the venue's latest from other
@@ -236,6 +240,16 @@ function EditVenueEventCard({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`ourContactPhone-${ve.id}`}>Our contact phone (this crawl)</Label>
+              <Input
+                id={`ourContactPhone-${ve.id}`}
+                name="ourContactOverridePhoneE164"
+                type="tel"
+                defaultValue={ve.ourContactOverridePhoneE164 ?? ""}
+                placeholder="+14165551234 — shows on the staff sheet"
+              />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

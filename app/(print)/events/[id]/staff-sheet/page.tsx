@@ -8,6 +8,7 @@ import {
   venueEvents,
   venues,
 } from "@/db/schema";
+import { effectiveAgreedHours, effectiveNightOfContact } from "@/lib/contact-inherit";
 import { db } from "@/lib/db";
 import { generateQrSvg } from "@/lib/qrcode";
 import { asc, eq } from "drizzle-orm";
@@ -186,6 +187,12 @@ export default async function StaffSheetPage({ params }: { params: Promise<{ id:
 function VenueCard({ detail, accentColor }: { detail: VenueEventDetail; accentColor: string }) {
   const { ve, venue, ourContactName, qrSvg } = detail;
   const slot = formatSlot(ve.slotStartTime, ve.slotEndTime);
+  // Inherit-unless-overridden (lib/contact-inherit): when the slot has
+  // no night-of contact / agreed hours of its own, the venue record
+  // shows through — so a phone fix on the venue propagates here
+  // instead of staff calling a stale number on the night.
+  const contact = effectiveNightOfContact(ve, venue);
+  const hours = effectiveAgreedHours(ve, venue);
   return (
     <li className="flex gap-5 rounded-md border border-zinc-200 p-4">
       <div className="flex flex-1 flex-col gap-2">
@@ -210,22 +217,38 @@ function VenueCard({ detail, accentColor }: { detail: VenueEventDetail; accentCo
         </div>
 
         <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-          {ve.nightOfContactName && (
+          {(contact.name || contact.phone) && (
             <Detail
-              label="Night-of contact"
+              label={contact.inherited ? "Contact (venue main)" : "Night-of contact"}
               value={
-                ve.nightOfContactPhoneE164 ? (
-                  <a href={`tel:${ve.nightOfContactPhoneE164}`} className="font-mono underline">
-                    {ve.nightOfContactName} · {ve.nightOfContactPhoneE164}
+                contact.phone ? (
+                  <a href={`tel:${contact.phone}`} className="font-mono underline">
+                    {contact.name ? `${contact.name} · ` : ""}
+                    {contact.phone}
                   </a>
                 ) : (
-                  <span>{ve.nightOfContactName}</span>
+                  <span>{contact.name}</span>
                 )
               }
             />
           )}
-          {ourContactName && <Detail label="Our contact" value={<span>{ourContactName}</span>} />}
-          {ve.agreedHoursText && <Detail label="Agreed hours" value={ve.agreedHoursText} />}
+          {ourContactName && (
+            <Detail
+              label="Our contact"
+              value={
+                ve.ourContactOverridePhoneE164 ? (
+                  <a href={`tel:${ve.ourContactOverridePhoneE164}`} className="font-mono underline">
+                    {ourContactName} · {ve.ourContactOverridePhoneE164}
+                  </a>
+                ) : (
+                  <span>{ourContactName}</span>
+                )
+              }
+            />
+          )}
+          {hours.text && (
+            <Detail label={hours.inherited ? "Venue hours" : "Agreed hours"} value={hours.text} />
+          )}
           {ve.drinkSpecials && (
             <Detail label="Drink specials" value={ve.drinkSpecials} colSpan={2} />
           )}

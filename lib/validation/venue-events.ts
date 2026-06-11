@@ -54,6 +54,10 @@ const base = z.object({
   nightOfContactName: optionalString(200),
   nightOfContactPhoneE164: optionalE164,
   ourContactStaffId: optionalStaffId,
+  /** Per-event override of OUR contact's phone (e.g. a staffer's
+   *  personal cell for one crawl night instead of the Quo line).
+   *  Shown on the staff sheet next to the our-contact name. */
+  ourContactOverridePhoneE164: optionalE164,
 });
 
 export const venueEventCreateSchema = base;

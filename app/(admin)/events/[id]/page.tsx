@@ -223,6 +223,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
             slotStartTime: r.ve.slotStartTime,
             slotEndTime: r.ve.slotEndTime,
             ourContactName: r.ourContact?.displayName ?? null,
+            ourContactOverridePhoneE164: r.ve.ourContactOverridePhoneE164,
             confirmedAt: r.ve.confirmedAt,
             barContacts: [...(own ? [own] : []), ...others, ...fallback].slice(0, 3),
           };

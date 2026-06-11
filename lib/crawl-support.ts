@@ -30,6 +30,7 @@ import {
   venues,
   wristbands,
 } from "@/db/schema";
+import { effectiveAgreedHours, effectiveNightOfContact } from "@/lib/contact-inherit";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
@@ -144,6 +145,12 @@ export async function loadCrawlSupport(opts?: {
         agreedHoursText: venueEvents.agreedHoursText,
         nightOfContactName: venueEvents.nightOfContactName,
         nightOfContactPhoneE164: venueEvents.nightOfContactPhoneE164,
+        // Inherit-unless-overridden (lib/contact-inherit): the venue
+        // record backstops missing per-slot contact/hours so readiness
+        // doesn't flag a venue whose main line + hours ARE on file.
+        venueContactName: venues.contactName,
+        venuePhoneE164: venues.phoneE164,
+        venueHours: venues.hours,
       })
       .from(venueEvents)
       .innerJoin(venues, eq(venues.id, venueEvents.venueId))
@@ -168,10 +175,15 @@ export async function loadCrawlSupport(opts?: {
       if (v.role === "wristband" && v.wristbandStatus) agg.wristbandStatus = v.wristbandStatus;
       if (!CONFIRMED.includes(v.status)) continue;
       // Per-field readiness signals are only meaningful on confirmed venues.
-      if (v.nightOfContactName?.trim() && v.nightOfContactPhoneE164?.trim()) {
+      // Slot value wins; venue record backstops (inherit-unless-overridden).
+      const contact = effectiveNightOfContact(v, {
+        contactName: v.venueContactName,
+        phoneE164: v.venuePhoneE164,
+      });
+      if (contact.name?.trim() && contact.phone?.trim()) {
         agg.hasNightOfContact = true;
       }
-      if (v.agreedHoursText?.trim()) agg.hasProposedHours = true;
+      if (effectiveAgreedHours(v, { hours: v.venueHours }).text) agg.hasProposedHours = true;
       if (v.role === "wristband") agg.wristbandVenue ??= v.venueName;
       else if (v.role === "middle") {
         agg.middleVenues.push(v.venueName);

@@ -130,6 +130,8 @@ export async function updateVenueEvent(
   if (input.nightOfContactPhoneE164 !== undefined)
     patch.nightOfContactPhoneE164 = input.nightOfContactPhoneE164;
   if (input.ourContactStaffId !== undefined) patch.ourContactStaffId = input.ourContactStaffId;
+  if (input.ourContactOverridePhoneE164 !== undefined)
+    patch.ourContactOverridePhoneE164 = input.ourContactOverridePhoneE164;
 
   try {
     // Fetch previous status BEFORE update so we can detect a transition
