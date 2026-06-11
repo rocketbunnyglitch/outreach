@@ -14,6 +14,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import authConfig from "./auth.config";
+import { isMachineRoute } from "./lib/public-routes";
 
 const { auth } = NextAuth(authConfig);
 
@@ -90,7 +91,11 @@ export default auth((req) => {
   // Public surfaces (mirror what auth.config.ts authorized() considers public)
   const isPublic =
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/api/cron") ||
+    // Machine endpoints (cron/engine/webhooks/sms/track) — no browser
+    // session, each enforces its own secret/signature/token. Shared
+    // allowlist so this list and auth.config.ts can't drift (the drift
+    // 307-bounced Quo webhooks + open pixels to /login; 2026-06-11).
+    isMachineRoute(pathname) ||
     pathname === "/api/health" ||
     // Temporary public diagnostic beacon (lib/client-diag.ts) — must be
     // reachable pre-auth since the load failure can happen before login.

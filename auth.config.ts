@@ -16,6 +16,7 @@
  */
 
 import type { NextAuthConfig } from "next-auth";
+import { isMachineRoute } from "./lib/public-routes";
 
 const config: NextAuthConfig = {
   // Providers are added in auth.ts; the middleware doesn't need them.
@@ -59,6 +60,10 @@ const config: NextAuthConfig = {
       // Public surfaces — always allowed
       if (
         pathname.startsWith("/api/auth") ||
+        // Machine endpoints — session-public, each route enforces its
+        // own secret/signature/token. Shared with middleware.ts via
+        // lib/public-routes so the two layers can't drift (2026-06-11).
+        isMachineRoute(pathname) ||
         pathname === "/api/health" ||
         // Stale-session self-heal route — must be reachable so a broken
         // (valid-at-edge, dead-in-DB) session can clear itself instead of
