@@ -176,6 +176,76 @@ export async function loadDataQuality(): Promise<DataQualityCheck[]> {
       fixLabel: "Rule duplicates",
     }),
     check({
+      key: "needs_manual_attribution",
+      title: "Threads needing manual campaign attribution",
+      why: "Venue-linked threads the nightly heal deliberately skips: the subject names a different operation (St. Patrick's, NYE, FIFA…) or the venue sits in several active campaigns. Auto-stamping would file them under the wrong campaign.",
+      countSql: sql`
+        SELECT count(*)::int AS n FROM email_threads t
+        WHERE t.archived_at IS NULL AND t.venue_id IS NOT NULL
+          AND t.city_campaign_id IS NULL
+          AND t.created_at < now() - interval '48 hours'
+          AND (
+            t.subject ~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'
+            OR (SELECT count(DISTINCT coe.city_campaign_id) FROM cold_outreach_entries coe
+                JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
+                JOIN campaigns c ON c.id = cc.campaign_id
+                WHERE coe.venue_id = t.venue_id
+                  AND coe.archived_at IS NULL AND c.archived_at IS NULL) > 1
+          )
+      `,
+      sampleSql: sql`
+        SELECT t.id::text AS id, left(coalesce(t.subject,'(no subject)'), 60) AS label
+        FROM email_threads t
+        WHERE t.archived_at IS NULL AND t.venue_id IS NOT NULL
+          AND t.city_campaign_id IS NULL
+          AND t.created_at < now() - interval '48 hours'
+          AND (
+            t.subject ~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'
+            OR (SELECT count(DISTINCT coe.city_campaign_id) FROM cold_outreach_entries coe
+                JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
+                JOIN campaigns c ON c.id = cc.campaign_id
+                WHERE coe.venue_id = t.venue_id
+                  AND coe.archived_at IS NULL AND c.archived_at IS NULL) > 1
+          )
+        ORDER BY t.last_message_at DESC
+        LIMIT 5
+      `,
+      hrefFor: (id) => `/inbox/${id}`,
+      fixHref: "/inbox",
+      fixLabel: "Attribute in inbox",
+    }),
+    check({
+      key: "replied_no_master_email",
+      title: "Venues replying with no master email on file",
+      why: "We're mid-conversation with these venues but the master record has no email — cadence, validation and dup checks are blind. Pick the right address from the thread (NOT auto-filled: repliers can be autoresponders or our own forwarded mail).",
+      countSql: sql`
+        SELECT count(DISTINCT v.id)::int AS n
+        FROM venues v
+        JOIN email_threads t ON t.venue_id = v.id
+        JOIN email_messages m ON m.thread_id = t.id AND m.direction = 'inbound'
+        WHERE v.email IS NULL AND v.archived_at IS NULL
+          AND lower(split_part(CASE WHEN m.from_address LIKE '%<%'
+                THEN substring(m.from_address from '<([^>]+)>')
+                ELSE m.from_address END, '@', 2))
+              NOT IN (SELECT lower(split_part(email_address,'@',2)) FROM connected_accounts)
+      `,
+      sampleSql: sql`
+        SELECT DISTINCT v.id::text AS id, v.name AS label
+        FROM venues v
+        JOIN email_threads t ON t.venue_id = v.id
+        JOIN email_messages m ON m.thread_id = t.id AND m.direction = 'inbound'
+        WHERE v.email IS NULL AND v.archived_at IS NULL
+          AND lower(split_part(CASE WHEN m.from_address LIKE '%<%'
+                THEN substring(m.from_address from '<([^>]+)>')
+                ELSE m.from_address END, '@', 2))
+              NOT IN (SELECT lower(split_part(email_address,'@',2)) FROM connected_accounts)
+        LIMIT 5
+      `,
+      hrefFor: (id) => `/venues/${id}`,
+      fixHref: "/venues",
+      fixLabel: "Set email from thread",
+    }),
+    check({
       key: "invalid_primary_email",
       title: "Venues whose primary email failed validation",
       why: "ZeroBounce marked the address invalid/spamtrap/abuse — every send is a guaranteed bounce or worse, and bounces wreck sender reputation. Role-based addresses (info@) are fine and NOT counted here.",

@@ -65,7 +65,8 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
       SELECT count(*)::int AS n FROM email_threads t
       JOIN single_cc s ON s.venue_id = t.venue_id
       WHERE t.archived_at IS NULL AND t.city_campaign_id IS NULL
-        AND t.created_at < now() - interval '48 hours'`,
+        AND t.created_at < now() - interval '48 hours'
+        AND t.subject !~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'`,
   },
   {
     name: "cold_touch_behind_mail",
@@ -232,6 +233,20 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
       JOIN venue_events ve ON ve.id = k.target_id
       WHERE k.target_type = 'venue_event' AND k.source = 'auto'
         AND k.status IN ('pending','in_progress') AND ve.status = 'cancelled'`,
+  },
+  {
+    name: "venues_email_malformed",
+    desc: "Active venues whose email field is not a single clean address (status text / multi-address blobs break validation, suppression matching, retro-linking)",
+    query: sql`SELECT count(*)::int AS n FROM venues
+      WHERE archived_at IS NULL AND email IS NOT NULL
+        AND email !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$'`,
+  },
+  {
+    name: "placeholder_venue_active",
+    desc: "Active venues with placeholder names (Test / Venue Name / TBD — template rows imported as venues)",
+    query: sql`SELECT count(*)::int AS n FROM venues
+      WHERE archived_at IS NULL
+        AND lower(name) IN ('venue name','venue','name','test','tbd','example')`,
   },
   {
     name: "cold_outbound_no_touchrow",

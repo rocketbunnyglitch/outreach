@@ -364,6 +364,15 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
     // stats). When the venue sits in exactly ONE active city-campaign the
     // attribution is unambiguous — backfill it. Ambiguous venues stay
     // null for a human to attribute.
+    //
+    // SEMANTIC GUARD (P075 follow-up): "single active campaign" is only a
+    // mechanical signal. A thread whose SUBJECT names a different operation
+    // (St. Patrick's, NYE, FIFA, July 4th — imported-history chatter) must
+    // never be stamped with the Halloween campaign just because that's the
+    // only active one. Those stay NULL and surface on /admin/data-quality
+    // for human attribution. Keep this regex in sync with
+    // scripts/audit-data-links.sh (threads_venue_no_cc_unambig) and the
+    // needs_manual_attribution data-quality card.
     const ccFilled = await db.execute(sql`
       WITH single_cc AS (
         SELECT coe.venue_id, min(coe.city_campaign_id::text)::uuid AS cc_id
@@ -379,6 +388,7 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
       FROM single_cc s
       WHERE s.venue_id = t.venue_id
         AND t.archived_at IS NULL AND t.city_campaign_id IS NULL
+        AND t.subject !~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'
     `);
     const nc = Number((ccFilled as unknown as { rowCount?: number }).rowCount ?? 0);
     if (nc > 0)

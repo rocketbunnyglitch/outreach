@@ -84,7 +84,8 @@ check threads_venue_no_cc_unambig \
    SELECT count(*) FROM email_threads t
    JOIN single_cc s ON s.venue_id = t.venue_id
    WHERE t.archived_at IS NULL AND t.city_campaign_id IS NULL
-     AND t.created_at < now() - interval '48 hours'"
+     AND t.created_at < now() - interval '48 hours'
+     AND t.subject !~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'"
 
 # ---- messages ↔ threads ----------------------------------------------------
 check thread_message_count_drift \
@@ -306,6 +307,18 @@ check notes_target_orphan_venue \
      AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.id = n.target_id)"
 
 # ---- suppression ↔ venues ---------------------------------------------------
+check venues_email_malformed \
+  "active venues whose email field is not a single clean address (status text / multi-address blobs break validation, suppression matching, retro-linking)" \
+  "SELECT count(*) FROM venues
+   WHERE archived_at IS NULL AND email IS NOT NULL
+     AND email !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+\$'"
+
+check placeholder_venue_active \
+  "active venues with placeholder names (Test / Venue Name / TBD — spreadsheet template rows imported as venues)" \
+  "SELECT count(*) FROM venues
+   WHERE archived_at IS NULL
+     AND lower(name) IN ('venue name','venue','name','test','tbd','example')"
+
 check cold_outbound_no_touchrow \
   "cold-context outbound venue mail with NO cadence touch-log row (floor undercounts; lifecycle mail correctly excluded; 1h grace)" \
   "SELECT count(*) FROM email_messages m

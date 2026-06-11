@@ -27,6 +27,7 @@ import "server-only";
 
 import { venues } from "@/db/schema";
 import { db } from "@/lib/db";
+import { normalizeVenueEmail } from "@/lib/email-normalize";
 import { logger } from "@/lib/logger";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { ResolverOverrides } from "./resolver-overrides";
@@ -305,8 +306,13 @@ async function maybeBackfill(opts: {
   const updates: Record<string, unknown> = {};
 
   if (!opts.existing.email && src.email) {
-    updates.email = src.email.trim().toLowerCase();
-    filled.push("email");
+    // Sheet email columns double as status notes ("email sent",
+    // "a@x;b@x") — extract a real address or back off entirely.
+    const cleaned = normalizeVenueEmail(src.email);
+    if (cleaned) {
+      updates.email = cleaned;
+      filled.push("email");
+    }
   }
   if (!opts.existing.phoneE164 && src.phoneRaw) {
     const e164 = normalizePhone(src.phoneRaw);
@@ -349,7 +355,7 @@ async function createStubVenue(opts: {
     cityId: opts.cityId,
     name: opts.name,
     address: opts.sourceContacts?.address ?? null,
-    email: opts.sourceContacts?.email?.trim().toLowerCase() ?? null,
+    email: normalizeVenueEmail(opts.sourceContacts?.email),
     phoneE164: phone ?? null,
     capacity: opts.sourceContacts?.capacity ?? null,
     contactName: opts.sourceContacts?.contactName?.trim() || null,
