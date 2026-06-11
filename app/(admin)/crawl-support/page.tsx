@@ -32,9 +32,17 @@ export default async function CrawlSupportPage() {
         </p>
       </header>
 
-      {/* Crawl-overlap timeline (scaffold): every upcoming crawl on one date
-          axis, one row per city, so overlapping nights jump out. */}
-      <CrawlGantt rows={gantt.rows} ticks={gantt.ticks} rangeLabel={gantt.rangeLabel} />
+      {/* Crawl-night grid: one column per crawl night, one row per city,
+          clickable chip per crawl. Overlap row + dark-night summary show
+          which nights need support coverage and which don't. */}
+      <CrawlGantt
+        columns={gantt.columns}
+        rows={gantt.rows}
+        rangeLabel={gantt.rangeLabel}
+        gapSummary={gantt.gapSummary}
+        crawlNights={gantt.crawlNights}
+        gapNights={gantt.gapNights}
+      />
 
       <CrawlSupportBoard data={data} issues={issues} staff={staff} calls={calls} />
     </div>
