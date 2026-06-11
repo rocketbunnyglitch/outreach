@@ -175,7 +175,15 @@ export async function acceptSuggestion(
       }
 
       const targetType = actionTypeToTaskTarget(suggestion.actionType as ActionType);
+      // Linkage fix (2026-06-11 audit): suggestions only carry a
+      // venueId, so tasks whose action type mapped to venue_event /
+      // wristband / misc got targetId NULL — orphaned work with no
+      // context. When we can't resolve the exact venue_event, fall
+      // back to targeting the VENUE (always known when venueId is
+      // set) instead of losing the link entirely.
       const targetId = targetType === "venue" && suggestion.venueId ? suggestion.venueId : null;
+      const effectiveTargetType = targetId ? targetType : suggestion.venueId ? "venue" : targetType;
+      const effectiveTargetId = targetId ?? suggestion.venueId ?? null;
 
       const [taskRow] = await tx
         .insert(tasks)
@@ -183,8 +191,8 @@ export async function acceptSuggestion(
           title: suggestion.title,
           description: suggestion.description,
           source: "smart_note",
-          targetType,
-          targetId,
+          targetType: effectiveTargetType,
+          targetId: effectiveTargetId,
           assignedStaffId: staff.id,
           dueAt: suggestion.dueAt,
           createdBy: staff.id,

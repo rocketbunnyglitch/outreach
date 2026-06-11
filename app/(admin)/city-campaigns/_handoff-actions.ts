@@ -169,6 +169,14 @@ export async function handoffColdOutreach(input: {
           eq(emailThreads.cadenceState, "cold_exhausted_ready_for_handoff"),
         ),
       )
+      // Deterministic pick (2026-06-11 audit): when a venue has TWO
+      // exhausted cold threads, an unordered limit(1) grabbed an
+      // arbitrary one. The cold table's cadence cell is built from the
+      // LATEST thread per venue (DISTINCT ON ... ORDER BY
+      // last_message_at DESC in loadColdOutreach), so ordering the
+      // same way targets exactly the thread the operator was looking
+      // at when they clicked Handoff.
+      .orderBy(desc(emailThreads.lastMessageAt))
       .limit(1);
     if (!thread) {
       return {

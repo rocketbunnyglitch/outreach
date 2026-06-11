@@ -107,7 +107,7 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
   type EventRow = {
     id: string;
     city_name: string;
-    crawl_date: string;
+    event_date: string;
     crawl_number: number;
     day_part: string;
   };
@@ -277,19 +277,19 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
       SELECT
         e.id::text,
         c.name AS city_name,
-        e.crawl_date::text AS crawl_date,
+        e.event_date::text AS event_date,
         COALESCE(e.crawl_number, 1) AS crawl_number,
         COALESCE(e.day_part::text, 'evening') AS day_part
       FROM events e
       LEFT JOIN city_campaigns cc ON cc.id = e.city_campaign_id
       LEFT JOIN cities c ON c.id = cc.city_id
       WHERE e.archived_at IS NULL
-        AND e.crawl_date >= CURRENT_DATE - INTERVAL '30 days'
+        AND e.event_date >= CURRENT_DATE - INTERVAL '30 days'
         AND (
           c.name ILIKE ${pattern}
-          OR e.crawl_date::text ILIKE ${pattern}
+          OR e.event_date::text ILIKE ${pattern}
         )
-      ORDER BY e.crawl_date ASC
+      ORDER BY e.event_date ASC
       LIMIT 5
     `),
     ),
@@ -337,7 +337,7 @@ export async function paletteSearch(query: string): Promise<PaletteSearchResult>
     events: eventsResult.map((e) => ({
       id: e.id,
       cityName: e.city_name,
-      crawlDate: e.crawl_date,
+      crawlDate: e.event_date,
       crawlNumber: e.crawl_number,
       dayPart: e.day_part,
     })),
