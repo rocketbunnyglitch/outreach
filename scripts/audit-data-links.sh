@@ -74,7 +74,7 @@ check threads_unlinked_exact_email \
 check threads_venue_no_cc_unambig \
   "venue-linked threads >48h old with NO campaign attribution despite an unambiguous single active city-campaign (nightly backfill should heal)" \
   "WITH single_cc AS (
-     SELECT coe.venue_id
+     SELECT coe.venue_id, min(coe.city_campaign_id::text)::uuid AS cc_id
      FROM cold_outreach_entries coe
      JOIN city_campaigns cc ON cc.id = coe.city_campaign_id
      JOIN campaigns c ON c.id = cc.campaign_id
@@ -85,7 +85,32 @@ check threads_venue_no_cc_unambig \
    JOIN single_cc s ON s.venue_id = t.venue_id
    WHERE t.archived_at IS NULL AND t.city_campaign_id IS NULL
      AND t.created_at < now() - interval '48 hours'
-     AND t.subject !~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'"
+     AND t.subject !~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'
+     AND EXISTS (SELECT 1 FROM email_messages m
+       JOIN city_campaigns cc2 ON cc2.id = s.cc_id
+       JOIN campaigns c2 ON c2.id = cc2.campaign_id
+       WHERE m.thread_id = t.id
+         AND m.sent_at >= COALESCE(c2.start_date, '-infinity'::timestamptz))"
+
+check tasks_on_precampaign_mail \
+  "open smart-note tasks on threads with NO mail since their campaign's start_date (history tasked as work — operator report 2026-06-11)" \
+  "SELECT count(*) FROM tasks k
+   JOIN email_threads t ON t.id = k.target_id
+   JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+   JOIN campaigns c ON c.id = cc.campaign_id
+   WHERE k.target_type = 'email_thread' AND k.source = 'smart_note'
+     AND k.status IN ('pending','in_progress') AND c.start_date IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM email_messages m
+       WHERE m.thread_id = t.id AND m.sent_at >= c.start_date)"
+
+check threads_stamped_precampaign \
+  "threads attributed to a campaign despite having NO mail since its start_date (mis-stamped history)" \
+  "SELECT count(*) FROM email_threads t
+   JOIN city_campaigns cc ON cc.id = t.city_campaign_id
+   JOIN campaigns c ON c.id = cc.campaign_id
+   WHERE c.archived_at IS NULL AND c.start_date IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM email_messages m
+       WHERE m.thread_id = t.id AND m.sent_at >= c.start_date)"
 
 # ---- messages ↔ threads ----------------------------------------------------
 check thread_message_count_drift \

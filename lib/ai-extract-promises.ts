@@ -399,12 +399,23 @@ async function createTasksForPromises(opts: CreateTasksOpts): Promise<void> {
   // promise only becomes a task when its thread is attributed to an ACTIVE
   // campaign — unattributed or archived-campaign threads are history, not
   // work.
+  //
+  // SECOND gate (operator report, same day): attribution alone was not
+  // enough — old threads mis-stamped with the active campaign still
+  // tasked 52 pre-campaign conversations (NYE, St. Paddy's). The
+  // triggering MESSAGE must postdate the campaign's start_date: a
+  // promise found in mail older than the campaign is history.
   const scoped = await db.execute<{ ok: boolean }>(sql`
     SELECT EXISTS (
       SELECT 1 FROM email_threads t
       JOIN city_campaigns cc ON cc.id = t.city_campaign_id
       JOIN campaigns c ON c.id = cc.campaign_id
       WHERE t.id = ${opts.threadId} AND c.archived_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM email_messages m
+          WHERE m.id = ${opts.messageId}
+            AND m.sent_at >= COALESCE(c.start_date, '-infinity'::timestamptz)
+        )
     ) AS ok
   `);
   const scopedRows = Array.isArray(scoped)

@@ -389,6 +389,17 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
       WHERE s.venue_id = t.venue_id
         AND t.archived_at IS NULL AND t.city_campaign_id IS NULL
         AND t.subject !~* 'st\\.?\\s*patrick|paddy|nye|new year|fifa|july\\s*4|4th of july|canada day|christmas|valentine'
+        -- Era guard (operator report 2026-06-11): a thread whose mail all
+        -- predates the campaign's start_date cannot belong to it — 71
+        -- pre-campaign threads (NYE etc.) were mis-stamped this way and
+        -- polluted /tasks. Threads with no post-start mail stay NULL.
+        AND EXISTS (
+          SELECT 1 FROM email_messages m
+          JOIN city_campaigns cc2 ON cc2.id = s.cc_id
+          JOIN campaigns c2 ON c2.id = cc2.campaign_id
+          WHERE m.thread_id = t.id
+            AND m.sent_at >= COALESCE(c2.start_date, '-infinity'::timestamptz)
+        )
     `);
     const nc = Number((ccFilled as unknown as { rowCount?: number }).rowCount ?? 0);
     if (nc > 0)
