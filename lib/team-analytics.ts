@@ -123,6 +123,24 @@ export async function loadTeamAnalytics(
       WHERE ol.created_at >= ${useExplicitRange ? sql`${fromIso}::date` : sql`CURRENT_DATE - (${windowDays - 1} || ' days')::interval`}
         ${useExplicitRange ? sql`AND ol.created_at < ${toIso}::date + '1 day'::interval` : sql``}
     ),
+    -- Emails counted from the CANONICAL message store, not outreach_log
+    -- (linkage fix 2026-06-11): staff who send from Gmail directly never
+    -- write an outreach_log row, but every outbound message — app-sent OR
+    -- Gmail-native — lands in email_messages via the poller. Attribution:
+    -- message -> thread -> sending inbox -> inbox owner.
+    mail_counts AS (
+      SELECT
+        ca.owner_user_id AS staff_member_id,
+        m.sent_at::date AS day,
+        COUNT(*)::int AS day_emails
+      FROM email_messages m
+      JOIN email_threads t ON t.id = m.thread_id
+      JOIN connected_accounts ca ON ca.id = t.staff_outreach_email_id
+      WHERE m.direction = 'outbound'
+        AND m.sent_at >= ${useExplicitRange ? sql`${fromIso}::date` : sql`CURRENT_DATE - (${windowDays - 1} || ' days')::interval`}
+        ${useExplicitRange ? sql`AND m.sent_at < ${toIso}::date + '1 day'::interval` : sql``}
+      GROUP BY ca.owner_user_id, m.sent_at::date
+    ),
     per_staff_day AS (
       SELECT
         sm.id AS staff_id,
@@ -130,10 +148,7 @@ export async function loadTeamAnalytics(
         COUNT(liw.staff_member_id) FILTER (
           WHERE liw.channel = 'call'
         )::int AS day_calls,
-        COUNT(liw.staff_member_id) FILTER (
-          WHERE liw.channel = 'email'
-            AND liw.outcome IN ('sent','interested','confirmed','callback_requested')
-        )::int AS day_emails,
+        COALESCE(MAX(mc.day_emails), 0)::int AS day_emails,
         COUNT(liw.staff_member_id) FILTER (
           WHERE liw.channel = 'sms'
             AND liw.outcome IN ('sent','interested','confirmed','callback_requested')
@@ -145,6 +160,8 @@ export async function loadTeamAnalytics(
       CROSS JOIN date_series ds
       LEFT JOIN log_in_window liw
         ON liw.staff_member_id = sm.id AND liw.day = ds.day
+      LEFT JOIN mail_counts mc
+        ON mc.staff_member_id = sm.id AND mc.day = ds.day
       WHERE sm.status = 'active'
       GROUP BY sm.id, ds.day
     )
@@ -290,14 +307,23 @@ export async function loadStaffDailyDetail(opts: {
         ${useExplicitRange ? sql`${toIso}::date` : sql`CURRENT_DATE`},
         '1 day'::interval
       )::date AS day
+    ),
+    -- Same linkage fix as loadTeamAnalytics: emails come from the canonical
+    -- message store (covers Gmail-native sends), attributed via the inbox
+    -- owner; calls/sms/viber stay on outreach_log.
+    mail_counts AS (
+      SELECT m.sent_at::date AS day, COUNT(*)::int AS day_emails
+      FROM email_messages m
+      JOIN email_threads t ON t.id = m.thread_id
+      JOIN connected_accounts ca ON ca.id = t.staff_outreach_email_id
+      WHERE m.direction = 'outbound'
+        AND ca.owner_user_id = ${opts.staffId}
+      GROUP BY m.sent_at::date
     )
     SELECT
       ds.day::text AS day,
       COUNT(ol.id) FILTER (WHERE ol.channel = 'call')::int AS calls,
-      COUNT(ol.id) FILTER (
-        WHERE ol.channel = 'email'
-          AND ol.outcome IN ('sent','interested','confirmed','callback_requested')
-      )::int AS emails_sent,
+      COALESCE(MAX(mc.day_emails), 0)::int AS emails_sent,
       COUNT(ol.id) FILTER (
         WHERE ol.channel = 'sms'
           AND ol.outcome IN ('sent','interested','confirmed','callback_requested')
@@ -307,6 +333,7 @@ export async function loadStaffDailyDetail(opts: {
     LEFT JOIN outreach_log ol
       ON ol.staff_member_id = ${opts.staffId}
       AND ol.created_at::date = ds.day
+    LEFT JOIN mail_counts mc ON mc.day = ds.day
     GROUP BY ds.day
     ORDER BY ds.day ASC
   `);
