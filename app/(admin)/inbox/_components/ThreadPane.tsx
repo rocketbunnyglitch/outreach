@@ -1,6 +1,7 @@
 import { SmartBackButton } from "@/app/(admin)/_components/smart-back-button";
 import type { CampaignSuggestion } from "@/lib/campaign-matcher";
 import type { InboxThreadDetail, ThreadTaskRow, VenueOutreachHistoryEntry } from "@/lib/inbox-data";
+import { normalizeQuickReplies } from "@/lib/quick-replies-shared";
 import { type ThreadState, suggestNextAction } from "@/lib/suggested-next-action";
 import type { TeamLabelSummary, ThreadLabelRow } from "@/lib/team-labels";
 import type { ThreadNoteRow } from "@/lib/thread-notes";
@@ -15,7 +16,7 @@ import { ClassificationPicker } from "./ClassificationPicker";
 import { InlineReplyHost } from "./InlineReplyHost";
 import { MessageCard } from "./MessageCard";
 import { QuickActionChips } from "./QuickActionChips";
-import { QuickReplyChips, normalizeQuickReplies } from "./QuickReplyChips";
+import { QuickReplyChips } from "./QuickReplyChips";
 import { SuggestedActionRow } from "./SuggestedActionRow";
 import { ThreadActions } from "./ThreadActions";
 import { ThreadGmailLabelsRow } from "./ThreadGmailLabelsRow";

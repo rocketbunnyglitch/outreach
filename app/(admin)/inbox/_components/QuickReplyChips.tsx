@@ -30,27 +30,11 @@ import { useTransition } from "react";
 import { useComposer } from "../../_components/composer/composer-store";
 import { openReplyDraft } from "../_actions";
 
-/** Normalize the ai_quick_replies cache across shapes: legacy v1 was a
- *  bare string[]; v2 (learning loop 2026-06-11) is
- *  { v: 2, chips, exampleIds } where exampleIds are the reply_examples
- *  rows that grounded the chips. */
-export function normalizeQuickReplies(raw: unknown): { chips: string[]; exampleIds: string[] } {
-  if (Array.isArray(raw)) {
-    return { chips: raw.filter((c): c is string => typeof c === "string"), exampleIds: [] };
-  }
-  if (raw && typeof raw === "object" && "chips" in raw) {
-    const obj = raw as { chips?: unknown; exampleIds?: unknown };
-    return {
-      chips: Array.isArray(obj.chips)
-        ? obj.chips.filter((c): c is string => typeof c === "string")
-        : [],
-      exampleIds: Array.isArray(obj.exampleIds)
-        ? obj.exampleIds.filter((c): c is string => typeof c === "string")
-        : [],
-    };
-  }
-  return { chips: [], exampleIds: [] };
-}
+// normalizeQuickReplies lives in lib/quick-replies-shared (hotfix
+// 2026-06-11): ThreadPane (server) value-imported it from this
+// "use client" module, and Next throws when a client export is CALLED
+// server-side — which crashed thread rendering. Never export pure
+// helpers from a client module.
 
 interface Props {
   threadId: string;
