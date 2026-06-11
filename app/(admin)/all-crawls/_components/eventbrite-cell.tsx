@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import {
   AlertTriangle,
   Check,
@@ -57,6 +58,17 @@ export function EventbriteCell({
   const [pushing, startPush] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const appToast = useToast();
+
+  // Errors fire BOTH the inline marker and the app toast: in the
+  // all-crawls table this cell is the LAST column of a horizontal
+  // scroller, so a wide inline error can land in the scrolled-out
+  // region off-screen (operator report 2026-06-11, twice). The toast
+  // is unclippable; the inline marker stays compact for context.
+  function showError(message: string) {
+    setError(message);
+    appToast.show({ kind: "error", message });
+  }
   const [confirmMismatch, setConfirmMismatch] = useState<{
     eventCity: string;
     crawlCity: string;
@@ -91,13 +103,13 @@ export function EventbriteCell({
     startLink(async () => {
       const result = await linkEventbriteEvent(null, fd);
       if (!result.ok) {
-        setError(result.error ?? "Link failed.");
+        showError(result.error ?? "Link failed.");
         return;
       }
       const data = result.data;
       if (!data) return;
       if ("notConfigured" in data) {
-        setError("Eventbrite isn't configured — set EVENTBRITE_PRIVATE_TOKEN on the server.");
+        showError("Eventbrite isn't configured — set EVENTBRITE_PRIVATE_TOKEN on the server.");
         return;
       }
       if ("needsConfirm" in data) {
@@ -143,12 +155,12 @@ export function EventbriteCell({
     startSync(async () => {
       const result = await syncEventbriteSales(null, fd);
       if (!result.ok) {
-        setError(result.error ?? "Sync failed.");
+        showError(result.error ?? "Sync failed.");
         return;
       }
       const data = result.data;
       if (data && "notConfigured" in data) {
-        setError("Eventbrite isn't configured.");
+        showError("Eventbrite isn't configured.");
         return;
       }
       if (data && "sold" in data) {
@@ -165,12 +177,12 @@ export function EventbriteCell({
     startPush(async () => {
       const result = await pushEventbriteDescription(null, fd);
       if (!result.ok) {
-        setError(result.error ?? "Push failed.");
+        showError(result.error ?? "Push failed.");
         return;
       }
       const data = result.data;
       if (data && "notConfigured" in data) {
-        setError("Eventbrite isn't configured.");
+        showError("Eventbrite isn't configured.");
         return;
       }
       const polished = data && "polished" in data && data.polished;
@@ -336,7 +348,11 @@ export function EventbriteCell({
         <p
           role="alert"
           title={error}
-          className="mt-1 max-w-[18rem] whitespace-normal break-words rounded-md bg-rose-50 px-2 py-1 text-[10px] text-rose-700 leading-snug dark:bg-rose-950/30 dark:text-rose-300"
+          // Compact on purpose: a wide block widens this (last) table
+          // column and pushes the text into the horizontal-scroll
+          // overflow. The toast carries the full message; this is the
+          // in-place marker.
+          className="mt-1 max-w-[11rem] whitespace-normal break-words rounded-md bg-rose-50 px-2 py-1 text-[10px] text-rose-700 leading-snug dark:bg-rose-950/30 dark:text-rose-300"
         >
           {error}
         </p>
