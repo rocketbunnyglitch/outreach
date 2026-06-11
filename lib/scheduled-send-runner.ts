@@ -110,9 +110,10 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
       continue;
     }
 
-    // T17 [ReferenceDoc 7.15.2]: never auto-send a relationship-gated lifecycle
-    // template to a venue x outreach-brand pair flagged 'bad'. Re-check at
-    // dispatch time (the flag may have been set after the draft was scheduled).
+    // Relationship re-check at dispatch for EVERY venue send (2026-06-11
+    // audit; was T17-only per ReferenceDoc 7.15.2 — now universal, matching
+    // the interactive composer). The 'bad' flag may have been set after the
+    // draft was scheduled.
     // Stop it retrying every tick by stamping sent_at WITHOUT a sent_thread_id:
     // the runner filters sent_at IS NULL, so this drops it from all future
     // ticks; the null sent_thread_id marks it blocked-not-delivered (a real
@@ -124,7 +125,7 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         .where(eq(emailDrafts.id, draft.id));
       logger.info(
         { draftId: draft.id, owner: owner.id },
-        "scheduled send blocked: T17 to a bad venue x brand pair; cancelled (will not retry)",
+        "scheduled send blocked: venue x brand relationship is bad; cancelled (will not retry)",
       );
       failed += 1;
       continue;

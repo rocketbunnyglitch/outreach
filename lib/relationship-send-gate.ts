@@ -43,6 +43,9 @@ import { eq } from "drizzle-orm";
  * post-event NYE re-engagement (the spec's named case, 7.15.2). Add other
  * re-engagement / re-pitch codes here if they are introduced.
  */
+/** @deprecated 2026-06-11 audit: the relationship block now applies to
+ *  EVERY scheduled venue send at dispatch, not just T17. Kept exported
+ *  for reference; no longer gates participation. */
 export const RELATIONSHIP_GATED_TEMPLATE_CODES: ReadonlySet<string> = new Set(["T17"]);
 
 export async function shouldBlockLifecycleSend(args: {
@@ -83,16 +86,22 @@ export async function shouldBlockLifecycleSend(args: {
     outreachBrandId = cc?.outreachBrandId ?? null;
   }
 
-  // Only relationship-gated templates are subject to the block.
-  if (!templateCode || !RELATIONSHIP_GATED_TEMPLATE_CODES.has(templateCode)) return false;
+  // 2026-06-11 audit: the bad-relationship block applies to EVERY
+  // scheduled venue send at dispatch — T13/T14/T15/T17/any lifecycle
+  // or queued cold send, template or no template. The interactive
+  // composer already hard-blocks all of them (IMPLEMENTATION_STATUS
+  // 3.10); the cron path previously re-checked only T17, so a venue
+  // flagged 'bad' AFTER scheduling could still receive a non-T17
+  // auto-send. Without a resolvable brand there is nothing
+  // relationship-scoped to check.
   if (!outreachBrandId) return false;
 
   const rel = await getVenueBrandRelationship(draft.venueId, outreachBrandId);
   const blocked = rel?.status === "bad";
   if (blocked) {
     logger.info(
-      { venueId: draft.venueId, outreachBrandId, templateCode },
-      "relationship-send-gate: blocking lifecycle send to a bad venue x brand pair",
+      { venueId: draft.venueId, outreachBrandId, templateCode: templateCode ?? "(none)" },
+      "relationship-send-gate: blocking scheduled venue send to a bad venue x brand pair",
     );
   }
   return blocked;
