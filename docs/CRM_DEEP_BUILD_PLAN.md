@@ -151,7 +151,7 @@
 - Acceptance: CONTACT-import-class garbage gets caught at creation;
   merge preserves outreach history; decisions persist.
 
-### D2. Data-quality center  [ ]
+### D2. Data-quality center  [x]
 - /admin/data-quality weekly hygiene screen: missing email/phone/place
   id, venues with no city tz, impossible slot assignments, stale
   owners, contacts on multiple venues, bad domain relations. Each row
