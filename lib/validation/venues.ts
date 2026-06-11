@@ -36,6 +36,43 @@ const optionalString = (max = 255) =>
 
 const optionalEmail = z.union([z.literal("").transform(() => undefined), emailSchema]).optional();
 
+/**
+ * JSON-encoded array of additional venue emails. The form serializes its
+ * dynamic field list into ONE hidden input because formToObject collapses
+ * repeated keys to the last value. Deduped case-insensitively, capped at
+ * 10 — every address ends up in venues.alternate_emails and compose
+ * paths join primary + alternates into the To line.
+ */
+const alternateEmailsSchema = z
+  .union([
+    z.literal("").transform(() => [] as string[]),
+    z.string().transform((raw, ctx) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid email list." });
+        return z.NEVER;
+      }
+      if (!Array.isArray(parsed)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid email list." });
+        return z.NEVER;
+      }
+      const cleaned = parsed.map((v) => String(v).trim()).filter((v) => v.length > 0);
+      for (const e of cleaned) {
+        if (!emailSchema.safeParse(e).success) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `"${e}" is not a valid email address.`,
+          });
+          return z.NEVER;
+        }
+      }
+      return [...new Map(cleaned.map((e) => [e.toLowerCase(), e])).values()].slice(0, 10);
+    }),
+  ])
+  .optional();
+
 // Auto-normalize any pasted/typed format (Google national, dashed, spaced, no
 // country code) to E.164 BEFORE validating, so staff are never nagged about the
 // format. A bare 10-digit number becomes +1XXXXXXXXXX.
@@ -57,6 +94,7 @@ const baseVenue = z.object({
   latitude: optionalLat,
   phoneE164: optionalPhone,
   email: optionalEmail,
+  alternateEmails: alternateEmailsSchema,
   /** Primary contact person (owner / manager). Optional. */
   contactName: z
     .union([z.literal("").transform(() => undefined), z.string().trim().max(120)])

@@ -14,7 +14,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toE164 } from "@/lib/phone";
-import { useActionState } from "react";
+import { Plus, X } from "lucide-react";
+import { useActionState, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { DuplicateWarning } from "./duplicate-warning";
 
@@ -29,6 +30,7 @@ interface VenueFormProps {
     location: { lng: number; lat: number } | null;
     phoneE164: string | null;
     email: string | null;
+    alternateEmails?: string[];
     contactName: string | null;
     websiteUrl: string | null;
     instagramHandle: string | null;
@@ -181,12 +183,9 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
         </FieldRow>
         <FieldRow>
           <FieldShell label="Email" name="email">
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              defaultValue={initial?.email ?? ""}
-              placeholder="events@venue.com"
+            <MultiEmailField
+              initialPrimary={initial?.email ?? ""}
+              initialAlternates={initial?.alternateEmails ?? []}
             />
           </FieldShell>
           <FieldShell label="Website" name="websiteUrl">
@@ -304,6 +303,88 @@ export function VenueForm({ mode, initial, cities, action }: VenueFormProps) {
 
       <SubmitRow mode={mode} />
     </form>
+  );
+}
+
+/**
+ * Primary email + a dynamic list of additional emails (operator request
+ * 2026-06-11: "can manually input multiple emails for one venue... and
+ * the email will email them all"). Extra addresses land in
+ * venues.alternate_emails; compose paths join primary + alternates into
+ * the To line. The list serializes into ONE hidden JSON input because
+ * the server's formToObject collapses repeated field names.
+ */
+function MultiEmailField({
+  initialPrimary,
+  initialAlternates,
+}: {
+  initialPrimary: string;
+  initialAlternates: string[];
+}) {
+  const idCounter = useRef(initialAlternates.length);
+  const [alternates, setAlternates] = useState<Array<{ id: string; value: string }>>(() =>
+    initialAlternates.map((value, i) => ({ id: `alt-${i}`, value })),
+  );
+
+  function addField() {
+    idCounter.current += 1;
+    setAlternates((prev) => [...prev, { id: `alt-${idCounter.current}`, value: "" }]);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Input
+        id="email"
+        name="email"
+        type="email"
+        defaultValue={initialPrimary}
+        placeholder="events@venue.com"
+      />
+      {alternates.map((alt) => (
+        <div key={alt.id} className="flex items-center gap-2">
+          <Input
+            type="email"
+            value={alt.value}
+            onChange={(e) =>
+              setAlternates((prev) =>
+                prev.map((a) => (a.id === alt.id ? { ...a, value: e.target.value } : a)),
+              )
+            }
+            placeholder="another@venue.com"
+            aria-label="Additional email"
+          />
+          <button
+            type="button"
+            onClick={() => setAlternates((prev) => prev.filter((a) => a.id !== alt.id))}
+            className="shrink-0 rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-rose-500/[0.08] hover:text-rose-600 dark:hover:text-rose-400"
+            aria-label="Remove this email"
+            title="Remove this email"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+      {alternates.length < 9 && (
+        <button
+          type="button"
+          onClick={addField}
+          className="inline-flex w-fit items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.08em] transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        >
+          <Plus className="h-3 w-3" />
+          Add email
+        </button>
+      )}
+      <input
+        type="hidden"
+        name="alternateEmails"
+        value={JSON.stringify(alternates.map((a) => a.value.trim()).filter(Boolean))}
+      />
+      {alternates.length > 0 && (
+        <p className="text-[11px] text-zinc-500">
+          Emails to this venue go to every address listed here.
+        </p>
+      )}
+    </div>
   );
 }
 

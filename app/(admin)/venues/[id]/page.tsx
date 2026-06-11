@@ -535,6 +535,7 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
                     location: venue.location,
                     phoneE164: venue.phoneE164,
                     email: venue.email,
+                    alternateEmails: venue.alternateEmails ?? [],
                     contactName: venue.contactName,
                     websiteUrl: venue.websiteUrl,
                     instagramHandle: venue.instagramHandle,

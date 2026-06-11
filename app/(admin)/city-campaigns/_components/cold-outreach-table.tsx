@@ -65,6 +65,7 @@ import { HandoffButton } from "./handoff-modal";
 import { LeadScoreChip, ScoreAllButton } from "./lead-score-ui";
 import { QuoDialControls } from "./quo-dial-controls";
 import { VenueAutocomplete } from "./venue-autocomplete";
+import { VenueEmailsButton } from "./venue-emails-popover";
 
 type SortKey =
   | "venue"
@@ -1705,6 +1706,12 @@ function ColdRow({
                 onCommit={editVenueField("email")}
               />
             </div>
+            <VenueEmailsButton
+              venueId={entry.venueId}
+              cityCampaignId={cityCampaignId}
+              email={entry.venueEmail}
+              alternateEmails={entry.venueAlternateEmails}
+            />
             {/* Direct-email compose icon -- ALWAYS shown so the operator can
                 email any row in one click (prefilled with the stored address
                 when there is one; otherwise an empty To they fill in). */}
@@ -1734,7 +1741,9 @@ function ColdRow({
                   window.dispatchEvent(
                     new CustomEvent("compose-email", {
                       detail: {
-                        to: entry.venueEmail ?? "",
+                        to: [entry.venueEmail, ...entry.venueAlternateEmails]
+                          .filter((e): e is string => Boolean(e?.trim()))
+                          .join(", "),
                         subject: draft.subject,
                         body: draft.body,
                         venueId: entry.venueId,
@@ -1973,6 +1982,12 @@ function ColdRow({
                   onCommit={editVenueField("email")}
                 />
               </div>
+              <VenueEmailsButton
+                venueId={entry.venueId}
+                cityCampaignId={cityCampaignId}
+                email={entry.venueEmail}
+                alternateEmails={entry.venueAlternateEmails}
+              />
               {/* Direct-email compose icon -- ALWAYS visible (was hover-only) so
               every row offers a one-click email. */}
               <ComposeEmailButton
@@ -1997,7 +2012,9 @@ function ColdRow({
                     window.dispatchEvent(
                       new CustomEvent("compose-email", {
                         detail: {
-                          to: entry.venueEmail ?? "",
+                          to: [entry.venueEmail, ...entry.venueAlternateEmails]
+                            .filter((e): e is string => Boolean(e?.trim()))
+                            .join(", "),
                           subject: draft.subject,
                           body: draft.body,
                           venueId: entry.venueId,

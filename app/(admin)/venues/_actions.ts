@@ -92,6 +92,11 @@ export async function createVenue(
           location,
           phoneE164: input.phoneE164,
           email: input.email,
+          // Alternates never duplicate the primary — compose paths join
+          // primary + alternates into one To line.
+          alternateEmails: (input.alternateEmails ?? []).filter(
+            (a) => a.toLowerCase() !== input.email?.toLowerCase(),
+          ),
           websiteUrl: input.websiteUrl,
           instagramHandle: input.instagramHandle,
           capacity: input.capacity,
@@ -149,6 +154,11 @@ export async function updateVenue(
   }
   if (input.phoneE164 !== undefined) patch.phoneE164 = input.phoneE164;
   if (input.email !== undefined) patch.email = input.email;
+  if (input.alternateEmails !== undefined) {
+    patch.alternateEmails = input.alternateEmails.filter(
+      (a) => a.toLowerCase() !== (input.email ?? "").toLowerCase(),
+    );
+  }
   if (input.contactName !== undefined) patch.contactName = input.contactName;
   if (input.websiteUrl !== undefined) patch.websiteUrl = input.websiteUrl;
   if (input.instagramHandle !== undefined) patch.instagramHandle = input.instagramHandle;

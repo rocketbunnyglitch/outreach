@@ -1554,6 +1554,78 @@ export async function commitVenueField(
 }
 
 // =========================================================================
+// commitVenueEmails — save the full email list for a venue
+// =========================================================================
+//
+// Operator request 2026-06-11: "can manually input multiple emails for
+// one venue... and the email will email them all." The multi-email
+// popover on the cold/warm table submits ALL addresses at once; the
+// first becomes venues.email (primary) and the rest land in
+// venues.alternate_emails. Compose paths join primary + alternates
+// into the To line, so everything listed here gets the email.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const commitVenueEmailsSchema = z.object({
+  venueId: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+  /** JSON-encoded string[] — first entry is the primary. */
+  emails: z.union([z.string().max(2000), z.undefined()]).transform((v) => v ?? "[]"),
+  cityCampaignId: z
+    .string()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+});
+
+export async function commitVenueEmails(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ venueId: string; email: string | null; alternateEmails: string[] }>> {
+  const { staff } = await requireStaff();
+
+  const parsed = commitVenueEmailsSchema.safeParse(formToObject(formData));
+  if (!parsed.success) return { ok: false, error: "Invalid email payload." };
+  const { venueId, emails: emailsJson, cityCampaignId } = parsed.data;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(emailsJson);
+  } catch {
+    return { ok: false, error: "Invalid email list." };
+  }
+  if (!Array.isArray(raw)) return { ok: false, error: "Invalid email list." };
+
+  const cleaned = raw.map((v) => String(v).trim()).filter((v) => v.length > 0);
+  for (const e of cleaned) {
+    if (!EMAIL_RE.test(e)) return { ok: false, error: `"${e}" is not a valid email.` };
+  }
+  // Dedupe case-insensitively, keep first-typed casing, cap at 10.
+  const unique = [...new Map(cleaned.map((e) => [e.toLowerCase(), e])).values()].slice(0, 10);
+  const primary = unique[0] ?? null;
+  const alternates = unique.slice(1);
+
+  try {
+    await withAuditContext(staff.id, async (tx) =>
+      tx
+        .update(venues)
+        .set({ email: primary, alternateEmails: alternates, updatedBy: staff.id })
+        .where(eq(venues.id, venueId)),
+    );
+
+    // Same ZeroBounce kickoff as the single-field path — primary only;
+    // alternates ride along on sends without holding up the save.
+    if (primary) {
+      const { validateEmailInBackground } = await import("@/lib/zerobounce");
+      validateEmailInBackground(primary, staff.id);
+    }
+
+    revalidatePath(`/city-campaigns/${cityCampaignId}`);
+    return { ok: true, data: { venueId, email: primary, alternateEmails: alternates } };
+  } catch (err) {
+    logger.error({ err, venueId }, "commitVenueEmails failed");
+    return { ok: false, error: "Couldn't save emails. Try again." };
+  }
+}
+
+// =========================================================================
 // createFollowUpFromRemark — turn a detected remark date into a real task
 // =========================================================================
 //
