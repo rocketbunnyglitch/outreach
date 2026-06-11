@@ -52,9 +52,12 @@
 
 import { cn } from "@/lib/cn";
 import {
+  Activity,
+  AlertTriangle,
   Archive,
   BarChart3,
   Bell,
+  BookOpen,
   Boxes,
   Briefcase,
   Building2,
@@ -62,6 +65,7 @@ import {
   CheckSquare,
   ClipboardCheck,
   Clock,
+  Columns3,
   FileCode,
   Globe,
   Globe2,
@@ -69,6 +73,7 @@ import {
   Info,
   LayoutGrid,
   LifeBuoy,
+  ListChecks,
   Map as MapIcon,
   Send,
   ShieldCheck,
@@ -100,8 +105,10 @@ const SECTIONS: Section[] = [
   {
     label: "Current Crawl",
     items: [
+      { href: "/worklist", label: "Daily Worklist", icon: <ListChecks className="h-3 w-3" /> },
       { href: "/", label: "Dashboard", icon: <LayoutGrid className="h-3 w-3" /> },
       { href: "/tracker", label: "Tracker", icon: <Table2 className="h-3 w-3" /> },
+      { href: "/pipeline", label: "Pipeline", icon: <Columns3 className="h-3 w-3" /> },
       {
         href: "/crawl-management",
         label: "Crawl Management",
@@ -168,9 +175,46 @@ const ADMIN_SECTION: Section = {
       icon: <ShieldOff className="h-3 w-3" />,
     },
     { href: "/admin/alerts", label: "Alerts", icon: <Bell className="h-3 w-3" /> },
+    { href: "/admin/email-health", label: "Email health", icon: <Activity className="h-3 w-3" /> },
+    {
+      href: "/admin/deliverability",
+      label: "Deliverability",
+      icon: <ShieldCheck className="h-3 w-3" />,
+    },
+    { href: "/admin/cron-health", label: "Cron health", icon: <Clock className="h-3 w-3" /> },
+    { href: "/admin/command", label: "Command", icon: <AlertTriangle className="h-3 w-3" /> },
+    { href: "/admin/workload", label: "Workload", icon: <Users className="h-3 w-3" /> },
+    { href: "/admin/data-quality", label: "Data quality", icon: <Table2 className="h-3 w-3" /> },
+    { href: "/admin/learning", label: "Learning", icon: <BookOpen className="h-3 w-3" /> },
+    { href: "/admin/autonomy", label: "Autonomy", icon: <ShieldCheck className="h-3 w-3" /> },
     { href: "/goals", label: "Goals", icon: <Target className="h-3 w-3" /> },
     { href: "/admin/analytics", label: "Analytics", icon: <BarChart3 className="h-3 w-3" /> },
+    {
+      href: "/misclassifications",
+      label: "Misclassifications",
+      icon: <Activity className="h-3 w-3" />,
+    },
+    {
+      href: "/admin/analytics/templates",
+      label: "→ Templates",
+      icon: <BarChart3 className="h-3 w-3 opacity-60" />,
+    },
+    {
+      href: "/admin/analytics/funnel",
+      label: "→ Funnel",
+      icon: <BarChart3 className="h-3 w-3 opacity-60" />,
+    },
+    {
+      href: "/admin/analytics/send-time",
+      label: "→ Send time",
+      icon: <BarChart3 className="h-3 w-3 opacity-60" />,
+    },
     { href: "/audit", label: "Audit", icon: <Archive className="h-3 w-3" /> },
+    {
+      href: "/reference/halloween-2026-intl",
+      label: "Reference",
+      icon: <BookOpen className="h-3 w-3" />,
+    },
   ],
 };
 
