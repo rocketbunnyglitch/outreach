@@ -157,9 +157,17 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     pending deliverables too, so the invariant
     pending_deliverables_on_archived_events (BOTH lists) stays safe on
     future closes.
-- [ ] P051-P053 replacement_pushes ↔ events/drafts (open pushes whose role since confirmed → should be filled; drafts with push_id whose push closed)
-- [ ] P054-P056 lineup_change_events ↔ events (writer coverage: every confirm/cancel since deploy has a row; payload allowlist re-audit)
-- [~] P057-P059 tasks (polymorphic targets) — major chunk done early
+- [x] P051-P053 replacement_pushes ↔ events/drafts
+  » No pushes fired yet (feature shipped today). All three invariants
+    already live and green: push_open_but_filled, drafts_push_orphan,
+    drafts-on-closed-push. Family closes on standing watch.
+- [x] P054-P056 lineup_change_events writer coverage
+  » Zero lineup mutations since B1 shipped — coverage vacuously true, which
+    is NOT proof. Made verification automatic at first occurrence:
+    invariants lineup_log_missed_confirm / lineup_log_missed_cancel (BOTH
+    lists, 1h grace) flag any post-B1 confirm/cancel lacking its durable
+    log row. Payload allowlist re-checked at build (sanitizer unit-tested).
+- [x] P057-P059 tasks (polymorphic targets) — closed; major chunk done early
   (operator report 2026-06-11: "task list polluted with emails not scoped
   to Halloween"):
   » 1,632 open smart-note tasks on email threads; 97% pollution — 501 with

@@ -247,6 +247,22 @@ check push_open_but_filled \
        WHERE ve.event_id = rp.event_id AND ve.role::text = rp.role
          AND ve.status = 'confirmed')"
 
+check lineup_log_missed_confirm \
+  "post-B1 confirms with NO lineup_change_events row (durable-log writer missed a path; 1h grace)" \
+  "SELECT count(*) FROM venue_events ve
+   WHERE ve.confirmed_at > '2026-06-11 14:00:00+00'
+     AND ve.confirmed_at < now() - interval '1 hour'
+     AND NOT EXISTS (SELECT 1 FROM lineup_change_events l
+       WHERE l.venue_event_id = ve.id AND l.change_type = 'confirmed')"
+
+check lineup_log_missed_cancel \
+  "post-B1 cancels with NO lineup_change_events row (1h grace)" \
+  "SELECT count(*) FROM venue_events ve
+   WHERE ve.cancelled_at > '2026-06-11 14:00:00+00'
+     AND ve.cancelled_at < now() - interval '1 hour'
+     AND NOT EXISTS (SELECT 1 FROM lineup_change_events l
+       WHERE l.venue_event_id = ve.id AND l.change_type = 'cancelled')"
+
 # ---- polymorphic targets ----------------------------------------------------
 check tasks_thread_target_orphan \
   "open tasks targeting email threads that no longer exist" \

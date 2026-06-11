@@ -190,6 +190,24 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
             AND ve.status = 'confirmed')`,
   },
   {
+    name: "lineup_log_missed_confirm",
+    desc: "Post-B1 confirms with no durable lineup-log row (a writer path was missed)",
+    query: sql`SELECT count(*)::int AS n FROM venue_events ve
+      WHERE ve.confirmed_at > '2026-06-11 14:00:00+00'
+        AND ve.confirmed_at < now() - interval '1 hour'
+        AND NOT EXISTS (SELECT 1 FROM lineup_change_events l
+          WHERE l.venue_event_id = ve.id AND l.change_type = 'confirmed')`,
+  },
+  {
+    name: "lineup_log_missed_cancel",
+    desc: "Post-B1 cancels with no durable lineup-log row",
+    query: sql`SELECT count(*)::int AS n FROM venue_events ve
+      WHERE ve.cancelled_at > '2026-06-11 14:00:00+00'
+        AND ve.cancelled_at < now() - interval '1 hour'
+        AND NOT EXISTS (SELECT 1 FROM lineup_change_events l
+          WHERE l.venue_event_id = ve.id AND l.change_type = 'cancelled')`,
+  },
+  {
     name: "tasks_thread_target_orphan",
     desc: "Open tasks targeting email threads that no longer exist",
     query: sql`SELECT count(*)::int AS n FROM tasks k
