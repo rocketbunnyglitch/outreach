@@ -31,13 +31,17 @@ const COOLDOWN_MS = 15_000;
 const CHUNK_ERROR_RE =
   /ChunkLoadError|Loading chunk\s+[\w-]+\s+failed|Loading CSS chunk|(?:error|Failed) loading dynamically imported module|Failed to fetch dynamically imported module|Importing a module script failed/i;
 
-// Hydration-family minified React errors + their dev-mode phrasings.
-// Includes the streaming-reveal crash: React's inline $RC/$RS/$RB/$RT
-// boundary-completion runtime throwing "reading 'parentNode'" on a null
-// placeholder (a fatal stream/DOM desync). The $R* frame appears in the
+// FATAL hydration family only (iPhone fix 2026-06-11): React 19
+// SELF-RECOVERS from #418/#419/#421/#424/#425 — it client-renders the
+// mismatched subtree and the page keeps working. Safari trips those
+// routinely on streamed pages, and reloading on them turned harmless
+// self-healed warnings into a reload storm + crash screen on iOS.
+// Only the truly DEAD cases reload: root hydration failure (#422/#423)
+// and the $RC/$RS/$RB/$RT streaming-reveal desync ("reading
+// 'parentNode'" on a null placeholder). The $R* frame appears in the
 // stack, so matches() also tests Error.stack below.
 const HYDRATION_ERROR_RE =
-  /Minified React error #(?:418|419|421|422|423|424|425)\b|Hydration failed|error while hydrating|hydration mismatch|Text content does ?n['’]?t match|\bat \$R[BCST]\b|\$R[BCST]\s*\(|reading 'parentNode'/i;
+  /Minified React error #(?:422|423)\b|\bat \$R[BCST]\b|\$R[BCST]\s*\(|reading 'parentNode'/i;
 
 // Deployment-skew Server Action failure. Raised client-side by Next's
 // action runtime when a tab holds action IDs from a previous build, so the

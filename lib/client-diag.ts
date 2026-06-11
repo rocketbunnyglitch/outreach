@@ -28,7 +28,14 @@ export const CLIENT_DIAG_SCRIPT = `
     var RELOAD_KEY = 'perse:chunk-reload-at';
     var COOLDOWN = 15000;
     var CHUNK_RE = /ChunkLoadError|Loading chunk|Loading CSS chunk|dynamically imported module|Importing a module script failed/i;
+    // Broad hydration-family matcher — DIAGNOSTICS ONLY (beacon enrichment).
     var HYDR_RE = /Minified React error #(?:418|419|421|422|423|424|425)\\b|Hydration failed|error while hydrating|hydration mismatch/i;
+    // FATAL-only reload trigger (iPhone fix 2026-06-11): React 19 self-
+    // recovers from #418-family mismatches (client-renders the subtree and
+    // keeps going) — Safari trips them routinely on streamed pages, and
+    // reloading on them produced a reload storm + crash screen on iOS.
+    // Only root hydration failure (#422/#423) reloads.
+    var HYDR_FATAL_RE = /Minified React error #(?:422|423)\\b/i;
     // Streaming-completion crash: when React's inline Suspense-reveal runtime
     // ($RC/$RS/$RB/$RT) can't find a boundary's placeholder node it throws
     // "Cannot read properties of null (reading 'parentNode')" — a fatal
@@ -82,7 +89,7 @@ export const CLIENT_DIAG_SCRIPT = `
         return origErr.apply(console, arguments);
       };
     } catch (e) {}
-    function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_RE.test(s) || STREAM_RE.test(s); }
+    function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_FATAL_RE.test(s) || STREAM_RE.test(s); }
     function maybeReload(s) {
       try {
         if (!recoverable(s)) return;
