@@ -294,6 +294,16 @@ async function archiveCampaignWrites(
       AND cc.campaign_id = ${id}::uuid
       AND e.archived_at IS NULL
   `);
+  // Events too (P036: 679 past-campaign events sat active forever) — the
+  // campaign's crawls close with the campaign.
+  await tx.execute(sql`
+    UPDATE events e
+    SET archived_at = NOW(), updated_at = NOW()
+    FROM city_campaigns cc
+    WHERE cc.id = e.city_campaign_id
+      AND cc.campaign_id = ${id}::uuid
+      AND e.archived_at IS NULL
+  `);
 }
 
 export async function archiveCampaign(id: string): Promise<void> {

@@ -128,6 +128,14 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND (coe.last_touch_at IS NULL OR coe.last_touch_at < cl.max_call - interval '1 hour')`,
   },
   {
+    name: "events_on_archived_campaign",
+    desc: "Active events under an archived campaign (archive cascade missed)",
+    query: sql`SELECT count(*)::int AS n FROM events e
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN campaigns c ON c.id = cc.campaign_id
+      WHERE e.archived_at IS NULL AND c.archived_at IS NOT NULL`,
+  },
+  {
     name: "ve_confirmed_no_confirmed_at",
     desc: "Confirmed venue-events missing their confirmed_at stamp (breaks goals/learning by-period math)",
     query: sql`SELECT count(*)::int AS n FROM venue_events

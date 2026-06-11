@@ -172,6 +172,13 @@ check cold_touch_behind_calls \
      AND (coe.last_touch_at IS NULL OR coe.last_touch_at < cl.max_call - interval '1 hour')"
 
 # ---- venue_events ----------------------------------------------------------
+check events_on_archived_campaign \
+  "active events under an ARCHIVED campaign (archive cascade missed)" \
+  "SELECT count(*) FROM events e
+   JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+   JOIN campaigns c ON c.id = cc.campaign_id
+   WHERE e.archived_at IS NULL AND c.archived_at IS NOT NULL"
+
 check ve_confirmed_no_confirmed_at \
   "confirmed venue_events missing their confirmed_at stamp (writer hole)" \
   "SELECT count(*) FROM venue_events

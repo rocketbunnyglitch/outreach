@@ -110,8 +110,15 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     created_at fallback). Writer hole closed: addVenueToEvent now stamps
     direct-as-confirmed inserts. Invariant ve_confirmed_no_confirmed_at in
     BOTH lists.
-- [ ] P033-P035 venue_events cadence stamps vs email_drafts/messages (two_week/one_week sent_at set but no matching sent draft; lifecycle drafts sent but stamp null)
-- [ ] P036-P038 events ↔ city_campaigns ↔ campaigns ↔ brands (chain integrity; events on archived cc; required_*_count vs crawl_format consistency)
+- [x] P033-P035 venue_events cadence stamps vs drafts
+  » CLEAN all four directions (sent 2wk/1wk drafts all stamped; all stamps
+    backed by a real sent draft). The lifecycle bookkeeping matches reality.
+- [x] P036-P038 events chain + format consistency
+  » Same archive-cascade class as P024: 679 active events under the three
+    archived past campaigns — archived with the campaign date; the
+    archiveCampaignWrites cascade now closes events too. day_party-with-
+    final-required: 0. Future events with zero required counts: 0.
+    Invariant events_on_archived_campaign in BOTH lists.
 - [ ] P039-P041 eventbrite links ↔ events (eb id set but sync never ran; sales>0 with no eb link; dangling eb ids)
 - [ ] P042-P044 wristbands ↔ venue_events (wristband rows on non-wristband-role VE; confirmed wristband VE with no wristband row; status vs shipped_at/delivered_at consistency)
 - [ ] P045-P047 crawl_hosts/internal_hosts/external_hosts ↔ events (hosts on archived events; external_host_shipments cc mismatch with host assignment)
