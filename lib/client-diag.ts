@@ -55,7 +55,33 @@ export const CLIENT_DIAG_SCRIPT = `
       mo.observe(document.documentElement, {childList:true, subtree:true});
       setTimeout(function(){ try{mo.disconnect();}catch(e){} }, 8000);
     }catch(e){} }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startMO); else startMO();
+    // Start observing IMMEDIATELY (not at DOMContentLoaded): the iPhone #418
+    // beacons arrived with readyState 'loading' — the mismatch fires during
+    // the streaming parse, so a DOMContentLoaded-gated observer logged
+    // nothing. Observing from script-in-head start captures React's
+    // discard/replace swap wherever it happens.
+    startMO();
+    // React 19 prints the actual hydration DIFF via console.error before
+    // throwing the minified #418. Buffer hydration-ish console output so the
+    // beacon carries the exact mismatching text/attribute, not just the code.
+    var errLog = [];
+    try {
+      var origErr = console.error;
+      console.error = function () {
+        try {
+          if (errLog.length < 6) {
+            var s = '';
+            for (var i = 0; i < arguments.length && i < 4; i++) {
+              try { s += (typeof arguments[i] === 'string' ? arguments[i] : JSON.stringify(arguments[i])) + ' | '; } catch (e) { s += '?| '; }
+            }
+            if (/hydrat|418|did not match|server rendered|client render/i.test(s)) {
+              errLog.push(s.slice(0, 600));
+            }
+          }
+        } catch (e) {}
+        return origErr.apply(console, arguments);
+      };
+    } catch (e) {}
     function recoverable(s) { s = String(s || ''); return CHUNK_RE.test(s) || HYDR_RE.test(s) || STREAM_RE.test(s); }
     function maybeReload(s) {
       try {
@@ -83,6 +109,7 @@ export const CLIENT_DIAG_SCRIPT = `
           readyState: document.readyState,
           online: navigator.onLine,
           mutLog: mutLog.slice(0, 24),
+          errLog: errLog.slice(0, 6),
           extra: extra || null,
           ts: new Date().toISOString()
         };
