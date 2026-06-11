@@ -359,6 +359,38 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
     const n = Number((relinked as unknown as { rowCount?: number }).rowCount ?? 0);
     if (n > 0) logger.info({ relinked: n }, "stale-tagger: retro-linked threads to venues");
 
+    // LABEL-FIRST attribution (operator question 2026-06-11: "I thought
+    // only emails with the Gmail label"): the campaign's Gmail label
+    // (campaigns.outreach_gmail_label) is an EXPLICIT signal — engine
+    // auto-tag or a human put it there. When a NULL-cc venue thread
+    // carries it, attribute to that campaign's city-campaign in the
+    // venue's city, regardless of how many campaigns the venue is in.
+    // 118 of 128 correctly-attributed threads carry the label; the
+    // venue heuristic below is only the fallback for the rest.
+    const labelFilled = await db.execute(sql`
+      UPDATE email_threads t
+      SET city_campaign_id = cc.id, updated_at = NOW()
+      FROM venues v, campaigns c, city_campaigns cc
+      WHERE t.archived_at IS NULL AND t.city_campaign_id IS NULL
+        AND v.id = t.venue_id
+        AND c.archived_at IS NULL AND c.outreach_gmail_label IS NOT NULL
+        AND cc.campaign_id = c.id AND cc.city_id = v.city_id
+        AND EXISTS (
+          SELECT 1 FROM email_thread_labels tl
+          JOIN team_labels l ON l.id = tl.team_label_id
+          WHERE tl.thread_id = t.id
+            AND lower(l.name) = lower(c.outreach_gmail_label)
+        )
+        AND EXISTS (
+          SELECT 1 FROM email_messages m
+          WHERE m.thread_id = t.id
+            AND m.sent_at >= COALESCE(c.start_date, '-infinity'::timestamptz)
+        )
+    `);
+    const nl = Number((labelFilled as unknown as { rowCount?: number }).rowCount ?? 0);
+    if (nl > 0)
+      logger.info({ labelFilled: nl }, "stale-tagger: label-based thread campaign attribution");
+
     // P012: venue-linked threads with NO campaign attribution drop out of
     // every campaign-scoped view (city inbox, NBA warm loaders, learning
     // stats). When the venue sits in exactly ONE active city-campaign the
