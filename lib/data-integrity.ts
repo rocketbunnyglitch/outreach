@@ -88,6 +88,20 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
       WHERE archived_at IS NULL GROUP BY 1, 2 HAVING count(*) > 1) d`,
   },
   {
+    name: "drafts_venue_merged",
+    desc: "Unsent drafts addressed to merged-away venues",
+    query: sql`SELECT count(*)::int AS n FROM email_drafts d
+      JOIN venues v ON v.id = d.venue_id
+      WHERE d.sent_at IS NULL AND v.merged_into_venue_id IS NOT NULL`,
+  },
+  {
+    name: "scheduled_past_stuck_silent",
+    desc: "Scheduled sends >2h overdue with zero attempts (send cron not even trying)",
+    query: sql`SELECT count(*)::int AS n FROM email_drafts d
+      WHERE d.sent_at IS NULL AND d.scheduled_for < now() - interval '2 hours'
+        AND d.send_attempts = 0`,
+  },
+  {
     name: "t11_gate_rows_missing",
     desc: "Confirmed wristband venues missing their participant_poster deliverable row",
     query: sql`SELECT count(*)::int AS n FROM venue_events ve

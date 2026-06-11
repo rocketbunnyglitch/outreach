@@ -114,6 +114,13 @@ check drafts_push_orphan \
   "SELECT count(*) FROM email_drafts d WHERE d.replacement_push_id IS NOT NULL
      AND NOT EXISTS (SELECT 1 FROM replacement_pushes p WHERE p.id = d.replacement_push_id)"
 
+check drafts_venue_merged   "unsent drafts addressed to merged-away venues"   "SELECT count(*) FROM email_drafts d JOIN venues v ON v.id = d.venue_id
+   WHERE d.sent_at IS NULL AND v.merged_into_venue_id IS NOT NULL"
+
+check scheduled_past_stuck_silent   "scheduled sends >2h overdue with ZERO attempts (cron not even trying)"   "SELECT count(*) FROM email_drafts d
+   WHERE d.sent_at IS NULL AND d.scheduled_for < now() - interval '2 hours'
+     AND d.send_attempts = 0"
+
 # ---- cold entries ----------------------------------------------------------
 check cold_venue_merged \
   "active cold entries on merged-away venues" \

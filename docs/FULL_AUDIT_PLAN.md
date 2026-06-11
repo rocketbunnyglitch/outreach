@@ -72,9 +72,21 @@ Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) 
     stale-tagger now also backfills unambiguous cc. Invariant
     threads_venue_no_cc_unambig (>48h) in BOTH lists. Ambiguous multi-cc
     venues deliberately left null for human attribution.
-- [ ] P015-P017 email_messages ↔ threads (counts vs thread.message_count; last_message_at drift; direction vs thread.direction)
-- [ ] P018-P020 email_drafts ↔ threads/venues/venue_events (drafts pointing at deleted threads; venue_event_id null on lifecycle drafts; replacement_push_id orphans)
-- [ ] P021-P023 email_send_events ↔ threads/templates/accounts (null thread_id sends that should attribute; template_id null on templated sends)
+- [x] P015-P017 email_messages ↔ threads
+  » Counter corruption fixed at P008 (poller duplicate bump @b695aea; 3,381
+    reconciled). last_message drift: 0. Direction consistency: 0 both ways
+    (should-be-mixed and marked-mixed-but-single). Family closed.
+- [x] P018-P020 email_drafts family
+  » ALL CLEAN: lifecycle-draft-without-VE 0, drafts-on-closed-push 0, venue
+    orphans 0, merged-venue drafts 0, silently-stuck scheduled 0. Two
+    invariants added to BOTH lists (drafts_venue_merged,
+    scheduled_past_stuck_silent — the latter catches a dead send-cron).
+    Lesson: python file edits on Windows need newline='' (CRLF broke the bash
+    harness once; both copies LF-normalized).
+- [x] P021-P023 email_send_events
+  » ALL CLEAN over 30d window (114 sends): thread attribution 0 missing, VE
+    references 0 dangling, draft-vs-send template agreement 0 mismatches.
+    The attribution chain under analytics/learning/Loop C is sound.
 - [ ] P024-P026 cold_outreach_entries ↔ venues/city_campaigns (entries for archived/merged venues; venues active in a cc with NO cold entry; duplicate active entries)
 - [ ] P027-P029 cold_outreach_entries.last_touch_at vs email_messages/calls (reconciliation — the class found 2026-06-11; verify backfill complete incl. CALL touches)
 - [ ] P030-P032 venue_events ↔ events/venues (orphans; confirmed VE on archived event; VE whose venue city ≠ crawl city — sync w/ data-quality check)
