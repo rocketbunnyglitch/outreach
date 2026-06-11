@@ -747,7 +747,13 @@ export function CrawlSlotTable({ crawl, cityId, cityCampaignId, campaignId, staf
           "shadow-[0_0_24px_-4px_rgba(16,185,129,0.35)] ring-2 ring-emerald-500/60 dark:shadow-[0_0_28px_-2px_rgba(16,185,129,0.4)] dark:ring-emerald-400/50",
       )}
     >
-      <header className="flex items-baseline justify-between gap-3 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
+      {/* LEFT-clustered header (operator report 2026-06-11: "the link
+          isn't working on the crawl table"): the city sheet can overflow
+          horizontally, and justify-between parked the EB controls at the
+          far-right OVERFLOW edge — the Link button (and its input/error)
+          rendered off-screen. Everything now sits next to the title in
+          the always-visible region. */}
+      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-zinc-200/60 border-b px-5 py-3 dark:border-zinc-800/40">
         <CrawlHeader crawl={crawl} cityCampaignId={cityCampaignId} />
         <div className="flex items-start gap-3">
           <CrawlCornerControls
