@@ -45,6 +45,14 @@ const FIRE_DRILL_CATEGORIES = new Set([
 /** A cron silent for this long is a finding (most run daily or faster). */
 const CRON_SILENT_HOURS = 26;
 
+/** Crons that legitimately run less than daily — flat 26h would
+ *  false-alarm every weekend, and false alarms on a problems-only
+ *  screen teach people to ignore it. Hours = expected max gap + slack. */
+const CRON_MAX_SILENCE_HOURS: Record<string, number> = {
+  // Runs Tue/Wed/Thu 14:00 — Fri→Tue quiet spell is ~96h by design.
+  "cancellation-review": 120,
+};
+
 export async function loadCommandCenter(campaignId: string | null): Promise<CommandItem[]> {
   const items: CommandItem[] = [];
 
@@ -122,7 +130,8 @@ export async function loadCommandCenter(campaignId: string | null): Promise<Comm
 
   // 4. System: silent or erroring crons.
   for (const c of rowsOf<{ name: string; status: string; hours_ago: number }>(cronRows)) {
-    const silent = Number(c.hours_ago) >= CRON_SILENT_HOURS;
+    const silenceLimit = CRON_MAX_SILENCE_HOURS[c.name] ?? CRON_SILENT_HOURS;
+    const silent = Number(c.hours_ago) >= silenceLimit;
     const errored = c.status === "error";
     if (!silent && !errored) continue;
     items.push({

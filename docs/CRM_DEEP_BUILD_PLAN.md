@@ -191,7 +191,7 @@
   review_window: engine-queued drafts dispatch after the veto window
   iff policy + env + relationship/suppression gates all pass.
 
-### E4. Hardening close-out  [ ]
+### E4. Hardening close-out  [~ E2E scheduled-send PROVEN: 45 cron-dispatched sends, latest 2026-06-11 12:25 UTC; remaining: backup restore drill (awaiting explicit operator approval)]
 - lib/env.ts canonical contract + .env.example complete; package
   manager docs match reality (npm ci is canonical, pnpm references
   removed); QA_MATRIX release-gate section (machine-route auth check,

@@ -33,6 +33,7 @@ import {
   crawlHealthFromInputs,
 } from "@/lib/health-score-core";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { cache } from "react";
 
 export interface CrawlHealthRow {
   eventId: string;
@@ -109,8 +110,13 @@ function crawlLabel(dayPart: string | null, crawlNumber: number | null, eventDat
  * Grade every crawl in scope, roll up to city + campaign, and surface the
  * at-risk crawls. Scope mirrors the dashboard: a single campaign when
  * campaignId is set, every active campaign when null.
+ *
+ * Wrapped in React cache(): the dashboard render calls this directly (the
+ * command-center card) AND through loadNextBestActions (the C1 health
+ * boost) — cache() dedupes to ONE execution per request instead of running
+ * the whole aggregate stack twice.
  */
-export async function loadCampaignHealth(
+export const loadCampaignHealth = cache(async function loadCampaignHealthImpl(
   campaignId: string | null,
 ): Promise<CampaignHealthSummary> {
   const campaignFilter = campaignId ? eq(cityCampaigns.campaignId, campaignId) : undefined;
@@ -364,4 +370,4 @@ export async function loadCampaignHealth(
     });
 
   return { campaign, cities: cityRows, atRiskCrawls };
-}
+});
