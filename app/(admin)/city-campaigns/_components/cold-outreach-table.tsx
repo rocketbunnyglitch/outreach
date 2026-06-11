@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/data-table";
 import { useGridArrowNav } from "@/components/ui/data-table/use-grid-arrow-nav";
 import { InlineCell } from "@/components/ui/inline-cell";
+import { RotChip } from "@/components/ui/rot-chip";
 import { useShortcut } from "@/components/ui/shortcut-provider";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -1669,6 +1670,19 @@ function ColdRow({
                 {/* AI lead score chip (Haiku ROI #5). Shows score
                     0-100 + tooltip reason; tone scales with score. */}
                 <LeadScoreChip score={entry.aiLeadScore} reason={entry.aiLeadScoreReason} />
+                {/* Rot chip (CRM plan C2): an ACTIVE outreach row untouched
+                    too long shows its age in place — same thresholds as the
+                    aging watchdog (warn 7d / late 10d). Terminal + not-yet-
+                    started rows stay quiet. */}
+                {entry.lastTouchAt &&
+                  ["email_sent", "follow_up_due", "called", "voicemail", "no_answer"].includes(
+                    displayStatus,
+                  ) && (
+                    <RotChip
+                      kind="cold_outreach"
+                      ageHours={(Date.now() - new Date(entry.lastTouchAt).getTime()) / 3_600_000}
+                    />
+                  )}
                 <span className="font-mono text-[10px] text-zinc-400 uppercase tracking-[0.08em]">
                   ·
                 </span>
