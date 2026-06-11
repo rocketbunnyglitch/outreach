@@ -1,6 +1,7 @@
 import { requireStaff } from "@/lib/auth";
 import { runCancellationReview } from "@/lib/cancellation-review";
 import { loadCrawlGantt } from "@/lib/crawl-gantt";
+import { loadCrawlHoursGantt } from "@/lib/crawl-hours-gantt";
 import {
   loadCrawlIssues,
   loadCrawlSupport,
@@ -9,18 +10,20 @@ import {
 } from "@/lib/crawl-support";
 import { CancellationReviewCard } from "./_components/cancellation-review-card";
 import { CrawlGantt } from "./_components/crawl-gantt";
+import { CrawlHoursGantt } from "./_components/crawl-hours-gantt";
 import { CrawlSupportBoard } from "./_components/crawl-support-board";
 
 export const dynamic = "force-dynamic";
 
 export default async function CrawlSupportPage() {
   await requireStaff();
-  const [data, issues, staff, calls, gantt, cancelReview] = await Promise.all([
+  const [data, issues, staff, calls, gantt, hoursGantt, cancelReview] = await Promise.all([
     loadCrawlSupport({ now: new Date() }),
     loadCrawlIssues(),
     loadSupportStaff(),
     loadRecentCalls(),
     loadCrawlGantt(),
+    loadCrawlHoursGantt().catch(() => []),
     // Read-only scan (notify:false): same risk signals the cron flags,
     // rendered as a queue so the 7.9 review wave is visible, not just a
     // one-shot notification someone might miss.
@@ -58,6 +61,12 @@ export default async function CrawlSupportPage() {
         crawlNights={gantt.crawlNights}
         gapNights={gantt.gapNights}
       />
+
+      {/* HOURS gantt (operator request x3): within each upcoming crawl,
+          every venue slot as a bar on a scrollable time axis — coverage,
+          overlaps and red no-coverage gaps at a glance. Bars come from
+          slot times or parsed agreed-hours text. */}
+      <CrawlHoursGantt crawls={hoursGantt} />
 
       <CrawlSupportBoard data={data} issues={issues} staff={staff} calls={calls} />
     </div>
