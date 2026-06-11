@@ -39,7 +39,12 @@
   mirrors the harness invariants, surfaces on /admin/data-quality (red
   "Linkage integrity" section) AND the command center (problems-only). Bash
   harness stays the manual/pre-deploy runner; the two lists must stay in sync.
-- [ ] P007 Feature inventory list reviewed against refdoc section map (append any missing feature phases to Wave 3)
+- [x] P007 Feature inventory vs refdoc section map — 6 features were missing
+  from Wave 3; appended as P348-P353 (see Wave 3 extension). Refdoc sections
+  confirmed otherwise covered: §0 principles (enforced via gates/audits),
+  §1 priorities (P296/P316), §3 domains (P314+P078), §4 conventions (E3
+  compliance gate), §6 cadence (P280), §7 lifecycle (P292-295), §8 templates
+  (P288), §10 future items (out of scope by refdoc's own ruling).
 - [x] P008 Baseline run: 5 failures (2 harness bugs + 3 real)
   » thread_message_count_drift 2353: WRITER BUG — gmail poller bumped thread counters on duplicate redeliveries (onConflictDoNothing no-op still incremented message_count/unread_count and advanced last_*_at). Fixed: ingestMessage early-returns null when no row inserted. Data: 3,381 threads reconciled (counts + unread clamped to real inbound).
   » cold_touch_behind_mail 8: residue since earlier backfill — topped up; poller fix (9f788b5) keeps it green forward.
@@ -49,7 +54,16 @@
 
 ## Wave 1 — Data linkage + integrity (define invariant → scan → fix data → fix writer → permanent check)
 Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) permanent check added + re-scan clean.
-- [ ] P009-P011 email_threads ↔ venues (venue_id orphans; threads matched to archived/merged venues; merged_into chain followed)
+- [x] P009-P011 email_threads ↔ venues
+  » orphans 0, merged-chain 0 (harness green from baseline).
+  » Match QUALITY finding: 648 unmatched threads with parseable sender; 21
+    exactly matched a venue primary email + 6 by website domain (non-freemail)
+    — threads that arrived BEFORE their venue existed; nothing retro-linked.
+    Data: 27 linked (domain ones at 0.70 confidence). Writer: nightly
+    retro-link step added to stale-tagger (exact-email only — domain too
+    fuzzy to automate). Permanent check threads_unlinked_exact_email (>48h)
+    added to BOTH lists. Remaining ~620 unmatched = genuinely non-venue or
+    unknown senders; revisit rate in P282 (poll/match-rate feature audit).
 - [ ] P012-P014 email_threads ↔ city_campaigns (null cc on venue-attributed threads where venue has exactly one active cc; cc pointing at archived campaign)
 - [ ] P015-P017 email_messages ↔ threads (counts vs thread.message_count; last_message_at drift; direction vs thread.direction)
 - [ ] P018-P020 email_drafts ↔ threads/venues/venue_events (drafts pointing at deleted threads; venue_event_id null on lifecycle drafts; replacement_push_id orphans)
@@ -155,6 +169,13 @@ Order = operator-critical first. Each tab gets 4 phase slots (F+D, M, B, X) unle
 - [ ] P322-P323 Search/palette + saved views + labels + snippets
 - [ ] P324-P325 Notifications + daily digest + mentions
 - [ ] P326-P327 Print surfaces (staff sheet fidelity; poster = SKIP-FLAG)
+### Wave 3 extension (P007 refdoc gap findings)
+- [ ] P348 Hosts end-to-end (refdoc §2 + §7.13): roster, assignment, confirmation timing, SMS consent, payment-flow surfaces
+- [ ] P349 Guest-count math (refdoc §5): pitch numbers by priority×slot + sales-update math in merge fields — verify against the locked tables
+- [ ] P350 Cross-domain handoff + escalation (refdoc §6.2): full flow audit incl. cadence-floor interaction
+- [ ] P351 Wristband shipping logistics (refdoc §7.12): tracker, statuses, shipment timing alerts
+- [ ] P352 Venue enrichment (places-based): trigger, fields written, attempt-log skip logic
+- [ ] P353 Smart notes + mentions + suggestions loop
 
 ## Wave 4 — Cross-cutting + closeout
 - [ ] P328-P330 Performance pass: slowest 10 pages profiled (server timing), N+1s fixed, indexes verified

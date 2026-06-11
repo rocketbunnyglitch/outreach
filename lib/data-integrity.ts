@@ -39,6 +39,19 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
       WHERE v.merged_into_venue_id IS NOT NULL`,
   },
   {
+    name: "threads_unlinked_exact_email",
+    desc: "Threads >48h old matching a venue email exactly but never linked (nightly retro-link should heal)",
+    query: sql`SELECT count(*)::int AS n FROM (
+      SELECT t.id, lower((regexp_match(m.from_address, '<([^>]+)>'))[1]) AS addr
+      FROM email_threads t
+      JOIN LATERAL (SELECT from_address FROM email_messages
+        WHERE thread_id = t.id AND direction = 'inbound'
+        ORDER BY sent_at DESC LIMIT 1) m ON true
+      WHERE t.archived_at IS NULL AND t.venue_id IS NULL
+        AND t.created_at < now() - interval '48 hours') u
+    JOIN venues v ON lower(v.email) = u.addr AND v.archived_at IS NULL`,
+  },
+  {
     name: "cold_touch_behind_mail",
     desc: "Cold-entry last touch older than newest outbound email (Gmail-send linkage class)",
     query: sql`SELECT count(*)::int AS n FROM cold_outreach_entries coe

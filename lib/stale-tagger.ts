@@ -331,6 +331,37 @@ export async function runStaleTagger(): Promise<StaleTaggerResult> {
       ),
     );
 
+  // Retro-link venue matches (FULL_AUDIT P009, 2026-06-11): threads that
+  // arrived BEFORE their venue existed never get matched — ingest-time
+  // matching can't see the future, and nothing healed them afterwards
+  // (27 such threads found at audit baseline). Nightly: link unmatched
+  // threads whose latest inbound sender exactly equals a venue's primary
+  // email (confidence 1.0 by definition). Domain-level retro-matching
+  // stays manual — too fuzzy to automate silently.
+  try {
+    const relinked = await db.execute(sql`
+      WITH unmatched AS (
+        SELECT t.id, lower((regexp_match(m.from_address, '<([^>]+)>'))[1]) AS addr
+        FROM email_threads t
+        JOIN LATERAL (
+          SELECT from_address FROM email_messages
+          WHERE thread_id = t.id AND direction = 'inbound'
+          ORDER BY sent_at DESC LIMIT 1
+        ) m ON true
+        WHERE t.archived_at IS NULL AND t.venue_id IS NULL
+      )
+      UPDATE email_threads t
+      SET venue_id = v.id, updated_at = NOW()
+      FROM unmatched u
+      JOIN venues v ON lower(v.email) = u.addr AND v.archived_at IS NULL
+      WHERE t.id = u.id
+    `);
+    const n = Number((relinked as unknown as { rowCount?: number }).rowCount ?? 0);
+    if (n > 0) logger.info({ relinked: n }, "stale-tagger: retro-linked threads to venues");
+  } catch (err) {
+    logger.warn({ err }, "stale-tagger: retro-link step failed (non-fatal)");
+  }
+
   logger.info({ newlyStale, cleared }, "stale-tagger run complete");
   return { newlyStale, cleared };
 }

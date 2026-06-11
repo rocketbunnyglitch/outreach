@@ -59,6 +59,18 @@ check threads_cc_archived_campaign \
    JOIN campaigns c ON c.id = cc.campaign_id
    WHERE c.archived_at IS NOT NULL AND t.archived_at IS NULL"
 
+check threads_unlinked_exact_email \
+  "threads >48h old whose inbound sender exactly matches a venue email but never linked (nightly retro-link should heal)" \
+  "SELECT count(*) FROM (
+     SELECT t.id, lower((regexp_match(m.from_address, '<([^>]+)>'))[1]) AS addr
+     FROM email_threads t
+     JOIN LATERAL (SELECT from_address FROM email_messages
+       WHERE thread_id = t.id AND direction = 'inbound'
+       ORDER BY sent_at DESC LIMIT 1) m ON true
+     WHERE t.archived_at IS NULL AND t.venue_id IS NULL
+       AND t.created_at < now() - interval '48 hours') u
+   JOIN venues v ON lower(v.email) = u.addr AND v.archived_at IS NULL"
+
 # ---- messages ↔ threads ----------------------------------------------------
 check thread_message_count_drift \
   "email_threads.message_count disagrees with actual email_messages rows" \
