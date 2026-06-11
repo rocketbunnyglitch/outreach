@@ -142,7 +142,7 @@
 
 ## Phase D — Data + learning (weeks 2–3)
 
-### D1. Duplicate detection v2  [ ]
+### D1. Duplicate detection v2  [x]
 - Match on google_place_id (exact), phone E.164 (exact), email +
   website domain (exact, normalized), name+address trigram similarity
   within city radius. Actions: merge (with relation re-pointing),

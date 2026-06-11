@@ -41,6 +41,7 @@ export * from "./learning-loop";
 export * from "./lineup-change-events";
 export * from "./middle-venue-groups";
 export * from "./replacement-pushes";
+export * from "./venue-duplicate-decisions";
 export * from "./internal-hosts";
 export * from "./external-host-shipments";
 export * from "./external-hosts";

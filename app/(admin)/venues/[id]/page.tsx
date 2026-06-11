@@ -12,7 +12,7 @@ import {
   venues,
   wristbands,
 } from "@/db/schema";
-import { getSuperUserOrNull, requireStaff } from "@/lib/auth";
+import { getSuperUserOrNull, hasMinimumRole, requireStaff } from "@/lib/auth";
 import { listOutreachBrands } from "@/lib/brand-context";
 import { getCurrentCampaign } from "@/lib/current-campaign";
 import { db } from "@/lib/db";
@@ -43,6 +43,7 @@ import {
 import { addDomainAlias, removeDomainAlias } from "../_alias-actions";
 import { type CrawlHistoryRow, CrawlHistorySection } from "../_components/crawl-history-section";
 import { DomainAliasList } from "../_components/domain-alias-list";
+import { DuplicatesCard } from "../_components/duplicates-card";
 import { OutreachLogSection } from "../_components/outreach-log-section";
 import { VenueActivityTimeline } from "../_components/venue-activity-timeline";
 import { VenueCommunicationSection } from "../_components/venue-communication-section";
@@ -411,6 +412,10 @@ export default async function EditVenuePage({ params }: { params: Promise<{ id: 
               doNotContactReason={venue.doNotContactReason}
               archivedAt={venue.archivedAt}
             />
+            {/* Possible duplicates (CRM plan D1): hard-key + trigram
+                candidates with merge / same-org / not-a-duplicate
+                rulings. Renders nothing when none are unruled. */}
+            <DuplicatesCard venueId={venue.id} isAdmin={hasMinimumRole(staff, "admin")} />
             {/* Unified contact roster (operator request 2026-06-11):
                 emails + replying people + crawl night-of contacts in
                 one card, replying people newest-first. */}

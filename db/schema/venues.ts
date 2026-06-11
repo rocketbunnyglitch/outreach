@@ -111,6 +111,11 @@ export const venues = pgTable(
 
     doNotContactExpiresAt: date("do_not_contact_expires_at"),
 
+    /** Set when this venue was merged away (migration 0138): the row is
+     *  archived and this points at the survivor. History rows that could
+     *  not be re-pointed stay here and are reachable through the chain. */
+    mergedIntoVenueId: uuid("merged_into_venue_id"),
+
     ...archivedAt,
     ...auditColumns,
     ...versionColumn,
