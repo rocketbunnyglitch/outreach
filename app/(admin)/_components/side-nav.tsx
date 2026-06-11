@@ -189,6 +189,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
       icon: <Clock className="h-3.5 w-3.5" />,
     },
     {
+      href: "/admin/workload",
+      label: "Workload",
+      icon: <Users className="h-3.5 w-3.5" />,
+    },
+    {
       href: "/admin/autonomy",
       label: "Autonomy",
       icon: <ShieldCheck className="h-3.5 w-3.5" />,

@@ -123,7 +123,7 @@
 - Acceptance: any list row that is rotting shows how long; thresholds
   in one file; watchdog + chips agree.
 
-### C3. Staff workload + accountability view  [ ]
+### C3. Staff workload + accountability view  [x]
 - /admin/workload: per staffer — urgent NBA items, overdue tasks,
   needs-attention replies, high-risk cities owned, blockers cleared
   (7d), response-time median. NO venues-confirmed leaderboard (bad
