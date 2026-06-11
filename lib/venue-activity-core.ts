@@ -22,7 +22,9 @@ export type VenueActivityType =
   | "cancellation"
   | "v2_call"
   | "wristband"
-  | "relationship";
+  | "relationship"
+  | "deliverable"
+  | "override";
 
 export type ActivityTone = "positive" | "negative" | "neutral";
 
@@ -61,6 +63,8 @@ export const ACTIVITY_TYPE_LABEL: Record<VenueActivityType, string> = {
   v2_call: "Floor staff",
   wristband: "Wristband",
   relationship: "Relationship",
+  deliverable: "Deliverable",
+  override: "Override",
 };
 
 /** Newest first. Stable for equal timestamps (preserves input order). */

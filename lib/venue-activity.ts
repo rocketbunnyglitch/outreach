@@ -18,6 +18,9 @@ import {
   campaigns,
   cities,
   cityCampaigns,
+  crawlDeliverables,
+  emailSendEvents,
+  emailThreads,
   notes,
   outreachBrands,
   outreachLog,
@@ -35,7 +38,7 @@ import {
   sortActivityDesc,
 } from "@/lib/venue-activity-core";
 import { loadVenueCommunication } from "@/lib/venue-communication";
-import { and, desc, eq, inArray, ne, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne, or } from "drizzle-orm";
 
 export interface VenueActivityData {
   entries: VenueActivityEntry[];
@@ -134,127 +137,215 @@ export async function loadVenueActivity(
         )
       : and(eq(tasks.targetType, "venue"), eq(tasks.targetId, venueId));
 
-  const [comm, callRows, noteRows, taskRows, relRows, wbRows, touchRows] = await Promise.all([
-    loadVenueCommunication(venueId, teamId).catch((err) => {
-      logger.error({ err, venueId }, "venue-activity: communication failed");
-      return null;
-    }),
-    db
-      .select({
-        id: callLogs.id,
-        direction: callLogs.direction,
-        status: callLogs.status,
-        durationSeconds: callLogs.durationSeconds,
-        callerName: callLogs.callerName,
-        occurredAt: callLogs.occurredAt,
-      })
-      .from(callLogs)
-      .where(eq(callLogs.matchedVenueId, venueId))
-      .orderBy(desc(callLogs.occurredAt))
-      .limit(100)
-      .catch((err) => {
-        logger.error({ err, venueId }, "venue-activity: calls failed");
-        return [];
+  const [comm, callRows, noteRows, taskRows, relRows, wbRows, touchRows, delivRows, overrideRows] =
+    await Promise.all([
+      loadVenueCommunication(venueId, teamId).catch((err) => {
+        logger.error({ err, venueId }, "venue-activity: communication failed");
+        return null;
       }),
-    db
+      db
+        .select({
+          id: callLogs.id,
+          direction: callLogs.direction,
+          status: callLogs.status,
+          durationSeconds: callLogs.durationSeconds,
+          callerName: callLogs.callerName,
+          occurredAt: callLogs.occurredAt,
+        })
+        .from(callLogs)
+        .where(eq(callLogs.matchedVenueId, venueId))
+        .orderBy(desc(callLogs.occurredAt))
+        .limit(100)
+        .catch((err) => {
+          logger.error({ err, venueId }, "venue-activity: calls failed");
+          return [];
+        }),
+      db
+        .select({
+          id: notes.id,
+          body: notes.body,
+          createdAt: notes.createdAt,
+          author: users.displayName,
+        })
+        .from(notes)
+        .leftJoin(users, eq(users.id, notes.authorStaffId))
+        .where(and(eq(notes.targetType, "venue"), eq(notes.targetId, venueId)))
+        .orderBy(desc(notes.createdAt))
+        .limit(100)
+        .catch((err) => {
+          logger.error({ err, venueId }, "venue-activity: notes failed");
+          return [];
+        }),
+      db
+        .select({
+          id: tasks.id,
+          title: tasks.title,
+          status: tasks.status,
+          createdAt: tasks.createdAt,
+          completedAt: tasks.completedAt,
+          assignee: users.displayName,
+        })
+        .from(tasks)
+        .leftJoin(users, eq(users.id, tasks.assignedStaffId))
+        .where(taskWhere)
+        .orderBy(desc(tasks.createdAt))
+        .limit(100)
+        .catch((err) => {
+          logger.error({ err, venueId }, "venue-activity: tasks failed");
+          return [];
+        }),
+      db
+        .select({
+          id: venueDomainRelationships.id,
+          status: venueDomainRelationships.status,
+          notes: venueDomainRelationships.notes,
+          setAt: venueDomainRelationships.setAt,
+          brand: outreachBrands.displayName,
+          byName: users.displayName,
+        })
+        .from(venueDomainRelationships)
+        .innerJoin(outreachBrands, eq(outreachBrands.id, venueDomainRelationships.outreachBrandId))
+        .leftJoin(users, eq(users.id, venueDomainRelationships.setByStaffId))
+        .where(eq(venueDomainRelationships.venueId, venueId))
+        .catch((err) => {
+          logger.error({ err, venueId }, "venue-activity: relationships failed");
+          return [];
+        }),
+      db
+        .select({
+          id: wristbands.id,
+          status: wristbands.status,
+          shippedAt: wristbands.shippedAt,
+          deliveredAt: wristbands.deliveredAt,
+          carrier: wristbands.carrier,
+          trackingNumber: wristbands.trackingNumber,
+          campaignId: campaigns.id,
+          campaignName: campaigns.name,
+        })
+        .from(wristbands)
+        .innerJoin(venueEvents, eq(venueEvents.id, wristbands.venueEventId))
+        .innerJoin(events, eq(events.id, venueEvents.eventId))
+        .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+        .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+        .where(eq(venueEvents.venueId, venueId))
+        .catch((err) => {
+          logger.error({ err, venueId }, "venue-activity: wristbands failed");
+          return [];
+        }),
+      db
+        .select({
+          id: outreachLog.id,
+          channel: outreachLog.channel,
+          outcome: outreachLog.outcome,
+          subject: outreachLog.subject,
+          createdAt: outreachLog.createdAt,
+          by: users.displayName,
+        })
+        .from(outreachLog)
+        .leftJoin(users, eq(users.id, outreachLog.staffMemberId))
+        .where(
+          and(
+            eq(outreachLog.venueId, venueId),
+            // Emails + calls already surface via their own sources; keep only the
+            // manual touch channels here (sms / instagram / form / in_person...).
+            ne(outreachLog.channel, "email"),
+            ne(outreachLog.channel, "call"),
+          ),
+        )
+        .orderBy(desc(outreachLog.createdAt))
+        .limit(100)
+        .catch((err) => {
+          logger.error({ err, venueId }, "venue-activity: outreach_log failed");
+          return [];
+        }),
+      // Deliverable events (CRM plan D3): a deliverable flipped to done/n_a
+      // is real work that previously left no trace in the timeline.
+      veIds.length > 0
+        ? db
+            .select({
+              id: crawlDeliverables.id,
+              deliverableType: crawlDeliverables.deliverableType,
+              status: crawlDeliverables.status,
+              updatedAt: crawlDeliverables.updatedAt,
+              by: users.displayName,
+              campaignId: campaigns.id,
+              campaignName: campaigns.name,
+            })
+            .from(crawlDeliverables)
+            .innerJoin(venueEvents, eq(venueEvents.id, crawlDeliverables.venueEventId))
+            .innerJoin(events, eq(events.id, venueEvents.eventId))
+            .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+            .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+            .leftJoin(users, eq(users.id, crawlDeliverables.updatedBy))
+            .where(
+              and(
+                inArray(crawlDeliverables.venueEventId, veIds),
+                ne(crawlDeliverables.status, "pending"),
+              ),
+            )
+            .catch((err) => {
+              logger.error({ err, venueId }, "venue-activity: deliverables failed");
+              return [];
+            })
+        : Promise.resolve([]),
+      // Manual overrides (CRM plan D3): cap bypasses + cadence-floor
+      // overrides on sends tied to this venue's nights — the timeline must
+      // show when a human reached around the rails and why.
+      veIds.length > 0
+        ? db
+            .select({
+              id: emailSendEvents.id,
+              sentAt: emailSendEvents.sentAt,
+              capBypassed: emailSendEvents.capBypassed,
+              overrideReason: emailSendEvents.cadenceOverrideReason,
+              campaignId: campaigns.id,
+              campaignName: campaigns.name,
+            })
+            .from(emailSendEvents)
+            .innerJoin(venueEvents, eq(venueEvents.id, emailSendEvents.venueEventId))
+            .innerJoin(events, eq(events.id, venueEvents.eventId))
+            .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+            .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+            .where(
+              and(
+                inArray(emailSendEvents.venueEventId, veIds),
+                or(
+                  eq(emailSendEvents.capBypassed, true),
+                  isNotNull(emailSendEvents.cadenceOverrideReason),
+                ),
+              ),
+            )
+            .limit(50)
+            .catch((err) => {
+              logger.error({ err, venueId }, "venue-activity: overrides failed");
+              return [];
+            })
+        : Promise.resolve([]),
+    ]);
+
+  // Thread -> campaign map (CRM plan D3): email entries previously carried no
+  // campaign context, so picking a campaign in the filter HID every email.
+  const threadIds = (comm?.threads ?? []).map((t) => t.threadId);
+  const threadCampaignMap = new Map<string, { campaignId: string; campaignName: string }>();
+  if (threadIds.length > 0) {
+    const tcRows = await db
       .select({
-        id: notes.id,
-        body: notes.body,
-        createdAt: notes.createdAt,
-        author: users.displayName,
-      })
-      .from(notes)
-      .leftJoin(users, eq(users.id, notes.authorStaffId))
-      .where(and(eq(notes.targetType, "venue"), eq(notes.targetId, venueId)))
-      .orderBy(desc(notes.createdAt))
-      .limit(100)
-      .catch((err) => {
-        logger.error({ err, venueId }, "venue-activity: notes failed");
-        return [];
-      }),
-    db
-      .select({
-        id: tasks.id,
-        title: tasks.title,
-        status: tasks.status,
-        createdAt: tasks.createdAt,
-        completedAt: tasks.completedAt,
-        assignee: users.displayName,
-      })
-      .from(tasks)
-      .leftJoin(users, eq(users.id, tasks.assignedStaffId))
-      .where(taskWhere)
-      .orderBy(desc(tasks.createdAt))
-      .limit(100)
-      .catch((err) => {
-        logger.error({ err, venueId }, "venue-activity: tasks failed");
-        return [];
-      }),
-    db
-      .select({
-        id: venueDomainRelationships.id,
-        status: venueDomainRelationships.status,
-        notes: venueDomainRelationships.notes,
-        setAt: venueDomainRelationships.setAt,
-        brand: outreachBrands.displayName,
-        byName: users.displayName,
-      })
-      .from(venueDomainRelationships)
-      .innerJoin(outreachBrands, eq(outreachBrands.id, venueDomainRelationships.outreachBrandId))
-      .leftJoin(users, eq(users.id, venueDomainRelationships.setByStaffId))
-      .where(eq(venueDomainRelationships.venueId, venueId))
-      .catch((err) => {
-        logger.error({ err, venueId }, "venue-activity: relationships failed");
-        return [];
-      }),
-    db
-      .select({
-        id: wristbands.id,
-        status: wristbands.status,
-        shippedAt: wristbands.shippedAt,
-        deliveredAt: wristbands.deliveredAt,
-        carrier: wristbands.carrier,
-        trackingNumber: wristbands.trackingNumber,
+        threadId: emailThreads.id,
         campaignId: campaigns.id,
         campaignName: campaigns.name,
       })
-      .from(wristbands)
-      .innerJoin(venueEvents, eq(venueEvents.id, wristbands.venueEventId))
-      .innerJoin(events, eq(events.id, venueEvents.eventId))
-      .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+      .from(emailThreads)
+      .innerJoin(cityCampaigns, eq(cityCampaigns.id, emailThreads.cityCampaignId))
       .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
-      .where(eq(venueEvents.venueId, venueId))
+      .where(inArray(emailThreads.id, threadIds))
       .catch((err) => {
-        logger.error({ err, venueId }, "venue-activity: wristbands failed");
+        logger.error({ err, venueId }, "venue-activity: thread-campaign map failed");
         return [];
-      }),
-    db
-      .select({
-        id: outreachLog.id,
-        channel: outreachLog.channel,
-        outcome: outreachLog.outcome,
-        subject: outreachLog.subject,
-        createdAt: outreachLog.createdAt,
-        by: users.displayName,
-      })
-      .from(outreachLog)
-      .leftJoin(users, eq(users.id, outreachLog.staffMemberId))
-      .where(
-        and(
-          eq(outreachLog.venueId, venueId),
-          // Emails + calls already surface via their own sources; keep only the
-          // manual touch channels here (sms / instagram / form / in_person...).
-          ne(outreachLog.channel, "email"),
-          ne(outreachLog.channel, "call"),
-        ),
-      )
-      .orderBy(desc(outreachLog.createdAt))
-      .limit(100)
-      .catch((err) => {
-        logger.error({ err, venueId }, "venue-activity: outreach_log failed");
-        return [];
-      }),
-  ]);
+      });
+    for (const r of tcRows) {
+      threadCampaignMap.set(r.threadId, { campaignId: r.campaignId, campaignName: r.campaignName });
+    }
+  }
 
   const entries: VenueActivityEntry[] = [];
 
@@ -262,6 +353,7 @@ export async function loadVenueActivity(
   for (const t of comm?.threads ?? []) {
     const conf =
       t.matchConfidence != null ? ` · ${Math.round(Number(t.matchConfidence) * 100)}%` : "";
+    const threadCampaign = threadCampaignMap.get(t.threadId);
     entries.push({
       id: `email:${t.threadId}`,
       type: "email",
@@ -270,8 +362,47 @@ export async function loadVenueActivity(
       title: t.subject || "(no subject)",
       detail: `${t.direction} · ${t.messageCount} msg${t.messageCount === 1 ? "" : "s"} · ${t.accountEmail}${conf}`,
       actor: t.ownerName,
+      // Campaign context (D3): campaign-attributed threads stay visible
+      // when the operator filters to a campaign; unattributed ones keep the
+      // old venue-global behavior.
+      campaignId: threadCampaign?.campaignId ?? null,
+      campaignName: threadCampaign?.campaignName ?? null,
       href: `/inbox?thread=${t.threadId}`,
       tone: classificationTone(t.classification),
+    });
+  }
+
+  // Deliverable events (D3).
+  for (const d of delivRows) {
+    entries.push({
+      id: `deliverable:${d.id}`,
+      type: "deliverable",
+      at: iso(d.updatedAt),
+      atLabel: fmt(d.updatedAt),
+      title: `${d.deliverableType.replace(/_/g, " ")} marked ${d.status === "n_a" ? "N/A" : "done"}`,
+      actor: d.by,
+      campaignId: d.campaignId,
+      campaignName: d.campaignName,
+      href: "/crawl-management",
+      tone: d.status === "done" ? "positive" : "neutral",
+    });
+  }
+
+  // Manual overrides (D3).
+  for (const o of overrideRows) {
+    const parts: string[] = [];
+    if (o.capBypassed) parts.push("send cap bypassed");
+    if (o.overrideReason) parts.push(`cadence floor overridden: ${o.overrideReason}`);
+    entries.push({
+      id: `override:${o.id}`,
+      type: "override",
+      at: iso(o.sentAt),
+      atLabel: fmt(o.sentAt),
+      title: "Send-safety override",
+      detail: parts.join(" · "),
+      campaignId: o.campaignId,
+      campaignName: o.campaignName,
+      tone: "negative",
     });
   }
 

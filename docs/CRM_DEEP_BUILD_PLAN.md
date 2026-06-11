@@ -157,7 +157,7 @@
   owners, contacts on multiple venues, bad domain relations. Each row
   one-click fixable or dismissible.
 
-### D3. Timeline completeness  [ ]
+### D3. Timeline completeness  [x]
 - Venue timeline gains: deliverable events (graphic done, sheets),
   backup/export events, manual overrides, campaign ids on email
   entries (so campaign filtering never hides context).
