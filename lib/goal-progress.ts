@@ -117,16 +117,48 @@ export async function computeGoalProgress(goal: GoalRow): Promise<GoalProgress> 
     }
   }
 
-  // ---- emails_sent / calls_made / confirmations / replies_received from outreach_log ----
-  else if (
-    goal.metric === "emails_sent" ||
-    goal.metric === "calls_made" ||
-    goal.metric === "replies_received"
-  ) {
+  // ---- emails_sent: canonical message store (linkage fix 2026-06-11) ----
+  // outreach_log only sees app-side sends; staff who send from Gmail
+  // directly never wrote a row there, so their email goals sat at zero.
+  // email_messages (filled by the poller AND by app sends) is the truth.
+  // Attribution: message -> thread -> sending inbox -> owner (staff scope)
+  // or -> the inbox's campaign brand assignment (brand scope).
+  else if (goal.metric === "emails_sent") {
+    const scopeSql =
+      goal.scope === "staff_weekly"
+        ? sql`ca.owner_user_id = ${goal.scopeId}`
+        : goal.scope === "outreach_brand"
+          ? sql`EXISTS (
+              SELECT 1 FROM campaign_connected_accounts cca
+              WHERE cca.connected_account_id = ca.id
+                AND cca.outreach_brand_id = ${goal.scopeId}
+            )`
+          : null;
+    if (!scopeSql) {
+      applicable = false;
+    } else {
+      const result = await db.execute<{ count: number }>(sql`
+        SELECT COUNT(*)::int AS count
+        FROM email_messages m
+        JOIN email_threads t ON t.id = m.thread_id
+        JOIN connected_accounts ca ON ca.id = t.staff_outreach_email_id
+        WHERE m.direction = 'outbound'
+          AND ${scopeSql}
+          AND m.sent_at >= ${new Date(periodStart)}
+          AND m.sent_at <= ${new Date(periodEnd)}
+      `);
+      const list = Array.isArray(result)
+        ? result
+        : ((result as unknown as { rows: Array<{ count: number }> }).rows ?? []);
+      current = Number(list[0]?.count ?? 0);
+    }
+  }
+
+  // ---- calls_made / replies_received from outreach_log ----
+  else if (goal.metric === "calls_made" || goal.metric === "replies_received") {
     // Channel values must match the outreach_channel ENUM ('call', not
     // 'phone' -- the old literal made calls_made goals always count 0).
-    const channel =
-      goal.metric === "emails_sent" ? "email" : goal.metric === "calls_made" ? "call" : null; // replies_received doesn't filter by channel
+    const channel = goal.metric === "calls_made" ? "call" : null; // replies_received doesn't filter by channel
 
     const scopeFilter =
       goal.scope === "outreach_brand"
@@ -141,11 +173,7 @@ export async function computeGoalProgress(goal: GoalRow): Promise<GoalProgress> 
       const outcomeFilter =
         goal.metric === "replies_received"
           ? sql`${outreachLog.outcome} IN ('interested','confirmed','callback_requested','declined')`
-          : goal.metric === "emails_sent"
-            ? // Provenance rows (address collected, nothing sent) must not
-              // count toward email-send goals.
-              sql`${outreachLog.outcome} <> 'email_collected'`
-            : null;
+          : null;
       const channelFilter = channel ? sql`${outreachLog.channel} = ${channel}` : null;
 
       const result = await db

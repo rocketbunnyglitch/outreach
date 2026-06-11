@@ -1369,6 +1369,29 @@ async function ingestMessage(opts: {
     WHERE id = ${threadId}
   `);
 
+  // Linkage fix (2026-06-11): an OUTBOUND message ingested from Gmail is a
+  // real venue touch. Staff who work from Gmail were rotting in the cold
+  // table ("10+ days untouched") while actively emailing venues, because
+  // last_touch_at was only written by app-side sends. Bump the matching
+  // cold entry; GREATEST guards out-of-order backfill. Best-effort.
+  if (direction === "outbound") {
+    await db
+      .execute(sql`
+        UPDATE cold_outreach_entries coe
+        SET last_touch_at = GREATEST(
+              COALESCE(coe.last_touch_at, 'epoch'::timestamptz),
+              ${receivedAt}::timestamptz
+            ),
+            updated_at = NOW()
+        FROM email_threads t
+        WHERE t.id = ${threadId}
+          AND coe.venue_id = t.venue_id
+          AND coe.city_campaign_id = t.city_campaign_id
+          AND coe.archived_at IS NULL
+      `)
+      .catch((err) => logger.warn({ err, threadId }, "cold-entry touch sync failed"));
+  }
+
   // Phase 4.9: an inbound reply that landed on a different alias than the one
   // that pitched the venue gets routed to the original pitcher's queue.
   // Best-effort -- never blocks ingestion.
