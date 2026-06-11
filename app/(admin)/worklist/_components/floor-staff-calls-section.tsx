@@ -6,6 +6,7 @@
  * click records the attempt; "Confirmed" marks them briefed and drops the row.
  */
 
+import { RotChip } from "@/components/ui/rot-chip";
 import { useToast } from "@/components/ui/toast";
 import { captureClientError } from "@/lib/client-error";
 import type { EventReadiness } from "@/lib/event-readiness";
@@ -131,6 +132,12 @@ function Row({ c }: { c: WorklistFloorStaffCallRow }) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* Rot chip (CRM plan C2): the V2 call became due when the event
+              entered the 4-day window — show how long it has been waiting.
+              Same thresholds (24/48/72h) the rot core defines for v2_call. */}
+          {c.readiness.daysToEvent != null && c.readiness.daysToEvent <= 4 && (
+            <RotChip kind="v2_call" ageHours={(4 - c.readiness.daysToEvent) * 24} />
+          )}
           {c.readiness.blocker ? (
             <span
               title={c.readiness.blockerReason ?? "Event-day readiness blocker"}

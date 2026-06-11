@@ -1,16 +1,18 @@
 import { Badge } from "@/components/ui/badge";
+import { RotChip } from "@/components/ui/rot-chip";
 import {
   events,
   campaigns,
   cities,
   cityCampaigns,
+  replacementPushes,
   staffMembers,
   venueEvents,
   venues,
 } from "@/db/schema";
 import { getMinimumRoleOrNull } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -54,6 +56,29 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       .limit(1);
     debriefUpdatedByName = author?.displayName ?? null;
   }
+
+  // Open replacement pushes (CRM plan C2 rot surface): an open push means
+  // an emergency batch is mid-flight for one of this crawl's roles — show
+  // it with its age so it can't quietly sit unworked. Closed/filled pushes
+  // never render.
+  const openPushes = (
+    await db
+      .select({
+        id: replacementPushes.id,
+        role: replacementPushes.role,
+        createdAt: replacementPushes.createdAt,
+        unsentDrafts: sql<number>`(
+          SELECT count(*)::int FROM email_drafts d
+          WHERE d.replacement_push_id = ${replacementPushes.id} AND d.sent_at IS NULL
+        )`,
+      })
+      .from(replacementPushes)
+      .where(and(eq(replacementPushes.eventId, id), eq(replacementPushes.status, "open")))
+  ).map((p) => ({
+    ...p,
+    ageHours: (Date.now() - p.createdAt.getTime()) / 3_600_000,
+    unsentDrafts: Number(p.unsentDrafts),
+  }));
 
   // Venues already participating in this event
   const veRows = await db
@@ -199,6 +224,19 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
 
       <div className="flex flex-wrap items-center gap-2">
         <EmergencyReplacementButton eventId={id} />
+        {openPushes.map((p) => (
+          <span
+            key={p.id}
+            className="inline-flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-800 text-xs dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+            title="An emergency replacement push is still open for this slot. It closes automatically when a venue confirms into the role (unsent sibling drafts are cancelled)."
+          >
+            <span className="font-medium">
+              {p.role} replacement push open — {p.unsentDrafts} draft
+              {p.unsentDrafts === 1 ? "" : "s"} awaiting review
+            </span>
+            <RotChip kind="replacement_push" ageHours={p.ageHours} />
+          </span>
+        ))}
       </div>
 
       <VenueEventsSection
