@@ -302,7 +302,10 @@ export async function composeAndSendImpl(
       const primary = (toList[0] ?? "").trim();
       if (primary) {
         const v = await validateEmail(primary, staff.id);
-        if (v?.status === "invalid") {
+        // spamtrap/abuse are worse than invalid: a spamtrap hit can
+        // blacklist the sending domain outright. Same acknowledgeable
+        // warning path — never a hard block (ZeroBounce can be wrong).
+        if (v?.status === "invalid" || v?.status === "spamtrap" || v?.status === "abuse") {
           safety.warnings.push({ kind: "invalid_recipient", email: primary, status: v.status });
         }
       }
@@ -333,7 +336,10 @@ export async function composeAndSendImpl(
     const duplicateCount = safety.warnings.filter((w) => w.kind === "duplicate").length;
     let message: string;
     if (invalidRecip && invalidRecip.kind === "invalid_recipient") {
-      message = `${invalidRecip.email} looks like an invalid address (likely to bounce). Send anyway?`;
+      message =
+        invalidRecip.status === "spamtrap" || invalidRecip.status === "abuse"
+          ? `${invalidRecip.email} is flagged as a ${invalidRecip.status === "spamtrap" ? "spam trap" : "known complainer"} — sending can damage the whole domain's reputation. Send anyway?`
+          : `${invalidRecip.email} looks like an invalid address (likely to bounce). Send anyway?`;
     } else if (declineWarning && declineWarning.kind === "recent_decline") {
       const eventBit = declineWarning.eventLabel ? ` (${declineWarning.eventLabel})` : "";
       message = `${declineWarning.venueName} declined ${declineWarning.daysAgo} day${declineWarning.daysAgo === 1 ? "" : "s"} ago${eventBit}. Continue anyway?`;

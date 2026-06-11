@@ -176,6 +176,29 @@ export async function loadDataQuality(): Promise<DataQualityCheck[]> {
       fixLabel: "Rule duplicates",
     }),
     check({
+      key: "invalid_primary_email",
+      title: "Venues whose primary email failed validation",
+      why: "ZeroBounce marked the address invalid/spamtrap/abuse — every send is a guaranteed bounce or worse, and bounces wreck sender reputation. Role-based addresses (info@) are fine and NOT counted here.",
+      countSql: sql`
+        SELECT count(DISTINCT v.id)::int AS n
+        FROM venues v
+        JOIN email_validations ev ON lower(ev.email) = lower(v.email)
+        WHERE ev.status IN ('invalid','spamtrap','abuse')
+          AND v.archived_at IS NULL AND v.do_not_contact = false
+      `,
+      sampleSql: sql`
+        SELECT DISTINCT v.id::text AS id, v.name || ' (' || v.email || ')' AS label
+        FROM venues v
+        JOIN email_validations ev ON lower(ev.email) = lower(v.email)
+        WHERE ev.status IN ('invalid','spamtrap','abuse')
+          AND v.archived_at IS NULL AND v.do_not_contact = false
+        LIMIT 5
+      `,
+      hrefFor: (id) => `/venues/${id}`,
+      fixHref: "/venues",
+      fixLabel: "Find a new address",
+    }),
+    check({
       key: "deactivated_owner",
       title: "Future confirmed slots owned by deactivated staff",
       why: "The venue relationship has no living owner — reassign before the venue emails someone who no longer works here.",

@@ -415,7 +415,9 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
 function summarizeQueueWarnings(warnings: SafetyWarning[]): string {
   const invalid = warnings.find((w) => w.kind === "invalid_recipient");
   if (invalid && invalid.kind === "invalid_recipient") {
-    return `${invalid.email} looks like an invalid address (likely to bounce).`;
+    return invalid.status === "spamtrap" || invalid.status === "abuse"
+      ? `${invalid.email} is flagged as a ${invalid.status === "spamtrap" ? "spam trap" : "known complainer"} — sending can damage the domain's reputation.`
+      : `${invalid.email} looks like an invalid address (likely to bounce).`;
   }
   const decline = warnings.find((w) => w.kind === "recent_decline");
   if (decline && decline.kind === "recent_decline") {
@@ -502,7 +504,7 @@ export async function queueColdSend(
         const primary = (draft.toAddresses ?? [])[0]?.trim();
         if (primary) {
           const v = await validateEmail(primary, staff.id);
-          if (v?.status === "invalid") {
+          if (v?.status === "invalid" || v?.status === "spamtrap" || v?.status === "abuse") {
             safety.warnings.push({ kind: "invalid_recipient", email: primary, status: v.status });
           }
         }
