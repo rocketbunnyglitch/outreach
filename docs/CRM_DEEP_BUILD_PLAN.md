@@ -80,7 +80,7 @@
   returns ordered diffs; key required; payload audit for private
   fields; tests on insert + poll.
 
-### B2. Emergency replacement playbook  [ ]
+### B2. Emergency replacement playbook  [x]
 - Guided flow from a cancelled/missing slot: (1) lock the exact event
   + role; (2) candidate venues ranked by past-partner history, warm
   threads, contactability (email+phone present), proximity; (3) batch

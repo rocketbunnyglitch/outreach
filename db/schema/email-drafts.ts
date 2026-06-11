@@ -128,6 +128,9 @@ export const emailDrafts = pgTable(
     /** The specific venue_event/night this draft belongs to. Lets cancellation
      *  scope cleanup to ONE night of a multi-night venue. FK in migration 0119. */
     venueEventId: uuid("venue_event_id"),
+    /** The replacement push this draft was batch-created by (migration 0137).
+     *  When the slot fills, unsent siblings are cancelled via this key. */
+    replacementPushId: uuid("replacement_push_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

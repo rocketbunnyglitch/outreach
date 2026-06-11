@@ -18,10 +18,15 @@
 
 import { useToast } from "@/components/ui/toast";
 import { captureClientError } from "@/lib/client-error";
-import type { ReplacementCandidate, ReplacementRole } from "@/lib/emergency-replacement";
+import type {
+  ReplacementCallContext,
+  ReplacementCandidate,
+  ReplacementRole,
+} from "@/lib/emergency-replacement";
 import { AlertTriangle, Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { QuoDialControls } from "../../city-campaigns/_components/quo-dial-controls";
 import {
   loadEmergencyReplacementCandidates,
   runEmergencyReplacement,
@@ -63,6 +68,7 @@ function EmergencyReplacementModal({
   const router = useRouter();
   const toast = useToast();
   const [candidates, setCandidates] = useState<ReplacementCandidate[] | null>(null);
+  const [callContext, setCallContext] = useState<ReplacementCallContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [role, setRole] = useState<ReplacementRole>("wristband");
@@ -80,6 +86,7 @@ function EmergencyReplacementModal({
         if (cancelled) return;
         const list = res.ok ? res.data.candidates : [];
         setCandidates(list);
+        setCallContext(res.ok ? res.data.callContext : null);
         setSelected(new Set(list.map((c) => c.venueId)));
       })
       .catch(() => {
@@ -234,27 +241,52 @@ function EmergencyReplacementModal({
             <ul className="flex flex-col gap-0.5">
               {candidates.map((c) => (
                 <li key={c.venueId}>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-900">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.venueId)}
-                      onChange={() => toggle(c.venueId)}
-                      className="h-4 w-4"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium text-sm">
-                        {c.name}
-                        {c.knownPartner && (
-                          <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 font-mono text-[9px] text-emerald-700 uppercase tracking-[0.08em] dark:bg-emerald-950/40 dark:text-emerald-200">
-                            past partner
-                          </span>
-                        )}
-                      </p>
-                      <p className="truncate font-mono text-[10px] text-zinc-500">
-                        {c.email ?? "no email -- will be skipped"}
-                      </p>
-                    </div>
-                  </label>
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(c.venueId)}
+                        onChange={() => toggle(c.venueId)}
+                        className="h-4 w-4"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-sm">
+                          {c.name}
+                          {c.knownPartner && (
+                            <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 font-mono text-[9px] text-emerald-700 uppercase tracking-[0.08em] dark:bg-emerald-950/40 dark:text-emerald-200">
+                              past partner
+                            </span>
+                          )}
+                          {c.warmThread && (
+                            <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.08em] dark:bg-amber-950/40 dark:text-amber-200">
+                              replies
+                            </span>
+                          )}
+                        </p>
+                        <p className="truncate font-mono text-[10px] text-zinc-500">
+                          {c.email ?? "no email -- will be skipped"}
+                        </p>
+                      </div>
+                    </label>
+                    {c.phoneE164 && c.coldEntryId && callContext ? (
+                      <QuoDialControls
+                        venueId={c.venueId}
+                        venueName={c.name}
+                        venuePhone={c.phoneE164}
+                        outreachBrandId={callContext.outreachBrandId}
+                        cityCampaignId={callContext.cityCampaignId}
+                        coldEntryId={c.coldEntryId}
+                      />
+                    ) : c.phoneE164 ? (
+                      <a
+                        href={`tel:${c.phoneE164}`}
+                        className="shrink-0 font-mono text-[10px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                        title="Call (no cold-outreach row on this campaign, so the call won't auto-log)"
+                      >
+                        {c.phoneE164}
+                      </a>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>

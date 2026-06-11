@@ -62,13 +62,15 @@ export async function generateConfirmationCascade(
     event_date: string;
     lead_staff_id: string | null;
     role: string;
+    event_id: string;
   }>(sql`
     SELECT
       ve.id AS venue_event_id,
       v.name AS venue_name,
       e.event_date::text AS event_date,
       cc.lead_staff_id,
-      ve.role
+      ve.role,
+      e.id AS event_id
     FROM venue_events ve
     JOIN venues v ON v.id = ve.venue_id
     JOIN events e ON e.id = ve.event_id
@@ -86,6 +88,7 @@ export async function generateConfirmationCascade(
             event_date: string;
             lead_staff_id: string | null;
             role: string;
+            event_id: string;
           }>;
         }
       ).rows ?? []);
@@ -213,6 +216,23 @@ export async function generateConfirmationCascade(
       .onConflictDoNothing({
         target: [crawlDeliverables.venueEventId, crawlDeliverables.deliverableType],
       });
+  }
+
+  // Replacement playbook close (CRM plan B2): if an emergency push is open
+  // for this (event, role), this confirm fills it — mark the push filled and
+  // cancel its unsent sibling drafts atomically with the confirm, so nobody
+  // keeps pitching a slot that's already taken. No-op in the common case.
+  try {
+    const { closeFilledReplacementPushes } = await import("@/lib/emergency-replacement");
+    await closeFilledReplacementPushes(tx, {
+      eventId: row.event_id,
+      role: row.role,
+      filledByVenueEventId: venueEventId,
+    });
+  } catch (replErr) {
+    // Never block the confirm on playbook bookkeeping.
+    const { logger } = await import("@/lib/logger");
+    logger.error({ err: replErr, venueEventId }, "closeFilledReplacementPushes failed");
   }
 
   return {

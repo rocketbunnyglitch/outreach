@@ -50,8 +50,11 @@ import {
   events,
   campaigns,
   cityCampaigns,
+  coldOutreachEntries,
   emailDrafts,
   emailTemplates,
+  emailThreads,
+  replacementPushes,
   venueEvents,
   venues,
 } from "@/db/schema";
@@ -93,6 +96,9 @@ export interface EmergencyReplacementResult {
   /** Pass-through reason the UI should attach to each send as the cadence
    *  override justification, so the floor bypass is logged. */
   cadenceOverrideReason: string;
+  /** The replacement_pushes row tracking this push (migration 0137). Null
+   *  when the push aborted before drafting. */
+  pushId?: string | null;
   error?: string;
 }
 
@@ -100,9 +106,41 @@ export interface ReplacementCandidate {
   venueId: string;
   name: string;
   email: string | null;
+  /** Phone for the playbook call list (Quo dial). */
+  phoneE164: string | null;
   /** True when this venue has prior venue_event history in this campaign's
-   *  city (a known/past partner -- ranked first). */
+   *  city (a known/past partner -- strongest rank signal). */
   knownPartner: boolean;
+  /** True when the venue replied to us in the last 60 days (warm thread --
+   *  they answer email, so an urgent ask can actually land). */
+  warmThread: boolean;
+  /** This venue's cold-outreach row on the crawl's city-campaign (when one
+   *  exists) -- lets the playbook UI mount real Quo dial controls so calls
+   *  are logged, not just dialed. */
+  coldEntryId: string | null;
+}
+
+/** Context the playbook call list needs to mount QuoDialControls. */
+export interface ReplacementCallContext {
+  cityCampaignId: string;
+  outreachBrandId: string | null;
+}
+
+/** Load the city-campaign + outreach brand for the playbook's call list. */
+export async function loadReplacementCallContext(
+  eventId: string,
+): Promise<ReplacementCallContext | null> {
+  const [row] = await db
+    .select({
+      cityCampaignId: events.cityCampaignId,
+      outreachBrandId: campaigns.outreachBrandId,
+    })
+    .from(events)
+    .innerJoin(cityCampaigns, eq(cityCampaigns.id, events.cityCampaignId))
+    .innerJoin(campaigns, eq(campaigns.id, cityCampaigns.campaignId))
+    .where(eq(events.id, eventId))
+    .limit(1);
+  return row ?? null;
 }
 
 const DEFAULT_MAX_CANDIDATES = 40;
@@ -157,6 +195,7 @@ export async function loadReplacementCandidates(
       venueId: venues.id,
       name: venues.name,
       email: venues.email,
+      phoneE164: venues.phoneE164,
     })
     .from(venues)
     .where(
@@ -187,16 +226,52 @@ export async function loadReplacementCandidates(
     );
   const partnerSet = new Set(partnerRows.map((r) => r.venueId));
 
+  // Warm threads: the venue replied to us within the last 60 days. In an
+  // emergency we want venues that demonstrably answer email at the top.
+  const warmRows = await db
+    .selectDistinct({ venueId: emailThreads.venueId })
+    .from(emailThreads)
+    .where(
+      and(
+        inArray(emailThreads.venueId, reachableIds),
+        sql`${emailThreads.lastInboundAt} > now() - interval '60 days'`,
+      ),
+    );
+  const warmSet = new Set(warmRows.map((r) => r.venueId));
+
+  // Cold-outreach rows on this city-campaign (for the call list's Quo dial
+  // controls -- dialing through them logs the call attempt properly).
+  const entryRows = await db
+    .select({ venueId: coldOutreachEntries.venueId, id: coldOutreachEntries.id })
+    .from(coldOutreachEntries)
+    .where(
+      and(
+        eq(coldOutreachEntries.cityCampaignId, ctx.cityCampaignId),
+        inArray(coldOutreachEntries.venueId, reachableIds),
+        isNull(coldOutreachEntries.archivedAt),
+      ),
+    );
+  const entryMap = new Map(entryRows.map((r) => [r.venueId, r.id]));
+
   const candidates: ReplacementCandidate[] = reachable.map((v) => ({
     venueId: v.venueId,
     name: v.name,
     email: v.email,
+    phoneE164: v.phoneE164,
     knownPartner: partnerSet.has(v.venueId),
+    warmThread: warmSet.has(v.venueId),
+    coldEntryId: entryMap.get(v.venueId) ?? null,
   }));
 
-  // Known partners first, then alphabetical within each group.
+  // Rank (CRM plan B2): past partner >> warm thread >> callable (phone on
+  // file), then name. Proximity is deliberately omitted -- every candidate is
+  // already same-city, and a finer distance sort would outrank "answers our
+  // email" with "happens to be 400m closer", which is wrong in an emergency.
+  const score = (c: ReplacementCandidate): number =>
+    (c.knownPartner ? 4 : 0) + (c.warmThread ? 2 : 0) + (c.phoneE164 ? 1 : 0);
   candidates.sort((a, b) => {
-    if (a.knownPartner !== b.knownPartner) return a.knownPartner ? -1 : 1;
+    const diff = score(b) - score(a);
+    if (diff !== 0) return diff;
     return a.name.localeCompare(b.name);
   });
 
@@ -316,6 +391,32 @@ export async function triggerEmergencyReplacement(
   const slotLabel =
     args.slotPosition && args.slotPosition > 0 ? `${args.role} ${args.slotPosition}` : args.role;
 
+  // Playbook lifecycle (migration 0137): supersede any prior open push for
+  // this same (event, role) — a re-push replaces its predecessor — then open
+  // the new push row. Drafts below are stamped with the push id so the first
+  // confirm can cancel unsent siblings.
+  await db
+    .update(replacementPushes)
+    .set({ status: "closed", closedAt: new Date() })
+    .where(
+      and(
+        eq(replacementPushes.eventId, args.eventId),
+        eq(replacementPushes.role, args.role),
+        eq(replacementPushes.status, "open"),
+      ),
+    );
+  const [push] = await db
+    .insert(replacementPushes)
+    .values({
+      eventId: args.eventId,
+      role: args.role,
+      slotPosition: args.slotPosition ?? null,
+      reason: args.reason.slice(0, 500),
+      createdBy: args.staffId,
+    })
+    .returning({ id: replacementPushes.id });
+  const pushId = push?.id ?? null;
+
   let draftsCreated = 0;
   for (const cand of candidates) {
     if (!cand.email) continue;
@@ -366,6 +467,7 @@ export async function triggerEmergencyReplacement(
         venueId: cand.venueId,
         cityCampaignId: ctx.cityCampaignId,
         templateId: tpl.templateId,
+        replacementPushId: pushId,
         // Review-and-send: the operator approves each one. NOT auto-sent.
         scheduledFor: null,
       })
@@ -373,11 +475,19 @@ export async function triggerEmergencyReplacement(
     if (inserted) draftsCreated += 1;
   }
 
+  if (pushId) {
+    await db
+      .update(replacementPushes)
+      .set({ draftsCreated })
+      .where(eq(replacementPushes.id, pushId));
+  }
+
   logger.info(
     {
       eventId: args.eventId,
       role: args.role,
       slot: slotLabel,
+      pushId,
       candidatesConsidered: candidates.length,
       draftsCreated,
       templateUsed: tpl.code,
@@ -391,5 +501,51 @@ export async function triggerEmergencyReplacement(
     candidatesConsidered: candidates.length,
     templateUsed: tpl.code,
     cadenceOverrideReason,
+    pushId,
   };
+}
+
+/**
+ * Close any OPEN replacement pushes for (event, role) because a venue just
+ * confirmed into that slot — "first confirm closes the playbook" (CRM plan
+ * B2). Marks the push filled and deletes its UNSENT sibling drafts so no
+ * operator accidentally asks ten more venues to fill a slot that's taken.
+ * Sent drafts are untouched (they're history). Runs inside the caller's
+ * confirmation transaction so the close is atomic with the confirm.
+ *
+ * Returns the number of pushes filled (0 = nothing was open, the common
+ * case — this is cheap enough to call on every confirm).
+ */
+export async function closeFilledReplacementPushes(
+  tx: Pick<typeof db, "update" | "delete" | "select">,
+  args: { eventId: string; role: string; filledByVenueEventId: string },
+): Promise<number> {
+  const filled = await tx
+    .update(replacementPushes)
+    .set({
+      status: "filled",
+      filledByVenueEventId: args.filledByVenueEventId,
+      closedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(replacementPushes.eventId, args.eventId),
+        eq(replacementPushes.role, args.role),
+        eq(replacementPushes.status, "open"),
+      ),
+    )
+    .returning({ id: replacementPushes.id });
+  if (filled.length === 0) return 0;
+
+  const pushIds = filled.map((p) => p.id);
+  const deleted = await tx
+    .delete(emailDrafts)
+    .where(and(inArray(emailDrafts.replacementPushId, pushIds), isNull(emailDrafts.sentAt)))
+    .returning({ id: emailDrafts.id });
+
+  logger.info(
+    { ...args, pushesFilled: pushIds.length, siblingDraftsCancelled: deleted.length },
+    "replacement push filled — sibling drafts cancelled",
+  );
+  return filled.length;
 }

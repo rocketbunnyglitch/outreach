@@ -17,8 +17,10 @@
 import { hasMinimumRole, requireStaff } from "@/lib/auth";
 import {
   type EmergencyReplacementResult,
+  type ReplacementCallContext,
   type ReplacementCandidate,
   type ReplacementRole,
+  loadReplacementCallContext,
   loadReplacementCandidates,
   triggerEmergencyReplacement,
 } from "@/lib/emergency-replacement";
@@ -31,12 +33,17 @@ const ROLES: ReplacementRole[] = ["wristband", "middle", "final", "alt_final"];
 
 export async function loadEmergencyReplacementCandidates(
   eventId: string,
-): Promise<ActionResult<{ candidates: ReplacementCandidate[] }>> {
+): Promise<
+  ActionResult<{ candidates: ReplacementCandidate[]; callContext: ReplacementCallContext | null }>
+> {
   await requireStaff();
   if (!UUID_RE.test(eventId)) return { ok: false, error: "Invalid event id." };
   try {
-    const candidates = await loadReplacementCandidates(eventId);
-    return { ok: true, data: { candidates } };
+    const [candidates, callContext] = await Promise.all([
+      loadReplacementCandidates(eventId),
+      loadReplacementCallContext(eventId),
+    ]);
+    return { ok: true, data: { candidates, callContext } };
   } catch (err) {
     logger.error({ err, eventId }, "loadEmergencyReplacementCandidates failed");
     return { ok: false, error: "Couldn't load backup venues." };
