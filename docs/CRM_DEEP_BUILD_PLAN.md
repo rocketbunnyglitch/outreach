@@ -162,7 +162,7 @@
   backup/export events, manual overrides, campaign ids on email
   entries (so campaign filtering never hides context).
 
-### D4. Sheets backup v2  [ ]
+### D4. Sheets backup v2  [x]
 - Add tabs/columns: health scores + reasons, V2 status per venue
   event, readiness blockers, lifecycle (T9-T17) state, replacement/
   cancellation state, NBA snapshot. The backup must be a real

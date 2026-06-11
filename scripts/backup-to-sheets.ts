@@ -73,6 +73,9 @@ import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { google } from "googleapis";
 import { db } from "../lib/db";
+// Pure core (no server-only) — the script grades crawls itself from raw
+// SQL inputs so the backup carries the same health verdicts the app shows.
+import { crawlHealthFromInputs } from "../lib/health-score-core";
 import { logger } from "../lib/logger";
 import { getVersion } from "../lib/version";
 
@@ -88,6 +91,9 @@ const TAB_CONTACTS = "Venue Contacts";
 const TAB_WARM = "Warm Leads";
 const TAB_COLD = "Cold Outreach";
 const TAB_READINESS = "Event-Day Readiness";
+const TAB_HEALTH = "Crawl Health";
+const TAB_LIFECYCLE = "Lifecycle & V2";
+const TAB_INCIDENTS = "Replacements & Cancellations";
 const TAB_METADATA = "Metadata";
 
 // ---- Headers ------------------------------------------------------------
@@ -162,6 +168,52 @@ const READINESS_HEADER = [
   "Proposed hours missing",
   "Phone missing/unverified",
   "Readiness blocker summary",
+];
+
+// CRM plan D4: the backup must be a real emergency fallback for the
+// CURRENT operating model — health verdicts, lifecycle/V2 state and
+// incident state included. The per-crawl "Next action" column doubles
+// as the NBA snapshot (the full NBA list is per-staffer derived
+// guidance, not data you'd restore from).
+const HEALTH_HEADER = [
+  "City",
+  "Crawl",
+  "Event date",
+  "Days out",
+  "Tickets",
+  "Score",
+  "Color",
+  "Viability",
+  "Blockers",
+  "Reasons",
+  "Next action",
+];
+
+const LIFECYCLE_HEADER = [
+  "City",
+  "Venue",
+  "Role",
+  "Event date",
+  "Status",
+  "Confirmed at",
+  "2-week email",
+  "1-week email",
+  "3-day call",
+  "V2 floor-staff call",
+  "Call attempts",
+  "Last call outcome",
+];
+
+const INCIDENTS_HEADER = [
+  "Type",
+  "City",
+  "Event date",
+  "What",
+  "Status",
+  "Reason",
+  "Drafts",
+  "At",
+  "By",
 ];
 
 // db.execute<T>() requires T extends Record<string, unknown>. The
@@ -465,6 +517,250 @@ async function fetchColdEntries(campaignId: string): Promise<ColdRow[]> {
   ORDER BY c.name ASC, v.name ASC
   `);
   return rowsOf<ColdRow>(res);
+}
+
+// ---- D4 fetches: health inputs, lifecycle state, incidents ---------------
+
+interface HealthInputRow {
+  [key: string]: unknown;
+  event_id: string;
+  city_name: string;
+  event_date: string;
+  day_part: string | null;
+  crawl_number: number | null;
+  status: string;
+  crawl_format: string;
+  tickets: number;
+  days_to_event: number;
+  wb_required: number;
+  mid_required: number;
+  fin_required: number;
+  wb_filled: number;
+  mid_filled: number;
+  fin_filled: number;
+  hosts: number;
+  wb_pending: number;
+  unowned: number;
+  unbriefed: number;
+}
+
+async function fetchHealthInputs(campaignId: string): Promise<HealthInputRow[]> {
+  const res = await db.execute<HealthInputRow>(sql`
+    SELECT e.id::text AS event_id,
+           c.name AS city_name,
+           e.event_date::text AS event_date,
+           e.day_part::text AS day_part,
+           e.crawl_number::int AS crawl_number,
+           e.status::text AS status,
+           e.crawl_format::text AS crawl_format,
+           COALESCE(e.ticket_sales_count, 0)::int AS tickets,
+           (e.event_date - (now() at time zone 'America/Toronto')::date)::int AS days_to_event,
+           COALESCE(e.required_wristband_count, 0)::int AS wb_required,
+           COALESCE(e.required_middle_count, 0)::int AS mid_required,
+           COALESCE(e.required_final_count, 0)::int AS fin_required,
+           (SELECT count(*) FROM venue_events ve WHERE ve.event_id = e.id
+              AND ve.status = 'confirmed' AND ve.role = 'wristband')::int AS wb_filled,
+           (SELECT count(*) FROM venue_events ve WHERE ve.event_id = e.id
+              AND ve.status = 'confirmed' AND ve.role = 'middle')::int AS mid_filled,
+           (SELECT count(*) FROM venue_events ve WHERE ve.event_id = e.id
+              AND ve.status = 'confirmed' AND ve.role = 'final')::int AS fin_filled,
+           (SELECT count(*) FROM crawl_hosts ch WHERE ch.event_id = e.id)::int AS hosts,
+           (SELECT count(*) FROM wristbands w
+              JOIN venue_events ve2 ON ve2.id = w.venue_event_id
+             WHERE ve2.event_id = e.id
+               AND w.status IN ('pending', 'ready_to_ship', 'issue'))::int AS wb_pending,
+           (SELECT count(*) FROM venue_events ve3 WHERE ve3.event_id = e.id
+              AND ve3.status = 'confirmed' AND ve3.our_contact_staff_id IS NULL)::int AS unowned,
+           (SELECT count(*) FROM venue_events ve4 WHERE ve4.event_id = e.id
+              AND ve4.status = 'confirmed'
+              AND ve4.floor_staff_call_completed_at IS NULL)::int AS unbriefed
+      FROM events e
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+     WHERE cc.campaign_id = ${campaignId}::uuid
+       AND e.archived_at IS NULL
+       AND e.event_date >= (now() at time zone 'America/Toronto')::date
+  ORDER BY c.name, e.event_date
+  `);
+  return rowsOf<HealthInputRow>(res);
+}
+
+interface LifecycleRow {
+  [key: string]: unknown;
+  city_name: string;
+  venue_name: string;
+  role: string;
+  event_date: string;
+  status: string;
+  confirmed_at: string | null;
+  two_week_email_sent_at: string | null;
+  one_week_email_sent_at: string | null;
+  three_day_call_completed_at: string | null;
+  floor_staff_call_completed_at: string | null;
+  call_attempts: number;
+  last_outcome: string | null;
+}
+
+async function fetchLifecycleRows(campaignId: string): Promise<LifecycleRow[]> {
+  const res = await db.execute<LifecycleRow>(sql`
+    SELECT c.name AS city_name,
+           v.name AS venue_name,
+           ve.role::text AS role,
+           e.event_date::text AS event_date,
+           ve.status::text AS status,
+           ve.confirmed_at::text AS confirmed_at,
+           ve.two_week_email_sent_at::text AS two_week_email_sent_at,
+           ve.one_week_email_sent_at::text AS one_week_email_sent_at,
+           ve.three_day_call_completed_at::text AS three_day_call_completed_at,
+           ve.floor_staff_call_completed_at::text AS floor_staff_call_completed_at,
+           COALESCE(ve.floor_staff_call_attempts, 0)::int AS call_attempts,
+           ve.floor_staff_last_call_outcome::text AS last_outcome
+      FROM venue_events ve
+      JOIN events e ON e.id = ve.event_id
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+      JOIN venues v ON v.id = ve.venue_id
+     WHERE cc.campaign_id = ${campaignId}::uuid
+       AND e.archived_at IS NULL
+       AND ve.status IN ('confirmed', 'cancelled')
+       AND e.event_date >= (now() at time zone 'America/Toronto')::date
+  ORDER BY e.event_date, c.name, v.name
+  `);
+  return rowsOf<LifecycleRow>(res);
+}
+
+interface IncidentRow {
+  [key: string]: unknown;
+  kind: string;
+  city_name: string;
+  event_date: string;
+  what: string;
+  status: string;
+  reason: string | null;
+  drafts: number;
+  at: string | null;
+  by_name: string | null;
+}
+
+async function fetchIncidents(campaignId: string): Promise<IncidentRow[]> {
+  const res = await db.execute<IncidentRow>(sql`
+    SELECT 'replacement push' AS kind,
+           c.name AS city_name,
+           e.event_date::text AS event_date,
+           rp.role AS what,
+           rp.status AS status,
+           rp.reason AS reason,
+           rp.drafts_created::int AS drafts,
+           rp.created_at::text AS at,
+           u.display_name AS by_name
+      FROM replacement_pushes rp
+      JOIN events e ON e.id = rp.event_id
+      JOIN city_campaigns cc ON cc.id = e.city_campaign_id
+      JOIN cities c ON c.id = cc.city_id
+ LEFT JOIN users u ON u.id = rp.created_by
+     WHERE cc.campaign_id = ${campaignId}::uuid
+    UNION ALL
+    SELECT 'cancellation' AS kind,
+           c2.name AS city_name,
+           e2.event_date::text AS event_date,
+           v.name || ' (' || ve.role::text || ')' AS what,
+           'cancelled' AS status,
+           ve.cancellation_reason AS reason,
+           0 AS drafts,
+           ve.cancelled_at::text AS at,
+           u2.display_name AS by_name
+      FROM venue_events ve
+      JOIN venues v ON v.id = ve.venue_id
+      JOIN events e2 ON e2.id = ve.event_id
+      JOIN city_campaigns cc2 ON cc2.id = e2.city_campaign_id
+      JOIN cities c2 ON c2.id = cc2.city_id
+ LEFT JOIN users u2 ON u2.id = ve.cancelled_by
+     WHERE cc2.campaign_id = ${campaignId}::uuid
+       AND ve.status = 'cancelled'
+  ORDER BY 8 DESC NULLS LAST
+  `);
+  return rowsOf<IncidentRow>(res);
+}
+
+function healthValues(rows: HealthInputRow[]): (string | number)[][] {
+  const out: (string | number)[][] = [HEALTH_HEADER];
+  for (const r of rows) {
+    const health = crawlHealthFromInputs({
+      eventStatus: r.status as "planned" | "confirmed" | "completed" | "cancelled",
+      crawlFormat: r.crawl_format as "standard" | "day_party",
+      ticketsSold: Number(r.tickets),
+      daysToEvent: Number(r.days_to_event),
+      wristbandRequired: Number(r.wb_required),
+      wristbandFilled: Number(r.wb_filled),
+      middleRequired: Number(r.mid_required),
+      middleFilled: Number(r.mid_filled),
+      finalRequired: Number(r.fin_required),
+      finalFilled: Number(r.fin_filled),
+      readinessBlocker:
+        Number(r.unbriefed) > 0 && Number(r.days_to_event) >= 0 && Number(r.days_to_event) <= 4,
+      hostsAssigned: Number(r.hosts),
+      wristbandsPending: Number(r.wb_pending) > 0,
+      unassignedConfirmed: Number(r.unowned),
+    });
+    out.push([
+      r.city_name,
+      crawlLabel({
+        crawl_name: null,
+        day_part: r.day_part,
+        crawl_number: r.crawl_number,
+        slot_number: 1,
+      }),
+      r.event_date,
+      Number(r.days_to_event),
+      Number(r.tickets),
+      health.score,
+      health.color,
+      health.viability,
+      health.blockers.join(" | "),
+      health.reasons.join(" | "),
+      health.nextAction ?? "",
+    ]);
+  }
+  return out;
+}
+
+function lifecycleValues(rows: LifecycleRow[]): (string | number)[][] {
+  const out: (string | number)[][] = [LIFECYCLE_HEADER];
+  for (const r of rows) {
+    out.push([
+      r.city_name,
+      r.venue_name,
+      r.role,
+      r.event_date,
+      r.status,
+      isoOrEmpty(r.confirmed_at),
+      isoOrEmpty(r.two_week_email_sent_at),
+      isoOrEmpty(r.one_week_email_sent_at),
+      isoOrEmpty(r.three_day_call_completed_at),
+      isoOrEmpty(r.floor_staff_call_completed_at),
+      Number(r.call_attempts),
+      r.last_outcome ?? "",
+    ]);
+  }
+  return out;
+}
+
+function incidentsValues(rows: IncidentRow[]): (string | number)[][] {
+  const out: (string | number)[][] = [INCIDENTS_HEADER];
+  for (const r of rows) {
+    out.push([
+      r.kind,
+      r.city_name,
+      r.event_date,
+      r.what,
+      r.status,
+      r.reason ?? "",
+      Number(r.drafts),
+      isoOrEmpty(r.at),
+      r.by_name ?? "",
+    ]);
+  }
+  return out;
 }
 
 // ---- Tab builders -------------------------------------------------------
@@ -963,12 +1259,16 @@ async function main(): Promise<void> {
     return;
   }
 
-  const [cities, events, venueEvents, cold] = await Promise.all([
-    fetchCityCampaigns(campaign.id),
-    fetchEvents(campaign.id),
-    fetchVenueEvents(campaign.id),
-    fetchColdEntries(campaign.id),
-  ]);
+  const [cities, events, venueEvents, cold, healthInputs, lifecycleRows, incidentRows] =
+    await Promise.all([
+      fetchCityCampaigns(campaign.id),
+      fetchEvents(campaign.id),
+      fetchVenueEvents(campaign.id),
+      fetchColdEntries(campaign.id),
+      fetchHealthInputs(campaign.id),
+      fetchLifecycleRows(campaign.id),
+      fetchIncidents(campaign.id),
+    ]);
 
   const veByEvent = new Map<string, VenueEventRow[]>();
   for (const ve of venueEvents) {
@@ -991,6 +1291,9 @@ async function main(): Promise<void> {
     { name: safeTabName(TAB_WARM), values: coldValues(cold, true) },
     { name: safeTabName(TAB_COLD), values: coldValues(cold, false) },
     { name: safeTabName(TAB_READINESS), values: readinessValues(events, veByEvent) },
+    { name: safeTabName(TAB_HEALTH), values: healthValues(healthInputs) },
+    { name: safeTabName(TAB_LIFECYCLE), values: lifecycleValues(lifecycleRows) },
+    { name: safeTabName(TAB_INCIDENTS), values: incidentsValues(incidentRows) },
     {
       name: safeTabName(TAB_METADATA),
       values: metadataValues(campaign, cities.length, events.length),
