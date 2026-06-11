@@ -307,6 +307,29 @@ check notes_target_orphan_venue \
      AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.id = n.target_id)"
 
 # ---- suppression ↔ venues ---------------------------------------------------
+check corpus_own_domain_pollution \
+  "learning-corpus rows (reply or classification examples) whose inbound sender is one of OUR domains (staff inter-inbox mail poisoning few-shot)" \
+  "SELECT (SELECT count(*) FROM reply_examples re JOIN email_messages m ON m.id=re.inbound_message_id
+     WHERE lower(split_part(m.from_email_normalized,'@',2)) IN
+       (SELECT lower(split_part(email_address,'@',2)) FROM connected_accounts))
+   + (SELECT count(*) FROM classification_examples ce JOIN email_messages m ON m.id=ce.message_id
+     WHERE lower(split_part(m.from_email_normalized,'@',2)) IN
+       (SELECT lower(split_part(email_address,'@',2)) FROM connected_accounts))"
+
+check account_sending_without_campaign \
+  "connected accounts with venue threads in the last 30d but NO campaign assignment (brand resolution + touch logging silently fail for their sends)" \
+  "SELECT count(DISTINCT ca.id) FROM connected_accounts ca
+   JOIN email_threads t ON t.staff_outreach_email_id = ca.id
+   WHERE t.created_at > now() - interval '30 days' AND t.venue_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM campaign_connected_accounts cca
+       WHERE cca.connected_account_id = ca.id)"
+
+check cca_null_brand_active \
+  "campaign-account assignments on ACTIVE campaigns missing an outreach brand (sends cannot resolve brand context)" \
+  "SELECT count(*) FROM campaign_connected_accounts cca
+   JOIN campaigns c ON c.id = cca.campaign_id
+   WHERE c.archived_at IS NULL AND cca.outreach_brand_id IS NULL"
+
 check venues_email_malformed \
   "active venues whose email field is not a single clean address (status text / multi-address blobs break validation, suppression matching, retro-linking)" \
   "SELECT count(*) FROM venues

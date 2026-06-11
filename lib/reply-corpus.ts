@@ -88,6 +88,12 @@ export async function extractReplyExamples(): Promise<number> {
         AND COALESCE(TRIM(m_in.body_text), '') <> ''
         -- Bounce notifiers are machine mail, not venue correspondence.
         AND m_in.from_email_normalized !~* '(mailer-daemon|postmaster)@'
+        -- Staff inter-inbox mail ingests as "inbound" from OUR domains;
+        -- learning venue-reply patterns from our own writing poisons
+        -- the few-shot corpus (146 rows purged, FULL_AUDIT P081).
+        AND lower(split_part(m_in.from_email_normalized, '@', 2)) NOT IN (
+          SELECT lower(split_part(email_address, '@', 2)) FROM connected_accounts
+        )
     ),
     ins AS (
       INSERT INTO reply_examples (
@@ -129,6 +135,11 @@ export async function extractClassificationExamples(): Promise<number> {
         AND t.classification::text <> 'unclassified'
         AND COALESCE(TRIM(m.body_text), '') <> ''
         AND m.from_email_normalized !~* '(mailer-daemon|postmaster)@'
+        -- Same own-domain guard as the reply extractor: never learn
+        -- classification from our own staff's inter-inbox mail.
+        AND lower(split_part(m.from_email_normalized, '@', 2)) NOT IN (
+          SELECT lower(split_part(email_address, '@', 2)) FROM connected_accounts
+        )
       ORDER BY m.thread_id, m.sent_at DESC
     ),
     ins AS (
