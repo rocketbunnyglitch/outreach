@@ -27,6 +27,14 @@
 - UI verification: Claude-in-Chrome against the user's logged-in session
   when available; otherwise reasoned DOM/code audit + screenshot requests.
   Mobile = 390px; desktop = 1440px.
+- TRUE-MOBILE RIG (solves the Windows-scaling cap): inject a same-origin
+  IFRAME at width:390px into any logged-in page — media queries inside an
+  iframe respond to the IFRAME viewport, the app does not frame-block
+  same-origin, and contentDocument gives full DOM measurement + interaction
+  at a real 371px CSS viewport. Popups are NOT an option (CDP clicks lack
+  user activation). First full sweep 2026-06-11: ALL 22 primary routes
+  0 h-overflow, 0 app errors at 390px; whos-online popover fix proven
+  (left:12 right:268 on vw 371, sm-branch correctly inactive).
 
 ## Wave 0 — Foundations
 - [x 8b3bdfd] P001 Commit this plan; memory cursor entry
