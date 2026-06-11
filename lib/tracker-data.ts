@@ -47,7 +47,9 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
   const cityCampaignIds = ccRows.map((r) => r.cityCampaignId);
   const statusMap = Object.fromEntries(ccRows.map((r) => [r.cityCampaignId, r.status]));
 
-  // Sales totals — placeholder until Eventbrite is wired. tickets * $30 (cents).
+  // Ticket totals — raw counts from events.ticket_sales_count (synced
+  // from Eventbrite). The tracker shows COUNTS, not dollars (operator
+  // request 2026-06-11: "1 ticket sold", not "$30").
   let salesMap: Record<string, number> = {};
   if (cityCampaignIds.length > 0) {
     const salesRows = await db.execute<{
@@ -64,7 +66,7 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
       ? (salesRows as unknown as Array<{ city_campaign_id: string; tickets: number }>)
       : ((salesRows as unknown as { rows: Array<{ city_campaign_id: string; tickets: number }> })
           .rows ?? []);
-    salesMap = Object.fromEntries(rows.map((r) => [r.city_campaign_id, Number(r.tickets) * 3000])); // tickets * $30 (cents)
+    salesMap = Object.fromEntries(rows.map((r) => [r.city_campaign_id, Number(r.tickets)]));
   }
 
   // Slot needs
@@ -84,7 +86,7 @@ export async function loadTrackerData(opts: { campaignId: string }): Promise<{
     countryCode: r.cityCountryCode ?? null,
     cityTimezone: r.cityTimezone ?? "America/Toronto",
     priority: r.priority ?? 5,
-    totalSalesCents: salesMap[r.cityCampaignId] ?? 0,
+    totalTicketsSold: salesMap[r.cityCampaignId] ?? 0,
     status: (r.status as TrackerRow["status"]) ?? "planning",
     leadStaffId: r.leadStaffId,
     dashboardNote: r.dashboardNote,

@@ -58,10 +58,10 @@ export interface CrawlNeed {
    * Sourced from events.required_final_count > 0 in tracker-status.ts.
    */
   hasFinalSlot: boolean;
-  /** Tickets sold for this specific crawl across its venue_events */
+  /** Tickets sold for this specific crawl across its venue_events.
+   *  The tracker displays raw COUNTS (operator request 2026-06-11) —
+   *  the old derived salesCents (tickets x $30) is gone. */
   ticketsSold: number;
-  /** Sales total for this crawl */
-  salesCents: number;
   /**
    * Shipping status of THIS crawl's wristband-role venue (from the
    * wristbands table). null = no wristband row yet. Drives the per-crawl

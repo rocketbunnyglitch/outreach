@@ -59,7 +59,9 @@ export interface TrackerRow {
    *  Falls back to America/Toronto upstream when a city has none recorded. */
   cityTimezone?: string | null;
   priority: number;
-  totalSalesCents: number;
+  /** Tickets sold across the city's crawls — raw COUNT, not money
+   *  (operator request 2026-06-11: "1 ticket sold", not "$30"). */
+  totalTicketsSold: number;
   status: "planning" | "active" | "confirmed" | "cancelled";
   leadStaffId: string | null;
   dashboardNote: string | null;
@@ -160,7 +162,7 @@ function compareRows(
     case "need":
       return a.need.openSlotCount - b.need.openSlotCount;
     case "sales":
-      return a.totalSalesCents - b.totalSalesCents;
+      return a.totalTicketsSold - b.totalTicketsSold;
     case "assign": {
       const an = a.leadStaffId ? (staffNameById.get(a.leadStaffId) ?? "") : "";
       const bn = b.leadStaffId ? (staffNameById.get(b.leadStaffId) ?? "") : "";
@@ -330,7 +332,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
     const afterHides = afterKpi.filter((r) => {
       if (hideCancelled && (r.status === "cancelled" || r.need.statusPill === "cancelled"))
         return false;
-      if (hideZeroSales && r.totalSalesCents <= 0) return false;
+      if (hideZeroSales && r.totalTicketsSold <= 0) return false;
       return true;
     });
     const filtered = q
@@ -593,7 +595,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 : "bg-transparent text-zinc-500 ring-zinc-300 hover:bg-zinc-100 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-900",
             )}
           >
-            Hide 0 sales
+            Hide 0 tickets
           </button>
         </div>
         <Input
@@ -644,7 +646,7 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
             const selSet = new Set(selectedVisible);
             const sel = rows.filter((r) => selSet.has(r.cityCampaignId));
             const crawls = sel.reduce((s, r) => s + r.need.crawlBreakdown.length, 0);
-            const sales = sel.reduce((s, r) => s + r.totalSalesCents, 0);
+            const sales = sel.reduce((s, r) => s + r.totalTicketsSold, 0);
             return (
               <span className="inline-flex items-center gap-2 font-mono text-[10px] text-zinc-600 uppercase tracking-widest dark:text-zinc-300">
                 <span>
@@ -653,8 +655,8 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 </span>
                 <span className="text-zinc-300 dark:text-zinc-600">·</span>
                 <span>
-                  <span className="text-zinc-900 dark:text-zinc-100">{formatSales(sales)}</span>{" "}
-                  sales
+                  <span className="text-zinc-900 dark:text-zinc-100">{formatTickets(sales)}</span>{" "}
+                  {sales === 1 ? "ticket" : "tickets"}
                 </span>
               </span>
             );
@@ -787,12 +789,12 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
                 tooltip="The city + campaign. Click the city name to open its full sheet; click the arrow on the left of each row to expand its crawls."
               />
               <SortableTh
-                label="Sales"
+                label="Tickets"
                 sortKey="sales"
                 sort={sort}
                 onSort={toggleSort}
                 align="right"
-                tooltip="Tickets sold across all of this city's crawls, shown as a dollar/k figure."
+                tooltip="Tickets sold across all of this city's crawls — live count from Eventbrite (auto-syncs every 15 minutes)."
               />
               <SortableTh
                 label="Status"
@@ -932,12 +934,10 @@ export function TrackerDashboardTable({ rows, staff, defaultPriorityFilter = "to
   );
 }
 
-function formatSales(cents: number): string {
-  if (!cents) return "—";
-  const dollars = cents / 100;
-  return dollars >= 1000
-    ? `$${(dollars / 1000).toFixed(1)}k`
-    : `$${Math.round(dollars).toLocaleString("en-US")}`;
+/** Raw ticket COUNT (operator request 2026-06-11) — "1", "41", "1.2k". */
+function formatTickets(n: number): string {
+  if (!n) return "—";
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString("en-US");
 }
 
 /** Inline-editable city priority (1 = highest .. 10 = lowest). */
@@ -1152,7 +1152,7 @@ function CityCard({
               )}
             </Link>
             <span className="font-mono text-xs text-zinc-500 tabular-nums">
-              {formatSales(row.totalSalesCents)}
+              {formatTickets(row.totalTicketsSold)}
             </span>
           </div>
           {row.need.crawlBreakdown.length > 0 ? (
@@ -1377,7 +1377,7 @@ function CityRow({
 
         <td className="px-2 py-2 text-right align-middle sm:py-2.5">
           <span className="font-mono text-xs text-zinc-600 tabular-nums dark:text-zinc-300">
-            {formatSales(row.totalSalesCents)}
+            {formatTickets(row.totalTicketsSold)}
           </span>
         </td>
 
@@ -2101,9 +2101,9 @@ function CrawlBreakdownCard({
         >
           {dayLabel(crawl.dayPart)} crawl {crawl.crawlNumber}
         </Link>
-        {crawl.salesCents > 0 && (
+        {crawl.ticketsSold > 0 && (
           <span className="font-mono text-[10px] text-zinc-500 tabular-nums">
-            {formatSales(crawl.salesCents)}
+            {formatTickets(crawl.ticketsSold)}
           </span>
         )}
         <CrawlStatusOverride crawl={crawl} />
@@ -2220,9 +2220,9 @@ function CrawlBreakdownRow({
           as tickets × $30 in lib/tracker-status.ts; will be replaced
           with real Eventbrite numbers when that integration lands. */}
       <td className="px-2 py-1.5 text-right">
-        {crawl.salesCents > 0 ? (
+        {crawl.ticketsSold > 0 ? (
           <span className="font-mono text-[11px] text-zinc-600 tabular-nums dark:text-zinc-300">
-            {formatSales(crawl.salesCents)}
+            {formatTickets(crawl.ticketsSold)}
           </span>
         ) : (
           <span className="font-mono text-[11px] text-zinc-400">—</span>

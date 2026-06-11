@@ -397,10 +397,6 @@ export async function computeCityNeeds(
       // standard crawls render 4.
       hasFinalSlot: reqF > 0,
       ticketsSold: b.ticketsSold,
-      // Per-crawl sales is tickets × $30 (cents), mirroring the city-level
-      // salesMap in tracker-data.ts. Will be replaced by a real Eventbrite
-      // pull when the integration lands.
-      salesCents: b.ticketsSold * 3000,
       wristbandStatus: b.wristbandStatus,
       hostType: hostTypeByEventId.get(b.eventId) ?? "none",
       notes: b.notes,
