@@ -205,6 +205,11 @@ const ADMIN_SECTION: { label: string; items: NavItem[] } = {
       icon: <Table2 className="h-3.5 w-3.5" />,
     },
     {
+      href: "/admin/learning",
+      label: "Learning",
+      icon: <BookOpen className="h-3.5 w-3.5" />,
+    },
+    {
       href: "/admin/autonomy",
       label: "Autonomy",
       icon: <ShieldCheck className="h-3.5 w-3.5" />,

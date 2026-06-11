@@ -172,7 +172,7 @@
 
 ## Phase E — Post-campaign + autonomy graduation (weeks 3–4)
 
-### E1. Post-campaign learning reports  [ ]
+### E1. Post-campaign learning reports  [x]
 - Reply/confirm conversion by template, domain, sender, slot type,
   priority band; cancellations by cause; replacement success rate;
   venues-to-reuse + venues-to-avoid lists feeding next campaign's
