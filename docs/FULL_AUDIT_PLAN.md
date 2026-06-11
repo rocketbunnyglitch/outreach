@@ -29,14 +29,19 @@
   Mobile = 390px; desktop = 1440px.
 
 ## Wave 0 — Foundations
-- [ ] P001 Commit this plan; memory cursor entry
-- [ ] P002 Generate route inventory snapshot into docs/_audit/routes.txt (done below, keep fresh)
-- [ ] P003 Generate FK/table map: scripts/audit-data-links.sh skeleton (psql, read-only)
-- [ ] P004 Catalogue all polymorphic refs (targetType/targetId pairs) + all "logical FK" columns lacking DB FK
-- [ ] P005 Build scripts/audit-data-links.sh: one named check per invariant, exits non-zero w/ counts (becomes the permanent harness)
+- [x 8b3bdfd] P001 Commit this plan; memory cursor entry
+- [x 8b3bdfd] P002 Route inventory snapshot docs/_audit/routes.txt (94 routes)
+- [x] P003 Harness skeleton (folded into P005)
+- [x] P004 Polymorphic refs catalogued: tasks/notes(target_type,target_id), goals(scope,scope_id), action_verdicts(subject_id), smart-note suggestions; logical-FK columns covered check-by-check in Wave 1
+- [x] P005 scripts/audit-data-links.sh built — 21 named read-only checks, exit=#failures
 - [ ] P006 Wire audit-data-links.sh into deploy gates (warn-only) + weekly cron alert
 - [ ] P007 Feature inventory list reviewed against refdoc section map (append any missing feature phases to Wave 3)
-- [ ] P008 Baseline run of harness; record initial orphan counts inline here
+- [x] P008 Baseline run: 5 failures (2 harness bugs + 3 real)
+  » thread_message_count_drift 2353: WRITER BUG — gmail poller bumped thread counters on duplicate redeliveries (onConflictDoNothing no-op still incremented message_count/unread_count and advanced last_*_at). Fixed: ingestMessage early-returns null when no row inserted. Data: 3,381 threads reconciled (counts + unread clamped to real inbound).
+  » cold_touch_behind_mail 8: residue since earlier backfill — topped up; poller fix (9f788b5) keeps it green forward.
+  » suppressed_email_on_active_venue 2: Classic Jewel + Kremwerk had hard-bounced primary emails — cleared to NULL + internal note so re-enrichment is driven instead of a fake contact method.
+  » harness bugs fixed: drafts check now uses sent_thread_id; push check casts ve.role::text.
+  » Re-run after repairs: 21/21 ok.
 
 ## Wave 1 — Data linkage + integrity (define invariant → scan → fix data → fix writer → permanent check)
 Each family = 3 phases: (a) scan+diagnose, (b) fix data + fix writing code, (c) permanent check added + re-scan clean.

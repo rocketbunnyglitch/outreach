@@ -1330,6 +1330,16 @@ async function ingestMessage(opts: {
   const messageHasStar = labels.includes("STARRED");
   const shouldSetStar = messageHasStar;
 
+  // Audit fix (FULL_AUDIT P015, 2026-06-11): only roll thread counters
+  // forward when a row was ACTUALLY inserted. The insert is
+  // onConflictDoNothing — history-API overlaps and deep resyncs redeliver
+  // the same gmail message, and the unconditional bump inflated
+  // message_count (+unread_count, + falsely advanced last_*_at) on 2,354
+  // threads. A duplicate redelivery must be a complete no-op.
+  if (!insertedMessageId) {
+    return null;
+  }
+
   await db.execute(sql`
     UPDATE email_threads
     SET
