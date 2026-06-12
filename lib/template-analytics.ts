@@ -443,28 +443,60 @@ export async function loadConversionFunnel(opts: {
           AND sent_at >= ${from}
           AND sent_at <= ${to}
       ),
-      replies AS (
-        SELECT DISTINCT thread_id
-        FROM ${emailMessages}
-        WHERE direction = 'inbound'
+      -- Venue-level funnel keys. Venues regularly answer a cold email in a
+      -- DIFFERENT Gmail thread than the tracked send (fresh email, other
+      -- address), so a thread-to-thread join undercounted every stage past
+      -- "sent" — declines sat at a permanent 0 with 11 live ones in the era.
+      -- Threads with no venue link still count individually.
+      sent_keys AS (
+        SELECT DISTINCT COALESCE('v:' || et.venue_id::text, 't:' || et.id::text) AS k
+        FROM sends s
+        INNER JOIN ${emailThreads} et ON et.id = s.thread_id
+      ),
+      related_threads AS (
+        SELECT et.id,
+               COALESCE('v:' || et.venue_id::text, 't:' || et.id::text) AS k,
+               et.classification,
+               et.last_message_at
+        FROM ${emailThreads} et
+        WHERE et.venue_id IN (
+                SELECT et2.venue_id FROM sends s
+                INNER JOIN ${emailThreads} et2 ON et2.id = s.thread_id
+                WHERE et2.venue_id IS NOT NULL)
+           OR et.id IN (SELECT thread_id FROM sends)
       )
       SELECT
-        (SELECT COUNT(*) FROM sends)::int AS sent,
-        (SELECT COUNT(*) FROM sends s
-         INNER JOIN replies r ON r.thread_id = s.thread_id)::int AS replied,
-        (SELECT COUNT(*) FROM sends s
-         INNER JOIN ${emailThreads} et ON et.id = s.thread_id
-         WHERE et.classification IN ('interested', 'warm', 'confirmed'))::int AS warm_or_better,
-        (SELECT COUNT(*) FROM sends s
-         INNER JOIN ${emailThreads} et ON et.id = s.thread_id
-         WHERE et.classification = 'confirmed')::int AS confirmed,
-        (SELECT COUNT(*) FROM sends s
-         INNER JOIN ${emailThreads} et ON et.id = s.thread_id
-         WHERE et.classification IN ('decline', 'unsubscribe'))::int AS declined,
-        (SELECT COUNT(*) FROM email_soft_bounces
-         WHERE team_id = ${opts.teamId}
-           AND last_seen_at >= ${from}
-           AND last_seen_at <= ${to})::int AS bounced
+        (SELECT COUNT(*) FROM sent_keys)::int AS sent,
+        (SELECT COUNT(DISTINCT rt.k) FROM related_threads rt
+         WHERE EXISTS (
+           SELECT 1 FROM ${emailMessages} m
+           WHERE m.thread_id = rt.id
+             AND m.direction = 'inbound'
+             AND m.received_at >= ${from}
+             AND m.received_at <= ${to}))::int AS replied,
+        (SELECT COUNT(DISTINCT rt.k) FROM related_threads rt
+         WHERE rt.classification IN ('interested', 'warm', 'confirmed')
+           AND rt.last_message_at >= ${from})::int AS warm_or_better,
+        (SELECT COUNT(DISTINCT rt.k) FROM related_threads rt
+         WHERE rt.classification = 'confirmed'
+           AND rt.last_message_at >= ${from})::int AS confirmed,
+        (SELECT COUNT(DISTINCT rt.k) FROM related_threads rt
+         WHERE rt.classification IN ('decline', 'unsubscribe')
+           AND rt.last_message_at >= ${from})::int AS declined,
+        -- Bounce signal the engine actually acts on: hard-bounce
+        -- suppressions. The soft-bounce counter is additive (it has been
+        -- empty since launch; counting it alone rendered a permanent 0
+        -- next to 13 real bounce suppressions).
+        ((SELECT COUNT(*) FROM email_soft_bounces
+          WHERE team_id = ${opts.teamId}
+            AND last_seen_at >= ${from}
+            AND last_seen_at <= ${to})
+         +
+         (SELECT COUNT(*) FROM email_suppression
+          WHERE team_id = ${opts.teamId}
+            AND reason = 'bounced'
+            AND created_at >= ${from}
+            AND created_at <= ${to}))::int AS bounced
     `)) as unknown;
 
     const list: Array<{
