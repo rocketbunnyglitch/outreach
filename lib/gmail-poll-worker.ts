@@ -199,7 +199,14 @@ export async function drainGmailPolls(): Promise<DrainSummary> {
       // the operator re-connects.
       if (
         message.includes("invalid_grant") ||
-        message.includes("Token has been expired or revoked")
+        message.includes("Token has been expired or revoked") ||
+        // Wrong consent scopes (P296 live catch: sergio@ connected with
+        // insufficient scopes and failed every poll for hours while
+        // status stayed 'connected' — invisible to the dead-inbox alert).
+        // The fix is the same as a dead token: operator reconnects with
+        // the right scopes.
+        message.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT") ||
+        message.includes("insufficient authentication scopes")
       ) {
         try {
           // Blank the dead token AND flip status to 'needs_reauth' so
