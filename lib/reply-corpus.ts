@@ -86,8 +86,9 @@ export async function extractReplyExamples(): Promise<number> {
       LEFT JOIN cities c ON c.id = cc.city_id
       WHERE m_in.direction = 'inbound'
         AND COALESCE(TRIM(m_in.body_text), '') <> ''
-        -- Bounce notifiers are machine mail, not venue correspondence.
-        AND m_in.from_email_normalized !~* '(mailer-daemon|postmaster)@'
+        -- Bounce notifiers + no-reply auto-mailers are machine mail,
+        -- not venue correspondence (13 noreply rows purged, P286).
+        AND m_in.from_email_normalized !~* '(mailer-daemon|postmaster|noreply|no-reply|donotreply)'
         -- Staff inter-inbox mail ingests as "inbound" from OUR domains;
         -- learning venue-reply patterns from our own writing poisons
         -- the few-shot corpus (146 rows purged, FULL_AUDIT P081).
@@ -134,7 +135,7 @@ export async function extractClassificationExamples(): Promise<number> {
       WHERE m.direction = 'inbound'
         AND t.classification::text <> 'unclassified'
         AND COALESCE(TRIM(m.body_text), '') <> ''
-        AND m.from_email_normalized !~* '(mailer-daemon|postmaster)@'
+        AND m.from_email_normalized !~* '(mailer-daemon|postmaster|noreply|no-reply|donotreply)'
         -- Same own-domain guard as the reply extractor: never learn
         -- classification from our own staff's inter-inbox mail.
         AND lower(split_part(m.from_email_normalized, '@', 2)) NOT IN (
@@ -240,11 +241,32 @@ export type RetrievedReplyExample = {
  * feedback, lightly boosted for accepted-heavy feedback. Returns [] on
  * any failure — retrieval must never break classification or chips.
  */
+/**
+ * Distinctive-keyword OR query for FTS retrieval. websearch_to_tsquery
+ * ANDs plain words, so feeding it a whole venue email demanded a
+ * near-verbatim corpus duplicate — retrieval returned [] for every
+ * fresh message and the chip feedback loop never engaged (live probe:
+ * AND matched 3 self-dupes, OR-keywords matched 914 with rank ordering
+ * picking the top k).
+ */
+function keywordOrQuery(messageText: string): string {
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const raw of messageText.toLowerCase().split(/[^a-z0-9']+/)) {
+    const w = raw.replace(/'/g, "");
+    if (w.length < 4 || seen.has(w)) continue;
+    seen.add(w);
+    words.push(w);
+    if (words.length >= 16) break;
+  }
+  return words.join(" OR ");
+}
+
 export async function retrieveReplyExamples(
   messageText: string,
   k = 3,
 ): Promise<RetrievedReplyExample[]> {
-  const query = messageText.slice(0, 1500);
+  const query = keywordOrQuery(messageText.slice(0, 1500));
   if (!query.trim()) return [];
   try {
     const res = await db.execute<RetrievedReplyExample>(sql`
@@ -284,7 +306,9 @@ export async function retrieveClassificationExamples(
   messageText: string,
   k = 6,
 ): Promise<RetrievedClassificationExample[]> {
-  const query = messageText.slice(0, 1500);
+  // Same keyword-OR strategy as retrieveReplyExamples — the AND form
+  // also starved the classifier of few-shot examples.
+  const query = keywordOrQuery(messageText.slice(0, 1500));
   if (!query.trim()) return [];
   try {
     const res = await db.execute<RetrievedClassificationExample>(sql`
