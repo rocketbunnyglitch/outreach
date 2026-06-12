@@ -336,6 +336,14 @@ check drafts_gmail_sent_unsaved   "drafts claimed >24h with no thread link (Gmai
    WHERE sent_at IS NOT NULL AND sent_thread_id IS NULL
      AND sent_at < now() - interval '24 hours'"
 
+check cadence_cold_with_real_inbound   "threads in a cold cadence state despite a REAL venue reply (non-spam, non-machine) -- cold cron would draft follow-ups at engaged venues (1h grace)"   "SELECT count(*) FROM email_threads t
+   WHERE t.cadence_state::text LIKE 'cold_%' AND t.archived_at IS NULL
+     AND COALESCE(t.classification::text,'') NOT IN ('spam')
+     AND EXISTS (SELECT 1 FROM email_messages m WHERE m.thread_id = t.id
+       AND m.direction = 'inbound'
+       AND m.from_address !~* '(noreply|no-reply|donotreply|mailer-daemon|postmaster)')
+     AND t.updated_at < now() - interval '1 hour'"
+
 check audit_churn_connected_accounts \
   "connected_accounts audit rows from system writes in the last 24h (churn suppression regressed — was 26k/day before migration 0139)" \
   "SELECT CASE WHEN count(*) > 500 THEN count(*) ELSE 0 END FROM audit_log

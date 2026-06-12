@@ -262,6 +262,17 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND k.status IN ('pending','in_progress') AND ve.status = 'cancelled'`,
   },
   {
+    name: "cadence_cold_with_real_inbound",
+    desc: "Threads in a cold cadence state despite a REAL venue reply -- cold cron would draft follow-ups at engaged venues (1h grace)",
+    query: sql`SELECT count(*)::int AS n FROM email_threads t
+      WHERE t.cadence_state::text LIKE 'cold_%' AND t.archived_at IS NULL
+        AND COALESCE(t.classification::text,'') NOT IN ('spam')
+        AND EXISTS (SELECT 1 FROM email_messages m WHERE m.thread_id = t.id
+          AND m.direction = 'inbound'
+          AND m.from_address !~* '(noreply|no-reply|donotreply|mailer-daemon|postmaster)')
+        AND t.updated_at < now() - interval '1 hour'`,
+  },
+  {
     name: "drafts_gmail_sent_unsaved",
     desc: "Drafts claimed >24h with no thread link (Gmail-accepted-but-unsaved markers) — resolve each by hand: re-release if never delivered, link thread if it was",
     query: sql`SELECT count(*)::int AS n FROM email_drafts

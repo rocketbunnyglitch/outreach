@@ -1374,6 +1374,29 @@ async function ingestMessage(opts: {
         WHEN ${direction} = 'inbound' AND NOT ${isBounceNotification} THEN 'needs_reply'::thread_state
         ELSE state
       END,
+      -- Cadence half-machine fix (P278, 2026-06-12): the state machine only
+      -- advanced on SENDS, so a venue REPLY left the thread in cold_sent_*
+      -- and the cadence cron would draft a cold T2 at an interested (or
+      -- declined!) venue. A real inbound (not a bounce/noreply machine
+      -- message) moves any cold state to warm_pending_response and clears
+      -- the cold due-date; the human reply then drives the warm track.
+      -- Spam/auto-reply classifications get corrected back to cold by the
+      -- classifier follow-up (plan-doc TODO) — failing open to "a human
+      -- looks" is the safe side.
+      cadence_state = CASE
+        WHEN ${direction} = 'inbound' AND NOT ${isBounceNotification}
+          AND ${fromHeader} !~* '(noreply|no-reply|donotreply)'
+          AND cadence_state::text LIKE 'cold_%'
+        THEN 'warm_pending_response'::cadence_state
+        ELSE cadence_state
+      END,
+      cadence_next_due_at = CASE
+        WHEN ${direction} = 'inbound' AND NOT ${isBounceNotification}
+          AND ${fromHeader} !~* '(noreply|no-reply|donotreply)'
+          AND cadence_state::text LIKE 'cold_%'
+        THEN NULL
+        ELSE cadence_next_due_at
+      END,
       updated_at = NOW(),
       updated_by = ${inbox.staff_member_id}
     WHERE id = ${threadId}
