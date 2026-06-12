@@ -770,6 +770,20 @@ export async function sendDraft(
   if (!UUID_RE.test(draftId)) {
     return { ok: false, error: "Invalid draft id." };
   }
+  // Diagnostic (override-path bug, 2026-06-12): JC's "Override + send"
+  // retries never produced a server-side trace, so the failure point was
+  // unprovable. Log every send entry with which gate-options came along;
+  // one grep answers "did the retry reach the server and with what".
+  logger.info(
+    {
+      draftId,
+      userId: staff.id,
+      hasCadenceOverride: Boolean(opts.cadenceOverrideReason?.trim()),
+      bypassCap: opts.bypassCap ?? false,
+      ackDuplicates: opts.ackDuplicates ?? false,
+    },
+    "sendDraft: entry",
+  );
   return sendDraftAsUser({
     draftId,
     ownerUserId: staff.id,
