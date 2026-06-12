@@ -143,7 +143,7 @@ export async function runDeliverabilityWatchdog(): Promise<DeliverabilitySummary
       const recipients = rowsOf<{ id: string }>(
         await db.execute(sql`
           SELECT id FROM users
-          WHERE status = 'active' AND (id = ${d.owner_user_id} OR role IN ('admin','superuser'))
+          WHERE status = 'active' AND (id = ${d.owner_user_id} OR role = 'admin')
         `),
       );
       for (const r of recipients) {
