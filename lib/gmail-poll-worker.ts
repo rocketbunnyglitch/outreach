@@ -1115,6 +1115,20 @@ async function ingestMessage(opts: {
     direction === "inbound" &&
     (BOUNCE_FROM_RE.test(fromHeader ?? "") || BOUNCE_SUBJECT_RE.test(subject ?? ""));
 
+  // Service-notification noise (P282 match-rate audit, 2026-06-12): staff
+  // inboxes receive SaaS notifier mail (TrustedHerd staffing alerts, Vimeo,
+  // Stripe receipts, Alignable, Google account notices...) that can never
+  // match a venue. 243 such threads were sitting in needs_reply in one
+  // week, drowning the Unmatched triage queue and tripping Overdue flags.
+  // Treated exactly like bounce notifications: workflow-neutral, lands as
+  // archived. Deliberately EXCLUDES gmail/googlemail (humans) and
+  // venue-adjacent platforms (Tripleseat) where real inquiries arrive.
+  const isNoiseNotification =
+    direction === "inbound" &&
+    /@(?:[a-z0-9.-]+\.)?(trustedherd\.com|vimeo\.com|alignable\.com|stripe\.com|accounts\.google\.com|gettoby\.com|intercom\.io|notifications\.google\.com)/i.test(
+      fromHeader ?? "",
+    );
+
   // Find or create the thread.
   let threadId: string;
   let threadCreated = false;
@@ -1203,7 +1217,7 @@ async function ingestMessage(opts: {
             subject,
             state:
               direction === "inbound"
-                ? isBounceNotification
+                ? isBounceNotification || isNoiseNotification
                   ? "archived"
                   : "needs_reply"
                 : "waiting_on_them",
@@ -1371,7 +1385,8 @@ async function ingestMessage(opts: {
         ELSE 'mixed'::thread_direction
       END,
       state = CASE
-        WHEN ${direction} = 'inbound' AND NOT ${isBounceNotification} THEN 'needs_reply'::thread_state
+        WHEN ${direction} = 'inbound' AND NOT ${isBounceNotification} AND NOT ${isNoiseNotification} THEN 'needs_reply'::thread_state
+        WHEN ${direction} = 'inbound' AND ${isNoiseNotification} AND state = 'needs_reply' THEN 'archived'::thread_state
         ELSE state
       END,
       -- Cadence half-machine fix (P278, 2026-06-12): the state machine only

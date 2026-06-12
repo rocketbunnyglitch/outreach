@@ -316,7 +316,11 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
           !result.gmailSent &&
           (result.wrongAccountBlocked === true ||
             result.relationshipBlocked === true ||
-            result.intentAmbiguous === true);
+            result.intentAmbiguous === true ||
+            // Safety hard-blocks (suppressed address, do-not-contact venue)
+            // — Cold All queues without per-recipient checks by design, so
+            // these surface at dispatch and can never self-heal.
+            ("safetyBlock" in result && Boolean(result.safetyBlock)));
         const capDeferred = !result.gmailSent && result.capBlocked === true;
         // Cadence-floor blocks carry their own earliest-allowed date (the
         // same one the UI offers as "Schedule for <date>") — defer the
