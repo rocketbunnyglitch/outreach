@@ -262,6 +262,13 @@ const CHECKS: Array<{ name: string; desc: string; query: ReturnType<typeof sql> 
         AND k.status IN ('pending','in_progress') AND ve.status = 'cancelled'`,
   },
   {
+    name: "drafts_gmail_sent_unsaved",
+    desc: "Drafts claimed >24h with no thread link (Gmail-accepted-but-unsaved markers) — resolve each by hand: re-release if never delivered, link thread if it was",
+    query: sql`SELECT count(*)::int AS n FROM email_drafts
+      WHERE sent_at IS NOT NULL AND sent_thread_id IS NULL
+        AND sent_at < now() - interval '24 hours'`,
+  },
+  {
     name: "audit_churn_connected_accounts",
     desc: "connected_accounts audit rows from system writes in the last 24h (churn suppression regressed — was 26k/day before migration 0139)",
     query: sql`SELECT CASE WHEN count(*) > 500 THEN count(*)::int ELSE 0 END AS n FROM audit_log

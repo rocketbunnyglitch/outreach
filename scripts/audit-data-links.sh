@@ -332,6 +332,10 @@ check notes_target_orphan_venue \
      AND NOT EXISTS (SELECT 1 FROM venues v WHERE v.id = n.target_id)"
 
 # ---- suppression ↔ venues ---------------------------------------------------
+check drafts_gmail_sent_unsaved   "drafts claimed >24h with no thread link (Gmail-accepted-but-unsaved markers, or silent claim leaks) — operator must resolve each by hand"   "SELECT count(*) FROM email_drafts
+   WHERE sent_at IS NOT NULL AND sent_thread_id IS NULL
+     AND sent_at < now() - interval '24 hours'"
+
 check audit_churn_connected_accounts \
   "connected_accounts audit rows from system writes in the last 24h (churn suppression regressed — was 26k/day before migration 0139)" \
   "SELECT CASE WHEN count(*) > 500 THEN count(*) ELSE 0 END FROM audit_log
