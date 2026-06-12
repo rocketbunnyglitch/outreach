@@ -31,6 +31,7 @@ import { composeAndSendImpl } from "@/lib/compose-send-impl";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { shouldBlockLifecycleSend } from "@/lib/relationship-send-gate";
+import { startOfLocalDay } from "@/lib/send-cap";
 import { cronMaySendDraft } from "@/lib/send-mode-gate";
 import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 
@@ -55,6 +56,7 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         role: users.role,
         displayName: users.displayName,
         primaryEmail: users.primaryEmail,
+        timezone: users.timezone,
       },
     })
     .from(emailDrafts)
@@ -300,10 +302,24 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         // set, no thread id) = the blocked-not-delivered marker (like T17).
         // Either way, record the failure so /email-queue can SHOW it instead
         // of an eternal "sending now" spinner (migration 0132).
+        // Daily-cap failures cannot succeed before the cap window resets
+        // (local midnight) — retrying every tick burned ~1,400 attempts/
+        // draft/day and drowned the logs (P276). Defer the draft to 9am
+        // local NEXT day (+ a per-draft minute stagger); every other
+        // failure keeps the retry-next-tick behavior.
+        const capDeferred = !result.gmailSent && result.capBlocked === true;
+        const nextCapWindow = capDeferred
+          ? new Date(
+              startOfLocalDay(owner.timezone).getTime() +
+                33 * 3_600_000 +
+                (Math.abs(hashCode(draft.id)) % 45) * 60_000,
+            )
+          : null;
         await db
           .update(emailDrafts)
           .set({
             ...(result.gmailSent ? {} : { sentAt: null }),
+            ...(nextCapWindow ? { scheduledFor: nextCapWindow } : {}),
             sendAttempts: sql`${emailDrafts.sendAttempts} + 1`,
             lastSendError: (result.error ?? "send failed").slice(0, 500),
             lastSendErrorAt: new Date(),
@@ -312,8 +328,16 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
           .where(eq(emailDrafts.id, draft.id));
         failed += 1;
         logger.warn(
-          { draftId: draft.id, owner: owner.id, error: result.error, gmailSent: result.gmailSent },
-          "scheduled send failed (will retry next tick)",
+          {
+            draftId: draft.id,
+            owner: owner.id,
+            error: result.error,
+            gmailSent: result.gmailSent,
+            deferredTo: nextCapWindow?.toISOString() ?? null,
+          },
+          capDeferred
+            ? "scheduled send cap-blocked — deferred to next cap window"
+            : "scheduled send failed (will retry next tick)",
         );
       }
     } catch (err) {
@@ -337,4 +361,14 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
   }
 
   return { attempted: candidates.length, sent, failed };
+}
+
+/** Tiny stable hash for per-draft stagger minutes (no Math.random in cron). */
+function hashCode(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) - h + str.charCodeAt(i);
+    h |= 0;
+  }
+  return h;
 }
