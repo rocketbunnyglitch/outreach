@@ -307,6 +307,16 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         // draft/day and drowned the logs (P276). Defer the draft to 9am
         // local NEXT day (+ a per-draft minute stagger); every other
         // failure keeps the retry-next-tick behavior.
+        // Deterministic-permanent blocks (wrong From-account for the
+        // thread, bad brand relationship, ambiguous send intent) can never
+        // self-heal — neither retrying nor deferring helps. Unschedule the
+        // draft so it returns to the operator's drafts with the error
+        // attached; they fix the cause and re-queue.
+        const permanentBlock =
+          !result.gmailSent &&
+          (result.wrongAccountBlocked === true ||
+            result.relationshipBlocked === true ||
+            result.intentAmbiguous === true);
         const capDeferred = !result.gmailSent && result.capBlocked === true;
         // Cadence-floor blocks carry their own earliest-allowed date (the
         // same one the UI offers as "Schedule for <date>") — defer the
@@ -330,7 +340,8 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
           .update(emailDrafts)
           .set({
             ...(result.gmailSent ? {} : { sentAt: null }),
-            ...(nextCapWindow ? { scheduledFor: nextCapWindow } : {}),
+            ...(permanentBlock ? { scheduledFor: null } : {}),
+            ...(nextCapWindow && !permanentBlock ? { scheduledFor: nextCapWindow } : {}),
             sendAttempts: sql`${emailDrafts.sendAttempts} + 1`,
             lastSendError: (result.error ?? "send failed").slice(0, 500),
             lastSendErrorAt: new Date(),
@@ -346,11 +357,13 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
             gmailSent: result.gmailSent,
             deferredTo: nextCapWindow?.toISOString() ?? null,
           },
-          capDeferred
-            ? "scheduled send cap-blocked — deferred to next cap window"
-            : floorDeferredTo
-              ? "scheduled send floor-blocked — deferred to the floor's earliest-allowed date"
-              : "scheduled send failed (will retry next tick)",
+          permanentBlock
+            ? "scheduled send permanently blocked — unscheduled back to drafts for the operator"
+            : capDeferred
+              ? "scheduled send cap-blocked — deferred to next cap window"
+              : floorDeferredTo
+                ? "scheduled send floor-blocked — deferred to the floor's earliest-allowed date"
+                : "scheduled send failed (will retry next tick)",
         );
       }
     } catch (err) {
