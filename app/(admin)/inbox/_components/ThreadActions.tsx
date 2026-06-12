@@ -121,7 +121,11 @@ export function ThreadActions({
   }, [threadId, currentState]);
 
   return (
-    <div className="flex items-center gap-2">
+    // flex-wrap: at phone widths the full chip set (star + Interested +
+    // Declined + Archive + Snooze + Trash) is ~540px wide — without wrap
+    // the tail chips (Snooze, Trash) render past the viewport, clipped
+    // and untappable (390px audit, 2026-06-12).
+    <div className="flex flex-wrap items-center gap-2">
       <StarToggle threadId={threadId} initialStarred={isStarred} size="md" />
       <Button
         size="sm"
