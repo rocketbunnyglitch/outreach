@@ -145,10 +145,17 @@ function result(
         seedsColdCadence: true,
       };
     case "warm_cadence":
+      // Floor OFF (operator hotfix 2026-06-12): warm_cadence by
+      // construction means the venue has WRITTEN TO US on this thread.
+      // The cadence floors (cold pacing + cross-domain 7-day spacing)
+      // exist to pace un-engaged PITCHING — they were blocking JC from
+      // replying to a warm lead because a sibling alias had emailed the
+      // venue days earlier. Conversations are never floor-gated; the
+      // touch is still recorded so spacing math stays accurate.
       return {
         ...base,
         cadenceManaged: true,
-        appliesCadenceFloor: true,
+        appliesCadenceFloor: false,
         recordsCadenceTouch: true,
       };
     case "lifecycle":

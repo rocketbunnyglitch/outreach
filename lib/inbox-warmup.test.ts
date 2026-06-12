@@ -10,9 +10,9 @@ describe("inbox warm-up ramp", () => {
   });
 
   it("ramps from a small floor on day one up to the target by week 3", () => {
-    expect(warmupRampCap(start, 30, day(0))).toBe(5); // 15% -> floor 5
-    expect(warmupRampCap(start, 30, day(3))).toBe(9); // 30%
-    expect(warmupRampCap(start, 30, day(7))).toBe(15); // 50%
+    expect(warmupRampCap(start, 30, day(0))).toBe(6); // 20% (operator-tuned 2026-06-12)
+    expect(warmupRampCap(start, 30, day(3))).toBe(12); // 40%
+    expect(warmupRampCap(start, 30, day(7))).toBe(17); // 55% -> round(16.5)=17
     expect(warmupRampCap(start, 30, day(14))).toBe(23); // 75% -> round(22.5)=23
     expect(warmupRampCap(start, 30, day(21))).toBe(30); // 100%
     expect(warmupRampCap(start, 30, day(40))).toBe(30); // stays at target

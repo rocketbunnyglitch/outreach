@@ -15,9 +15,13 @@
 // Ramp as a fraction of the target cap, keyed by days since warm-up started.
 // New-domain-safe ~3-week schedule. The last matching threshold wins.
 const RAMP: Array<{ day: number; frac: number }> = [
-  { day: 0, frac: 0.15 },
-  { day: 3, frac: 0.3 },
-  { day: 7, frac: 0.5 },
+  // Operator-tuned 2026-06-12 ("lift the cap a bit"): early steps raised
+  // 0.15/0.3 -> 0.2/0.4 after the first week of the new brand domains
+  // showed clean deliverability (real replies, no bounce spike). Still a
+  // ~3-week ramp; established domains bypass entirely (warmup NULL).
+  { day: 0, frac: 0.2 },
+  { day: 3, frac: 0.4 },
+  { day: 7, frac: 0.55 },
   { day: 14, frac: 0.75 },
   { day: 21, frac: 1.0 },
 ];

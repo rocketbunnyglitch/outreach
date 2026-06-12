@@ -106,12 +106,12 @@ describe("deriveSendIntent -- cap/cadence behavior gates [P0]", () => {
     });
   });
 
-  it("warm cadence: no cold cap, no cold seed, records (warm) touch, applies floor", () => {
+  it("warm cadence: no cold cap, no cold seed, records (warm) touch, NO floor (engaged venues are never floor-gated; operator hotfix 2026-06-12)", () => {
     const r = deriveSendIntent({ isReply: true, cadenceCategory: "warm" });
     expect(r).toMatchObject({
       seedsColdCadence: false,
       countsAgainstColdCap: false,
-      appliesCadenceFloor: true,
+      appliesCadenceFloor: false,
       recordsCadenceTouch: true,
       operationalForCap: false,
     });
