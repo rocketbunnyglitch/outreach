@@ -267,7 +267,7 @@ function CityRow({
 
       {/* Archive / delete — hover-revealed to keep the list calm.
           Admin gets both buttons; non-admin gets only Archive. */}
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 pointer-coarse:opacity-100">
         <button
           type="button"
           onClick={handleArchive}

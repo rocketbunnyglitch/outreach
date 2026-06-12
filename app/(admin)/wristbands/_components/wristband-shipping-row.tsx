@@ -281,7 +281,7 @@ export function WristbandShippingRow({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="rounded p-1 text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-100 hover:text-zinc-700 group-hover:opacity-100 dark:hover:bg-zinc-800"
+          className="rounded p-1 text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-100 hover:text-zinc-700 group-hover:opacity-100 pointer-coarse:opacity-100 dark:hover:bg-zinc-800"
           aria-label={`Edit shipping for ${row.venueName}`}
           title="Edit shipping"
         >

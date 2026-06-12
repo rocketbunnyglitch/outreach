@@ -295,7 +295,7 @@ export function InternalHostsTable({ hosts }: { hosts: InternalHostRow[] }) {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100">
                       <button
                         type="button"
                         onClick={() => startEdit(h)}

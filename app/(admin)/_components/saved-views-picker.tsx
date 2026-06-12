@@ -240,7 +240,7 @@ export function SavedViewsPicker({
                         type="button"
                         onClick={() => deleteView(v)}
                         disabled={pending}
-                        className="px-2 text-zinc-400 opacity-0 transition-all hover:bg-rose-500/[0.08] hover:text-rose-600 group-hover:opacity-100"
+                        className="px-2 text-zinc-400 opacity-0 transition-all hover:bg-rose-500/[0.08] hover:text-rose-600 group-hover:opacity-100 pointer-coarse:opacity-100"
                         aria-label={`Delete view ${v.name}`}
                         title="Delete view"
                       >

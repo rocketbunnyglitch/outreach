@@ -251,7 +251,7 @@ export function DraftList({ drafts, mode, folderLabel }: Props) {
                 disabled={pending}
                 title="Discard draft"
                 aria-label="Discard draft"
-                className="absolute top-2 right-2 rounded p-1 text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-200 hover:text-rose-700 disabled:opacity-50 group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-rose-300"
+                className="absolute top-2 right-2 rounded p-1 text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-200 hover:text-rose-700 disabled:opacity-50 group-hover:opacity-100 pointer-coarse:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-rose-300"
               >
                 {pending ? (
                   <Loader2 className="h-3 w-3 animate-spin" />

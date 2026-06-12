@@ -353,7 +353,7 @@ function NotificationItem({
             e.stopPropagation();
             onMarkRead();
           }}
-          className="rounded-md p-1 text-zinc-300 opacity-0 transition-all hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100 dark:hover:bg-zinc-800"
+          className="rounded-md p-1 text-zinc-300 opacity-0 transition-all hover:bg-zinc-200 hover:text-zinc-700 group-hover:opacity-100 pointer-coarse:opacity-100 dark:hover:bg-zinc-800"
           aria-label="Mark read"
           title="Mark read"
         >

@@ -243,7 +243,7 @@ export function SavedSearchesDropdown({ saved, currentQuery, onApply }: Props) {
                     onClick={() => handleDelete(s.id)}
                     disabled={pending}
                     title="Delete saved search"
-                    className="invisible shrink-0 rounded p-1 text-zinc-400 hover:text-rose-600 group-hover:visible dark:hover:text-rose-400"
+                    className="invisible shrink-0 rounded p-1 text-zinc-400 hover:text-rose-600 group-hover:visible pointer-coarse:visible dark:hover:text-rose-400"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>

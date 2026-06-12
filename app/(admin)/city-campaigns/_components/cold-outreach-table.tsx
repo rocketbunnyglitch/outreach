@@ -1901,7 +1901,7 @@ function ColdRow({
             className="h-3.5 w-3.5 cursor-pointer rounded border-zinc-300 text-blue-600 transition-colors focus:ring-2 focus:ring-blue-500/30 dark:border-zinc-700"
             aria-label={`Select ${entry.venueName}`}
           />
-          <div className="flex flex-col items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          <div className="flex flex-col items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 pointer-coarse:opacity-100">
             {/* Promote-to-crawl available in BOTH cold and warm
                 modes. In warm it's the primary verb (operator
                 committing an interested venue to a slot). In cold
@@ -1974,7 +1974,7 @@ function ColdRow({
           </div>
           <Link
             href={`/venues/${entry.venueId}`}
-            className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
+            className="rounded p-0.5 text-zinc-300 opacity-0 transition-opacity hover:text-zinc-700 group-hover:opacity-100 pointer-coarse:opacity-100 dark:text-zinc-600 dark:hover:text-zinc-300"
             title="Open venue detail"
             aria-label="Open venue detail"
           >

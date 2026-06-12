@@ -281,7 +281,7 @@ export function EventbriteCell({
             aria-label="Edit linkage"
             title="Edit Eventbrite ID"
           >
-            <RefreshCw className="h-3 w-3 rotate-180 opacity-0 group-hover:opacity-100" />
+            <RefreshCw className="h-3 w-3 rotate-180 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100" />
             <span className="font-mono text-[10px] uppercase tracking-[0.08em]">edit</span>
           </button>
         </div>
