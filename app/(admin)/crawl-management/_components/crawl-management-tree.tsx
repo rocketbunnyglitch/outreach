@@ -101,7 +101,7 @@ export function CrawlManagementTree({ cities }: Props) {
           <button
             type="button"
             onClick={() => toggle(city.cityCampaignId)}
-            className="flex w-full items-center justify-between gap-3 border-zinc-200 border-b px-4 py-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+            className="flex w-full flex-wrap items-center justify-between gap-3 border-zinc-200 border-b px-4 py-3 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
           >
             <div className="flex items-center gap-2">
               {expanded.has(city.cityCampaignId) ? (

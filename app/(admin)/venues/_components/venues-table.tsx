@@ -494,7 +494,7 @@ export function VenuesTable({
       )}
 
       {/* Result summary strip */}
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div className="flex items-center gap-3">
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-widest">
             {visibleRows.length}

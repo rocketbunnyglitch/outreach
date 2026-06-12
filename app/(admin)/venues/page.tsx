@@ -66,7 +66,7 @@ export default async function VenuesListPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="flex items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Venues</h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
