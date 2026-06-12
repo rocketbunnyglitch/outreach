@@ -74,6 +74,8 @@ function sentStateForTouchKind(touchKind: string): CadenceState | null {
       return "cold_sent_touch_2";
     case "cold_touch_3":
       return "cold_sent_touch_3";
+    case "warm_response":
+      return "warm_responded_pending_nudge_1";
     case "warm_nudge_1":
       return "warm_nudge_1_sent";
     case "warm_nudge_2":

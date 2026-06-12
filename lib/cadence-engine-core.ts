@@ -41,6 +41,9 @@ export const CADENCE_TOUCH_KINDS = [
   "cold_touch_1",
   "cold_touch_2",
   "cold_touch_3",
+  // The staff response to a venue reply [RefDoc 6.4 "Slot detail /
+  // response sent — Day 0"]: starts the warm-nudge clock.
+  "warm_response",
   "warm_nudge_1",
   "warm_nudge_2",
   "warm_nudge_3",
@@ -104,6 +107,17 @@ export function planFromState(state: CadenceState, lastTouchAt: Date): CadencePl
         touchKind: "cold_touch_3",
         earliestAllowedSendAt: addDays(lastTouchAt, COLD_TOUCH_3_OFFSET_DAYS),
         stateAfterSend: "cold_sent_touch_3",
+        stageHint: "follow_up",
+      };
+    case "warm_pending_response":
+      // The venue wrote to us; the staff response goes out same-day
+      // [RefDoc 6.4] and starts the nudge-1 clock. Without this case a
+      // replied thread parked in warm_pending_response forever and the
+      // warm-nudge track never engaged (P279).
+      return {
+        touchKind: "warm_response",
+        earliestAllowedSendAt: lastTouchAt,
+        stateAfterSend: "warm_responded_pending_nudge_1",
         stageHint: "follow_up",
       };
     case "warm_responded_pending_nudge_1":
