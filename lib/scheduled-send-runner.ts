@@ -308,13 +308,24 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
         // local NEXT day (+ a per-draft minute stagger); every other
         // failure keeps the retry-next-tick behavior.
         const capDeferred = !result.gmailSent && result.capBlocked === true;
+        // Cadence-floor blocks carry their own earliest-allowed date (the
+        // same one the UI offers as "Schedule for <date>") — defer the
+        // draft straight to it instead of futile per-tick retries until
+        // the floor lapses (P276, same class as the cap fix).
+        const floorDeferredTo =
+          !result.gmailSent && result.cadenceBlocked === true && result.cadence?.earliestAllowedAt
+            ? new Date(
+                new Date(result.cadence.earliestAllowedAt).getTime() +
+                  (Math.abs(hashCode(draft.id)) % 45) * 60_000,
+              )
+            : null;
         const nextCapWindow = capDeferred
           ? new Date(
               startOfLocalDay(owner.timezone).getTime() +
                 33 * 3_600_000 +
                 (Math.abs(hashCode(draft.id)) % 45) * 60_000,
             )
-          : null;
+          : floorDeferredTo;
         await db
           .update(emailDrafts)
           .set({
@@ -337,7 +348,9 @@ export async function runScheduledSends(): Promise<ScheduledSendResult> {
           },
           capDeferred
             ? "scheduled send cap-blocked — deferred to next cap window"
-            : "scheduled send failed (will retry next tick)",
+            : floorDeferredTo
+              ? "scheduled send floor-blocked — deferred to the floor's earliest-allowed date"
+              : "scheduled send failed (will retry next tick)",
         );
       }
     } catch (err) {
