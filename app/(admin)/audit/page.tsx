@@ -199,8 +199,8 @@ function AuditRow({ row }: { row: AuditRowData }) {
   return (
     <li className="flex items-center gap-3 rounded-md border border-zinc-100 px-4 py-3 transition-colors hover:border-zinc-200 dark:border-zinc-900 dark:hover:border-zinc-800">
       <OperationIcon operation={row.operation} />
-      <div className="flex flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-zinc-700 uppercase tracking-wider dark:text-zinc-300">
             {row.tableName}
           </span>
@@ -212,7 +212,7 @@ function AuditRow({ row }: { row: AuditRowData }) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-xs text-zinc-500">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
           <span className="inline-flex items-center gap-1">
             <User className="h-3 w-3" />
             {row.staffName ?? "system"}

@@ -141,7 +141,7 @@ function WindowSelector({ currentWindow }: { currentWindow: number }) {
     { days: 90, label: "90d" },
   ];
   return (
-    <div className="inline-flex overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
+    <div className="inline-flex max-w-full flex-wrap overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
       {options.map((o) => {
         const active = o.days === currentWindow;
         return (

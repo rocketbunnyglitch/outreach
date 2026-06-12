@@ -48,36 +48,38 @@ export default async function MisclassificationsPage() {
             both AI-classified and operator-confirmed.
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-zinc-200 border-b text-xs text-zinc-500 dark:border-zinc-800">
-                <th className="px-3 py-2 text-left font-medium">Thread</th>
-                <th className="px-3 py-2 text-left font-medium">
-                  <span className="inline-flex items-center gap-1">
-                    <Bot className="h-3 w-3" />
-                    AI said
-                  </span>
-                </th>
-                <th className="px-3 py-2 text-left font-medium">
-                  <span className="inline-flex items-center gap-1">
-                    <UserCheck className="h-3 w-3" />
-                    Operator said
-                  </span>
-                </th>
-                <th className="px-3 py-2 text-right font-medium">Confidence</th>
-                <th className="px-3 py-2 text-left font-medium">Model</th>
-                <th className="px-3 py-2 text-left font-medium">Sections</th>
-                <th className="px-3 py-2 text-left font-medium">Venue / City</th>
-                <th className="px-3 py-2 text-left font-medium">Last run</th>
-                <th className="px-3 py-2 font-medium" aria-label="Open" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <Row key={r.threadId} row={r} />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-zinc-200 border-b text-xs text-zinc-500 dark:border-zinc-800">
+                  <th className="px-3 py-2 text-left font-medium">Thread</th>
+                  <th className="px-3 py-2 text-left font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      <Bot className="h-3 w-3" />
+                      AI said
+                    </span>
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      <UserCheck className="h-3 w-3" />
+                      Operator said
+                    </span>
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium">Confidence</th>
+                  <th className="px-3 py-2 text-left font-medium">Model</th>
+                  <th className="px-3 py-2 text-left font-medium">Sections</th>
+                  <th className="px-3 py-2 text-left font-medium">Venue / City</th>
+                  <th className="px-3 py-2 text-left font-medium">Last run</th>
+                  <th className="px-3 py-2 font-medium" aria-label="Open" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <Row key={r.threadId} row={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

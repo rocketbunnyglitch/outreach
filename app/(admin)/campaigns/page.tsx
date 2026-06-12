@@ -28,7 +28,7 @@ export default async function CampaignsListPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="flex items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-semibold text-4xl tracking-tight ">Campaigns</h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -76,8 +76,8 @@ export default async function CampaignsListPage() {
                 />
               </div>
               <Link href={`/campaigns/${campaign.id}`} className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-3 pr-10">
-                  <div className="flex items-baseline gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 pr-10">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-3">
                     <h2 className="font-semibold text-2xl tracking-tight ">{campaign.name}</h2>
                     <span className="font-mono text-xs text-zinc-400 uppercase tracking-wider">
                       {campaign.slug}
