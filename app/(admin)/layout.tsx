@@ -20,6 +20,7 @@ import { PrimeTimePill } from "./_components/prime-time-pill";
 import { RealtimeRefresh } from "./_components/realtime-refresh";
 import { ShortcutsHintButton } from "./_components/shortcuts-hint-button";
 import { SideNav } from "./_components/side-nav";
+import { StaleDeployGuard } from "./_components/stale-deploy-guard";
 import { ThemePrefHydrator } from "./_components/theme-pref-hydrator";
 import { ThemeToggle } from "./_components/theme-toggle";
 import { TimezonePicker } from "./_components/timezone-picker";
@@ -57,6 +58,7 @@ export default async function AdminLayout({
         <ComposerProvider>
           <GlobalPresence staffId={staff.id} />
           <ThemePrefHydrator dbTheme={myPrefs?.themePref ?? null} />
+          <StaleDeployGuard />
           <div className="flex min-h-screen flex-col">
             {isDevImpersonation && <DevModeBanner />}
             <TopBar staff={staff} provider={provider} />

@@ -76,6 +76,27 @@ export function looksLikeStaleServerAction(value: unknown): boolean {
  * to pull the current build and re-run hydration; return true. Returns false
  * (no reload) otherwise, or while the cooldown is still active.
  */
+/**
+ * Reload now (cooldown-guarded) because the running bundle is from a
+ * previous deployment. Used by the fetch-layer stale-deploy guard, which
+ * can detect skew structurally (Server-Action POST -> 404) even when app
+ * code catches the rejection and shows a toast instead of throwing —
+ * exactly how "replies won't send" presented on a stale tab (operator
+ * report 2026-06-12, JC).
+ */
+export function reloadForStaleDeploy(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const last = Number(window.sessionStorage.getItem(COOLDOWN_KEY) ?? "0");
+    if (Number.isFinite(last) && Date.now() - last < COOLDOWN_MS) return false;
+    window.sessionStorage.setItem(COOLDOWN_KEY, String(Date.now()));
+  } catch {
+    // sessionStorage blocked — reload anyway.
+  }
+  window.location.reload();
+  return true;
+}
+
 export function maybeReloadForChunkError(value: unknown): boolean {
   if (typeof window === "undefined") return false;
   if (
