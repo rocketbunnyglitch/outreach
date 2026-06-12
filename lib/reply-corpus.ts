@@ -143,9 +143,18 @@ export async function extractClassificationExamples(): Promise<number> {
       ORDER BY m.thread_id, m.sent_at DESC
     ),
     ins AS (
-      INSERT INTO classification_examples (message_id, thread_id, text, final_label)
-      SELECT id, thread_id, LEFT(body_text, ${TEXT_CAP}), final_label
-      FROM latest_inbound
+      INSERT INTO classification_examples (message_id, thread_id, text, final_label, was_override)
+      SELECT li.id, li.thread_id, LEFT(li.body_text, ${TEXT_CAP}), li.final_label,
+        -- P284: was_override was never written (defaulted false), so the
+        -- accuracy loop read 0% forever. True when the classifier's last
+        -- suggestion for the thread differs from the human-settled label.
+        COALESCE((
+          SELECT cr.classification::text <> li.final_label
+          FROM classifier_runs cr
+          WHERE cr.thread_id = li.thread_id
+          ORDER BY cr.run_at DESC LIMIT 1
+        ), false)
+      FROM latest_inbound li
       ON CONFLICT (message_id) DO NOTHING
       RETURNING 1
     )

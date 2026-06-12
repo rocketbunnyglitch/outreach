@@ -119,6 +119,53 @@ export async function runDeliverabilityWatchdog(): Promise<DeliverabilitySummary
     }
   }
 
+  // Dead-inbox alert (P282: the doc comment promised this rule but it was
+  // never implemented — julian's inbox sat needs_reauth for 6 DAYS with
+  // venue replies going unreceived and nobody nagged). Any non-connected
+  // account alerts its owner AND admins every 12h until reconnected.
+  try {
+    const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+    const dead = rowsOf<{
+      id: string;
+      email_address: string;
+      owner_user_id: string | null;
+      team_id: string;
+      since: string;
+    }>(
+      await db.execute(sql`
+        SELECT ca.id, ca.email_address, ca.owner_user_id, ca.team_id,
+               COALESCE(ca.gmail_last_polled_at, ca.updated_at)::text AS since
+        FROM connected_accounts ca
+        WHERE ca.status <> 'connected'
+      `),
+    );
+    for (const d of dead) {
+      const recipients = rowsOf<{ id: string }>(
+        await db.execute(sql`
+          SELECT id FROM users
+          WHERE status = 'active' AND (id = ${d.owner_user_id} OR role IN ('admin','superuser'))
+        `),
+      );
+      for (const r of recipients) {
+        try {
+          const res = await emitNotification({
+            staffId: r.id,
+            kind: "admin_message",
+            title: `Inbox ${d.email_address} is disconnected`,
+            body: `No mail has been received on ${d.email_address} since ${new Date(d.since).toLocaleString("en-US", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" })} — venue replies to it are going unseen. Reconnect it in Settings -> Inboxes.`,
+            linkPath: "/settings/inboxes",
+            dedupeMinutes: DEDUPE_MINUTES,
+          });
+          if (res.created) alerts += 1;
+        } catch (err) {
+          logger.warn({ err, inbox: d.email_address }, "dead-inbox notify failed");
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "dead-inbox sweep failed (non-fatal)");
+  }
+
   const summary = { inboxesChecked: health.length, alerts };
   logger.info(summary, "deliverability watchdog complete");
   return summary;
