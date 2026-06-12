@@ -139,9 +139,17 @@ export async function importVenuesCsv(
   // First pass: Zod-validate every row, build a stripped list of valid rows.
   const results: VenueImportRowResult[] = [];
   const validRows: { row: VenueCsvRow; rowIndex: number }[] = [];
+  const rowWarnings = new Map<number, string>();
   for (let i = 0; i < parsed.data.length; i++) {
     const rowIndex = i + 2; // +1 for 0-based → 1-based, +1 for header row
     const raw = parsed.data[i] ?? {};
+    // Soft-fail phones: operator sheets rarely hold E.164, and losing the
+    // whole row over a formatting nit is worse than importing it phoneless.
+    const rawPhone = (raw.phone ?? "").trim();
+    if (rawPhone && !/^\+[1-9]\d{9,14}$/.test(rawPhone)) {
+      raw.phone = "";
+      rowWarnings.set(rowIndex, `Phone "${rawPhone}" isn't E.164 — imported without a phone.`);
+    }
     const result = venueCsvRowSchema.safeParse(raw);
     if (!result.success) {
       const flat = result.error.flatten().fieldErrors;
@@ -284,6 +292,7 @@ export async function importVenuesCsv(
             rowIndex: item.rowIndex,
             status: "ok",
             venueId: row.id,
+            message: rowWarnings.get(item.rowIndex),
           });
         }
       });

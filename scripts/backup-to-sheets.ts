@@ -1177,7 +1177,11 @@ async function writeTabsToSheets(
 // ---- CSV fallback -------------------------------------------------------
 
 function csvCell(v: string | number): string {
-  const s = String(v ?? "");
+  let s = String(v ?? "");
+  // CSV-injection guard: a leading =, +, - or @ becomes a live formula when
+  // the fallback CSV is opened in Excel/Sheets. Prefix with a quote (the
+  // standard spreadsheet escape; harmless in a human-read backup).
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }

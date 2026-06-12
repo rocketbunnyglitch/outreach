@@ -67,7 +67,14 @@ const csvOptional = (max = 500) =>
     .optional();
 
 const csvPositiveInt = z
-  .union([z.literal("").transform(() => undefined), z.coerce.number().int().nonnegative()])
+  .union([
+    z.literal("").transform(() => undefined),
+    z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .max(50000, "Capacity above 50,000 looks like a data error"),
+  ])
   .optional();
 
 /**
@@ -78,7 +85,16 @@ const csvPositiveInt = z
  *   `instagram`, `capacity`, `serves_alcohol`, `dnc`, `notes`
  */
 export const venueCsvRowSchema = z.object({
-  name: z.string().min(1, "Name is required").max(200),
+  // Leading =, +, -, @ would be evaluated as a formula if the name is ever
+  // round-tripped through Excel/Sheets (CSV-injection). No real venue name
+  // starts with those characters.
+  name: z
+    .string()
+    .min(1, "Name is required")
+    .max(200)
+    .refine((s) => !/^[=+\-@]/.test(s.trim()), {
+      message: "Name cannot start with =, +, - or @",
+    }),
   city: z.string().min(1, "City is required").max(120),
   country: csvOptional(120),
   address: csvOptional(500),
