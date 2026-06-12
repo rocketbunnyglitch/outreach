@@ -284,7 +284,7 @@ export function MobileSectionNav({ isAdmin = false, hasCurrentCampaign = true }:
                   type="button"
                   onClick={() => setActiveSection(i)}
                   className={cn(
-                    "rounded-full px-3 py-1 font-medium text-xs transition-colors",
+                    "rounded-full px-3 py-1 font-medium text-xs transition-colors pointer-coarse:py-2",
                     isCurrent
                       ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900"
                       : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-300 dark:hover:bg-zinc-800",
@@ -309,7 +309,7 @@ export function MobileSectionNav({ isAdmin = false, hasCurrentCampaign = true }:
                 <Link
                   href={item.href}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium text-[11px] transition-colors",
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium text-[11px] transition-colors pointer-coarse:py-2.5",
                     active
                       ? "bg-blue-500/[0.12] text-blue-700 dark:bg-blue-500/[0.18] dark:text-blue-300"
                       : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-100",

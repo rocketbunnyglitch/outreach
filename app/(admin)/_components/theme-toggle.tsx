@@ -81,7 +81,7 @@ export function ThemeToggle() {
             title={opt.title}
             onClick={() => choose(opt.value)}
             className={cn(
-              "flex h-6 w-6 items-center justify-center rounded transition-colors",
+              "flex h-6 w-6 items-center justify-center rounded transition-colors pointer-coarse:h-9 pointer-coarse:w-9",
               selected
                 ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
                 : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100",

@@ -182,7 +182,7 @@ export function NotificationsBell() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "relative rounded-md p-1.5 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800",
+          "relative rounded-md p-1.5 transition-colors hover:bg-zinc-100 pointer-coarse:p-2.5 dark:hover:bg-zinc-800",
           listing.unreadCount > 0 ? "text-blue-600 dark:text-blue-400" : "text-zinc-500",
         )}
         title={listing.unreadCount > 0 ? `${listing.unreadCount} unread` : "Notifications"}
