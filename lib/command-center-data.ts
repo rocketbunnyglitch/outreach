@@ -65,12 +65,12 @@ export async function loadCommandCenter(campaignId: string | null): Promise<Comm
     ),
     // Latest run per cron: silent too long, or last run errored.
     db.execute(sql`
-      SELECT DISTINCT ON (name)
-        name,
+      SELECT DISTINCT ON (cron_name)
+        cron_name AS name,
         status,
         (EXTRACT(EPOCH FROM (now() - started_at)) / 3600)::int AS hours_ago
       FROM cron_runs
-      ORDER BY name, started_at DESC
+      ORDER BY cron_name, started_at DESC
     `),
     // Sending infrastructure: inboxes that cannot send.
     db.execute(sql`
