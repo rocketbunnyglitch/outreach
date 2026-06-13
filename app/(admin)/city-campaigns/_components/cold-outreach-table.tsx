@@ -17,6 +17,7 @@ import { RotChip } from "@/components/ui/rot-chip";
 import { useShortcut } from "@/components/ui/shortcut-provider";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { downloadCsv, filenameSlug } from "@/lib/csv-export";
 import { parseVenueHours, suggestCallWindow } from "@/lib/parse-venue-hours";
 import { useDraft } from "@/lib/use-draft";
 import {
@@ -26,6 +27,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardPaste,
+  Download,
   ExternalLink,
   Flame,
   Loader2,
@@ -872,6 +874,65 @@ export function ColdOutreachTable({
     return <EmptyState onManualAdd={() => setAdding(true)} />;
   }
 
+  // Export the currently-displayed rows (respects active filters + sort) to a
+  // CSV the operator can open in Sheets/Excel. Full column set regardless of
+  // which column tab is visible — the operator wants the data, not the view.
+  function exportToCsv() {
+    const headers = [
+      "Venue",
+      "City",
+      "Email",
+      "Alternate emails",
+      "Phone",
+      "Website",
+      "Instagram",
+      "Hours",
+      "Venue type",
+      "Status",
+      "Warm",
+      "Assignee",
+      "Lead score",
+      "Engagement",
+      "Engagement band",
+      "Touches used",
+      "Touch cap",
+      "Unanswered calls",
+      "ZeroBounce",
+      "Cadence",
+      "Escalated to",
+      "Remarks",
+      "Last touch",
+    ];
+    const rows = displayed.map((e) => [
+      e.venueName,
+      e.cityName ?? "",
+      e.venueEmail ?? "",
+      e.venueAlternateEmails.join("; "),
+      e.venuePhone ?? "",
+      e.venueWebsite ?? "",
+      e.venueInstagramHandle ?? "",
+      e.venueHours ?? "",
+      e.venueType.join("; "),
+      e.status,
+      e.isWarm ? "yes" : "no",
+      e.assignedStaffName ?? "",
+      e.aiLeadScore ?? "",
+      e.engagementScore,
+      e.engagementBand,
+      e.touchCount,
+      e.touchCap,
+      e.callAttempts,
+      e.zeroBounceStatus ?? "",
+      e.cadenceLabel,
+      e.escalatedToName ?? "",
+      e.remarks ?? "",
+      e.lastTouchAt ? new Date(e.lastTouchAt).toISOString().slice(0, 10) : "",
+    ]);
+    const city = filenameSlug(displayed[0]?.cityName) || "city";
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`${mode}-leads-${city}-${stamp}.csv`, headers, rows);
+  }
+
   const allSelected = selected.size > 0 && selected.size === displayed.length;
   const someSelected = selected.size > 0 && selected.size < displayed.length;
 
@@ -961,6 +1022,18 @@ export function ColdOutreachTable({
           {/* Bulk contact enrichment (E6) — scrapes eligible venues in the
               current filtered view; preview + live progress in a modal. */}
           <BulkEnrichButton venueIds={displayed.map((e) => e.venueId)} />
+          {/* Export the current view (respects filters) to CSV — opens in
+              Sheets / Excel / Numbers. */}
+          <button
+            type="button"
+            onClick={exportToCsv}
+            disabled={displayed.length === 0}
+            className="inline-flex items-center gap-1 rounded-md border border-zinc-300 bg-white px-2.5 py-1 font-mono text-[10px] text-zinc-700 uppercase tracking-[0.08em] transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            title={`Export the ${displayed.length} shown ${mode === "warm" ? "warm lead" : "cold"} venue(s) to CSV (Sheets / Excel)`}
+          >
+            <Download className="h-2.5 w-2.5" />
+            Export
+          </button>
           <p className="hidden font-mono text-[10px] text-zinc-500 uppercase tracking-[0.12em] sm:block dark:text-zinc-400">
             status + ZeroBounce auto-tracked
           </p>
