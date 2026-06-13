@@ -793,11 +793,15 @@ async function fillWristbandFields(
     }
   }
 
-  // The {{wristband_note}} insert block: T7A (host available) is the standard
-  // offer; only shown when a wristband slot is in play (role wristband, or a
-  // cold pitch where the wristband slot is still open).
-  const showWristbandNote =
-    isWristbandVenue || (!myVe && (input.campaignId != null || input.cityCampaignId != null));
+  // The {{wristband_note}} insert block: T7A reads "Since you're the
+  // starting/check-in venue…", which PRESUMES the venue has taken the
+  // wristband slot. Only splice it in for the venue that ACTUALLY holds that
+  // slot. Previously it also fired for any slot-less lead (!myVe), so T4/T5/
+  // T6/T8 told warm leads they were the wristband venue before they'd picked
+  // anything (operator report 2026-06-13). The slot is still OFFERED in those
+  // templates' own body ("Wristband Venue (7:30–10:30): check-in/pickup"); the
+  // host/backup detail just waits until they actually choose it.
+  const showWristbandNote = isWristbandVenue;
   if (showWristbandNote && input.campaignId) {
     const block = await loadInsertBlock(input.campaignId, "T7A");
     if (block) fields.wristband_note = block;

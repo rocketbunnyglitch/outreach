@@ -94,7 +94,16 @@ export function renderTemplate(
     }
     return String(value);
   });
-  return { output, unresolvedFields: Array.from(new Set(unresolved)) };
+  // An optional insert block that renders empty (e.g. {{wristband_note}} on a
+  // venue that hasn't taken the wristband slot) leaves the blank line above
+  // AND below it, so the body would show a 2-line gap. Collapse any run of 3+
+  // line breaks back to a normal one-blank-line paragraph break. Handles CRLF
+  // (the seeded template bodies use \r\n) and LF alike, preserving the body's
+  // dominant newline. Plain-text bodies never intend a triple newline; HTML
+  // bodies don't depend on it.
+  const nl = output.includes("\r\n") ? "\r\n" : "\n";
+  const collapsed = output.replace(/(?:\r?\n){3,}/g, nl + nl);
+  return { output: collapsed, unresolvedFields: Array.from(new Set(unresolved)) };
 }
 
 /**
