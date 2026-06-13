@@ -18,6 +18,24 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+  // Security headers (FULL_AUDIT P337): the proxy adds none, so the app
+  // ships them. Conservative set — no CSP yet (Next's inline runtime
+  // scripts need nonce plumbing first; X-Frame-Options covers the
+  // clickjacking case CSP frame-ancestors would).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Strict-Transport-Security", value: "max-age=15552000; includeSubDomains" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+    ];
+  },
+
   // Deployment-skew protection. Tags every static-asset + RSC/Server-Action
   // request with this build's id (the git SHA, already exported as
   // BUILD_COMMIT by scripts/deploy.sh). When a tab opened on an OLD build
