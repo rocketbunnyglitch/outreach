@@ -40,7 +40,7 @@ export const HALLOWEEN_2026_TEMPLATES: SeedTemplate[] = [
     code: "T1",
     name: "T1 - Cold opener, night crawls",
     subject: "{{city}} | {{venue_name}}: Halloween Bar Crawl Partnership",
-    body: `Hey {{venue_name}},
+    body: `Hey {{venue_name}} Crew,
 
 We're projecting {{guest_count}} participants for this crawl in {{city}} and we'd love to partner with {{venue_name}} in the {{campaign_name}} experience. Guests will have wristbands for entry at each stop, and we'll promote the route to drive groups through the night.
 
@@ -60,7 +60,7 @@ Thanks,
     code: "T2",
     name: "T2 - Cold opener, day party",
     subject: "{{city}} | {{venue_name}}: Halloween Bar Crawl Partnership",
-    body: `Hey {{venue_name}},
+    body: `Hey {{venue_name}} Crew,
 
 I'm reaching out on behalf of {{company_name}} to invite {{venue_name}} to be a participating stop at our {{city}} Halloween bar crawl on Saturday, October 31st at 1pm-8pm (day party).
 
