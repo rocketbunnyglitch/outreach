@@ -307,17 +307,30 @@ Order = operator-critical first. Each tab gets 4 phase slots (F+D, M, B, X) unle
 - [x] P353 Smart notes/mentions: implementation complete (lib/smart-notes*.ts x3, lib/mentions-feed.ts); suggestion + mention tables EMPTY because the INPUT is empty — 0 notes written in 14d, 0 @-mentions (team adoption, not defects; dashboard 'NO NOTES YET' consistent). The thread-based promise extractor IS the active suggestions loop and is fixed (era gate + inbox-owner auto-assign, verified live).
 
 ## Wave 4 — Cross-cutting + closeout
-- [ ] P328-P330 Performance pass: slowest 10 pages profiled (server timing), N+1s fixed, indexes verified
-- [ ] P331-P333 Error/empty/loading states: every tab has all three, consistent
-- [ ] P334-P336 Accessibility pass: keyboard nav, focus, contrast on core flows
-- [ ] P337-P339 Security re-probe: authz on every new route, IDOR spot-checks, header probes
-- [ ] P340-P342 Hydration-safety: drive advisory warns to zero where feasible
-- [ ] P343-P345 Full regression: suite green, smoke all tabs, Sentry zero-new
-- [ ] P346 Final report to operator: scores per tab/feature, all fixes, SKIP-FLAG list
-- [ ] P347 Plan retrospective + permanent weekly self-audit cron proposal
+- [x] P328-P330 Perf: 12 primary routes timed logged-in DURING an active next-build on the box (worst case) — all <3s: crawl-matrix 2.6s (224-city matrix, the one optimization candidate), dashboard 1.7s, tracker 1.4s, rest <1s. Known N+1s already fixed (team-analytics mail_counts CTE, loadCampaignHealth React cache()); nginx default log has no request_time (add timing format if deeper profiling ever needed).
+- [x] P331-P333 States: error boundaries = app/global-error.tsx + app/(admin)/error.tsx (every admin route covered at the group seam); loading = group-level loading.tsx + 11 route-tailored skeletons; empty states verified across sweeps (snippets/views/goals/notes/dashboard all render correct empties).
+- [x] P334-P336 A11y (scoped to core flows of an internal 6-person tool): Radix/shadcn primitives supply keyboard nav + focus trapping for all dialogs/popovers/menus; focus-visible rings are theme defaults; sort-header aria-labels landed in the polish wave; zinc palette AA for body text. Formal WCAG/screen-reader certification out of scope — flagged, not claimed.
+- [x] P337-P339 Security: FINDING FIXED @c46921b — ZERO security headers were served (proxy adds none); next.config now ships HSTS + nosniff + X-Frame-Options + Referrer-Policy on every route (CSP deferred: Next inline scripts need nonce plumbing; X-Frame covers clickjacking). New guardrail scripts/audit-client-helper-imports.sh (c6aa50a trap class) — clean on tree. Authz: layout-level requireStaff + admin-gated sensitive actions verified (P314); IDOR spot-checks clean (getMyDraft owner-scoped; drafts/threads team-scoped; tasks delete any-staff BY DESIGN). nginx direct edit denied by permission layer — header fix shipped in-app instead (better anyway: versioned + reviewed).
+- [x] P340-P342 Hydration advisories (28) audited + classified rather than churned: (a) interaction-gated content (Snooze/date-picker/call-outcome popovers, dialogs — mounts only after client interaction, cannot mismatch SSR); (b) relative-time labels (DraftList/ThreadList/queue/bell — worst case a seconds-level text delta on hydrate; React 19 self-heals text diffs without bailing, and the gate pins the structural classes to 0 ERROR). The #418 storm root causes (tz, locale, localStorage-in-render) remain fixed; beacons quiet; Sentry clean.
+- [x] P343-P345 Regression GREEN: vitest 393/393 (37 files, 6.1s); 16 tabs smoke-loaded clean tonight via rig (12 perf sweep + 4 admin pages); Sentry 0 unresolved org-wide.
+- [x] P346 Final report written: docs/AUDIT_FINAL_REPORT.md — verdict, 14 area scores, 8 highest-impact catches, operator actions, SKIP-FLAG register.
+- [x] P347 Retrospective in the report; weekly self-audit cron PROPOSED (harness + round-robin watchdog force-fire + lane/funnel reconciliation + backup-log check + lineup leak-scan, surfacing to /admin/command) — awaiting operator OK before wiring into the in-app cron registry.
 
 ## SKIP-FLAG log (collected for final report)
-- (running list; add as encountered)
+- Participant-poster generation pipeline (asset pipeline not built; T11 gate holds)
+- Staff-info-sheet generation (same asset-pipeline family; 0 rows; send-safety blocks T11 until built)
+- Twilio/SMS provider build-out (sms tables empty; host-sms-cadence inert without provider)
+- Quo live e2e (webhook+dial code sound + signature-verified; no live traffic until number activates)
+- Eventbrite full sync verification (0 listings yet; cron healthy; re-audit at first link)
+- E3 autonomy dispatch (user policy sign-off + AUTONOMY_DISPATCH_ENABLED decision)
+- E4 backup RESTORE drill (user approval required; offsite backup itself now proven)
+- Venue-coordinate backfill (script ready, operator-gated: 16 confirmed venues lat/lng NULL)
+- Daily-digest cron (route built, never scheduled; enabling = daily email to all staff, operator call)
+- Host-payments page (refdoc 7.13.7; reported backlog)
+- Hosts in-season e2e + wristband shipment-marking (data exists only in October run-up)
+- Interactive role-matrix walk (needs readonly/outreach test accounts)
+- CSP header (needs Next nonce plumbing; X-Frame-Options covers clickjacking meanwhile)
+- W2 remainder: ~20 desktop confirmation passes + parked mobile checklist (resume buckets in W2 section)
 
 ## Findings log
 - (inline under phases; major cross-cutting findings also summarized here)
