@@ -63,10 +63,10 @@ export default async function StaffAnalyticsPage({
         <DailyChart daily={profile.daily} windowDays={profile.windowDays} />
 
         <div className="grid gap-6 lg:grid-cols-5">
-          <div className="lg:col-span-3">
+          <div className="min-w-0 lg:col-span-3">
             <TopVenuesTable rows={profile.topVenues} />
           </div>
-          <div className="lg:col-span-2">
+          <div className="min-w-0 lg:col-span-2">
             <ActivityFeed rows={profile.recentActivity} />
           </div>
         </div>
