@@ -125,9 +125,9 @@ function DateAxis({ dates, windowDays }: { dates: string[]; windowDays: number }
   const stride = Math.max(1, Math.floor(dates.length / labelCount));
   const _ = windowDays;
   return (
-    <div className="mt-2 grid grid-flow-col font-mono text-[9px] text-zinc-500 tabular-nums">
+    <div className="mt-2 grid grid-flow-col [grid-auto-columns:minmax(0,1fr)] font-mono text-[9px] text-zinc-500 tabular-nums">
       {dates.map((d, i) => (
-        <div key={d} className="text-center">
+        <div key={d} className="overflow-visible whitespace-nowrap text-center">
           {i % stride === 0 || i === dates.length - 1 ? formatShortDate(d) : ""}
         </div>
       ))}
