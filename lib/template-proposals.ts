@@ -23,6 +23,7 @@ import "server-only";
 import { generateCompletion } from "@/lib/ai";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { checkTemplateCopy } from "@/lib/template-guardrails";
 import { MERGE_FIELD_KEYS } from "@/lib/template-merge-context";
 import { sql } from "drizzle-orm";
 
@@ -214,6 +215,18 @@ export async function generateTemplateProposals(args: {
     const body = (p.body ?? "").trim();
     if (!title || body.length < 30) continue;
 
+    // Values guardrail: never store a suggestion that violates the doc's hard
+    // constraints (literal turnout, hardcoded brand, hallucinated merge field).
+    // The learning may only operate inside these walls.
+    const violations = checkTemplateCopy((p.subject ?? "").trim(), body, MERGE_FIELD_KEYS);
+    if (violations.length > 0) {
+      logger.info(
+        { campaignId, title, violations: violations.map((v) => v.code) },
+        "template-proposals: skipped a draft that violated a guardrail",
+      );
+      continue;
+    }
+
     const targetCode =
       p.kind === "improvement" && p.targetCode && existingCodes.has(p.targetCode.trim())
         ? p.targetCode.trim()
@@ -327,6 +340,14 @@ export async function promoteProposal(args: {
     if (!p) return { ok: false, error: "Proposal not found." };
     if (p.status !== "pending") return { ok: false, error: `Already ${p.status}.` };
     if (!p.campaign_id) return { ok: false, error: "Proposal has no campaign." };
+
+    // Defense in depth: re-check the guardrails at promote time too. A draft
+    // can't reach the live library if it violates a hard constraint, even if
+    // the rules tightened after it was generated.
+    const violations = checkTemplateCopy(p.suggested_subject, p.suggested_body, MERGE_FIELD_KEYS);
+    if (violations.length > 0) {
+      return { ok: false, error: `Blocked by a guardrail: ${violations[0]?.detail}` };
+    }
 
     // Improvement: update the target template IN PLACE (version-bumped, audited)
     // rather than creating a new one. Falls through to "create new" if the
