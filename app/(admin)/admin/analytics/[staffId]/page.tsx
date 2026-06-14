@@ -32,6 +32,12 @@ export default async function StaffAnalyticsPage({
 }) {
   await requireAdmin();
   const { staffId } = await params;
+  // Guard: a non-UUID segment (e.g. a stale link to /admin/analytics/<word>)
+  // would otherwise hit the loader's `= $1::uuid` and crash the route with a
+  // 22P02 instead of a clean 404 (§12.3 — bad params 404, never crash).
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(staffId)) {
+    notFound();
+  }
   const sp = await searchParams;
   const windowDays = Number(sp.window ?? "30");
   const profile = await loadStaffActivityProfile({
