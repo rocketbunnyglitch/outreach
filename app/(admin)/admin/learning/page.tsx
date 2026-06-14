@@ -28,7 +28,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
       <h2 className="font-semibold text-sm tracking-tight">{title}</h2>
-      {children}
+      {/* Tables here are wide (4-5 cols); scroll them horizontally on mobile
+          instead of pushing the whole page wide. */}
+      <div className="overflow-x-auto">{children}</div>
     </section>
   );
 }

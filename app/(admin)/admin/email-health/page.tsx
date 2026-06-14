@@ -102,27 +102,29 @@ export default async function EmailHealthPage() {
             .
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-zinc-200 border-b text-xs text-zinc-500 dark:border-zinc-800">
-                <th className="px-3 py-2 text-left font-medium">Account</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">Cap today</th>
-                <th className="px-3 py-2 text-right font-medium">Remaining</th>
-                <th className="px-3 py-2 text-right font-medium">Sent 7d</th>
-                <th className="px-3 py-2 text-right font-medium">Replies 7d</th>
-                <th className="px-3 py-2 text-right font-medium">Stale</th>
-                <th className="px-3 py-2 text-right font-medium">Unread</th>
-                <th className="px-3 py-2 text-left font-medium">Last sync</th>
-                <th className="px-3 py-2 font-medium" aria-label="Open" />
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a) => (
-                <AccountRow key={a.id} account={a} />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-zinc-200 border-b text-xs text-zinc-500 dark:border-zinc-800">
+                  <th className="px-3 py-2 text-left font-medium">Account</th>
+                  <th className="px-3 py-2 text-left font-medium">Status</th>
+                  <th className="px-3 py-2 text-right font-medium">Cap today</th>
+                  <th className="px-3 py-2 text-right font-medium">Remaining</th>
+                  <th className="px-3 py-2 text-right font-medium">Sent 7d</th>
+                  <th className="px-3 py-2 text-right font-medium">Replies 7d</th>
+                  <th className="px-3 py-2 text-right font-medium">Stale</th>
+                  <th className="px-3 py-2 text-right font-medium">Unread</th>
+                  <th className="px-3 py-2 text-left font-medium">Last sync</th>
+                  <th className="px-3 py-2 font-medium" aria-label="Open" />
+                </tr>
+              </thead>
+              <tbody>
+                {accounts.map((a) => (
+                  <AccountRow key={a.id} account={a} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

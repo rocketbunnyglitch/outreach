@@ -42,7 +42,7 @@ export default async function TeamAnalyticsPage({
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10 sm:px-10">
-      <header className="mb-8 flex items-baseline justify-between gap-4">
+      <header className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <div>
           <p className="font-mono text-[10px] text-zinc-500 uppercase tracking-[0.14em]">
             admin · team performance
