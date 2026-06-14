@@ -187,14 +187,43 @@ export async function runLivenessChecks(): Promise<LivenessResult[]> {
 export interface LivenessRunResult {
   checked: number;
   silent: number;
+  healed: number;
 }
 
 /**
- * Daily cron entry: run the checks and push ONE admin notification summarizing
- * any silent components, so the operator hears about a dead limb instead of
+ * Self-heal (autonomy roadmap Phase G — the monitor graduating from FLAG to
+ * FIX for known-safe failures). Stale suggestion caches that came out ungrounded
+ * (generated before/around a retrieval issue) are cleared so they regenerate
+ * grounded on next view. Bounded to caches older than 2 days (so freshly-built
+ * ones are never disturbed) and only when there's a corpus to ground against.
+ * If retrieval is GENUINELY broken, the cleared caches come back ungrounded and
+ * the probe still flags it next run — heal first, escalate if it doesn't take.
+ */
+async function selfHealStaleCaches(): Promise<number> {
+  try {
+    const res = await db.execute(sql`
+      UPDATE email_threads
+      SET ai_quick_replies = NULL, ai_quick_replies_at = NULL, ai_quick_replies_message_count = NULL
+      WHERE ai_quick_replies_at IS NOT NULL
+        AND ai_quick_replies_at < now() - interval '2 days'
+        AND jsonb_array_length(COALESCE(ai_quick_replies->'exampleIds', '[]'::jsonb)) = 0
+        AND (SELECT count(*) FROM reply_examples) >= 20
+    `);
+    return Number((res as unknown as { rowCount?: number }).rowCount ?? 0);
+  } catch (err) {
+    logger.warn({ err }, "liveness self-heal failed (non-fatal)");
+    return 0;
+  }
+}
+
+/**
+ * Daily cron entry: SELF-HEAL the known-safe failures, then run the checks and
+ * push ONE admin notification summarizing anything still silent — so the
+ * operator hears about a dead limb the system couldn't fix itself instead of
  * discovering it weeks later. Pull view lives on /admin/command.
  */
 export async function runLivenessMonitor(): Promise<LivenessRunResult> {
+  const healed = await selfHealStaleCaches();
   const results = await runLivenessChecks();
   const silent = results.filter((r) => !r.healthy);
   if (silent.length > 0) {
@@ -219,6 +248,9 @@ export async function runLivenessMonitor(): Promise<LivenessRunResult> {
     }
   }
   await stampHeartbeat("liveness-monitor", silent.length);
-  logger.info({ checked: results.length, silent: silent.length }, "liveness monitor complete");
-  return { checked: results.length, silent: silent.length };
+  logger.info(
+    { checked: results.length, silent: silent.length, healed },
+    "liveness monitor complete",
+  );
+  return { checked: results.length, silent: silent.length, healed };
 }
