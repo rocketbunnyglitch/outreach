@@ -12,6 +12,8 @@ import { dismissProposalAction, generateProposalsAction, promoteProposalAction }
 
 export interface ProposalView {
   id: string;
+  kind: "new" | "improvement";
+  targetTemplateCode: string | null;
   title: string;
   suggestedSubject: string;
   suggestedBody: string;
@@ -108,7 +110,18 @@ export function TemplateProposals({ proposals }: { proposals: ProposalView[] }) 
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="font-medium text-sm">{p.title}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={
+                        p.kind === "improvement"
+                          ? "rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 uppercase tracking-[0.06em] dark:bg-amber-950/40 dark:text-amber-400"
+                          : "rounded bg-violet-100 px-1.5 py-0.5 font-mono text-[9px] text-violet-700 uppercase tracking-[0.06em] dark:bg-violet-950/40 dark:text-violet-400"
+                      }
+                    >
+                      {p.kind === "improvement" ? `Improves ${p.targetTemplateCode ?? ""}` : "New"}
+                    </span>
+                    <span className="font-medium text-sm">{p.title}</span>
+                  </div>
                   <div className="text-[12px] text-zinc-500 dark:text-zinc-400">{p.rationale}</div>
                   <div className="mt-1 flex flex-wrap gap-2 font-mono text-[10px] text-zinc-500 uppercase tracking-[0.06em]">
                     <span>{p.supportCount} replies</span>
@@ -125,7 +138,11 @@ export function TemplateProposals({ proposals }: { proposals: ProposalView[] }) 
                     disabled={pending}
                     onClick={() => act(p.id, () => promoteProposalAction(p.id))}
                     className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 font-medium text-[11px] text-white hover:bg-emerald-700 disabled:opacity-50"
-                    title="Create a real template from this suggestion"
+                    title={
+                      p.kind === "improvement"
+                        ? `Update template ${p.targetTemplateCode ?? ""} with this improved version`
+                        : "Create a real template from this suggestion"
+                    }
                   >
                     <Check className="h-3 w-3" /> Promote
                   </button>

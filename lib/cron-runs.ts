@@ -86,7 +86,8 @@ export type CronName =
   | "relationship-decay"
   | "reply-corpus"
   | "scheduled-sends"
-  | "stale-tagger";
+  | "stale-tagger"
+  | "template-proposals";
 
 /**
  * Wrap a cron handler in run-tracking. `handler` must return the

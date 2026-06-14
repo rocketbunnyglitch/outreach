@@ -144,10 +144,13 @@ export async function generateTemplateProposals(args: {
     "Only propose an intent that appears in MULTIPLE replies and is genuinely missing from (A) and (C). Quality over quantity: 0-4 proposals. If everything is already covered, return an empty array.",
     "",
     "For each, write a CLEAN, reusable template (not a copy of one reply) that captures the winning pattern.",
+    "",
+    'ALSO: if an EXISTING template in (A) is clearly weaker than how staff actually reply in (B) for that same moment, you may propose an IMPROVED version of it. For those, set "kind":"improvement" and "targetCode": the existing template\'s code (the [CODE] in brackets). For brand-new templates set "kind":"new". Prefer improving an existing template over adding a near-duplicate new one.',
+    "",
     `Use ONLY these merge-field placeholders where a value varies, exactly as written: ${MERGE_FIELD_KEYS.map((k) => `{{${k}}}`).join(", ")}.`,
     "End the body with {{signature_block}}. Keep the tone warm and human, matching the staff replies. Never invent merge fields.",
     "",
-    'Return ONLY a JSON array, no prose. Each item: {"title": short label, "subject": email subject, "body": full template body, "rationale": 1 sentence why it is worth adding, "exampleIndexes": [the #numbers of supporting replies]}.',
+    'Return ONLY a JSON array, no prose. Each item: {"kind": "new" | "improvement", "targetCode": existing code if improvement else null, "title": short label, "subject": email subject, "body": full template body, "rationale": 1 sentence why it is worth adding/changing, "exampleIndexes": [the #numbers of supporting replies]}.',
   ].join("\n");
 
   const prompt = [
@@ -170,6 +173,8 @@ export async function generateTemplateProposals(args: {
   }
 
   type RawProposal = {
+    kind?: string;
+    targetCode?: string | null;
     title?: string;
     subject?: string;
     body?: string;
@@ -194,13 +199,25 @@ export async function generateTemplateProposals(args: {
     };
   }
 
-  // 5. Persist the genuinely-new ones.
+  // The codes that actually exist (so an "improvement" targetCode the model
+  // invents is downgraded to a plain 'new' proposal rather than dangling).
+  const existingCodes = new Set(existing.map((t) => t.code));
+
+  // 5. Persist the genuinely-new / improving ones.
   let created = 0;
   for (const p of parsed) {
     const title = (p.title ?? "").trim();
     const body = (p.body ?? "").trim();
     if (!title || body.length < 30) continue;
-    const key = dedupeKey(title);
+
+    const targetCode =
+      p.kind === "improvement" && p.targetCode && existingCodes.has(p.targetCode.trim())
+        ? p.targetCode.trim()
+        : null;
+    const kind = targetCode ? "improvement" : "new";
+    // Improvements dedupe by their target (one live improvement per template);
+    // new proposals dedupe by normalized title.
+    const key = targetCode ? `improve-${targetCode.toLowerCase()}` : dedupeKey(title);
     if (!key || liveKeys.has(key)) continue;
     liveKeys.add(key);
 
@@ -212,10 +229,17 @@ export async function generateTemplateProposals(args: {
 
     await db.execute(sql`
       INSERT INTO template_proposals
-        (campaign_id, title, suggested_subject, suggested_body, rationale,
+        (campaign_id, kind, target_template_code, target_template_id,
+         title, suggested_subject, suggested_body, rationale,
          example_message_ids, support_count, confirmed_count, dedupe_key, model, created_by)
       VALUES (
-        ${campaignId}::uuid, ${title}, ${(p.subject ?? "").trim()}, ${body},
+        ${campaignId}::uuid, ${kind}, ${targetCode},
+        ${
+          targetCode
+            ? sql`(SELECT id FROM email_templates WHERE template_code = ${targetCode} AND archived_at IS NULL AND (campaign_id = ${campaignId}::uuid OR campaign_id IS NULL) ORDER BY campaign_id NULLS LAST LIMIT 1)`
+            : sql`NULL`
+        },
+        ${title}, ${(p.subject ?? "").trim()}, ${body},
         ${(p.rationale ?? "").trim()},
         ${`{${exampleIds.map((id) => `"${id}"`).join(",")}}`}::uuid[],
         ${exampleIds.length}, ${confirmed}, ${key}, 'template_proposals', ${byUserId}::uuid
@@ -231,6 +255,8 @@ export async function generateTemplateProposals(args: {
 
 export interface ProposalRow {
   id: string;
+  kind: "new" | "improvement";
+  targetTemplateCode: string | null;
   title: string;
   suggestedSubject: string;
   suggestedBody: string;
@@ -245,6 +271,8 @@ export async function listTemplateProposals(campaignId: string): Promise<Proposa
   return rows<ProposalRow>(
     await db.execute(sql`
       SELECT id,
+             kind,
+             target_template_code AS "targetTemplateCode",
              title,
              suggested_subject AS "suggestedSubject",
              suggested_body    AS "suggestedBody",
@@ -279,19 +307,52 @@ export async function promoteProposal(args: {
   try {
     const p = rows<{
       campaign_id: string | null;
+      kind: string;
+      target_template_id: string | null;
       title: string;
       suggested_subject: string;
       suggested_body: string;
       status: string;
     }>(
       await db.execute(sql`
-        SELECT campaign_id, title, suggested_subject, suggested_body, status
+        SELECT campaign_id, kind, target_template_id, title, suggested_subject,
+               suggested_body, status
         FROM template_proposals WHERE id = ${proposalId}::uuid
       `),
     )[0];
     if (!p) return { ok: false, error: "Proposal not found." };
     if (p.status !== "pending") return { ok: false, error: `Already ${p.status}.` };
     if (!p.campaign_id) return { ok: false, error: "Proposal has no campaign." };
+
+    // Improvement: update the target template IN PLACE (version-bumped, audited)
+    // rather than creating a new one. Falls through to "create new" if the
+    // target was archived/deleted since the proposal was generated.
+    if (p.kind === "improvement" && p.target_template_id) {
+      const upd = rows<{ id: string }>(
+        await db.execute(sql`
+          WITH t AS (
+            UPDATE email_templates
+            SET subject_template = ${p.suggested_subject},
+                body_template_text = ${p.suggested_body},
+                version = version + 1,
+                updated_at = now(),
+                updated_by = ${byUserId}::uuid
+            WHERE id = ${p.target_template_id}::uuid AND archived_at IS NULL
+            RETURNING id
+          ), pr AS (
+            UPDATE template_proposals
+            SET status = 'promoted', promoted_template_id = (SELECT id FROM t),
+                decided_at = now(), decided_by = ${byUserId}::uuid,
+                updated_at = now(), updated_by = ${byUserId}::uuid
+            WHERE id = ${proposalId}::uuid AND EXISTS (SELECT 1 FROM t)
+            RETURNING id
+          )
+          SELECT id FROM t
+        `),
+      )[0];
+      if (upd?.id) return { ok: true, templateId: upd.id };
+      // Target gone — fall through and create it fresh instead.
+    }
 
     const brand = rows<{ outreach_brand_id: string | null }>(
       await db.execute(sql`
@@ -350,4 +411,62 @@ export async function dismissProposal(args: {
     WHERE id = ${args.proposalId}::uuid AND status = 'pending'
   `);
   return { ok: true };
+}
+
+export interface ScheduledResult {
+  campaigns: number;
+  created: number;
+}
+
+/**
+ * Hands-off weekly pass: generate proposals for every active campaign and, when
+ * anything new lands, notify admins so the suggestions come TO them rather than
+ * waiting to be checked. Triggered automatically (rides the nightly reply-corpus
+ * cron on a 7-day gate) and on-demand via /api/cron/template-proposals. The
+ * engine only DRAFTS — nothing is promoted or sent without a human.
+ */
+export async function runScheduledProposals(): Promise<ScheduledResult> {
+  const camps = rows<{ id: string }>(
+    await db.execute(sql`SELECT id FROM campaigns WHERE archived_at IS NULL`),
+  );
+  const actor = rows<{ id: string }>(
+    await db.execute(
+      sql`SELECT id FROM users WHERE role = 'admin' AND status = 'active' ORDER BY created_at LIMIT 1`,
+    ),
+  )[0];
+  if (!actor) return { campaigns: 0, created: 0 };
+
+  let created = 0;
+  for (const c of camps) {
+    try {
+      const r = await generateTemplateProposals({ campaignId: c.id, byUserId: actor.id });
+      created += r.created;
+    } catch (err) {
+      logger.warn({ err, campaignId: c.id }, "scheduled template-proposals: campaign failed");
+    }
+  }
+
+  if (created > 0) {
+    try {
+      const admins = rows<{ id: string }>(
+        await db.execute(sql`SELECT id FROM users WHERE role = 'admin' AND status = 'active'`),
+      );
+      const { emitNotification } = await import("@/app/(admin)/_actions/notifications");
+      for (const a of admins) {
+        await emitNotification({
+          staffId: a.id,
+          kind: "admin_message",
+          title: `${created} new template suggestion${created === 1 ? "" : "s"} ready`,
+          body: "The learning engine drafted template ideas from your team's best replies. Review on the Learning page.",
+          linkPath: "/admin/learning",
+          dedupeMinutes: 720,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err }, "scheduled template-proposals: notify failed");
+    }
+  }
+
+  logger.info({ campaigns: camps.length, created }, "scheduled template-proposals complete");
+  return { campaigns: camps.length, created };
 }

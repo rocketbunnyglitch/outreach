@@ -16,8 +16,11 @@
  */
 
 import { recordCronRun } from "@/lib/cron-runs";
+import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { runCorpusBuild } from "@/lib/reply-corpus";
+import { runScheduledProposals } from "@/lib/template-proposals";
+import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +36,35 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
-    return await recordCronRun("reply-corpus", async () => {
+    const response = await recordCronRun("reply-corpus", async () => {
       const result = await runCorpusBuild();
       return NextResponse.json({ ok: true, ...result });
     });
+
+    // Ride-along: refresh template suggestions ~weekly off this nightly cron,
+    // so it's hands-off with no separate crontab entry. 7-day gate; failures
+    // here never affect the corpus build above.
+    try {
+      const recent = await db.execute(sql`
+        SELECT 1 FROM cron_runs
+        WHERE cron_name = 'template-proposals' AND status = 'success'
+          AND started_at > now() - interval '6 days'
+        LIMIT 1
+      `);
+      const ran =
+        (Array.isArray(recent)
+          ? recent.length
+          : ((recent as { rows?: unknown[] }).rows?.length ?? 0)) > 0;
+      if (!ran) {
+        await recordCronRun("template-proposals", async () =>
+          NextResponse.json(await runScheduledProposals()),
+        );
+      }
+    } catch (err) {
+      logger.warn({ err }, "reply-corpus: template-proposals ride-along failed");
+    }
+
+    return response;
   } catch (err) {
     logger.error({ err }, "reply-corpus cron route failed");
     return NextResponse.json({ error: "reply-corpus failed" }, { status: 500 });
