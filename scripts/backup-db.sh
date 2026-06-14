@@ -114,6 +114,16 @@ aws s3 cp \
 
 log "Upload OK"
 
+# Stamp a liveness heartbeat so the anti-silence monitor can VERIFY the offsite
+# backup actually completed — this bash job has no other DB trace, which is
+# exactly how it silently failed to upload for weeks before. Non-fatal.
+if [ -n "${DATABASE_URL:-}" ]; then
+  SIZE_BYTES=$(stat -c %s "$TMP_FILE" 2>/dev/null || echo 0)
+  psql "$DATABASE_URL" -c \
+    "INSERT INTO system_heartbeats (component, last_seen_at, last_value, note) VALUES ('backup-offsite', now(), ${SIZE_BYTES}, 'offsite upload ok') ON CONFLICT (component) DO UPDATE SET last_seen_at = now(), last_value = EXCLUDED.last_value, note = EXCLUDED.note, updated_at = now();" \
+    >/dev/null 2>&1 || log "backup heartbeat stamp skipped"
+fi
+
 # ------------------------------------------------------------------------
 # 3. Prune backups older than retention window. Uses aws ls + filter +
 #    rm rather than lifecycle rules because some operators want full

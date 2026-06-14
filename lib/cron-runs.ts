@@ -82,6 +82,7 @@ export type CronName =
   | "host-sms-cadence"
   | "inbox-alerts"
   | "inbox-daily-stats"
+  | "liveness"
   | "notification-escalation"
   | "relationship-decay"
   | "reply-corpus"

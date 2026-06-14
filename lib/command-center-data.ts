@@ -217,6 +217,25 @@ export async function loadCommandCenter(campaignId: string | null): Promise<Comm
     // Backup status unavailable — not itself a finding.
   }
 
+  // Anti-silence monitor: components running "successfully" but producing
+  // nothing (empty retrieval, never-uploaded backup, dead learning signal).
+  try {
+    const { runLivenessChecks } = await import("@/lib/liveness-monitor");
+    for (const r of await runLivenessChecks()) {
+      if (r.healthy) continue;
+      items.push({
+        id: `liveness:${r.component}`,
+        severity: r.severity,
+        source: "system",
+        label: r.detail,
+        href: r.href,
+        cta: "Investigate",
+      });
+    }
+  } catch {
+    // Liveness checks unavailable — not itself a finding.
+  }
+
   // Red first, then stable by source grouping.
   items.sort((a, b) => {
     if (a.severity !== b.severity) return a.severity === "red" ? -1 : 1;

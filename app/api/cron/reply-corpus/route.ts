@@ -17,6 +17,7 @@
 
 import { recordCronRun } from "@/lib/cron-runs";
 import { db } from "@/lib/db";
+import { runLivenessMonitor } from "@/lib/liveness-monitor";
 import { logger } from "@/lib/logger";
 import { runCorpusBuild } from "@/lib/reply-corpus";
 import { runScheduledProposals } from "@/lib/template-proposals";
@@ -62,6 +63,14 @@ export async function POST(req: Request) {
       }
     } catch (err) {
       logger.warn({ err }, "reply-corpus: template-proposals ride-along failed");
+    }
+
+    // Daily ride-along: the anti-silence monitor. Runs every night off this
+    // cron (no separate crontab); failures never affect the corpus build.
+    try {
+      await recordCronRun("liveness", async () => NextResponse.json(await runLivenessMonitor()));
+    } catch (err) {
+      logger.warn({ err }, "reply-corpus: liveness ride-along failed");
     }
 
     return response;
