@@ -11,8 +11,10 @@
 import { requireAdmin } from "@/lib/auth";
 import { loadCampaignLearning } from "@/lib/campaign-learning";
 import { getCurrentCampaign } from "@/lib/current-campaign";
+import { listTemplateProposals } from "@/lib/template-proposals";
 import { GraduationCap } from "lucide-react";
 import Link from "next/link";
+import { TemplateProposals } from "./_components/template-proposals";
 
 export const metadata = { title: "Learning · Admin" };
 export const dynamic = "force-dynamic";
@@ -43,7 +45,10 @@ export default async function LearningPage() {
       </div>
     );
   }
-  const data = await loadCampaignLearning(current.campaign.id);
+  const [data, proposals] = await Promise.all([
+    loadCampaignLearning(current.campaign.id),
+    listTemplateProposals(current.campaign.id),
+  ]);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-5 p-6">
@@ -59,6 +64,8 @@ export default async function LearningPage() {
           </p>
         </div>
       </header>
+
+      <TemplateProposals proposals={proposals} />
 
       <Section title="Templates by reply rate">
         {data.byTemplate.length === 0 ? (
