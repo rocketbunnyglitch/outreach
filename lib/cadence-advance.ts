@@ -31,6 +31,8 @@ import {
 } from "@/db/schema";
 import { planNextTouch } from "@/lib/cadence-engine";
 import { db } from "@/lib/db";
+import { scoreDecision } from "@/lib/decision-confidence";
+import { recordEngineDecision } from "@/lib/engine-decisions";
 import { logger } from "@/lib/logger";
 import { buildFlatMergeContext } from "@/lib/template-merge-context";
 import { renderTemplate } from "@/lib/template-render";
@@ -199,8 +201,9 @@ async function advanceThread(t: DueThread): Promise<boolean> {
   const subject = renderTemplate(tpl.subject, ctx).output;
   const bodyText = renderTemplate(tpl.body, ctx).output;
 
+  const draftId = randomUUID();
   await db.insert(emailDrafts).values({
-    id: randomUUID(),
+    id: draftId,
     ownerUserId,
     teamId: acct.teamId,
     connectedAccountId: aliasId,
@@ -215,6 +218,35 @@ async function advanceThread(t: DueThread): Promise<boolean> {
     // Reply on the existing thread so the follow-up keeps Gmail threading.
     mode: "reply",
     replyToThreadId: t.id,
+  });
+
+  // Shadow ledger (autonomy Phase A): record the engine's choice + confidence
+  // so we can later measure how often the human sent it unchanged — the
+  // evidence that earns this touch class the right to auto-send.
+  const code = plan.recommendedTemplateCode;
+  const kind: "cold_touch" | "lifecycle" | "reply" = /^T[1-8]$/.test(code)
+    ? "cold_touch"
+    : /^T(9|1[0-7])/.test(code)
+      ? "lifecycle"
+      : "reply";
+  const conf = scoreDecision({
+    // A cadence follow-up replies on a thread that already delivered, so the
+    // recipient is established (not freshly re-validated here).
+    recipientValidity: 0.8,
+    templateConfidence: 1,
+    cadenceClarity: 1,
+    safetyClear: true,
+  });
+  await recordEngineDecision({
+    draftId,
+    threadId: t.id,
+    venueId: t.venueId,
+    campaignId: cc.campaignId,
+    kind,
+    templateCode: code,
+    confidence: conf.score,
+    factors: conf.factors,
+    engineBodyLen: bodyText.length,
   });
 
   // Pause: the draft is the operator's to send. recordTouch (Phase 1.11) on

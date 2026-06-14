@@ -388,6 +388,15 @@ export async function deleteDraft(draftId: string): Promise<ActionResult<{ id: s
         }
       }
     }
+    // Shadow ledger (autonomy Phase A): a discarded engine draft is the human
+    // disagreeing with the engine. Record it BEFORE the delete — the FK is
+    // ON DELETE SET NULL, so after the row is gone we can't match by draft_id.
+    try {
+      const { closeEngineDecision } = await import("@/lib/engine-decisions");
+      await closeEngineDecision({ draftId, decidedBy: staff.id });
+    } catch {
+      // no-op
+    }
     await db
       .delete(emailDrafts)
       .where(and(eq(emailDrafts.id, draftId), eq(emailDrafts.ownerUserId, staff.id)));
@@ -999,6 +1008,21 @@ async function sendDraftAsUser(input: {
     // (the draft will just linger in the user's open-drafts list
     // until they discard it).
     logger.warn({ err, draftId: input.draftId }, "couldn't mark draft as sent (mail already sent)");
+  }
+
+  // Shadow ledger (autonomy Phase A): close the engine's decision for this
+  // draft — record that the human sent it, and how close the sent copy was to
+  // what the engine drafted. The agreement trend is what earns auto-send.
+  // Fire-and-forget; never blocks the send.
+  try {
+    const { closeEngineDecision } = await import("@/lib/engine-decisions");
+    void closeEngineDecision({
+      draftId: input.draftId,
+      sentBodyLen: (draft.bodyText ?? "").length,
+      decidedBy: input.ownerUserId,
+    });
+  } catch {
+    // no-op
   }
 
   // Learning loop (2026-06-11): if this draft was seeded from a

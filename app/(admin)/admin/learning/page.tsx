@@ -11,6 +11,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { loadCampaignLearning } from "@/lib/campaign-learning";
 import { getCurrentCampaign } from "@/lib/current-campaign";
+import { autonomyReadiness } from "@/lib/engine-decisions";
 import { listTemplateProposals } from "@/lib/template-proposals";
 import { GraduationCap } from "lucide-react";
 import Link from "next/link";
@@ -45,9 +46,10 @@ export default async function LearningPage() {
       </div>
     );
   }
-  const [data, proposals] = await Promise.all([
+  const [data, proposals, readiness] = await Promise.all([
     loadCampaignLearning(current.campaign.id),
     listTemplateProposals(current.campaign.id),
+    autonomyReadiness(30),
   ]);
 
   return (
@@ -66,6 +68,44 @@ export default async function LearningPage() {
       </header>
 
       <TemplateProposals proposals={proposals} />
+
+      <Section title="Autonomy readiness — engine vs human (shadow ledger, 30d)">
+        <p className="mb-2 text-xs text-zinc-500">
+          For each touch class, how often the engine's draft was sent (vs discarded) and how closely
+          the human kept its wording. High send-rate + high agreement on a class is the evidence to
+          let it auto-send. Builds as the engine drafts and the team acts.
+        </p>
+        {readiness.length === 0 ? (
+          <p className="text-xs text-zinc-500">
+            No engine decisions recorded yet — populates as cadence drafts are created and sent.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <th className={TH}>Touch class</th>
+                <th className={TH}>Decided</th>
+                <th className={TH}>Avg confidence</th>
+                <th className={TH}>Sent (not discarded)</th>
+                <th className={TH}>Wording agreement</th>
+              </tr>
+            </thead>
+            <tbody>
+              {readiness.map((r) => (
+                <tr key={r.kind} className="border-zinc-100 border-t dark:border-zinc-800">
+                  <td className={TD}>{r.kind}</td>
+                  <td className={TD}>
+                    {r.decided}/{r.total}
+                  </td>
+                  <td className={TD}>{r.avgConfidence}</td>
+                  <td className={TD}>{pct(r.sendRate)}</td>
+                  <td className={TD}>{pct(r.agreement)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Section>
 
       <Section title="Templates by reply rate">
         {data.byTemplate.length === 0 ? (
